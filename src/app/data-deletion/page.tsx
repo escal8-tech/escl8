@@ -44,7 +44,7 @@ export default function DataDeletionPage() {
 
         <h2>Platform-specific instructions</h2>
         <p>
-          For WhatsApp users interacting with bots operated by our customers,
+          For WhatsApp users interacting with AI agents operated by our customers,
           please contact the business directly or email us with the phone number
           and conversation details so we can coordinate deletion with the
           appropriate customer controller.

@@ -14,7 +14,7 @@ export default function PrivacyPage() {
         <p>
           This Privacy Policy explains how <strong>escl8</strong> ("we", "us",
           or "our") collects, uses, and protects information when you use our
-          services to create and operate customized AI chatbots for WhatsApp and
+          services to create and operate customized AI agents for WhatsApp and
           web channels.
         </p>
 
@@ -25,7 +25,7 @@ export default function PrivacyPage() {
           details (e.g., email, company name, subscription info).<br />• Usage
           data and logs (e.g., requests, responses, timestamps, device info).<br />•
           End-user conversation data processed on your behalf when interacting
-          with your bot via WhatsApp or web.
+          with your AI agent via WhatsApp or web.
         </p>
 
         <h2>How we use information</h2>

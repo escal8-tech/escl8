@@ -45,7 +45,7 @@ export default function UploadPage() {
     <div className="container" style={{ padding: "40px 0 80px" }}>
       <h1>Upload documents</h1>
       <p className="muted" style={{ marginTop: 8 }}>
-        Supported: PDF, TXT, DOC, DOCX. We’ll index these for your bot.
+        Supported: PDF, TXT, DOC, DOCX. We’ll index these for your AI agent.
       </p>
 
       <div style={{ height: 20 }} />

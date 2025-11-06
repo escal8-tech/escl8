@@ -19,7 +19,7 @@ export default function TermsPage() {
 
         <h2>1. The Service</h2>
         <p>
-          escl8 enables you to create and operate customized AI chatbots that
+          escl8 enables you to create and operate customized AI agents that
           can be connected to WhatsApp and web channels. You can upload
           materials ("Content") to tailor responses and define your brand tone.
         </p>

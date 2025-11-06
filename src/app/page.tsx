@@ -9,7 +9,7 @@ export default function Home() {
           <div>
             <span className="eyebrow">Elevate your sales</span>
             <h1>
-              Human‑like AI sales bots — trained on your docs and brand voice
+              Human‑like AI sales agents — trained on your docs and brand voice
             </h1>
             <p className="lead">
               escl8 builds fully customized AI agents for WhatsApp and web. Upload
@@ -29,7 +29,7 @@ export default function Home() {
             <div className="muted">Live preview</div>
             <div style={{ height: 12 }} />
             <div className="glass" style={{ padding: 16 }}>
-              <div className="muted" style={{ fontSize: 12 }}>WhatsApp · Bot</div>
+              <div className="muted" style={{ fontSize: 12 }}>WhatsApp · Agent</div>
               <div style={{ height: 8 }} />
               <p style={{ lineHeight: 1.5 }}>
                 Hey! I was reading your pricing — could you tailor a plan for our
@@ -63,7 +63,7 @@ export default function Home() {
             <div className="feature glass">
               <h3>Human‑like tone</h3>
               <p className="muted">
-                Define your voice once. Your bot mirrors your brand style and
+                Define your voice once. Your AI agent mirrors your brand style and
                 maintains context like a real rep.
               </p>
             </div>
