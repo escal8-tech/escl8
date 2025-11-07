@@ -9,6 +9,7 @@ const figtree = Figtree({
   subsets: ["latin"],
 });
 
+
 export const metadata: Metadata = {
   title: "escl8 — Human-like AI Sales Agents for WhatsApp & Web",
   description:
