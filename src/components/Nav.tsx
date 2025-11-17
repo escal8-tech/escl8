@@ -4,7 +4,6 @@ import { usePathname } from "next/navigation";
 
 const links = [
   { href: "/", label: "Home" },
-  { href: "/upload", label: "Upload" },
   { href: "/privacy", label: "Privacy" },
   { href: "/terms", label: "Terms" },
   { href: "/data-deletion", label: "Data Deletion" },
@@ -19,7 +18,7 @@ export default function Nav() {
           <span className="brand-mark">⚡</span>
           <span className="brand-name">escl8</span>
         </Link>
-        <nav className="nav">
+        <nav className="nav" style={{ alignItems: "center", gap: 10 }}>
           {links.map((l) => (
             <Link
               key={l.href}
@@ -29,6 +28,13 @@ export default function Nav() {
               {l.label}
             </Link>
           ))}
+          <Link
+            href="/portal"
+            className="btn btn-primary"
+            style={{ marginLeft: 8, paddingInline: 18, fontSize: 14 }}
+          >
+            Portal
+          </Link>
         </nav>
       </div>
     </header>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Figtree } from "next/font/google";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
+import { TRPCProvider } from "@/utils/trpc";
 import "./globals.css";
 
 const figtree = Figtree({
@@ -26,9 +27,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${figtree.variable}`}>
-        <Nav />
-        <main className="site-main">{children}</main>
-        <Footer />
+        <TRPCProvider>
+          <Nav />
+          <main className="site-main">{children}</main>
+          <Footer />
+        </TRPCProvider>
       </body>
     </html>
   );
