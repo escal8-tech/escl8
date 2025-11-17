@@ -62,17 +62,6 @@ export default function Home() {
 
       
 
-      <section className="section" style={{ overflow: 'hidden' }}>
-        <ChatBubbles
-          startSide="right"
-          items={[
-            { text: "1. Upload your docs — Pricing, playbooks, FAQs, catalog — we’ll index it for retrieval." },
-            { text: "2. Set your tone — Choose voice and guardrails; add sales scripts and CTAs." },
-            { text: "3. Go live on WhatsApp — Connect your Business Account and start converting conversations." },
-          ]}
-        />
-      </section>
-
       {/* Why use section */}
       <section className="section" style={{ paddingTop: 80, paddingBottom: 80 }}>
         {/* Top separator line - full width */}
@@ -109,14 +98,14 @@ export default function Home() {
       </section>
 
       {/* Pricing cards */}
-      <section id="pricing" className="section" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0))' }}>
+      <section id="pricing" className="section" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0))', paddingBottom: 100 }}>
         <div className="container" style={{ maxWidth: 1180 }}>
           <div style={{ textAlign:'center', marginBottom:46 }}>
             <h2 style={{ fontSize:'40px', letterSpacing:'-1px' }}>Pricing</h2>
             <p className="muted" style={{ marginTop:12 }}>Simple plans to start—scale when the agent becomes a top closer.</p>
           </div>
-          <div className="grid" style={{ display:'grid', gap:28, gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))' }}>
-            <div className="glass neon-shadow" style={{ display:'flex', flexDirection:'column', gap:16, padding:'28px 26px' }}>
+          <div className="grid" style={{ display:'grid', gap:28, gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))', alignItems:'center' }}>
+            <div className="glass" style={{ display:'flex', flexDirection:'column', gap:16, padding:'28px 26px' }}>
               <h3>Starter</h3>
               <p className="muted" style={{ fontSize:14 }}>Launch fast with core WhatsApp automation.</p>
               <ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:10 }}>
@@ -129,19 +118,21 @@ export default function Home() {
                 <Link href="/upload" className="btn btn-primary" style={{ marginTop:14 }}>Get started</Link>
               </div>
             </div>
-            <div className="glass ring-gradient" style={{ display:'flex', flexDirection:'column', gap:16, padding:'28px 26px', position:'relative' }}>
-              <span style={{ position:'absolute', top:12, right:16, fontSize:12, letterSpacing:'0.7px', background:'linear-gradient(135deg,var(--brand),var(--brand-2))', padding:'4px 10px', borderRadius:999, color:'#fff' }}>POPULAR</span>
-              <h3>Growth</h3>
-              <p className="muted" style={{ fontSize:14 }}>For teams scaling multi‑region sales conversations.</p>
-              <ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:10 }}>
-                <li>Unlimited docs</li>
-                <li>Advanced retrieval tuning</li>
-                <li>Conversion analytics + exports</li>
-                <li>Priority support</li>
-              </ul>
-              <div style={{ marginTop:'auto' }}>
-                <div style={{ fontSize:30, fontWeight:600 }}>$199<span style={{ fontSize:14, fontWeight:400 }}> /mo</span></div>
-                <Link href="/upload" className="btn btn-primary" style={{ marginTop:14 }}>Start Growth</Link>
+            <div style={{ position:'relative', padding:2, background:'linear-gradient(135deg, var(--brand), var(--brand-2))', borderRadius:16 }}>
+              <div className="glass" style={{ display:'flex', flexDirection:'column', gap:18, padding:'50px 36px', position:'relative', borderRadius:14 }}>
+                <span style={{ position:'absolute', top:12, right:16, fontSize:12, letterSpacing:'0.7px', background:'linear-gradient(135deg,var(--brand),var(--brand-2))', padding:'4px 10px', borderRadius:999, color:'#fff' }}>POPULAR</span>
+                <h3>Growth</h3>
+                <p className="muted" style={{ fontSize:14 }}>For teams scaling multi‑region sales conversations.</p>
+                <ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:10 }}>
+                  <li>Unlimited docs</li>
+                  <li>Advanced retrieval tuning</li>
+                  <li>Conversion analytics + exports</li>
+                  <li>Priority support</li>
+                </ul>
+                <div style={{ marginTop:'auto' }}>
+                  <div style={{ fontSize:30, fontWeight:600 }}>$199<span style={{ fontSize:14, fontWeight:400 }}> /mo</span></div>
+                  <Link href="/upload" className="btn btn-primary" style={{ marginTop:14 }}>Start Growth</Link>
+                </div>
               </div>
             </div>
             <div className="glass" style={{ display:'flex', flexDirection:'column', gap:16, padding:'28px 26px' }}>
