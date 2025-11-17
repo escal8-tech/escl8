@@ -3,48 +3,53 @@ import Link from "next/link";
 export default function Footer() {
   const year = new Date().getFullYear();
   return (
-    <footer className="site-footer">
-      <div className="container">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 items-start py-14">
+    <footer className="site-footer" style={{ width: '100%' }}>
+      {/* Full-bleed separator above footer */}
+      <div className="full-bleed footer-separator" aria-hidden />
+
+      <div style={{ maxWidth: 1180, margin: '0 auto', padding: '0 60px' }}>
+        {/* Footer sections - horizontal layout */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 80, paddingTop: 64, paddingBottom: 48 }}>
           {/* Column 1: Company */}
-          <div>
-            <h3 className="text-sm font-semibold tracking-wide">Company</h3>
-            <nav aria-label="Company" className="mt-3 flex flex-col gap-1.5 text-xs text-gray-700 dark:text-gray-200">
-              <Link href="/">Home</Link>
-              <Link href="/upload">Upload</Link>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.5px', marginBottom: 16 }}>Company</h3>
+            <nav aria-label="Company" style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14 }}>
+              <Link href="/" className="footer-link">Home</Link>
+              <Link href="/upload" className="footer-link">Upload</Link>
             </nav>
           </div>
 
           {/* Column 2: Legal */}
-          <div>
-            <h3 className="text-sm font-semibold tracking-wide">Legal</h3>
-            <nav aria-label="Legal" className="mt-3 flex flex-col gap-1.5 text-xs text-gray-700 dark:text-gray-200">
-              <Link href="/privacy">Privacy Policy</Link>
-              <Link href="/terms">Terms of Service</Link>
-              <Link href="/data-deletion">Data Deletion</Link>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.5px', marginBottom: 16 }}>Legal</h3>
+            <nav aria-label="Legal" style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14 }}>
+              <Link href="/privacy" className="footer-link">Privacy Policy</Link>
+              <Link href="/terms" className="footer-link">Terms of Service</Link>
+              <Link href="/data-deletion" className="footer-link">Data Deletion</Link>
             </nav>
           </div>
 
           {/* Column 3: Contact */}
-          <div>
-            <h3 className="text-sm font-semibold tracking-wide">Contact</h3>
-            <div className="mt-3 flex flex-col gap-1.5 text-xs text-gray-700 dark:text-gray-200">
+          <div style={{ flex: 1 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.5px', marginBottom: 16 }}>Contact</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14, color: 'var(--muted)' }}>
               <span>
-                Phone: <a href="tel:+18005551234" className="underline-offset-2 hover:underline">+1 (800) 555‑1234</a>
+                Phone: <a href="tel:+18005551234" style={{ textDecoration: 'underline', textUnderlineOffset: '2px' }}>+1 (800) 555‑1234</a>
               </span>
               <span>
-                Email: <a href="mailto:support@escl8.com" className="underline-offset-2 hover:underline">support@escl8.com</a>
+                Email: <a href="mailto:support@escl8.com" style={{ textDecoration: 'underline', textUnderlineOffset: '2px' }}>support@escl8.com</a>
               </span>
-              <span className="text-gray-500 dark:text-gray-400">Mon–Fri 9am–5pm (PT)</span>
+              <span style={{ fontSize: 13, opacity: 0.7 }}>Mon–Fri 9am–5pm (PT)</span>
             </div>
           </div>
         </div>
 
-        <div className="mt-12 pt-8 pb-6 border-t border-[color:var(--border)] text-[11px] md:text-xs text-gray-500 dark:text-gray-400 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <span>© {year} Escl8 — Human‑grade AI sales and support agents.</span>
-          <span className="text-[10px] md:text-[11px] text-gray-400">
+        {/* Copyright section - bottom left with lots of padding above */}
+        <div style={{ paddingTop: 80, paddingBottom: 40, borderTop: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
+            © {year} Escl8 — Human‑grade AI sales and support agents.<br />
             Built with care for teams that live in WhatsApp.
-          </span>
+          </div>
         </div>
       </div>
     </footer>
