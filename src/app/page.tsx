@@ -17,35 +17,30 @@ export default function Home() {
             <p className="lead">
               Train on your docs. Set your brand tone. Launch a revenue‑driving AI sales agent where your customers already are.
             </p>
-            <div className="cta-row">
-              <Link className="btn btn-primary" href="/upload">
+            <div className="cta-row" style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+              <Link className="btn btn-primary" href="/portal">
                 Create your agent
               </Link>
-              <Link className="btn" href="#features">
-                See what’s inside
-              </Link>
-            </div>
-            <div className="trust-row">
               <span
                 className="badge"
                 style={{
-                  padding: 8,
-                  borderRadius: 12,
+                  padding: 6,
+                  borderRadius: 10,
                   background: "#fff",
                   boxShadow: "0 8px 20px rgba(15, 23, 42, 0.18)",
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  border: "1px solid rgba(148, 163, 184, 0.25)",
                 }}
               >
                 <Image
                   src="/meta-business-partner.png"
                   alt="Meta Business Partner"
-                  width={140}
-                  height={60}
+                  width={130}
+                  height={52}
                 />
               </span>
-              <span className="muted" style={{ fontSize: 12 }}>Built for Meta’s platform</span>
             </div>
           </div>
           <div className="glass ring-gradient neon-shadow" style={{ padding: 0, overflow: "hidden" }}>
@@ -82,10 +77,10 @@ export default function Home() {
       <section className="section">
         <div className="container" style={{ maxWidth: 1180 }}>
           <div style={{ textAlign: 'center', marginBottom: 40 }}>
-            <h2 style={{ fontSize: '38px', letterSpacing: '-0.5px' }}>Why teams choose escl8</h2>
+            <h2 style={{ fontSize: '38px', letterSpacing: '-0.5px' }}>Why teams choose escl8?</h2>
             <p className="muted" style={{ marginTop: 14, fontSize: 18 }}>Three reasons brands deploy AI sales agents that feel human day one.</p>
           </div>
-          <div className="flex flex-col md:flex-row md:items-stretch gap-10 md:gap-6">
+          <div className="flex flex-col md:flex-row md:items-stretch gap-6 md:gap-8">
             <div className="flex-1 glass" style={{ display:'flex', flexDirection:'column', gap:14 }}>
               <IconSpark />
               <h3>Instant activation</h3>
