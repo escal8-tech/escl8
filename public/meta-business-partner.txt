@@ -1,0 +1,3 @@
+Placeholder file to remind adding the official Meta Business Partner PNG asset named `meta-business-partner.png` into this folder.
+
+Replace this note with the real image file via your OS file explorer or Git tooling.

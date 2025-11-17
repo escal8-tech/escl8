@@ -26,7 +26,25 @@ export default function Home() {
               </Link>
             </div>
             <div className="trust-row">
-              <span className="badge"><Image src="/meta-partner.svg" alt="Meta Business Partner" width={160} height={40} /></span>
+              <span
+                className="badge"
+                style={{
+                  padding: 8,
+                  borderRadius: 12,
+                  background: "#fff",
+                  boxShadow: "0 8px 20px rgba(15, 23, 42, 0.18)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Image
+                  src="/meta-business-partner.png"
+                  alt="Meta Business Partner"
+                  width={140}
+                  height={60}
+                />
+              </span>
               <span className="muted" style={{ fontSize: 12 }}>Built for Meta’s platform</span>
             </div>
           </div>
