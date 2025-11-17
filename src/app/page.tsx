@@ -74,30 +74,38 @@ export default function Home() {
       </section>
 
       {/* Why use section */}
-      <section className="section">
+      <section className="section" style={{ paddingTop: 80, paddingBottom: 80 }}>
+        {/* Top separator line - full width */}
+        <div style={{ width: '100vw', height: 1, background: 'rgba(255,255,255,0.15)', marginBottom: 60, marginLeft: 'calc(-50vw + 50%)' }} />
+        
         <div className="container" style={{ maxWidth: 1180 }}>
-          <div style={{ textAlign: 'center', marginBottom: 40 }}>
-            <h2 style={{ fontSize: '38px', letterSpacing: '-0.5px' }}>Why teams choose escl8?</h2>
+          <div style={{ textAlign: 'center', marginBottom: 60 }}>
+            <h2 style={{ fontSize: '38px', letterSpacing: '-0.5px' }}>Why teams choose Escl8?</h2>
             <p className="muted" style={{ marginTop: 14, fontSize: 18 }}>Three reasons brands deploy AI sales agents that feel human day one.</p>
           </div>
-          <div className="flex flex-col md:flex-row md:items-stretch gap-6 md:gap-8">
-            <div className="flex-1 glass" style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap: 40 }}>
+            <div style={{ flex:1, display:'flex', flexDirection:'column', gap:14 }}>
               <IconSpark />
               <h3>Instant activation</h3>
               <p className="muted">Upload your canon docs and you have a trained agent in minutes—not weeks.</p>
             </div>
-            <div className="flex-1 glass" style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            <div style={{ width: 1, height: '75%', background: 'rgba(255,255,255,0.4)', borderRadius: 999, flexShrink: 0 }} />
+            <div style={{ flex:1, display:'flex', flexDirection:'column', gap:14 }}>
               <IconShield />
               <h3>On‑brand + safe</h3>
               <p className="muted">Tone + guardrails ensure every reply matches voice and policy compliance.</p>
             </div>
-            <div className="flex-1 glass" style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            <div style={{ width: 1, height: '75%', background: 'rgba(255,255,255,0.4)', borderRadius: 999, flexShrink: 0 }} />
+            <div style={{ flex:1, display:'flex', flexDirection:'column', gap:14 }}>
               <IconChart />
               <h3>Revenue focus</h3>
               <p className="muted">Designed around conversion flows: qualification, follow‑ups, offer summaries.</p>
             </div>
           </div>
         </div>
+
+        {/* Bottom separator line - full width */}
+        <div style={{ width: '100vw', height: 1, background: 'rgba(255,255,255,0.15)', marginTop: 60, marginLeft: 'calc(-50vw + 50%)' }} />
       </section>
 
       {/* Pricing cards */}

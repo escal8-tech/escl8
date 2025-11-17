@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — escl8",
+  title: "Privacy Policy — Escl8",
 };
 
 export default function PrivacyPage() {
@@ -12,7 +12,7 @@ export default function PrivacyPage() {
         <p>Last updated: {new Date().toLocaleDateString()}</p>
 
         <p>
-          This Privacy Policy explains how <strong>escl8</strong> ("we", "us",
+          This Privacy Policy explains how <strong>Escl8</strong> ("we", "us",
           or "our") collects, uses, and protects information when you use our
           services to create and operate customized AI agents for WhatsApp and
           web channels.

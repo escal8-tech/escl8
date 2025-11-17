@@ -16,7 +16,7 @@ export default function Nav() {
       <div className="container header-inner">
         <Link href="/" className="brand">
           <span className="brand-mark">⚡</span>
-          <span className="brand-name">escl8</span>
+          <span className="brand-name">Escl8</span>
         </Link>
         <nav className="nav" style={{ alignItems: "center", gap: 10 }}>
           {links.map((l) => (

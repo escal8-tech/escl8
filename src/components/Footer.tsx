@@ -41,7 +41,7 @@ export default function Footer() {
         </div>
 
         <div className="mt-12 pt-8 pb-6 border-t border-[color:var(--border)] text-[11px] md:text-xs text-gray-500 dark:text-gray-400 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <span>© {year} escl8 — Human‑grade AI sales and support agents.</span>
+          <span>© {year} Escl8 — Human‑grade AI sales and support agents.</span>
           <span className="text-[10px] md:text-[11px] text-gray-400">
             Built with care for teams that live in WhatsApp.
           </span>

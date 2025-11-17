@@ -12,9 +12,9 @@ const figtree = Figtree({
 
 
 export const metadata: Metadata = {
-  title: "escl8 — Human-like AI Sales Agents for WhatsApp & Web",
+  title: "Escl8 — Human-like AI Sales Agents for WhatsApp & Web",
   description:
-    "escl8 builds fully customized, human-like AI sales and support agents for SMBs and enterprises. Upload your docs, connect WhatsApp, and go live fast.",
+    "Escl8 builds fully customized, human-like AI sales and support agents for SMBs and enterprises. Upload your docs, connect WhatsApp, and go live fast.",
   metadataBase: new URL("http://localhost:5000"),
   icons: [{ rel: "icon", url: "/favicon.ico" }],
 };

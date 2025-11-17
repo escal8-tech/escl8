@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "User Data Deletion — escl8",
+  title: "User Data Deletion — Escl8",
 };
 
 export default function DataDeletionPage() {
@@ -11,7 +11,7 @@ export default function DataDeletionPage() {
         <h1>User Data Deletion</h1>
         <p>
           You can request deletion of your personal data or end‑user
-          conversation data processed by <strong>escl8</strong>.
+          conversation data processed by <strong>Escl8</strong>.
         </p>
 
         <h2>Request methods</h2>

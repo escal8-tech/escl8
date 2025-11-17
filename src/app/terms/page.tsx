@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — escl8",
+  title: "Terms of Service — Escl8",
 };
 
 export default function TermsPage() {
@@ -13,13 +13,13 @@ export default function TermsPage() {
 
         <p>
           These Terms of Service ("Terms") govern your access to and use of
-          <strong> escl8</strong> (the "Service"). By using the Service, you
+          <strong> Escl8</strong> (the "Service"). By using the Service, you
           agree to these Terms.
         </p>
 
         <h2>1. The Service</h2>
         <p>
-          escl8 enables you to create and operate customized AI agents that
+          Escl8 enables you to create and operate customized AI agents that
           can be connected to WhatsApp and web channels. You can upload
           materials ("Content") to tailor responses and define your brand tone.
         </p>
@@ -62,7 +62,7 @@ export default function TermsPage() {
 
         <h2>7. Limitation of Liability</h2>
         <p>
-          To the maximum extent permitted by law, escl8 will not be liable for
+          To the maximum extent permitted by law, Escl8 will not be liable for
           indirect, incidental, special, consequential, or punitive damages, or
           loss of profits, data, or goodwill.
         </p>
@@ -83,7 +83,7 @@ export default function TermsPage() {
         <h2>10. Governing Law</h2>
         <p>
           These Terms are governed by applicable laws of your place of
-          establishment or, if none, the laws of the jurisdiction where escl8 is
+          establishment or, if none, the laws of the jurisdiction where Escl8 is
           organized, without regard to conflict of law principles.
         </p>
 
