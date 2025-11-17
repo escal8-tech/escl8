@@ -1,4 +1,7 @@
 import Link from "next/link";
+import Image from "next/image";
+import ChatBubbles from "@/components/ChatBubbles";
+import ContactForm from "@/components/ContactForm";
 
 export default function Home() {
   return (
@@ -7,86 +10,178 @@ export default function Home() {
         <div className="hero-bg" aria-hidden />
         <div className="container hero-grid">
           <div>
-            <span className="eyebrow">Elevate your sales</span>
+            <span className="eyebrow">WhatsApp first</span>
             <h1>
-              Human‑like AI sales agents — trained on your docs and brand voice
+              Human‑like AI sales agents for WhatsApp — powered by your content
             </h1>
             <p className="lead">
-              escl8 builds fully customized AI agents for WhatsApp and web. Upload
-              your documents, set your tone, and go live. No generic answers — just
-              fast, on‑brand conversations that convert.
+              Train on your docs. Set your brand tone. Launch a revenue‑driving AI sales agent where your customers already are.
             </p>
             <div className="cta-row">
               <Link className="btn btn-primary" href="/upload">
-                Upload documents
+                Create your agent
               </Link>
               <Link className="btn" href="#features">
-                Explore features
+                See what’s inside
               </Link>
             </div>
-          </div>
-          <div className="glass">
-            <div className="muted">Live preview</div>
-            <div style={{ height: 12 }} />
-            <div className="glass" style={{ padding: 16 }}>
-              <div className="muted" style={{ fontSize: 12 }}>WhatsApp · Agent</div>
-              <div style={{ height: 8 }} />
-              <p style={{ lineHeight: 1.5 }}>
-                Hey! I was reading your pricing — could you tailor a plan for our
-                12‑person sales team?
-              </p>
+            <div className="trust-row">
+              <span className="badge"><Image src="/meta-partner.svg" alt="Meta Business Partner" width={160} height={40} /></span>
+              <span className="muted" style={{ fontSize: 12 }}>Built for Meta’s platform</span>
             </div>
-            <div style={{ height: 10 }} />
-            <div className="glass" style={{ padding: 16 }}>
-              <div className="muted" style={{ fontSize: 12 }}>escl8 · AI</div>
-              <div style={{ height: 8 }} />
-              <p className="muted" style={{ lineHeight: 1.6 }}>
-                Absolutely. Based on your team size, most customers pick our
-                Growth plan with a custom onboarding playbook. I can draft it in
-                your brand tone and share a WhatsApp‑ready summary.
-              </p>
+          </div>
+          <div className="glass ring-gradient neon-shadow" style={{ padding: 0, overflow: "hidden" }}>
+            <Image src="/whatsapp-hero.svg" alt="Chat preview" width={480} height={380} priority />
+          </div>
+        </div>
+      </section>
+
+      <section id="features" className="section" style={{ overflow: 'hidden' }}>
+        <ChatBubbles
+          startSide="left"
+          items={[
+            { text: "WhatsApp native — Optimized for sales flows: replies, follow‑ups, catalog prompts, payments hand‑offs." },
+            { text: "Document‑grounded — Upload PDFs, docs, and KB exports. Answers stay on‑brand and on‑fact." },
+            { text: "Human‑like tone — Define your voice once. The agent maintains context like a real rep." },
+          ]}
+        />
+      </section>
+
+      
+
+      <section className="section" style={{ overflow: 'hidden' }}>
+        <ChatBubbles
+          startSide="right"
+          items={[
+            { text: "1. Upload your docs — Pricing, playbooks, FAQs, catalog — we’ll index it for retrieval." },
+            { text: "2. Set your tone — Choose voice and guardrails; add sales scripts and CTAs." },
+            { text: "3. Go live on WhatsApp — Connect your Business Account and start converting conversations." },
+          ]}
+        />
+      </section>
+
+      {/* Why use section */}
+      <section className="section">
+        <div className="container" style={{ maxWidth: 1180 }}>
+          <div style={{ textAlign: 'center', marginBottom: 40 }}>
+            <h2 style={{ fontSize: '38px', letterSpacing: '-0.5px' }}>Why teams choose escl8</h2>
+            <p className="muted" style={{ marginTop: 14, fontSize: 18 }}>Three reasons brands deploy AI sales agents that feel human day one.</p>
+          </div>
+          <div className="flex flex-col md:flex-row md:items-stretch gap-10 md:gap-6">
+            <div className="flex-1 glass" style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              <IconSpark />
+              <h3>Instant activation</h3>
+              <p className="muted">Upload your canon docs and you have a trained agent in minutes—not weeks.</p>
+            </div>
+            <div className="flex-1 glass" style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              <IconShield />
+              <h3>On‑brand + safe</h3>
+              <p className="muted">Tone + guardrails ensure every reply matches voice and policy compliance.</p>
+            </div>
+            <div className="flex-1 glass" style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              <IconChart />
+              <h3>Revenue focus</h3>
+              <p className="muted">Designed around conversion flows: qualification, follow‑ups, offer summaries.</p>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="features">
-        <div className="container">
-          <div className="feature-grid">
-            <div className="feature glass">
-              <h3>Document‑grounded</h3>
-              <p className="muted">
-                Upload PDFs, docs, and knowledge base exports. We’ll index and
-                tailor answers to your content — no hallucinations.
-              </p>
+      {/* Pricing cards */}
+      <section id="pricing" className="section" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0))' }}>
+        <div className="container" style={{ maxWidth: 1180 }}>
+          <div style={{ textAlign:'center', marginBottom:46 }}>
+            <h2 style={{ fontSize:'40px', letterSpacing:'-1px' }}>Pricing</h2>
+            <p className="muted" style={{ marginTop:12 }}>Simple plans to start—scale when the agent becomes a top closer.</p>
+          </div>
+          <div className="grid" style={{ display:'grid', gap:28, gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))' }}>
+            <div className="glass neon-shadow" style={{ display:'flex', flexDirection:'column', gap:16, padding:'28px 26px' }}>
+              <h3>Starter</h3>
+              <p className="muted" style={{ fontSize:14 }}>Launch fast with core WhatsApp automation.</p>
+              <ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:10 }}>
+                <li>Up to 5 source docs</li>
+                <li>Tone + guardrails</li>
+                <li>Basic analytics</li>
+              </ul>
+              <div style={{ marginTop:'auto' }}>
+                <div style={{ fontSize:28, fontWeight:600 }}>$59<span style={{ fontSize:14, fontWeight:400 }}> /mo</span></div>
+                <Link href="/upload" className="btn btn-primary" style={{ marginTop:14 }}>Get started</Link>
+              </div>
             </div>
-            <div className="feature glass">
-              <h3>Human‑like tone</h3>
-              <p className="muted">
-                Define your voice once. Your AI agent mirrors your brand style and
-                maintains context like a real rep.
-              </p>
+            <div className="glass ring-gradient" style={{ display:'flex', flexDirection:'column', gap:16, padding:'28px 26px', position:'relative' }}>
+              <span style={{ position:'absolute', top:12, right:16, fontSize:12, letterSpacing:'0.7px', background:'linear-gradient(135deg,var(--brand),var(--brand-2))', padding:'4px 10px', borderRadius:999, color:'#fff' }}>POPULAR</span>
+              <h3>Growth</h3>
+              <p className="muted" style={{ fontSize:14 }}>For teams scaling multi‑region sales conversations.</p>
+              <ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:10 }}>
+                <li>Unlimited docs</li>
+                <li>Advanced retrieval tuning</li>
+                <li>Conversion analytics + exports</li>
+                <li>Priority support</li>
+              </ul>
+              <div style={{ marginTop:'auto' }}>
+                <div style={{ fontSize:30, fontWeight:600 }}>$199<span style={{ fontSize:14, fontWeight:400 }}> /mo</span></div>
+                <Link href="/upload" className="btn btn-primary" style={{ marginTop:14 }}>Start Growth</Link>
+              </div>
             </div>
-            <div className="feature glass">
-              <h3>WhatsApp‑ready</h3>
-              <p className="muted">
-                Built for Meta’s platform from day one with clear privacy, terms,
-                and user data deletion flows.
-              </p>
+            <div className="glass" style={{ display:'flex', flexDirection:'column', gap:16, padding:'28px 26px' }}>
+              <h3>Scale</h3>
+              <p className="muted" style={{ fontSize:14 }}>High‑volume orgs needing deep integrations.</p>
+              <ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:10 }}>
+                <li>All Growth features</li>
+                <li>Custom retention & SLA</li>
+                <li>Embedded compliance review</li>
+                <li>Dedicated solutions engineer</li>
+              </ul>
+              <div style={{ marginTop:'auto' }}>
+                <div style={{ fontSize:26, fontWeight:600 }}>Custom</div>
+                <Link href="#contact" className="btn" style={{ marginTop:14 }}>Talk to us</Link>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section>
-        <div className="container glass" style={{ textAlign: "center", padding: 32 }}>
-          <h3>Ready to scale conversations that convert?</h3>
-          <div style={{ height: 10 }} />
-          <Link className="btn btn-primary" href="/upload">
-            Start by uploading your docs
-          </Link>
+      {/* Contact section */}
+      <section id="contact" className="section">
+        <div className="container" style={{ maxWidth:900 }}>
+          <div className="glass" style={{ padding:'50px 46px', position:'relative' }}>
+            <h2 style={{ fontSize:'36px', letterSpacing:'-0.5px' }}>Contact us</h2>
+            <p className="muted" style={{ marginTop:12 }}>Have a unique catalog or compliance need? Send a quick note.</p>
+            <ContactForm />
+          </div>
         </div>
       </section>
     </>
+  );
+}
+
+function IconSpark() {
+  return (
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 2v4" />
+      <path d="M12 18v4" />
+      <path d="M4.93 4.93l2.83 2.83" />
+      <path d="M16.24 16.24l2.83 2.83" />
+      <path d="M2 12h4" />
+      <path d="M18 12h4" />
+      <path d="M4.93 19.07l2.83-2.83" />
+      <path d="M16.24 7.76l2.83-2.83" />
+    </svg>
+  );
+}
+function IconShield() {
+  return (
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+function IconChart() {
+  return (
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 3v18h18" />
+      <path d="M7 14l4-4 4 3 5-7" />
+    </svg>
   );
 }
