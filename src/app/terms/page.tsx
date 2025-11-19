@@ -8,6 +8,7 @@ export default function TermsPage() {
   return (
     <div className="legal-page">
       <div className="container legal">
+        <div className="frost-card" style={{ padding: 28 }}>
         <h1>Terms of Service</h1>
         <p>Last updated: {new Date().toLocaleDateString()}</p>
 
@@ -91,6 +92,7 @@ export default function TermsPage() {
         <p>
           For questions about these Terms, contact <a href="mailto:legal@escl8.com">legal@escl8.com</a>.
         </p>
+        </div>
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ export default function DataDeletionPage() {
   return (
     <div className="legal-page">
       <div className="container legal">
+        <div className="frost-card" style={{ padding: 28 }}>
         <h1>User Data Deletion</h1>
         <p>
           You can request deletion of your personal data or end‑user
@@ -54,6 +55,7 @@ export default function DataDeletionPage() {
         <p>
           Questions? Email <a href="mailto:privacy@escl8.com">privacy@escl8.com</a>.
         </p>
+        </div>
       </div>
     </div>
   );

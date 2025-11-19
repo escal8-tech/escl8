@@ -8,6 +8,7 @@ export default function PrivacyPage() {
   return (
     <div className="legal-page">
       <div className="container legal">
+        <div className="frost-card" style={{ padding: 28 }}>
         <h1>Privacy Policy</h1>
         <p>Last updated: {new Date().toLocaleDateString()}</p>
 
@@ -90,6 +91,7 @@ export default function PrivacyPage() {
         <p>
           For privacy inquiries, please contact <a href="mailto:privacy@escl8.com">privacy@escl8.com</a>.
         </p>
+        </div>
       </div>
     </div>
   );

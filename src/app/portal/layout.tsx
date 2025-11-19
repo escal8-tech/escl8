@@ -1,13 +1,7 @@
 "use client";
-
-import type { Metadata } from "next";
 import { usePathname } from "next/navigation";
 import PortalNav from "@/components/PortalNav";
 import PortalAuthProvider from "@/components/PortalAuthProvider";
-
-export const metadata: Metadata = {
-  title: "Escl8 Portal",
-};
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
