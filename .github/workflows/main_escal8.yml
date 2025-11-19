@@ -31,11 +31,17 @@ jobs:
           npm run test --if-present
 
       # Create a minimal deployment bundle (retain node_modules + .next + app sources)
-      - name: Prepare deployment bundle (zip)
+      - name: Prepare standalone deployment bundle (zip)
         run: |
+          ls -lah .next
           mkdir deploy
-          cp -R package.json package-lock.json next.config.* tsconfig.json public .next node_modules deploy/ 2>/dev/null || true
-          cp -R src deploy/src
+          # Copy minimal standalone server bundle and static assets
+          cp -R .next/standalone/* deploy/
+          mkdir -p deploy/.next
+          cp -R .next/static deploy/.next/static
+          cp -R public deploy/public
+          cp package.json deploy/package.json
+          cp package-lock.json deploy/package-lock.json
           cd deploy
           zip -r ../deploy.zip .
 
