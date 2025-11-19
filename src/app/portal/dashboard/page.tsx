@@ -13,6 +13,7 @@ import {
   BarChart,
   Bar,
 } from "recharts";
+import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
 
 export default function DashboardPage() {
   const listQ = trpc.requests.list.useQuery({ limit: 100 });
@@ -38,8 +39,15 @@ export default function DashboardPage() {
 
   return (
     <div className="container" style={{ padding: "24px 0 80px" }}>
-      <h1 style={{ fontSize: 28, letterSpacing: "-0.3px" }}>Dashboard</h1>
-      <p className="muted" style={{ marginTop: 8 }}>Overview of your customer requests and performance.</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
+        <div>
+          <h1 style={{ fontSize: 28, letterSpacing: "-0.3px" }}>Dashboard</h1>
+          <p className="muted" style={{ marginTop: 8 }}>Overview of your customer requests and performance.</p>
+        </div>
+        <div style={{ alignSelf: "flex-start" }}>
+          <WhatsAppEmbeddedSignupButton />
+        </div>
+      </div>
 
       {/* KPI row */}
       <div className="feature-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)", marginTop: 24 }}>
