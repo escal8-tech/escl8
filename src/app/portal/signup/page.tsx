@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { trpc } from "@/utils/trpc";
@@ -18,6 +18,14 @@ export default function SignupPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [country, setCountry] = useState(COUNTRY_CODES[0].code);
+
+  // If already authenticated, redirect away from signup
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged?.((u) => {
+      if (u) router.replace("/portal/upload");
+    });
+    return () => { if (typeof unsub === 'function') unsub(); };
+  }, [auth, router]);
 
   const minPhoneLen = useMemo(() => 6, [country]);
 

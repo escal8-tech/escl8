@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "firebase/auth";
 import { trpc } from "@/utils/trpc";
 import { useRouter } from "next/navigation";
 
@@ -12,6 +12,14 @@ export default function PortalLogin() {
   const upsertUser = trpc.user.upsert.useMutation();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // If already authenticated, redirect away from login
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (u) router.replace("/portal/upload");
+    });
+    return () => unsub();
+  }, [auth, router]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -29,21 +37,9 @@ export default function PortalLogin() {
     }
 
     try {
-      // Dev-only admin override using env vars; allows logging in with admin/admin
-      const ADMIN_USER = process.env.NEXT_PUBLIC_ADMIN_USERNAME || "";
-      const ADMIN_PASS = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "";
-      const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL || "admin@escl8.local";
-
-      if (emailOrUsername === ADMIN_USER && password === ADMIN_PASS) {
-        // Set a simple client cookie to bypass Firebase for dev admin
-        document.cookie = `dev_admin=1; path=/; max-age=${7 * 24 * 60 * 60}`;
-        router.push("/portal/upload");
-        return;
-      }
-
       const email = emailOrUsername;
       if (!email.includes("@")) {
-        throw new Error("Please enter a valid email address or use the admin username.");
+        throw new Error("Please enter a valid email address.");
       }
 
       await signInWithEmailAndPassword(auth, email, password);
@@ -80,9 +76,9 @@ export default function PortalLogin() {
         >
           <input
             name="email"
-            type="text"
+            type="email"
             required
-            placeholder="Email or username (admin)"
+            placeholder="Work email"
             className="contact-input"
           />
           <input
