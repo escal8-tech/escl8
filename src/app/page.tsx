@@ -101,7 +101,7 @@ export default function Home() {
       </section>
 
       {/* Pricing cards */}
-      <section id="pricing" className="section" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0))', paddingBottom: 100 }}>
+  <section id="pricing" className="section" style={{ paddingBottom: 100 }}>
         <div className="container" style={{ maxWidth: 1180 }}>
           <div style={{ textAlign:'center', marginBottom:46 }}>
             <h2 style={{ fontSize:'40px', letterSpacing:'-1px' }}>Pricing</h2>

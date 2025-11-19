@@ -29,10 +29,26 @@ body {
 body {
   color: var(--foreground);
   background: var(--background);
+  position: relative; /* allow fixed pseudo-element background */
+  z-index: 0;
   font-family: var(--font-figtree), ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
   font-size: 14px; /* slightly smaller, mac-like */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Global doodle background overlay (very light, repeated, small scale) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url('/patterns/doodle-icons-bg.jpg'); /* Place your image here */
+  background-repeat: repeat;
+  background-position: center;
+  background-size: 400px auto; /* small tiles so icons appear tiny */
+  opacity: 0.10; /* ~30% visibility */
 }
 
 * {
