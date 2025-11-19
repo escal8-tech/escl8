@@ -43,8 +43,15 @@ export default function Home() {
               </span>
             </div>
           </div>
-          <div className="glass ring-gradient neon-shadow" style={{ padding: 0, overflow: "hidden" }}>
-            <Image src="/whatsapp-hero.svg" alt="Chat preview" width={480} height={380} priority />
+          <div className="glass ring-gradient neon-shadow" style={{ padding: "0 18px", overflow: "hidden" }}>
+            <Image
+              src="/whatsapp-hero.svg"
+              alt="Chat preview"
+              width={420}
+              height={380}
+              priority
+              style={{ display: 'block', margin: '0 auto' }}
+            />
           </div>
         </div>
       </section>
