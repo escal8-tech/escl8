@@ -65,8 +65,10 @@ export default function Home() {
       {/* Why use section */}
       <section className="section" style={{ paddingTop: 80, paddingBottom: 80 }}>
         {/* Top separator line - full width */}
-        <div style={{ width: '100vw', height: 1, background: 'rgba(255,255,255,0.15)', marginBottom: 60, marginLeft: 'calc(-50vw + 50%)' }} />
-        
+        <div style={{ width: '100vw', height: 1, background: 'rgba(255,255,255,0.15)', marginBottom: 0, marginLeft: 'calc(-50vw + 50%)' }} />
+
+  {/* Frosted band background fills the entire area between the two lines */}
+  <div className="full-bleed frost-band" style={{ padding: '90px 0' }}>
         <div className="container" style={{ maxWidth: 1180 }}>
           <div style={{ textAlign: 'center', marginBottom: 60 }}>
             <h2 style={{ fontSize: '38px', letterSpacing: '-0.5px' }}>Why teams choose Escl8?</h2>
@@ -92,9 +94,10 @@ export default function Home() {
             </div>
           </div>
         </div>
+        </div>
 
         {/* Bottom separator line - full width */}
-        <div style={{ width: '100vw', height: 1, background: 'rgba(255,255,255,0.15)', marginTop: 60, marginLeft: 'calc(-50vw + 50%)' }} />
+        <div style={{ width: '100vw', height: 1, background: 'rgba(255,255,255,0.15)', marginTop: 0, marginLeft: 'calc(-50vw + 50%)' }} />
       </section>
 
       {/* Pricing cards */}
