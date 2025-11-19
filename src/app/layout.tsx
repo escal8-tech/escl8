@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Figtree } from "next/font/google";
-import Nav from "@/components/Nav";
+import TopNavSwitcher from "../components/TopNavSwitcher";
 import Footer from "@/components/Footer";
 import { TRPCProvider } from "@/utils/trpc";
 import "./globals.css";
@@ -28,7 +28,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${figtree.variable}`}>
         <TRPCProvider>
-          <Nav />
+          <TopNavSwitcher />
           <main className="site-main">{children}</main>
           <Footer />
         </TRPCProvider>

@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { trpc } from "@/utils/trpc";
 import { useRouter } from "next/navigation";
 
@@ -10,7 +10,6 @@ export default function PortalLogin() {
   const auth = getFirebaseAuth();
   const router = useRouter();
   const upsertUser = trpc.user.upsert.useMutation();
-  const [mode, setMode] = useState<"login" | "signup">("login");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,13 +22,8 @@ export default function PortalLogin() {
     const data = Object.fromEntries(new FormData(form).entries());
     const emailOrUsername = String(data.email || "").trim();
     const password = String(data.password || "");
-  const phoneNumber = String(data.phone || "");
-    const submittedMode = String(data.mode || mode) === "signup" ? "signup" : "login";
-    // Reflect submitted mode in UI state
-    if (submittedMode !== mode) setMode(submittedMode);
-
-    if (!emailOrUsername || !password || !phoneNumber) {
-      setError("Email/username, password and WhatsApp phone are required.");
+    if (!emailOrUsername || !password) {
+      setError("Email/username and password are required.");
       setBusy(false);
       return;
     }
@@ -41,16 +35,6 @@ export default function PortalLogin() {
       const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL || "admin@escl8.local";
 
       if (emailOrUsername === ADMIN_USER && password === ADMIN_PASS) {
-        // Optional: upsert admin profile when phone provided
-        if (phoneNumber && phoneNumber.length >= 5) {
-          try {
-            await upsertUser.mutateAsync({
-              email: ADMIN_EMAIL,
-              phoneNumber,
-              whatsappConnected: false,
-            });
-          } catch {}
-        }
         // Set a simple client cookie to bypass Firebase for dev admin
         document.cookie = `dev_admin=1; path=/; max-age=${7 * 24 * 60 * 60}`;
         router.push("/portal/upload");
@@ -62,17 +46,7 @@ export default function PortalLogin() {
         throw new Error("Please enter a valid email address or use the admin username.");
       }
 
-      if (submittedMode === "login") {
-        await signInWithEmailAndPassword(auth, email, password);
-      } else {
-        await createUserWithEmailAndPassword(auth, email, password);
-      }
-
-      await upsertUser.mutateAsync({
-        email,
-        phoneNumber: phoneNumber || undefined,
-        whatsappConnected: false,
-      });
+      await signInWithEmailAndPassword(auth, email, password);
 
       router.push("/portal/upload");
     } catch (err: any) {
@@ -118,13 +92,7 @@ export default function PortalLogin() {
             placeholder="Password"
             className="contact-input"
           />
-          <input
-            name="phone"
-            type="tel"
-            required
-            placeholder="WhatsApp phone"
-            className="contact-input"
-          />
+          
 
           {error && (
             <div style={{ color: "crimson", fontSize: 13 }}>
@@ -165,28 +133,27 @@ export default function PortalLogin() {
               style={{ paddingInline: 18, paddingBlock: 12, minWidth: 200, fontSize: 15 }}
               disabled={busy}
             >
-              Continue with Google
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <svg width="18" height="18" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                  <path fill="#FFC107" d="M43.61 20.083h-1.61V20H24v8h11.303C33.98 31.91 29.41 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.957 3.043l5.657-5.657C33.861 6.029 29.169 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.39-3.917z"/>
+                  <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.431 16.264 18.847 12 24 12c3.059 0 5.842 1.154 7.957 3.043l5.657-5.657C33.861 6.029 29.169 4 24 4 16.318 4 9.676 8.337 6.306 14.691z"/>
+                  <path fill="#4CAF50" d="M24 44c5.356 0 10.205-2.053 13.86-5.393l-6.392-5.405C29.41 36 24.84 31.91 24 31.91c-4.797 0-8.862-3.132-10.346-7.434l-6.51 5.02C9.47 37.63 16.143 44 24 44z"/>
+                  <path fill="#1976D2" d="M43.61 20.083H42V20H24v8h11.303c-1.111 3.262-3.61 5.82-6.43 7.202l.001-.001 6.392 5.405C37.696 38.664 44 32 44 24c0-1.341-.138-2.65-.39-3.917z"/>
+                </svg>
+                Continue with Google
+              </span>
             </button>
             <button
               type="submit"
-              name="mode"
-              value="login"
               className="btn btn-primary"
               style={{ paddingInline: 18, paddingBlock: 12, minWidth: 140, fontSize: 15 }}
               disabled={busy}
             >
-              {busy && mode === "login" ? "Please wait…" : "Log in"}
+              {busy ? "Please wait…" : "Log in"}
             </button>
-            <button
-              type="submit"
-              name="mode"
-              value="signup"
-              className="btn"
-              style={{ paddingInline: 18, paddingBlock: 12, minWidth: 160, fontSize: 15 }}
-              disabled={busy}
-            >
-              {busy && mode === "signup" ? "Please wait…" : "Create account"}
-            </button>
+            <a href="/portal/signup" className="btn" style={{ paddingInline: 18, paddingBlock: 12, minWidth: 160, fontSize: 15 }}>
+              Create account
+            </a>
           </div>
         </form>
       </div>
