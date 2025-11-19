@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Figtree } from "next/font/google";
 import TopNavSwitcher from "../components/TopNavSwitcher";
-import Footer from "@/components/Footer";
+import FooterSwitcher from "@/components/FooterSwitcher";
 import { TRPCProvider } from "@/utils/trpc";
 import "./globals.css";
 
@@ -30,7 +30,7 @@ export default function RootLayout({
         <TRPCProvider>
           <TopNavSwitcher />
           <main className="site-main">{children}</main>
-          <Footer />
+          <FooterSwitcher />
         </TRPCProvider>
       </body>
     </html>

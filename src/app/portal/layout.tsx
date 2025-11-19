@@ -1,4 +1,7 @@
+"use client";
+
 import type { Metadata } from "next";
+import { usePathname } from "next/navigation";
 import PortalNav from "@/components/PortalNav";
 import PortalAuthProvider from "@/components/PortalAuthProvider";
 
@@ -7,7 +10,15 @@ export const metadata: Metadata = {
 };
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
-  // Show dedicated PortalNav and protect portal pages with PortalAuthProvider
+  const pathname = usePathname();
+  const isAuthPage = pathname === "/portal" || pathname?.startsWith("/portal/signup");
+
+  if (isAuthPage) {
+    // Login/Signup should not be guarded and typically shouldn't show PortalNav
+    return <>{children}</>;
+  }
+
+  // Protected portal routes: show nav and require auth
   return (
     <>
       <PortalNav />

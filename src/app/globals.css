@@ -30,6 +30,7 @@ body {
   color: var(--foreground);
   background: var(--background);
   font-family: var(--font-figtree), ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  font-size: 14px; /* slightly smaller, mac-like */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -68,15 +69,20 @@ a {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.06);
 }
 
 @media (prefers-color-scheme: dark) {
   .site-header {
-    background: rgba(10, 10, 10, 0.6);
+    /* Lighter, frosted header in dark mode */
+    background: rgba(36, 36, 40, 0.34);
+    backdrop-filter: blur(18px) saturate(120%);
+    box-shadow: 0 10px 24px rgba(0,0,0,0.18);
   }
+  .nav-link { color: rgba(255,255,255,0.85); }
 }
 
 .header-inner {
@@ -141,6 +147,13 @@ a {
 .site-footer {
   border-top: 1px solid var(--border);
   padding: 24px 0;
+  background: rgba(255,255,255,0.55);
+  backdrop-filter: blur(14px) saturate(120%);
+}
+@media (prefers-color-scheme: dark) {
+  /* Lighter gray frosted footer, with readable text */
+  .site-footer { background: rgba(40,40,44,0.36); }
+  .footer-links a, .site-footer { color: rgba(255,255,255,0.9); }
 }
 
 .footer-inner {
@@ -266,13 +279,25 @@ a {
 
 .glass {
   border: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(0,0,0,0.04), rgba(0,0,0,0));
   border-radius: 16px;
-  padding: 20px;
+  padding: 18px;
+  background: rgba(255,255,255,0.55);
+  backdrop-filter: blur(14px) saturate(120%);
+}
+@media (prefers-color-scheme: dark) {
+  .glass { background: rgba(28,28,30,0.55); }
 }
 
-@media (prefers-color-scheme: dark) {
-  .glass { background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0)); }
+/* Frosted card for prominent panels (login, modals) */
+.frost-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(28,28,30,0.6);
+  backdrop-filter: blur(18px) saturate(120%);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+@media (prefers-color-scheme: light) {
+  .frost-card { background: rgba(245,245,247,0.6); }
 }
 
 .feature-grid {
@@ -368,23 +393,25 @@ a {
   padding: 34px 40px;
   font-size: clamp(16px, 1.2vw, 22px);
   line-height: 1.5;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(16px) saturate(130%);
   border-radius: 28px;
-  box-shadow: 0 6px 26px -6px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.45);
   opacity: 0; /* GSAP will fade/slide in */
   color: #e6eef2;
 }
 
 .chat-bubble.left {
   margin-left: 24px;
-  background: #1f2a30;
+  /* More see-through frosted look */
+  background: rgba(31, 42, 48, 0.38);
 }
 
 .chat-bubble.right {
   margin-left: auto;
   margin-right: 24px;
-  background: linear-gradient(135deg, #007ad6, #00b4ff);
+  /* Slightly translucent gradient */
+  background: linear-gradient(135deg, rgba(0,122,214,0.36), rgba(0,180,255,0.36));
   color: #fff;
 }
 
@@ -422,10 +449,11 @@ a {
     color: #1b2428;
   }
   .chat-bubble.left {
-    background: #f1f5f6;
+    background: rgba(240, 244, 246, 0.65);
+    backdrop-filter: blur(12px) saturate(120%);
   }
   .chat-bubble.right {
-    background: linear-gradient(135deg, #2ba8ff, #6cc7ff);
+    background: linear-gradient(135deg, rgba(43,168,255,0.5), rgba(108,199,255,0.5));
   }
   .chat-bubble.left::after,
   .chat-bubble.right::after {
@@ -440,7 +468,7 @@ a {
   padding:14px 16px;
   border-radius:12px;
   border:1px solid var(--border);
-  background:rgba(255,255,255,0.06);
+  background:rgba(255,255,255,0.55);
   color:var(--foreground);
   font-size:15px;
   outline:none;
@@ -450,4 +478,34 @@ a {
   .contact-input { background:rgba(0,0,0,0.04); }
 }
 .contact-input:focus { border-color: var(--brand); background: rgba(108,71,255,0.12); }
+
+/* Fullscreen auth layout helpers */
+.auth-screen {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+.auth-top {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+}
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+}
+.auth-brand .mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+}
+.auth-main {
+  display: grid;
+  place-items: center;
+  padding: 40px 20px;
+}
 

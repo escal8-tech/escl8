@@ -54,58 +54,45 @@ export default function PortalLogin() {
   }
 
   return (
-    <div className="container" style={{ maxWidth: 520, padding: "60px 0 80px" }}>
-      <div
-        style={{
-          padding: "32px 32px 40px",
-          border: "1px solid transparent",
-          outline: "2px solid var(--border)",
-          outlineOffset: 0,
-          borderRadius: 16,
-          background: "transparent",
-        }}
-      >
-        <h1 style={{ fontSize: 30, letterSpacing: "-0.5px" }}>Portal login</h1>
-        <p className="muted" style={{ marginTop: 8 }}>
-          Sign in to manage your AI sales agent and upload documents.
-        </p>
+    <div className="auth-screen">
+      {/* Top-left brand */}
+      <div className="auth-top">
+        <a className="auth-brand" href="/">
+          <span className="mark" />
+          <strong>Escal8</strong>
+        </a>
+      </div>
+      {/* Centered login card */}
+      <div className="auth-main">
+        <div className="frost-card" style={{ width: "100%", maxWidth: 520, padding: "28px 28px 34px" }}>
+          <div style={{ marginBottom: 14 }}>
+            <div className="muted" style={{ fontSize: 12 }}>Sign in to Escal8</div>
+            <h1 style={{ fontSize: 30, letterSpacing: "-0.5px", marginTop: 6 }}>Welcome Back</h1>
+          </div>
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <label style={{ fontSize: 12 }}>Email Address</label>
+            <input name="email" type="email" required placeholder="you@example.com" className="contact-input" />
+            <label style={{ fontSize: 12, marginTop: 6 }}>Password</label>
+            <input name="password" type="password" required placeholder="Password" className="contact-input" />
 
-        <form
-          onSubmit={handleSubmit}
-          style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 18 }}
-        >
-          <input
-            name="email"
-            type="email"
-            required
-            placeholder="Work email"
-            className="contact-input"
-          />
-          <input
-            name="password"
-            type="password"
-            required
-            placeholder="Password"
-            className="contact-input"
-          />
-          
-
-          {error && (
-            <div style={{ color: "crimson", fontSize: 13 }}>
-              {error}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                <input type="checkbox" /> Remember me
+              </label>
+              <a href="#" className="muted" style={{ fontSize: 13 }}>Forgot your password?</a>
             </div>
-          )}
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 12,
-              marginTop: 12,
-              flexWrap: "wrap",
-            }}
-          >
+            {error && <div style={{ color: "crimson", fontSize: 13 }}>{error}</div>}
+
+            <button type="submit" className="btn" style={{ width: "100%", height: 44, justifyContent: "center", background: "#1f3568", color: "#fff", border: 0, marginTop: 10 }} disabled={busy}>
+              {busy ? "Please wait…" : "Sign In"}
+            </button>
+
+            <div className="footer-separator" style={{ margin: "16px 0" }} />
+            <div className="muted" style={{ textAlign: "center", fontSize: 13 }}>
+              Don’t have an account? <a href="/portal/signup">Register here</a>
+            </div>
+
             <button
               type="button"
               className="btn"
@@ -126,7 +113,7 @@ export default function PortalLogin() {
                   setBusy(false);
                 }
               }}
-              style={{ paddingInline: 18, paddingBlock: 12, minWidth: 200, fontSize: 15 }}
+              style={{ width: "100%", justifyContent: "center" }}
               disabled={busy}
             >
               <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
@@ -139,19 +126,8 @@ export default function PortalLogin() {
                 Continue with Google
               </span>
             </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              style={{ paddingInline: 18, paddingBlock: 12, minWidth: 140, fontSize: 15 }}
-              disabled={busy}
-            >
-              {busy ? "Please wait…" : "Log in"}
-            </button>
-            <a href="/portal/signup" className="btn" style={{ paddingInline: 18, paddingBlock: 12, minWidth: 160, fontSize: 15 }}>
-              Create account
-            </a>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );
