@@ -18,16 +18,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js version
+      - name: Set up Node.js version (match App Service)
         uses: actions/setup-node@v3
         with:
-          node-version: '22.x'
+          node-version: '20.x'
 
-      - name: npm install, build, and test
+      - name: Install, build, and test
         run: |
-          npm install
+          npm ci
           npm run build --if-present
           npm run test --if-present
+
+      - name: Inspect build output
+        run: |
+          echo "--- .next tree ---"; ls -lah .next || true
+          echo "--- .next/standalone ---"; ls -lah .next/standalone || true
+          echo "--- .next/static ---"; ls -lah .next/static || true
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -47,6 +53,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: node-app
+      
+      - name: List downloaded files
+        run: |
+          echo "--- repo root after download ---"; ls -lah .
+          echo "--- .next/standalone ---"; ls -lah .next/standalone || true
       
       - name: Login to Azure
         uses: azure/login@v2
