@@ -35,8 +35,8 @@ jobs:
         run: |
           ls -lah .next
           mkdir deploy
-          # Copy minimal standalone server bundle and static assets
-          cp -R .next/standalone/* deploy/
+          # Copy minimal standalone server bundle and static assets (include hidden .next directory)
+          cp -R .next/standalone/. deploy/
           mkdir -p deploy/.next
           cp -R .next/static deploy/.next/static
           cp -R public deploy/public
