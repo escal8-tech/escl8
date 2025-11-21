@@ -119,12 +119,12 @@ export default function Home() {
               <h3>Starter</h3>
               <p className="muted" style={{ fontSize:14 }}>Launch fast with core WhatsApp automation.</p>
               <ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:10 }}>
-                <li>Up to 5 source docs</li>
+                <li>Unlimited documents</li>
                 <li>Tone + guardrails</li>
                 <li>Basic analytics</li>
               </ul>
               <div style={{ marginTop:'auto' }}>
-                <div style={{ fontSize:28, fontWeight:600 }}>$59<span style={{ fontSize:14, fontWeight:400 }}> /mo</span></div>
+                <div style={{ fontSize:28, fontWeight:600 }}>RM250<span style={{ fontSize:14, fontWeight:400 }}> /mo</span></div>
                 <Link href="/upload" className="btn btn-primary" style={{ marginTop:14 }}>Get started</Link>
               </div>
             </div>
@@ -134,13 +134,13 @@ export default function Home() {
                 <h3>Growth</h3>
                 <p className="muted" style={{ fontSize:14 }}>For teams scaling multi‑region sales conversations.</p>
                 <ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:10 }}>
-                  <li>Unlimited docs</li>
-                  <li>Advanced retrieval tuning</li>
+                  <li>Unlimited documents</li>
+                  <li>Dashboard</li>
+                  <li>Calls + SMS</li>
                   <li>Conversion analytics + exports</li>
-                  <li>Priority support</li>
                 </ul>
                 <div style={{ marginTop:'auto' }}>
-                  <div style={{ fontSize:30, fontWeight:600 }}>$199<span style={{ fontSize:14, fontWeight:400 }}> /mo</span></div>
+                  <div style={{ fontSize:30, fontWeight:600 }}>RM500<span style={{ fontSize:14, fontWeight:400 }}> /mo</span></div>
                   <Link href="/upload" className="btn btn-primary" style={{ marginTop:14 }}>Start Growth</Link>
                 </div>
               </div>
@@ -150,6 +150,8 @@ export default function Home() {
               <p className="muted" style={{ fontSize:14 }}>High‑volume orgs needing deep integrations.</p>
               <ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:10 }}>
                 <li>All Growth features</li>
+                <li>APIs</li>
+                <li>Partner usage</li>
                 <li>Custom retention & SLA</li>
                 <li>Embedded compliance review</li>
                 <li>Dedicated solutions engineer</li>
