@@ -5,10 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-  "start": "node .next/standalone/server.js",
+    "start": "next start",
     "lint": "eslint",
     "db:init": "node ./scripts/db-init.mjs",
-  "db:push": "drizzle-kit push --yes",
+    "db:push": "drizzle-kit push --yes",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
