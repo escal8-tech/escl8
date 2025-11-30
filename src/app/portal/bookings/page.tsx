@@ -11,7 +11,7 @@ export default function BookingsPage() {
 
   const slots = useMemo<Slot[]>(() => {
     const cfg = {
-      cap: me.data?.unitCapacity ?? 1,
+      cap: me.data?.unitCapacity,
       minutes: me.data?.timeslotMinutes ?? 60,
       open: me.data?.openTime ?? '09:00',
       close: me.data?.closeTime ?? '18:00'
@@ -51,8 +51,8 @@ export default function BookingsPage() {
             // overlap if booking starts before slot end AND booking ends after slot start
             return (bsTime < seTime) && (beTime > tTime);
           })
-        const count = slotBookings.reduce((sum,b)=> sum + (b.unitsBooked||1), 0);
-        all.push({ dayISO, start: new Date(t), end: slotEnd, count, capacity: cfg.cap });
+  const count = slotBookings.reduce((sum,b)=> sum + (b.unitsBooked||1), 0);
+  all.push({ dayISO, start: new Date(t), end: slotEnd, count, capacity: cfg.cap ?? 0 });
       }
     }
     return all;
@@ -113,12 +113,13 @@ export default function BookingsPage() {
               <>
                 <div key={`t-${idxRow}`} style={{ padding:6, borderTop:'1px solid var(--border)', borderRight:'1px solid var(--border)', height: rowHeight, display:'flex', alignItems:'center' }}>{label}</div>
                 {row.map((s, idxCol) => {
-                  const full = s.count >= s.capacity;
-                  const bg = full ? 'rgba(255,60,60,0.25)' : 'rgba(60,200,120,0.25)';
+                  const hasCap = (me.data?.unitCapacity ?? 0) > 0;
+                  const full = hasCap ? (s.count >= (me.data!.unitCapacity!)) : false;
+                  const bg = hasCap ? (full ? 'rgba(255,60,60,0.25)' : 'rgba(60,200,120,0.25)') : 'rgba(0,0,0,0.06)';
                   return (
                     <SlotCell
                       key={`c-${idxRow}-${idxCol}`}
-                      slot={s}
+                      slot={{...s, capacity: me.data?.unitCapacity ?? 0}}
                       height={rowHeight}
                       bg={bg}
                       bookings={(bookings.data||[]).filter(b => {

@@ -19,17 +19,17 @@ export default function SettingsPage() {
   const userQuery = trpc.user.getMe.useQuery({ email: email ?? "" }, { enabled: !!email });
   const upsert = trpc.user.upsert.useMutation();
   const phone = userQuery.data?.phoneNumber ?? null;
-  const [unitCapacity, setUnitCapacity] = useState<number>(userQuery.data?.unitCapacity ?? 1);
-  const [timeslotMinutes, setTimeslotMinutes] = useState<number>(userQuery.data?.timeslotMinutes ?? 60);
-  const [openTime, setOpenTime] = useState<string>(userQuery.data?.openTime ?? "09:00");
-  const [closeTime, setCloseTime] = useState<string>(userQuery.data?.closeTime ?? "18:00");
+  const [unitCapacity, setUnitCapacity] = useState<number | undefined>(undefined);
+  const [timeslotMinutes, setTimeslotMinutes] = useState<number | undefined>(undefined);
+  const [openTime, setOpenTime] = useState<string | undefined>(undefined);
+  const [closeTime, setCloseTime] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (userQuery.data) {
-      setUnitCapacity(userQuery.data.unitCapacity ?? 1);
-      setTimeslotMinutes(userQuery.data.timeslotMinutes ?? 60);
-      setOpenTime(userQuery.data.openTime ?? "09:00");
-      setCloseTime(userQuery.data.closeTime ?? "18:00");
+      setUnitCapacity(userQuery.data.unitCapacity ?? undefined);
+      setTimeslotMinutes(userQuery.data.timeslotMinutes ?? undefined);
+      setOpenTime(userQuery.data.openTime ?? undefined);
+      setCloseTime(userQuery.data.closeTime ?? undefined);
     }
   }, [userQuery.data]);
 
@@ -59,19 +59,19 @@ export default function SettingsPage() {
           <div style={{ fontWeight:600 }}>Booking settings</div>
           <label style={{ display:'grid', gridTemplateColumns:'160px 1fr', alignItems:'center', gap:10 }}>
             <span>Unit capacity</span>
-            <input type="number" min={1} value={unitCapacity} onChange={e => setUnitCapacity(parseInt(e.target.value||"1"))} className="contact-input" />
+            <input type="number" min={1} value={unitCapacity ?? ''} onChange={e => setUnitCapacity(e.target.value === '' ? undefined : parseInt(e.target.value))} className="contact-input" placeholder="" />
           </label>
           <label style={{ display:'grid', gridTemplateColumns:'160px 1fr', alignItems:'center', gap:10 }}>
             <span>Timeslot minutes</span>
-            <input type="number" min={5} max={600} value={timeslotMinutes} onChange={e => setTimeslotMinutes(parseInt(e.target.value||"60"))} className="contact-input" />
+            <input type="number" min={5} max={600} value={timeslotMinutes ?? ''} onChange={e => setTimeslotMinutes(e.target.value === '' ? undefined : parseInt(e.target.value))} className="contact-input" placeholder="" />
           </label>
           <label style={{ display:'grid', gridTemplateColumns:'160px 1fr', alignItems:'center', gap:10 }}>
             <span>Open time</span>
-            <input type="time" value={openTime} onChange={e => setOpenTime(e.target.value)} className="contact-input" />
+            <input type="time" value={openTime ?? ''} onChange={e => setOpenTime(e.target.value || undefined)} className="contact-input" />
           </label>
           <label style={{ display:'grid', gridTemplateColumns:'160px 1fr', alignItems:'center', gap:10 }}>
             <span>Close time</span>
-            <input type="time" value={closeTime} onChange={e => setCloseTime(e.target.value)} className="contact-input" />
+            <input type="time" value={closeTime ?? ''} onChange={e => setCloseTime(e.target.value || undefined)} className="contact-input" />
           </label>
           <div>
             <button className="btn btn-primary" onClick={() => email && upsert.mutate({ email, unitCapacity, timeslotMinutes, openTime, closeTime })}>Save settings</button>
