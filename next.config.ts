@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // No "output" key here
-  // Your app will now build normally for next start
+  // Produce a standalone build so we can deploy minimal artifacts
+  output: "standalone",
 };
 
 export default nextConfig;
