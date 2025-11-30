@@ -37,6 +37,7 @@ export const bookings = pgTable("bookings", {
   startTime: timestamp("start_time", { withTimezone: true }).notNull(),
   durationMinutes: integer("duration_minutes").notNull().default(60),
   unitsBooked: integer("units_booked").notNull().default(1),
+  phoneNumber: text("phone_number"),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -20,6 +20,7 @@ export const bookingsRouter = router({
       startTime: z.string(), // ISO
       durationMinutes: z.number().int().min(5).max(600).default(60),
       unitsBooked: z.number().int().min(1),
+      phoneNumber: z.string().optional(),
       notes: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
@@ -28,6 +29,7 @@ export const bookingsRouter = router({
         startTime: new Date(input.startTime),
         durationMinutes: input.durationMinutes,
         unitsBooked: input.unitsBooked,
+        phoneNumber: input.phoneNumber,
         notes: input.notes,
       }).returning();
       return row;

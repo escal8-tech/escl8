@@ -16,7 +16,6 @@ export default function BookingsPage() {
       open: me.data?.openTime ?? '09:00',
       close: me.data?.closeTime ?? '18:00'
     };
-    const [y, m, d] = selectedDate.split('-').map(x=>parseInt(x));
     const startOfWeek = new Date(selectedDate);
     // Move to Monday of the selected date's week
     const dayIdx = startOfWeek.getDay(); // 0 Sun .. 6 Sat
@@ -32,16 +31,27 @@ export default function BookingsPage() {
     for (const day of weekDays) {
       const [openH, openM] = cfg.open.split(':').map(Number);
       const [closeH, closeM] = cfg.close.split(':').map(Number);
-      const dayStart = new Date(day); dayStart.setHours(openH, openM, 0, 0);
-      const dayEnd = new Date(day); dayEnd.setHours(closeH, closeM, 0, 0);
+      // build UTC-based day start/end
+      const dayUTC = new Date(Date.UTC(day.getFullYear(), day.getMonth(), day.getDate()));
+      const dayStart = new Date(Date.UTC(dayUTC.getUTCFullYear(), dayUTC.getUTCMonth(), dayUTC.getUTCDate(), openH, openM, 0, 0));
+      const dayEnd = new Date(Date.UTC(dayUTC.getUTCFullYear(), dayUTC.getUTCMonth(), dayUTC.getUTCDate(), closeH, closeM, 0, 0));
       for (let t = new Date(dayStart); t < dayEnd; t = new Date(t.getTime() + cfg.minutes*60000)) {
         const slotEnd = new Date(t.getTime() + cfg.minutes*60000);
-        const dayISO = day.toISOString().slice(0,10);
-        const count = (bookings.data||[]).filter(b => {
-          const bs = new Date(b.startTime);
-          const be = new Date(bs.getTime() + (b.durationMinutes||cfg.minutes)*60000);
-          return bs >= t && be <= slotEnd; // simplistic: booking fully inside slot
-        }).reduce((sum,b)=> sum + (b.unitsBooked||1), 0);
+        const dayISO = dayUTC.toISOString().slice(0,10);
+        const slotBookings = (bookings.data||[])
+          .filter(b => {
+            // Only count bookings for current user
+            if (me.data?.id && b.userId !== me.data.id) return false as any;
+            const bs = new Date(b.startTime);
+            const be = new Date(bs.getTime() + (b.durationMinutes||cfg.minutes)*60000);
+            const bsTime = bs.getTime();
+            const beTime = be.getTime();
+            const tTime = t.getTime();
+            const seTime = slotEnd.getTime();
+            // overlap if booking starts before slot end AND booking ends after slot start
+            return (bsTime < seTime) && (beTime > tTime);
+          })
+        const count = slotBookings.reduce((sum,b)=> sum + (b.unitsBooked||1), 0);
         all.push({ dayISO, start: new Date(t), end: slotEnd, count, capacity: cfg.cap });
       }
     }
@@ -50,7 +60,7 @@ export default function BookingsPage() {
 
   const slotsByLabel = useMemo(() => {
     const m = new Map<string, Slot[]>();
-    const fmt = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  const fmt = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' });
     for (const s of slots) {
       const label = fmt(s.start);
       const arr = m.get(label) || [];
@@ -106,9 +116,18 @@ export default function BookingsPage() {
                   const full = s.count >= s.capacity;
                   const bg = full ? 'rgba(255,60,60,0.25)' : 'rgba(60,200,120,0.25)';
                   return (
-                    <div key={`c-${idxRow}-${idxCol}`} style={{ borderTop:'1px solid var(--border)', borderRight:'1px solid var(--border)', background:bg, height: rowHeight, display:'grid', placeItems:'center' }}>
-                      <span style={{ fontWeight:700 }}>{s.count}/{s.capacity}</span>
-                    </div>
+                    <SlotCell
+                      key={`c-${idxRow}-${idxCol}`}
+                      slot={s}
+                      height={rowHeight}
+                      bg={bg}
+                      bookings={(bookings.data||[]).filter(b => {
+                        if (me.data?.id && b.userId !== me.data.id) return false as any;
+                        const bs = new Date(b.startTime);
+                        const be = new Date(bs.getTime() + (b.durationMinutes|| (me.data?.timeslotMinutes ?? 60))*60000);
+                        return (bs.getTime() < s.end.getTime()) && (be.getTime() > s.start.getTime());
+                      })}
+                    />
                   );
                 })}
               </>
@@ -116,6 +135,49 @@ export default function BookingsPage() {
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+function SlotCell({ slot, height, bg, bookings }: { slot: Slot; height: string; bg: string; bookings: any[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ borderTop:'1px solid var(--border)', borderRight:'1px solid var(--border)', background:bg, height, display:'grid', placeItems:'center', cursor:'pointer' }} onClick={() => setOpen(true)}>
+      <span style={{ fontWeight:700 }}>{slot.count}/{slot.capacity}</span>
+      {open && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', display:'grid', placeItems:'center', zIndex:1000 }} onClick={() => setOpen(false)}>
+          <div className="glass" style={{ width:'min(800px, 90vw)', maxHeight:'80vh', overflow:'auto', padding:18 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <h3>Bookings for {slot.start.toLocaleString(undefined, { hour:'2-digit', minute:'2-digit' })}</h3>
+              <button className="btn" onClick={() => setOpen(false)}>Close</button>
+            </div>
+            {bookings.length === 0 ? (
+              <p className="muted" style={{ marginTop:8 }}>No bookings in this slot.</p>
+            ) : (
+              <table style={{ width:'100%', marginTop:10, borderCollapse:'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign:'left', padding:'8px 6px', borderBottom:'1px solid var(--border)' }}>Start</th>
+                    <th style={{ textAlign:'left', padding:'8px 6px', borderBottom:'1px solid var(--border)' }}>Units</th>
+                    <th style={{ textAlign:'left', padding:'8px 6px', borderBottom:'1px solid var(--border)' }}>Phone</th>
+                    <th style={{ textAlign:'left', padding:'8px 6px', borderBottom:'1px solid var(--border)' }}>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bookings.map((b:any) => (
+                    <tr key={b.id}>
+                      <td style={{ padding:'8px 6px', borderBottom:'1px solid var(--border)' }}>{new Date(b.startTime).toLocaleString()}</td>
+                      <td style={{ padding:'8px 6px', borderBottom:'1px solid var(--border)' }}>{b.unitsBooked}</td>
+                      <td style={{ padding:'8px 6px', borderBottom:'1px solid var(--border)' }}>{b.phoneNumber || '—'}</td>
+                      <td style={{ padding:'8px 6px', borderBottom:'1px solid var(--border)' }}>{b.notes || ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
