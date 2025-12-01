@@ -1,13 +1,36 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/utils/trpc";
+import { getFirebaseAuth } from "@/lib/firebaseClient";
+import { onAuthStateChanged } from "firebase/auth";
 
 type Slot = { dayISO: string; start: Date; end: Date; count: number; capacity: number };
 
 export default function BookingsPage() {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0,10));
+  const [email, setEmail] = useState<string | null>(null);
   const bookings = trpc.bookings.list.useQuery();
-  const me = trpc.user.getMe.useQuery({ email: typeof window !== 'undefined' ? (window.localStorage.getItem('lastEmail') || '') : '' }, { enabled: typeof window !== 'undefined' });
+
+  // Get email from Firebase Auth in production reliably
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const auth = getFirebaseAuth();
+      const unsub = onAuthStateChanged(auth, (u) => {
+        const em = u?.email || window.localStorage.getItem('lastEmail') || null;
+        if (em) {
+          setEmail(em);
+          try { window.localStorage.setItem('lastEmail', em); } catch {}
+        }
+      });
+      return () => unsub();
+    } catch {
+      const em = window.localStorage.getItem('lastEmail');
+      if (em) setEmail(em);
+    }
+  }, []);
+
+  const me = trpc.user.getMe.useQuery({ email: email || "" }, { enabled: !!email });
 
   const slots = useMemo<Slot[]>(() => {
     const cfg = {
