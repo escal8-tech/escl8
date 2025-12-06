@@ -3,7 +3,7 @@ import glob
 import json
 import re
 from typing import List, Dict, Any, Iterable
-import config
+# Optional config module removed; use environment fallback
 from dotenv import load_dotenv
 from openai import OpenAI
 from pinecone import Pinecone, ServerlessSpec
@@ -278,7 +278,9 @@ def _read_pdf(fp: str) -> List[Dict[str, Any]]:
     return pages
 
 
-def index_inputs(inputs: List[str], namespace: str = config.DEFAULT_BUSINESS_ID, purge: bool = False):
+DEFAULT_BUSINESS_ID = os.getenv("BUSINESS_ID", "social")
+
+def index_inputs(inputs: List[str], namespace: str = DEFAULT_BUSINESS_ID, purge: bool = False):
     files = read_files_from_list(inputs)
     print(f"Found {len(files)} files to index from inputs")
 
@@ -412,10 +414,18 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Index documents/PDFs into Pinecone for RAG")
     parser.add_argument("paths", nargs="*", help="Files or directories to index (supports .pdf/.txt/.md/.json)")
-    parser.add_argument("--business-id", dest="namespace", default=config.DEFAULT_BUSINESS_ID, help="Business ID / Pinecone namespace to use")
+    parser.add_argument("--business-id", dest="namespace", default=DEFAULT_BUSINESS_ID, help="Business ID / Pinecone namespace to use")
     parser.add_argument("--purge", action="store_true", help="Delete all vectors in the namespace before indexing")
+    parser.add_argument("--purge-doc-type", dest="purge_doc_type", default=None, help="If provided, deletes only vectors matching this doc_type in the namespace before indexing")
     args = parser.parse_args()
     if not args.paths:
         # fallback to current directory
         args.paths = [os.getcwd()]
-    index_inputs(args.paths, namespace=args.namespace, purge=args.purge)
+    # Selective purge by doc_type (more efficient than full purge)
+    if args.purge_doc_type:
+        try:
+            print(f"Purging vectors where doc_type='{args.purge_doc_type}' in namespace '{args.namespace}'...")
+            index.delete(filter={"doc_type": args.purge_doc_type}, namespace=args.namespace)
+        except Exception as e:
+            print(f"Warning: failed to purge doc_type '{args.purge_doc_type}': {e}")
+    index_inputs(args.paths, namespace=args.namespace, purge=args.purge and not args.purge_doc_type)

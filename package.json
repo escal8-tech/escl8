@@ -6,13 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "node .next/standalone/server.js",
- 
     "lint": "eslint",
     "db:init": "node ./scripts/db-init.mjs",
     "db:push": "drizzle-kit push --yes",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@azure/storage-blob": "^12.29.1",
     "@tanstack/react-query": "^5.90.10",
     "@trpc/client": "^11.7.1",
     "@trpc/react-query": "^11.7.1",
