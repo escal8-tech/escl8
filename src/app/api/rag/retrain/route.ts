@@ -5,6 +5,9 @@ import { readdir } from "fs/promises";
 import { db } from "@/server/db/client";
 import { users } from "@/../drizzle/schema";
 import { eq } from "drizzle-orm";
+import os from "os";
+import fs from "fs";
+import { BlobServiceClient } from "@azure/storage-blob";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +23,22 @@ function pythonExe() {
 }
 
 async function gatherPaths(biz: string, doc: DocType) {
+  const provider = process.env.STORAGE_PROVIDER || "local";
+  if (provider.toLowerCase() === "azure" && process.env.AZURE_BLOB_CONNECTION_STRING) {
+    // Download blobs to temp files and return local paths
+    const service = BlobServiceClient.fromConnectionString(process.env.AZURE_BLOB_CONNECTION_STRING as string);
+    const container = service.getContainerClient(process.env.AZURE_BLOB_CONTAINER || "uploads");
+    const prefix = `${biz}/${doc}/`;
+    const out: string[] = [];
+    for await (const blob of container.listBlobsFlat({ prefix })) {
+      const client = container.getBlobClient(blob.name);
+      const tmp = path.join(os.tmpdir(), `escl8_${safeFile(blob.name)}`);
+      const buf = await client.downloadToBuffer();
+      await fs.promises.writeFile(tmp, buf);
+      out.push(tmp);
+    }
+    return out;
+  }
   const dir = uploadsDir(biz, doc);
   try {
     const files = await readdir(dir);
@@ -27,6 +46,10 @@ async function gatherPaths(biz: string, doc: DocType) {
   } catch {
     return [];
   }
+}
+
+function safeFile(name: string) {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
 export async function POST(request: Request) {

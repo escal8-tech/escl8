@@ -1,5 +1,5 @@
 import path from "path";
-import { mkdir, writeFile, stat } from "fs/promises";
+import { mkdir, writeFile, stat, readdir, unlink } from "fs/promises";
 import { BlobServiceClient } from "@azure/storage-blob";
 
 type DocType = "considerations" | "conversations" | "inventory" | "bank" | "address";
@@ -26,6 +26,12 @@ export async function storeFile(
     const service = BlobServiceClient.fromConnectionString(AZURE_CONN);
     const container = service.getContainerClient(AZURE_CONTAINER);
     await container.createIfNotExists();
+    // Overwrite policy: keep only one blob per docType; delete any existing under prefix
+    const prefix = `${businessId}/${docType}/`;
+    for await (const blob of container.listBlobsFlat({ prefix })) {
+      const del = container.getBlobClient(blob.name);
+      await del.deleteIfExists();
+    }
     const blobPath = `${businessId}/${docType}/${name}`;
     const blockBlob = container.getBlockBlobClient(blobPath);
     await blockBlob.uploadData(buffer, { blobHTTPHeaders: { blobContentType: undefined } });
@@ -36,6 +42,14 @@ export async function storeFile(
   // Local fallback
   const base = path.join(process.cwd(), "uploads", businessId, docType);
   await mkdir(base, { recursive: true });
+  // Overwrite policy: delete existing files in this folder
+  try {
+    const files = await readdir(base);
+    await Promise.all(files.map(async (f) => {
+      const fp = path.join(base, f);
+      try { await unlink(fp); } catch {}
+    }));
+  } catch {}
   const fp = path.join(base, name);
   await writeFile(fp, buffer);
   const st = await stat(fp);
