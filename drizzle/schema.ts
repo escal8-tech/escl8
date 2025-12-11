@@ -27,6 +27,7 @@ export const requests = pgTable("requests", {
   resolutionStatus: text("resolution_status").notNull(), // e.g., "open" | "resolved" | "pending"
   price: numeric("price", { precision: 10, scale: 2 }).default("0"),
   paid: boolean("paid").notNull().default(false),
+  summary: text("summary"), // optional text summary of the request
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
