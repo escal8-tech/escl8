@@ -3,69 +3,19 @@ import crypto from "crypto";
 import { relations, sql } from "drizzle-orm";
 
 /**
- * USERS = tenant owners (your SaaS users).
- *
- * Invariant: 1 user => 1 businessId (strict, current model).
- * If you later want multiple businesses per user, remove users.businessId
- * and rely on businesses.ownerUserId instead.
- */
-export const users = pgTable(
-  "users",
-  {
-    id: text("id")
-      .primaryKey()
-      .notNull()
-      .$defaultFn(() => crypto.randomUUID()),
-
-    email: text("email").notNull(), // unique index below
-
-    phoneNumber: text("phone_number"),
-
-    whatsappConnected: boolean("whatsapp_connected").notNull().default(false),
-
-    // strict: 1 business per user (unique index below)
-    businessId: text("business_id"),
-
-    // Optional booking configuration (addon)
-    unitCapacity: integer("unit_capacity").default(1),
-    timeslotMinutes: integer("timeslot_minutes").default(60),
-    openTime: text("open_time"), // "09:00"
-    closeTime: text("close_time"), // "18:00"
-
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    // strict uniqueness
-    usersEmailUx: uniqueIndex("users_email_ux").on(t.email),
-    usersBusinessIdUx: uniqueIndex("users_business_id_ux").on(t.businessId),
-
-    // helpful index
-    usersBusinessIdIdx: index("users_business_id_idx").on(t.businessId),
-
-    // non-empty checks
-    usersIdNonEmpty: check("users_id_nonempty", sql`length(btrim(${t.id})) > 0`),
-    usersEmailNonEmpty: check("users_email_nonempty", sql`length(btrim(${t.email})) > 0`),
-    usersBusinessIdNonEmpty: check(
-      "users_business_id_nonempty",
-      sql`${t.businessId} is null OR length(btrim(${t.businessId})) > 0`,
-    ),
-  }),
-);
-
-/**
  * BUSINESSES = tenant bot brains (RAG namespace + prompt rules).
  *
  * PK is the same string you use everywhere (Pinecone namespace).
- * Invariant: business.id is globally unique.
+ * Invariant:
+ * - business.id is globally unique
+ * - business can have many users
+ * - business can have many WhatsApp identities (phone_number_id)
  */
 export const businesses = pgTable(
   "businesses",
   {
     // Use the tenant namespace as PK (simple and strict)
     id: text("id").primaryKey().notNull(),
-
-    ownerUserId: text("owner_user_id").notNull(),
 
     name: text("name"),
     isActive: boolean("is_active").notNull().default(true),
@@ -83,15 +33,10 @@ export const businesses = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    businessesOwnerIdx: index("businesses_owner_user_id_idx").on(t.ownerUserId),
     businessesActiveIdx: index("businesses_is_active_idx").on(t.isActive),
 
     // strict non-empty PK + required fields
     businessesIdNonEmpty: check("businesses_id_nonempty", sql`length(btrim(${t.id})) > 0`),
-    businessesOwnerNonEmpty: check(
-      "businesses_owner_user_id_nonempty",
-      sql`length(btrim(${t.ownerUserId})) > 0`,
-    ),
     businessesInstructionsNonEmpty: check(
       "businesses_instructions_nonempty",
       sql`length(btrim(${t.instructions})) > 0`,
@@ -100,10 +45,66 @@ export const businesses = pgTable(
 );
 
 /**
+ * USERS = dashboard users (your SaaS users).
+ *
+ * Invariant (your stated requirement):
+ * - each user belongs to exactly 1 business
+ * - many users can belong to the same business
+ *
+ * NOTE: businessId is NOT unique here.
+ */
+export const users = pgTable(
+  "users",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+
+    email: text("email").notNull(), // unique index below
+    phoneNumber: text("phone_number"),
+
+    whatsappConnected: boolean("whatsapp_connected").notNull().default(false),
+
+    // strict: each user belongs to exactly ONE business
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
+
+    // Optional booking configuration (addon)
+    unitCapacity: integer("unit_capacity").default(1),
+    timeslotMinutes: integer("timeslot_minutes").default(60),
+    openTime: text("open_time"), // "09:00"
+    closeTime: text("close_time"), // "18:00"
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // strict uniqueness
+    usersEmailUx: uniqueIndex("users_email_ux").on(t.email),
+
+    // IMPORTANT: NOT unique (many users share the same business)
+    usersBusinessIdIdx: index("users_business_id_idx").on(t.businessId),
+
+    // non-empty checks
+    usersIdNonEmpty: check("users_id_nonempty", sql`length(btrim(${t.id})) > 0`),
+    usersEmailNonEmpty: check("users_email_nonempty", sql`length(btrim(${t.email})) > 0`),
+    usersBusinessIdNonEmpty: check("users_business_id_nonempty", sql`length(btrim(${t.businessId})) > 0`),
+  }),
+);
+
+/**
  * WHATSAPP IDENTITIES = strict routing table for Option A.
  *
  * Hard rule: phoneNumberId is unique (PK) => routing can never be ambiguous.
- * Many phoneNumberId may point to the same businessId (shared bot) - allowed.
+ * Rules you requested:
+ * - 1 phoneNumberId => 1 businessId (strict)
+ * - a business can have many phoneNumberIds
+ * - many users belong to the business and share the dashboard
+ *
+ * IMPORTANT: we do NOT bind the identity to a single user.
+ * If you want audit ("who connected it"), use connectedByUserId (nullable).
  */
 export const whatsappIdentities = pgTable(
   "whatsapp_identities",
@@ -116,10 +117,11 @@ export const whatsappIdentities = pgTable(
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
 
-    // Owner user
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    // Optional audit field only (NOT ownership, NOT routing)
+    connectedByUserId: text("connected_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
 
     // Optional debug/admin fields
     wabaId: text("waba_id"),
@@ -135,8 +137,8 @@ export const whatsappIdentities = pgTable(
   (t) => ({
     // indexes for admin / audits
     waIdentitiesBusinessIdx: index("wa_identities_business_id_idx").on(t.businessId),
-    waIdentitiesUserIdx: index("wa_identities_user_id_idx").on(t.userId),
     waIdentitiesActiveIdx: index("wa_identities_is_active_idx").on(t.isActive),
+    waIdentitiesConnectedByIdx: index("wa_identities_connected_by_user_id_idx").on(t.connectedByUserId),
 
     // Optional strict uniqueness (recommended if you store these reliably):
     // A WABA should not appear across multiple tenants (usually true in practice).
@@ -158,10 +160,6 @@ export const whatsappIdentities = pgTable(
       "wa_identities_business_id_nonempty",
       sql`length(btrim(${t.businessId})) > 0`,
     ),
-    waIdentitiesUserIdNonEmpty: check(
-      "wa_identities_user_id_nonempty",
-      sql`length(btrim(${t.userId})) > 0`,
-    ),
 
     // lifecycle sanity (optional): if disconnectedAt exists, isActive should typically be false
     waIdentitiesDisconnectSanity: check(
@@ -172,30 +170,26 @@ export const whatsappIdentities = pgTable(
 );
 
 /** Relations (optional but nice) */
-export const usersRelations = relations(users, ({ one, many }) => ({
+export const usersRelations = relations(users, ({ one }) => ({
   business: one(businesses, {
     fields: [users.businessId],
     references: [businesses.id],
   }),
-  whatsappIdentities: many(whatsappIdentities),
 }));
 
-export const businessesRelations = relations(businesses, ({ one, many }) => ({
-  owner: one(users, {
-    fields: [businesses.ownerUserId],
-    references: [users.id],
-  }),
+export const businessesRelations = relations(businesses, ({ many }) => ({
+  users: many(users),
   whatsappIdentities: many(whatsappIdentities),
 }));
 
 export const whatsappIdentitiesRelations = relations(whatsappIdentities, ({ one }) => ({
-  user: one(users, {
-    fields: [whatsappIdentities.userId],
-    references: [users.id],
-  }),
   business: one(businesses, {
     fields: [whatsappIdentities.businessId],
     references: [businesses.id],
+  }),
+  connectedByUser: one(users, {
+    fields: [whatsappIdentities.connectedByUserId],
+    references: [users.id],
   }),
 }));
 
@@ -275,18 +269,58 @@ export const messageEvents = pgTable(
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
-// Customer requests (for dashboard)
-export const requests = pgTable("requests", {
-  id: text("id").primaryKey().notNull().$defaultFn(() => crypto.randomUUID()),
-  customerNumber: text("customer_number").notNull(),
-  sentiment: text("sentiment").notNull(), // e.g., "positive" | "neutral" | "negative"
-  resolutionStatus: text("resolution_status").notNull(), // e.g., "open" | "resolved" | "pending"
-  price: numeric("price", { precision: 10, scale: 2 }).default("0"),
-  paid: boolean("paid").notNull().default(false),
-  summary: text("summary"), // optional text summary of the request
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+// Customer requests (per business dashboard)
+export const requests = pgTable(
+  "requests",
+  {
+    id: text("id").primaryKey().notNull().$defaultFn(() => crypto.randomUUID()),
+
+    // NEW: tenant scope
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
+
+    customerNumber: text("customer_number").notNull(),
+
+    sentiment: text("sentiment").notNull(), // "positive" | "neutral" | "negative"
+    resolutionStatus: text("resolution_status").notNull(), // "open" | "resolved" | "pending" | "requires_assistance"
+
+    price: numeric("price", { precision: 10, scale: 2 }).default("0"),
+    paid: boolean("paid").notNull().default(false),
+
+    summary: text("summary"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // dashboard queries
+    requestsBusinessIdx: index("requests_business_id_idx").on(t.businessId),
+    requestsCustomerIdx: index("requests_customer_number_idx").on(t.customerNumber),
+    requestsBusinessCustomerIdx: index("requests_business_customer_idx").on(t.businessId, t.customerNumber),
+    requestsStatusIdx: index("requests_resolution_status_idx").on(t.resolutionStatus),
+
+    // sanity
+    requestsIdNonEmpty: check("requests_id_nonempty", sql`length(btrim(${t.id})) > 0`),
+    requestsBusinessIdNonEmpty: check(
+      "requests_business_id_nonempty",
+      sql`length(btrim(${t.businessId})) > 0`,
+    ),
+    requestsCustomerNonEmpty: check(
+      "requests_customer_number_nonempty",
+      sql`length(btrim(${t.customerNumber})) > 0`,
+    ),
+  }),
+);
+
+// Optional relations
+export const requestsRelations = relations(requests, ({ one }) => ({
+  business: one(businesses, {
+    fields: [requests.businessId],
+    references: [businesses.id],
+  }),
+}));
+
 // Bookings per user
 export const bookings = pgTable("bookings", {
   id: text("id").primaryKey().notNull().$defaultFn(() => crypto.randomUUID()),
