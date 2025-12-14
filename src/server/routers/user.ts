@@ -69,7 +69,9 @@ export const userRouter = router({
             email: input.email,
             phoneNumber: input.phoneNumber,
             whatsappConnected,
-            businessId: inferredBusiness,
+            // businessId is required at the DB/schema level; for first-time users
+            // without a mapped business yet, store an empty placeholder.
+            businessId: inferredBusiness ?? "",
             unitCapacity: input.unitCapacity ?? 1,
             timeslotMinutes: input.timeslotMinutes ?? 60,
             openTime: input.openTime,

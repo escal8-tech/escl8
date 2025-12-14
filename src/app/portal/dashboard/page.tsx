@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import {
   AreaChart,
@@ -15,9 +15,40 @@ import {
 } from "recharts";
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
 
+function formatMoney(value: unknown) {
+  const n = Number(value ?? 0);
+  return `$${Number.isFinite(n) ? n.toFixed(2) : "0.00"}`;
+}
+
+function formatMaybeDate(value: unknown) {
+  if (!value) return "—";
+  const d = new Date(value as any);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
+}
+
+function statusColors(status: string | null | undefined) {
+  const s = (status ?? "").toLowerCase();
+  if (s.includes("resolved") || s.includes("done") || s.includes("closed")) {
+    return { bg: "rgba(34,197,94,0.16)", border: "rgba(34,197,94,0.35)", text: "rgb(34,197,94)" };
+  }
+  if (s.includes("open") || s.includes("pending") || s.includes("new") || s.includes("in")) {
+    return { bg: "rgba(0,180,255,0.14)", border: "rgba(0,180,255,0.35)", text: "rgb(0,180,255)" };
+  }
+  if (s.includes("reject") || s.includes("fail") || s.includes("cancel")) {
+    return { bg: "rgba(239,68,68,0.14)", border: "rgba(239,68,68,0.35)", text: "rgb(239,68,68)" };
+  }
+  return { bg: "rgba(148,163,184,0.12)", border: "rgba(148,163,184,0.28)", text: "rgb(148,163,184)" };
+}
+
 export default function DashboardPage() {
   const listQ = trpc.requests.list.useQuery({ limit: 100 });
   const statsQ = trpc.requests.stats.useQuery();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const selectedRequest = useMemo(() => {
+    if (!selectedId) return null;
+    return (listQ.data ?? []).find((r) => r.id === selectedId) ?? null;
+  }, [listQ.data, selectedId]);
 
   const timeSeries = useMemo(() => {
     if (!listQ.data) return [] as { date: string; count: number }[];
@@ -127,11 +158,23 @@ export default function DashboardPage() {
             </thead>
             <tbody>
               {(listQ.data ?? []).map((r) => (
-                <tr key={r.id} style={{ borderTop: "1px solid var(--border)" }}>
+                <tr
+                  key={r.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedId(r.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") setSelectedId(r.id);
+                  }}
+                  style={{
+                    borderTop: "1px solid var(--border)",
+                    cursor: "pointer",
+                  }}
+                >
                   <td style={{ padding: "12px 8px" }}>{r.customerNumber}</td>
                   <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.sentiment}</td>
                   <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.resolutionStatus}</td>
-                  <td style={{ padding: "12px 8px" }}>${Number(r.price as unknown as string || 0).toFixed(2)}</td>
+                  <td style={{ padding: "12px 8px" }}>{formatMoney(r.price)}</td>
                   <td style={{ padding: "12px 8px" }}>{r.paid ? "Yes" : "No"}</td>
                   <td style={{ padding: "12px 8px" }}>{new Date(r.createdAt as unknown as string).toLocaleString()}</td>
                 </tr>
@@ -145,6 +188,131 @@ export default function DashboardPage() {
           </table>
         </div>
       </div>
+
+      {selectedRequest && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Request details"
+          onClick={() => setSelectedId(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setSelectedId(null);
+          }}
+          tabIndex={-1}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(8,10,20,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 50,
+          }}
+        >
+          <div
+            className="glass"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(920px, 96vw)",
+              maxHeight: "88vh",
+              overflow: "auto",
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "flex", gap: 14, justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <div className="muted" style={{ fontSize: 13 }}>Request</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+                  <h3 style={{ fontSize: 20, margin: 0, letterSpacing: "-0.2px" }}>
+                    Customer #{selectedRequest.customerNumber}
+                  </h3>
+                  {(() => {
+                    const c = statusColors(selectedRequest.resolutionStatus as any);
+                    return (
+                      <span
+                        style={{
+                          fontSize: 12,
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          background: c.bg,
+                          border: `1px solid ${c.border}`,
+                          color: c.text,
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        {selectedRequest.resolutionStatus}
+                      </span>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setSelectedId(null)}
+                aria-label="Close"
+                style={{ padding: "8px 12px" }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Summary</div>
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid var(--border)",
+                  background: "rgba(255,255,255,0.02)",
+                  lineHeight: 1.55,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {(selectedRequest as any).summary ? (selectedRequest as any).summary : "—"}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 12,
+                marginTop: 16,
+              }}
+            >
+              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
+                <div className="muted" style={{ fontSize: 12 }}>Sentiment</div>
+                <div style={{ marginTop: 6, textTransform: "capitalize" }}>{selectedRequest.sentiment}</div>
+              </div>
+              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
+                <div className="muted" style={{ fontSize: 12 }}>Paid</div>
+                <div style={{ marginTop: 6 }}>{selectedRequest.paid ? "Yes" : "No"}</div>
+              </div>
+              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
+                <div className="muted" style={{ fontSize: 12 }}>Price</div>
+                <div style={{ marginTop: 6 }}>{formatMoney(selectedRequest.price)}</div>
+              </div>
+              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
+                <div className="muted" style={{ fontSize: 12 }}>Created</div>
+                <div style={{ marginTop: 6 }}>{formatMaybeDate(selectedRequest.createdAt)}</div>
+              </div>
+              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
+                <div className="muted" style={{ fontSize: 12 }}>Updated</div>
+                <div style={{ marginTop: 6 }}>{formatMaybeDate((selectedRequest as any).updatedAt)}</div>
+              </div>
+              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
+                <div className="muted" style={{ fontSize: 12 }}>Request ID</div>
+                <div style={{ marginTop: 6, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 12 }}>
+                  {selectedRequest.id}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
