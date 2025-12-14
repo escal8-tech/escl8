@@ -40,6 +40,48 @@ function statusColors(status: string | null | undefined) {
   return { bg: "rgba(148,163,184,0.12)", border: "rgba(148,163,184,0.28)", text: "rgb(148,163,184)" };
 }
 
+function parseSummary(value: unknown): { kind: "list"; items: string[] } | { kind: "text"; text: string } {
+  if (value == null) return { kind: "text", text: "" };
+
+  if (Array.isArray(value)) {
+    const items = value
+      .map((v) => String(v ?? "").trim())
+      .filter(Boolean)
+      // tolerate items already starting with a dash
+      .map((s) => (s.startsWith("- ") ? s.slice(2) : s));
+    return { kind: "list", items };
+  }
+
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (!s) return { kind: "text", text: "" };
+
+    // If summary is stored as a JSON string of an array, parse it.
+    if (s.startsWith("[") && s.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed)) {
+          return parseSummary(parsed);
+        }
+      } catch {
+        // ignore; fall through to plain text
+      }
+    }
+
+    // If it's a newline-delimited list, show bullets.
+    const lines = s
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => (l.startsWith("- ") ? l.slice(2) : l));
+    if (lines.length >= 2) return { kind: "list", items: lines };
+
+    return { kind: "text", text: s };
+  }
+
+  return { kind: "text", text: String(value) };
+}
+
 export default function DashboardPage() {
   const listQ = trpc.requests.list.useQuery({ limit: 100 });
   const statsQ = trpc.requests.stats.useQuery();
@@ -259,22 +301,6 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            <div style={{ marginTop: 16 }}>
-              <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Summary</div>
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  background: "rgba(255,255,255,0.02)",
-                  lineHeight: 1.55,
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {(selectedRequest as any).summary ? (selectedRequest as any).summary : "—"}
-              </div>
-            </div>
-
             <div
               style={{
                 display: "grid",
@@ -286,6 +312,10 @@ export default function DashboardPage() {
               <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
                 <div className="muted" style={{ fontSize: 12 }}>Sentiment</div>
                 <div style={{ marginTop: 6, textTransform: "capitalize" }}>{selectedRequest.sentiment}</div>
+              </div>
+              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
+                <div className="muted" style={{ fontSize: 12 }}>Resolution status</div>
+                <div style={{ marginTop: 6, textTransform: "capitalize" }}>{selectedRequest.resolutionStatus}</div>
               </div>
               <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
                 <div className="muted" style={{ fontSize: 12 }}>Paid</div>
@@ -308,6 +338,41 @@ export default function DashboardPage() {
                 <div style={{ marginTop: 6, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 12 }}>
                   {selectedRequest.id}
                 </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Summary</div>
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid var(--border)",
+                  background: "rgba(255,255,255,0.02)",
+                  lineHeight: 1.55,
+                  maxHeight: 220,
+                  overflowY: "auto",
+                }}
+              >
+                {(() => {
+                  const raw = (selectedRequest as any).summary;
+                  const parsed = parseSummary(raw);
+                  if (parsed.kind === "list") {
+                    if (parsed.items.length === 0) return <span className="muted">—</span>;
+                    return (
+                      <ul style={{ margin: 0, paddingLeft: 18 }}>
+                        {parsed.items.map((item, idx) => (
+                          <li key={idx} style={{ margin: "6px 0" }}>{item}</li>
+                        ))}
+                      </ul>
+                    );
+                  }
+                  return parsed.text ? (
+                    <div style={{ whiteSpace: "pre-wrap" }}>{parsed.text}</div>
+                  ) : (
+                    <span className="muted">—</span>
+                  );
+                })()}
               </div>
             </div>
           </div>
