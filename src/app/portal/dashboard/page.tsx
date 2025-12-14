@@ -10,10 +10,154 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  BarChart,
-  Bar,
 } from "recharts";
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
+
+type DonutDatum = {
+  name: string;
+  value: number;
+  color: string;
+};
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function percent(n: number, d: number) {
+  if (!d || d <= 0) return "0%";
+  return `${Math.round((n / d) * 100)}%`;
+}
+
+function TooltipIcon({ title }: { title: string }) {
+  return (
+    <span
+      title={title}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 16,
+        height: 16,
+        borderRadius: 999,
+        border: "1px solid var(--border)",
+        color: "var(--muted)",
+        fontSize: 11,
+        lineHeight: 1,
+        marginLeft: 8,
+        userSelect: "none",
+      }}
+      aria-label={title}
+    >
+      i
+    </span>
+  );
+}
+
+function DonutChart({
+  title,
+  data,
+  centerLabel,
+}: {
+  title: string;
+  data: DonutDatum[];
+  centerLabel?: { top: string; bottom: string };
+}) {
+  const total = data.reduce((acc, d) => acc + (d.value || 0), 0);
+  const r = 46;
+  const stroke = 12;
+  const c = 2 * Math.PI * r;
+
+  // Build segments as (offset, length)
+  let acc = 0;
+  const segments = data.map((d) => {
+    const frac = total > 0 ? d.value / total : 0;
+    const len = frac * c;
+    const out = { ...d, offset: acc, len };
+    acc += len;
+    return out;
+  });
+
+  return (
+    <div className="glass" style={{ height: 320, display: "flex", flexDirection: "column" }}>
+      <div className="muted">{title}</div>
+      <div style={{ height: 260, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
+        <div style={{ width: 200, height: 200, margin: "0 auto", position: "relative" }}>
+          <svg viewBox="0 0 120 120" width="200" height="200" style={{ display: "block" }}>
+            {/* track */}
+            <circle
+              cx="60"
+              cy="60"
+              r={r}
+              fill="transparent"
+              stroke="rgba(127,127,127,0.18)"
+              strokeWidth={stroke}
+            />
+            {/* segments */}
+            {segments.map((s, idx) => (
+              <circle
+                key={idx}
+                cx="60"
+                cy="60"
+                r={r}
+                fill="transparent"
+                stroke={s.color}
+                strokeWidth={stroke}
+                strokeLinecap="round"
+                strokeDasharray={`${clamp(s.len, 0, c)} ${c}`}
+                strokeDashoffset={-s.offset}
+                transform="rotate(-90 60 60)"
+                style={{ opacity: total > 0 && s.value > 0 ? 1 : 0 }}
+              />
+            ))}
+          </svg>
+
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              pointerEvents: "none",
+            }}
+          >
+            <div style={{ fontSize: 22, letterSpacing: "-0.2px" }}>{centerLabel?.top ?? total}</div>
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{centerLabel?.bottom ?? "Total"}</div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
+          {data
+            .filter((d) => (d.value ?? 0) > 0)
+            .map((d) => (
+              <span
+                key={d.name}
+                title={`${d.name}: ${d.value} (${percent(d.value, total)})`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  border: "1px solid var(--border)",
+                  background: "rgba(255,255,255,0.02)",
+                  fontSize: 13,
+                  cursor: "default",
+                }}
+              >
+                <span style={{ width: 10, height: 10, borderRadius: 999, background: d.color }} />
+                <span style={{ textTransform: "capitalize" }}>{d.name}</span>
+                <span className="muted">{percent(d.value, total)}</span>
+              </span>
+            ))}
+          {total === 0 && <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>No data yet.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function formatMoney(value: unknown) {
   const n = Number(value ?? 0);
@@ -107,7 +251,28 @@ export default function DashboardPage() {
 
   const sentimentSeries = useMemo(() => {
     const by = statsQ.data?.bySentiment || {};
-    return Object.entries(by).map(([name, value]) => ({ name, value }));
+    const positive = Number((by as any).positive ?? 0);
+    const neutral = Number((by as any).neutral ?? 0);
+    const negative = Number((by as any).negative ?? 0);
+    return [
+      { name: "positive", value: positive, color: "rgb(34,197,94)" },
+      { name: "neutral", value: neutral, color: "rgb(148,163,184)" },
+      { name: "negative", value: negative, color: "rgb(239,68,68)" },
+    ] satisfies DonutDatum[];
+  }, [statsQ.data]);
+
+  const statusSeries = useMemo(() => {
+    const by = (statsQ.data as any)?.byStatus || {};
+    const ongoing = Number(by.ONGOING ?? 0);
+    const needsFollowup = Number(by.NEEDS_FOLLOWUP ?? 0);
+    const failed = Number(by.FAILED ?? 0);
+    const completed = Number(by.COMPLETED ?? 0);
+    return [
+      { name: "ONGOING", value: ongoing, color: "rgb(0,180,255)" },
+      { name: "NEEDS_FOLLOWUP", value: needsFollowup, color: "rgb(234,179,8)" },
+      { name: "FAILED", value: failed, color: "rgb(239,68,68)" },
+      { name: "COMPLETED", value: completed, color: "rgb(34,197,94)" },
+    ] satisfies DonutDatum[];
   }, [statsQ.data]);
 
   return (
@@ -123,7 +288,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI row */}
-      <div className="feature-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)", marginTop: 24 }}>
+      <div className="feature-grid" style={{ gridTemplateColumns: "repeat(5, 1fr)", marginTop: 24 }}>
         <div className="glass">
           <div className="muted">Total requests</div>
           <div style={{ fontSize: 26, marginTop: 6 }}>{statsQ.data?.totals.count ?? "—"}</div>
@@ -137,13 +302,31 @@ export default function DashboardPage() {
           <div style={{ fontSize: 26, marginTop: 6 }}>{statsQ.data?.totals.paidCount ?? "—"}</div>
         </div>
         <div className="glass">
-          <div className="muted">Open</div>
-          <div style={{ fontSize: 26, marginTop: 6 }}>{statsQ.data?.totals.openCount ?? "—"}</div>
+          <div className="muted">
+            Deflection rate
+            <TooltipIcon title="COMPLETED / (COMPLETED + FAILED)" />
+          </div>
+          <div style={{ fontSize: 26, marginTop: 6 }}>
+            {typeof (statsQ.data as any)?.totals?.deflectionRate === "number"
+              ? `${Math.round((statsQ.data as any).totals.deflectionRate * 100)}%`
+              : "—"}
+          </div>
+        </div>
+        <div className="glass">
+          <div className="muted">
+            Follow-up rate
+            <TooltipIcon title="NEEDS_FOLLOWUP / TOTAL" />
+          </div>
+          <div style={{ fontSize: 26, marginTop: 6 }}>
+            {typeof (statsQ.data as any)?.totals?.followUpRate === "number"
+              ? `${Math.round((statsQ.data as any).totals.followUpRate * 100)}%`
+              : "—"}
+          </div>
         </div>
       </div>
 
       {/* Charts */}
-      <div className="feature-grid" style={{ gridTemplateColumns: "1.6fr 1fr" }}>
+      <div className="feature-grid" style={{ gridTemplateColumns: "1.6fr 1fr 1fr" }}>
         <div className="glass" style={{ height: 320 }}>
           <div className="muted">Requests over time</div>
           <div style={{ height: 260 }}>
@@ -164,20 +347,8 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           </div>
         </div>
-        <div className="glass" style={{ height: 320 }}>
-          <div className="muted">Sentiment</div>
-          <div style={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={sentimentSeries} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(127,127,127,0.2)" />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="value" fill="#00b4ff" radius={[6,6,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+        <DonutChart title="Sentiment" data={sentimentSeries} centerLabel={{ top: "100%", bottom: "Breakdown" }} />
+        <DonutChart title="Statuses" data={statusSeries} centerLabel={{ top: "4", bottom: "Types" }} />
       </div>
 
       {/* Table */}
