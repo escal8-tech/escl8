@@ -2,244 +2,30 @@
 
 import { useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
-
-type DonutDatum = {
-  name: string;
-  value: number;
-  color: string;
-};
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function percent(n: number, d: number) {
-  if (!d || d <= 0) return "0%";
-  return `${Math.round((n / d) * 100)}%`;
-}
-
-function TooltipIcon({ title }: { title: string }) {
-  return (
-    <span
-      title={title}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 16,
-        height: 16,
-        borderRadius: 999,
-        border: "1px solid var(--border)",
-        color: "var(--muted)",
-        fontSize: 11,
-        lineHeight: 1,
-        marginLeft: 8,
-        userSelect: "none",
-      }}
-      aria-label={title}
-    >
-      i
-    </span>
-  );
-}
-
-function DonutChart({
-  title,
-  data,
-  centerLabel,
-}: {
-  title: string;
-  data: DonutDatum[];
-  centerLabel?: { top: string; bottom: string };
-}) {
-  const total = data.reduce((acc, d) => acc + (d.value || 0), 0);
-  const r = 46;
-  const stroke = 12;
-  const c = 2 * Math.PI * r;
-
-  // Build segments as (offset, length)
-  let acc = 0;
-  const segments = data.map((d) => {
-    const frac = total > 0 ? d.value / total : 0;
-    const len = frac * c;
-    const out = { ...d, offset: acc, len };
-    acc += len;
-    return out;
-  });
-
-  return (
-    <div className="glass" style={{ height: 320, display: "flex", flexDirection: "column" }}>
-      <div className="muted">{title}</div>
-      <div style={{ height: 260, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
-        <div style={{ width: 200, height: 200, margin: "0 auto", position: "relative" }}>
-          <svg viewBox="0 0 120 120" width="200" height="200" style={{ display: "block" }}>
-            {/* track */}
-            <circle
-              cx="60"
-              cy="60"
-              r={r}
-              fill="transparent"
-              stroke="rgba(127,127,127,0.18)"
-              strokeWidth={stroke}
-            />
-            {/* segments */}
-            {segments.map((s, idx) => (
-              <circle
-                key={idx}
-                cx="60"
-                cy="60"
-                r={r}
-                fill="transparent"
-                stroke={s.color}
-                strokeWidth={stroke}
-                strokeLinecap="round"
-                strokeDasharray={`${clamp(s.len, 0, c)} ${c}`}
-                strokeDashoffset={-s.offset}
-                transform="rotate(-90 60 60)"
-                style={{ opacity: total > 0 && s.value > 0 ? 1 : 0 }}
-              />
-            ))}
-          </svg>
-
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              textAlign: "center",
-              pointerEvents: "none",
-            }}
-          >
-            <div style={{ fontSize: 22, letterSpacing: "-0.2px" }}>{centerLabel?.top ?? total}</div>
-            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{centerLabel?.bottom ?? "Total"}</div>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
-          {data
-            .filter((d) => (d.value ?? 0) > 0)
-            .map((d) => (
-              <span
-                key={d.name}
-                title={`${d.name}: ${d.value} (${percent(d.value, total)})`}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  border: "1px solid var(--border)",
-                  background: "rgba(255,255,255,0.02)",
-                  fontSize: 13,
-                  cursor: "default",
-                }}
-              >
-                <span style={{ width: 10, height: 10, borderRadius: 999, background: d.color }} />
-                <span style={{ textTransform: "capitalize" }}>{d.name}</span>
-                <span className="muted">{percent(d.value, total)}</span>
-              </span>
-            ))}
-          {total === 0 && <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>No data yet.</div>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function formatMoney(value: unknown) {
-  const n = Number(value ?? 0);
-  return `$${Number.isFinite(n) ? n.toFixed(2) : "0.00"}`;
-}
-
-function formatMaybeDate(value: unknown) {
-  if (!value) return "—";
-  const d = new Date(value as any);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
-}
-
-function statusColors(status: string | null | undefined) {
-  const s = (status ?? "").toLowerCase();
-  if (s.includes("resolved") || s.includes("done") || s.includes("closed")) {
-    return { bg: "rgba(34,197,94,0.16)", border: "rgba(34,197,94,0.35)", text: "rgb(34,197,94)" };
-  }
-  if (s.includes("open") || s.includes("pending") || s.includes("new") || s.includes("in")) {
-    return { bg: "rgba(0,180,255,0.14)", border: "rgba(0,180,255,0.35)", text: "rgb(0,180,255)" };
-  }
-  if (s.includes("reject") || s.includes("fail") || s.includes("cancel")) {
-    return { bg: "rgba(239,68,68,0.14)", border: "rgba(239,68,68,0.35)", text: "rgb(239,68,68)" };
-  }
-  return { bg: "rgba(148,163,184,0.12)", border: "rgba(148,163,184,0.28)", text: "rgb(148,163,184)" };
-}
-
-function parseSummary(value: unknown): { kind: "list"; items: string[] } | { kind: "text"; text: string } {
-  if (value == null) return { kind: "text", text: "" };
-
-  if (Array.isArray(value)) {
-    const items = value
-      .map((v) => String(v ?? "").trim())
-      .filter(Boolean)
-      // tolerate items already starting with a dash
-      .map((s) => (s.startsWith("- ") ? s.slice(2) : s));
-    return { kind: "list", items };
-  }
-
-  if (typeof value === "string") {
-    const s = value.trim();
-    if (!s) return { kind: "text", text: "" };
-
-    // If summary is stored as a JSON string of an array, parse it.
-    if (s.startsWith("[") && s.endsWith("]")) {
-      try {
-        const parsed = JSON.parse(s);
-        if (Array.isArray(parsed)) {
-          return parseSummary(parsed);
-        }
-      } catch {
-        // ignore; fall through to plain text
-      }
-    }
-
-    // If it's a newline-delimited list, show bullets.
-    const lines = s
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => (l.startsWith("- ") ? l.slice(2) : l));
-    if (lines.length >= 2) return { kind: "list", items: lines };
-
-    return { kind: "text", text: s };
-  }
-
-  return { kind: "text", text: String(value) };
-}
+import { DonutChart } from "./components/DonutChart";
+import { KpiGrid } from "./components/KpiGrid";
+import { RequestsAreaChart } from "./components/RequestsAreaChart";
+import { RequestsTable } from "./components/RequestsTable";
+import { RequestDrawer } from "./components/RequestDrawer";
+import type { DonutDatum, RequestRow, StatsTotals } from "./components/types";
 
 export default function DashboardPage() {
   const listQ = trpc.requests.list.useQuery({ limit: 100 });
   const statsQ = trpc.requests.stats.useQuery();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  const rows = useMemo(() => normalizeRequests(listQ.data || []), [listQ.data]);
+
   const selectedRequest = useMemo(() => {
     if (!selectedId) return null;
-    return (listQ.data ?? []).find((r) => r.id === selectedId) ?? null;
-  }, [listQ.data, selectedId]);
+    return rows.find((r) => r.id === selectedId) ?? null;
+  }, [rows, selectedId]);
 
   const timeSeries = useMemo(() => {
-    if (!listQ.data) return [] as { date: string; count: number }[];
+    if (!rows.length) return [] as { date: string; count: number }[];
     const map = new Map<string, number>();
-    for (const r of listQ.data) {
+    for (const r of rows) {
       const d = new Date(r.createdAt as unknown as string);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       map.set(key, (map.get(key) || 0) + 1);
@@ -247,7 +33,7 @@ export default function DashboardPage() {
     return Array.from(map.entries())
       .sort((a, b) => (a[0] < b[0] ? -1 : 1))
       .map(([date, count]) => ({ date, count }));
-  }, [listQ.data]);
+  }, [rows]);
 
   const sentimentSeries = useMemo(() => {
     const by = statsQ.data?.bySentiment || {};
@@ -287,268 +73,25 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI row */}
-      <div className="feature-grid" style={{ gridTemplateColumns: "repeat(5, 1fr)", marginTop: 24 }}>
-        <div className="glass">
-          <div className="muted">Total requests</div>
-          <div style={{ fontSize: 26, marginTop: 6 }}>{statsQ.data?.totals.count ?? "—"}</div>
-        </div>
-        <div className="glass">
-          <div className="muted">Revenue</div>
-          <div style={{ fontSize: 26, marginTop: 6 }}>${(statsQ.data?.totals.revenue ?? 0).toFixed(2)}</div>
-        </div>
-        <div className="glass">
-          <div className="muted">Paid</div>
-          <div style={{ fontSize: 26, marginTop: 6 }}>{statsQ.data?.totals.paidCount ?? "—"}</div>
-        </div>
-        <div className="glass">
-          <div className="muted">
-            Deflection rate
-            <TooltipIcon title="COMPLETED / (COMPLETED + FAILED)" />
-          </div>
-          <div style={{ fontSize: 26, marginTop: 6 }}>
-            {typeof (statsQ.data as any)?.totals?.deflectionRate === "number"
-              ? `${Math.round((statsQ.data as any).totals.deflectionRate * 100)}%`
-              : "—"}
-          </div>
-        </div>
-        <div className="glass">
-          <div className="muted">
-            Follow-up rate
-            <TooltipIcon title="NEEDS_FOLLOWUP / TOTAL" />
-          </div>
-          <div style={{ fontSize: 26, marginTop: 6 }}>
-            {typeof (statsQ.data as any)?.totals?.followUpRate === "number"
-              ? `${Math.round((statsQ.data as any).totals.followUpRate * 100)}%`
-              : "—"}
-          </div>
-        </div>
-      </div>
+      <KpiGrid totals={(statsQ.data?.totals as StatsTotals) || {}} />
 
-      {/* Charts */}
       <div className="feature-grid" style={{ gridTemplateColumns: "1.6fr 1fr 1fr" }}>
-        <div className="glass" style={{ height: 320 }}>
-          <div className="muted">Requests over time</div>
-          <div style={{ height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={timeSeries} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6c47ff" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#6c47ff" stopOpacity={0.05} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(127,127,127,0.2)" />
-                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                <Tooltip />
-                <Area type="monotone" dataKey="count" stroke="#6c47ff" fill="url(#colorCount)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+        <RequestsAreaChart data={timeSeries} />
         <DonutChart title="Sentiment" data={sentimentSeries} centerLabel={{ top: "100%", bottom: "Breakdown" }} />
         <DonutChart title="Statuses" data={statusSeries} centerLabel={{ top: "4", bottom: "Types" }} />
       </div>
 
-      {/* Table */}
-      <div className="glass" style={{ marginTop: 24 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <h2 style={{ fontSize: 18 }}>Customer requests</h2>
-          <span className="muted" style={{ fontSize: 13 }}>{listQ.data?.length ?? 0} shown</span>
-        </div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left", fontSize: 13, color: "var(--muted)" }}>
-                <th style={{ padding: "10px 8px" }}>Customer number</th>
-                <th style={{ padding: "10px 8px" }}>Sentiment</th>
-                <th style={{ padding: "10px 8px" }}>Resolution status</th>
-                <th style={{ padding: "10px 8px" }}>Price</th>
-                <th style={{ padding: "10px 8px" }}>Paid</th>
-                <th style={{ padding: "10px 8px" }}>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(listQ.data ?? []).map((r) => (
-                <tr
-                  key={r.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSelectedId(r.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") setSelectedId(r.id);
-                  }}
-                  style={{
-                    borderTop: "1px solid var(--border)",
-                    cursor: "pointer",
-                  }}
-                >
-                  <td style={{ padding: "12px 8px" }}>{r.customerNumber}</td>
-                  <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.sentiment}</td>
-                  <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.resolutionStatus}</td>
-                  <td style={{ padding: "12px 8px" }}>{formatMoney(r.price)}</td>
-                  <td style={{ padding: "12px 8px" }}>{r.paid ? "Yes" : "No"}</td>
-                  <td style={{ padding: "12px 8px" }}>{new Date(r.createdAt as unknown as string).toLocaleString()}</td>
-                </tr>
-              ))}
-              {(!listQ.data || listQ.data.length === 0) && (
-                <tr>
-                  <td colSpan={6} style={{ padding: 16 }} className="muted">No requests yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <RequestsTable rows={rows} onSelect={setSelectedId} />
 
-      {selectedRequest && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Request details"
-          onClick={() => setSelectedId(null)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setSelectedId(null);
-          }}
-          tabIndex={-1}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(8,10,20,0.55)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 50,
-          }}
-        >
-          <div
-            className="glass"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(920px, 96vw)",
-              maxHeight: "88vh",
-              overflow: "auto",
-              padding: 18,
-            }}
-          >
-            <div style={{ display: "flex", gap: 14, justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <div className="muted" style={{ fontSize: 13 }}>Request</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
-                  <h3 style={{ fontSize: 20, margin: 0, letterSpacing: "-0.2px" }}>
-                    Customer #{selectedRequest.customerNumber}
-                  </h3>
-                  {(() => {
-                    const c = statusColors(selectedRequest.resolutionStatus as any);
-                    return (
-                      <span
-                        style={{
-                          fontSize: 12,
-                          padding: "4px 10px",
-                          borderRadius: 999,
-                          background: c.bg,
-                          border: `1px solid ${c.border}`,
-                          color: c.text,
-                          textTransform: "capitalize",
-                        }}
-                      >
-                        {selectedRequest.resolutionStatus}
-                      </span>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setSelectedId(null)}
-                aria-label="Close"
-                style={{ padding: "8px 12px" }}
-              >
-                Close
-              </button>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 12,
-                marginTop: 16,
-              }}
-            >
-              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
-                <div className="muted" style={{ fontSize: 12 }}>Sentiment</div>
-                <div style={{ marginTop: 6, textTransform: "capitalize" }}>{selectedRequest.sentiment}</div>
-              </div>
-              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
-                <div className="muted" style={{ fontSize: 12 }}>Resolution status</div>
-                <div style={{ marginTop: 6, textTransform: "capitalize" }}>{selectedRequest.resolutionStatus}</div>
-              </div>
-              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
-                <div className="muted" style={{ fontSize: 12 }}>Paid</div>
-                <div style={{ marginTop: 6 }}>{selectedRequest.paid ? "Yes" : "No"}</div>
-              </div>
-              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
-                <div className="muted" style={{ fontSize: 12 }}>Price</div>
-                <div style={{ marginTop: 6 }}>{formatMoney(selectedRequest.price)}</div>
-              </div>
-              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
-                <div className="muted" style={{ fontSize: 12 }}>Created</div>
-                <div style={{ marginTop: 6 }}>{formatMaybeDate(selectedRequest.createdAt)}</div>
-              </div>
-              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
-                <div className="muted" style={{ fontSize: 12 }}>Updated</div>
-                <div style={{ marginTop: 6 }}>{formatMaybeDate((selectedRequest as any).updatedAt)}</div>
-              </div>
-              <div style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
-                <div className="muted" style={{ fontSize: 12 }}>Request ID</div>
-                <div style={{ marginTop: 6, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 12 }}>
-                  {selectedRequest.id}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 16 }}>
-              <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Summary</div>
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid var(--border)",
-                  background: "rgba(255,255,255,0.02)",
-                  lineHeight: 1.55,
-                  maxHeight: 220,
-                  overflowY: "auto",
-                }}
-              >
-                {(() => {
-                  const raw = (selectedRequest as any).summary;
-                  const parsed = parseSummary(raw);
-                  if (parsed.kind === "list") {
-                    if (parsed.items.length === 0) return <span className="muted">—</span>;
-                    return (
-                      <ul style={{ margin: 0, paddingLeft: 18 }}>
-                        {parsed.items.map((item, idx) => (
-                          <li key={idx} style={{ margin: "6px 0" }}>{item}</li>
-                        ))}
-                      </ul>
-                    );
-                  }
-                  return parsed.text ? (
-                    <div style={{ whiteSpace: "pre-wrap" }}>{parsed.text}</div>
-                  ) : (
-                    <span className="muted">—</span>
-                  );
-                })()}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <RequestDrawer request={selectedRequest} onClose={() => setSelectedId(null)} />
     </div>
   );
+}
+
+function normalizeRequests(requests: any[]): RequestRow[] {
+  return requests.map((r) => ({
+    ...r,
+    createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
+    updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : r.updatedAt,
+  }));
 }

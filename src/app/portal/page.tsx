@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import PortalLogin from "./PortalLogin";
+import { PortalLogin } from "./components/PortalLogin";
 
 export const metadata: Metadata = {
   title: "Escl8 Portal Login",
