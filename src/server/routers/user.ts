@@ -32,10 +32,6 @@ export const userRouter = router({
         phoneNumber: z.string().min(5).max(32).optional(),
         whatsappConnected: z.boolean().optional(),
         businessId: z.string().min(1).optional(),
-  unitCapacity: z.number().int().min(1).optional(),
-  timeslotMinutes: z.number().int().min(5).max(600).optional(),
-  openTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  closeTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -52,10 +48,6 @@ export const userRouter = router({
               phoneNumber: input.phoneNumber,
               whatsappConnected,
               businessId: inferredBusiness ?? existing[0].businessId,
-              unitCapacity: input.unitCapacity ?? existing[0].unitCapacity ?? 1,
-              timeslotMinutes: input.timeslotMinutes ?? existing[0].timeslotMinutes ?? 60,
-              openTime: input.openTime ?? existing[0].openTime,
-              closeTime: input.closeTime ?? existing[0].closeTime,
               updatedAt: new Date(),
             })
             .where(eq(users.id, existing[0].id))
@@ -72,10 +64,6 @@ export const userRouter = router({
             // businessId is required at the DB/schema level; for first-time users
             // without a mapped business yet, store an empty placeholder.
             businessId: inferredBusiness ?? "",
-            unitCapacity: input.unitCapacity ?? 1,
-            timeslotMinutes: input.timeslotMinutes ?? 60,
-            openTime: input.openTime,
-            closeTime: input.closeTime,
           })
           .returning();
         return created;

@@ -17,7 +17,8 @@ export default function SettingsPage() {
   }, [auth]);
 
   const userQuery = trpc.user.getMe.useQuery({ email: email ?? "" }, { enabled: !!email });
-  const upsert = trpc.user.upsert.useMutation();
+  const businessQuery = trpc.business.getMine.useQuery({ email: email ?? "" }, { enabled: !!email });
+  const updateBooking = trpc.business.updateBookingConfig.useMutation();
   const phone = userQuery.data?.phoneNumber ?? null;
   const [unitCapacity, setUnitCapacity] = useState<number | undefined>(undefined);
   const [timeslotMinutes, setTimeslotMinutes] = useState<number | undefined>(undefined);
@@ -25,13 +26,13 @@ export default function SettingsPage() {
   const [closeTime, setCloseTime] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    if (userQuery.data) {
-      setUnitCapacity(userQuery.data.unitCapacity ?? undefined);
-      setTimeslotMinutes(userQuery.data.timeslotMinutes ?? undefined);
-      setOpenTime(userQuery.data.openTime ?? undefined);
-      setCloseTime(userQuery.data.closeTime ?? undefined);
+    if (businessQuery.data) {
+      setUnitCapacity(businessQuery.data.bookingUnitCapacity ?? undefined);
+      setTimeslotMinutes(businessQuery.data.bookingTimeslotMinutes ?? undefined);
+      setOpenTime(businessQuery.data.bookingOpenTime ?? undefined);
+      setCloseTime(businessQuery.data.bookingCloseTime ?? undefined);
     }
-  }, [userQuery.data]);
+  }, [businessQuery.data]);
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -74,7 +75,23 @@ export default function SettingsPage() {
             <input type="time" value={closeTime ?? ''} onChange={e => setCloseTime(e.target.value || undefined)} className="contact-input" />
           </label>
           <div>
-            <button className="btn btn-primary" onClick={() => email && upsert.mutate({ email, unitCapacity, timeslotMinutes, openTime, closeTime })}>Save settings</button>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                if (!email || !businessQuery.data?.id) return;
+                if (unitCapacity == null || timeslotMinutes == null || !openTime || !closeTime) return;
+                updateBooking.mutate({
+                  email,
+                  businessId: businessQuery.data.id,
+                  unitCapacity,
+                  timeslotMinutes,
+                  openTime,
+                  closeTime,
+                });
+              }}
+            >
+              Save settings
+            </button>
           </div>
         </div>
       </div>

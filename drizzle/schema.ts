@@ -11,31 +11,30 @@ import { relations, sql } from "drizzle-orm";
  * - business can have many users
  * - business can have many WhatsApp identities (phone_number_id)
  */
+// businesses.ts (add booking config at business level)
 export const businesses = pgTable(
   "businesses",
   {
-    // Use the tenant namespace as PK (simple and strict)
     id: text("id").primaryKey().notNull(),
-
     name: text("name"),
     isActive: boolean("is_active").notNull().default(true),
-
-    // Prompt/system instructions for sales assistant persona & business rules
     instructions: text("instructions").notNull(),
-
     ragTopK: integer("rag_top_k").default(8),
     promotionsEnabled: boolean("promotions_enabled").notNull().default(true),
     bookingsEnabled: boolean("bookings_enabled").notNull().default(false),
 
-    settings: jsonb("settings").$type<Record<string, unknown>>().default({}),
+    // NEW: business-level booking config
+    bookingUnitCapacity: integer("booking_unit_capacity").default(1),
+    bookingTimeslotMinutes: integer("booking_timeslot_minutes").default(60),
+    bookingOpenTime: text("booking_open_time"),   // "09:00"
+    bookingCloseTime: text("booking_close_time"), // "18:00"
 
+    settings: jsonb("settings").$type<Record<string, unknown>>().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     businessesActiveIdx: index("businesses_is_active_idx").on(t.isActive),
-
-    // strict non-empty PK + required fields
     businessesIdNonEmpty: check("businesses_id_nonempty", sql`length(btrim(${t.id})) > 0`),
     businessesInstructionsNonEmpty: check(
       "businesses_instructions_nonempty",
@@ -66,28 +65,17 @@ export const users = pgTable(
 
     whatsappConnected: boolean("whatsapp_connected").notNull().default(false),
 
-    // strict: each user belongs to exactly ONE business
+    // Each user belongs to exactly one business (multi-user per business is allowed)
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
-
-    // Optional booking configuration (addon)
-    unitCapacity: integer("unit_capacity").default(1),
-    timeslotMinutes: integer("timeslot_minutes").default(60),
-    openTime: text("open_time"), // "09:00"
-    closeTime: text("close_time"), // "18:00"
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // strict uniqueness
     usersEmailUx: uniqueIndex("users_email_ux").on(t.email),
-
-    // IMPORTANT: NOT unique (many users share the same business)
     usersBusinessIdIdx: index("users_business_id_idx").on(t.businessId),
-
-    // non-empty checks
     usersIdNonEmpty: check("users_id_nonempty", sql`length(btrim(${t.id})) > 0`),
     usersEmailNonEmpty: check("users_email_nonempty", sql`length(btrim(${t.email})) > 0`),
     usersBusinessIdNonEmpty: check("users_business_id_nonempty", sql`length(btrim(${t.businessId})) > 0`),
@@ -324,6 +312,7 @@ export const requestsRelations = relations(requests, ({ one }) => ({
 // Bookings per user
 export const bookings = pgTable("bookings", {
   id: text("id").primaryKey().notNull().$defaultFn(() => crypto.randomUUID()),
+  businessId: text("business_id").notNull().references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
   userId: text("user_id").notNull(),
   startTime: timestamp("start_time", { withTimezone: true }).notNull(),
   durationMinutes: integer("duration_minutes").notNull().default(60),

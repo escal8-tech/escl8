@@ -6,10 +6,10 @@ import { and, eq } from "drizzle-orm";
 
 export const bookingsRouter = router({
   list: publicProcedure
-    .input(z.object({ userId: z.string() }).optional())
+    .input(z.object({ businessId: z.string() }).optional())
     .query(async ({ input }) => {
-      if (input?.userId) {
-        return await db.select().from(bookings).where(eq(bookings.userId, input.userId));
+      if (input?.businessId) {
+        return await db.select().from(bookings).where(eq(bookings.businessId, input.businessId));
       }
       return await db.select().from(bookings);
     }),
@@ -17,6 +17,7 @@ export const bookingsRouter = router({
   create: publicProcedure
     .input(z.object({
       userId: z.string(),
+      businessId: z.string(),
       startTime: z.string(), // ISO
       durationMinutes: z.number().int().min(5).max(600).default(60),
       unitsBooked: z.number().int().min(1),
@@ -25,6 +26,7 @@ export const bookingsRouter = router({
     }))
     .mutation(async ({ input }) => {
       const [row] = await db.insert(bookings).values({
+        businessId: input.businessId,
         userId: input.userId,
         startTime: new Date(input.startTime),
         durationMinutes: input.durationMinutes,

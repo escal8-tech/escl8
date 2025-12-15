@@ -9,7 +9,8 @@ type Slot = { dayISO: string; start: Date; end: Date; count: number; capacity: n
 export default function BookingsPage() {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0,10));
   const [email, setEmail] = useState<string | null>(null);
-  const bookings = trpc.bookings.list.useQuery();
+  const biz = trpc.business.getMine.useQuery({ email: email || "" }, { enabled: !!email });
+  const bookings = trpc.bookings.list.useQuery({ businessId: biz.data?.id ?? "" }, { enabled: !!biz.data?.id });
 
   // Get email from Firebase Auth in production reliably
   useEffect(() => {
@@ -30,14 +31,12 @@ export default function BookingsPage() {
     }
   }, []);
 
-  const me = trpc.user.getMe.useQuery({ email: email || "" }, { enabled: !!email });
-
   const slots = useMemo<Slot[]>(() => {
     const cfg = {
-      cap: me.data?.unitCapacity,
-      minutes: me.data?.timeslotMinutes ?? 60,
-      open: me.data?.openTime ?? '09:00',
-      close: me.data?.closeTime ?? '18:00'
+      cap: biz.data?.bookingUnitCapacity,
+      minutes: biz.data?.bookingTimeslotMinutes ?? 60,
+      open: biz.data?.bookingOpenTime ?? '09:00',
+      close: biz.data?.bookingCloseTime ?? '18:00'
     };
     const startOfWeek = new Date(selectedDate);
     // Move to Monday of the selected date's week
@@ -63,8 +62,6 @@ export default function BookingsPage() {
         const dayISO = dayUTC.toISOString().slice(0,10);
         const slotBookings = (bookings.data||[])
           .filter(b => {
-            // Only count bookings for current user
-            if (me.data?.id && b.userId !== me.data.id) return false as any;
             const bs = new Date(b.startTime);
             const be = new Date(bs.getTime() + (b.durationMinutes||cfg.minutes)*60000);
             const bsTime = bs.getTime();
@@ -74,12 +71,12 @@ export default function BookingsPage() {
             // overlap if booking starts before slot end AND booking ends after slot start
             return (bsTime < seTime) && (beTime > tTime);
           })
-  const count = slotBookings.reduce((sum,b)=> sum + (b.unitsBooked||1), 0);
-  all.push({ dayISO, start: new Date(t), end: slotEnd, count, capacity: cfg.cap ?? 0 });
+        const count = slotBookings.reduce((sum,b)=> sum + (b.unitsBooked||1), 0);
+        all.push({ dayISO, start: new Date(t), end: slotEnd, count, capacity: cfg.cap ?? 0 });
       }
     }
     return all;
-  }, [bookings.data, me.data, selectedDate]);
+  }, [bookings.data, biz.data, selectedDate]);
 
   const slotsByLabel = useMemo(() => {
     const m = new Map<string, Slot[]>();
@@ -136,19 +133,18 @@ export default function BookingsPage() {
               <>
                 <div key={`t-${idxRow}`} style={{ padding:6, borderTop:'1px solid var(--border)', borderRight:'1px solid var(--border)', height: rowHeight, display:'flex', alignItems:'center' }}>{label}</div>
                 {row.map((s, idxCol) => {
-                  const hasCap = (me.data?.unitCapacity ?? 0) > 0;
-                  const full = hasCap ? (s.count >= (me.data!.unitCapacity!)) : false;
+                  const hasCap = (biz.data?.bookingUnitCapacity ?? 0) > 0;
+                  const full = hasCap ? (s.count >= (biz.data!.bookingUnitCapacity!)) : false;
                   const bg = hasCap ? (full ? 'rgba(255,60,60,0.25)' : 'rgba(60,200,120,0.25)') : 'rgba(0,0,0,0.06)';
                   return (
                     <SlotCell
                       key={`c-${idxRow}-${idxCol}`}
-                      slot={{...s, capacity: me.data?.unitCapacity ?? 0}}
+                      slot={{...s, capacity: biz.data?.bookingUnitCapacity ?? 0}}
                       height={rowHeight}
                       bg={bg}
                       bookings={(bookings.data||[]).filter(b => {
-                        if (me.data?.id && b.userId !== me.data.id) return false as any;
                         const bs = new Date(b.startTime);
-                        const be = new Date(bs.getTime() + (b.durationMinutes|| (me.data?.timeslotMinutes ?? 60))*60000);
+                        const be = new Date(bs.getTime() + (b.durationMinutes|| (biz.data?.bookingTimeslotMinutes ?? 60))*60000);
                         return (bs.getTime() < s.end.getTime()) && (be.getTime() > s.start.getTime());
                       })}
                     />
