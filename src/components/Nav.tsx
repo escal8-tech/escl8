@@ -16,7 +16,7 @@ export default function Nav() {
       <div style={{ maxWidth: 1180, margin: '0 auto', padding: '0 60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64 }}>
         <Link href="/" className="brand">
           <span className="brand-mark">⚡</span>
-          <span className="brand-name">Escl8</span>
+          <span className="brand-name">Escal8 Software Services</span>
         </Link>
         <nav className="nav" style={{ alignItems: "center", gap: 10 }}>
           {links.map((l) => (

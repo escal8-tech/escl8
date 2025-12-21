@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Shopee logo">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="75%">
+      <stop offset="0%" stop-color="#ff642b" />
+      <stop offset="100%" stop-color="#f74c00" />
+    </radialGradient>
+  </defs>
+  <circle cx="256" cy="256" r="256" fill="url(#bg)" />
+  <g fill="#fff" transform="translate(128 104)">
+    <path d="M118 28c-13.3 0-24 10.7-24 24v12H86c-11 0-20 9-20 20v138c0 11 9 20 20 20h124c11 0 20-9 20-20V84c0-11-9-20-20-20h-8V52c0-13.3-10.7-24-24-24h-36Zm0 12h36c6.7 0 12 5.3 12 12v12h-60V52c0-6.7 5.3-12 12-12Z"/>
+    <path d="M154.7 157.5c0 15-12.3 26.5-32.4 26.5-12.8 0-24.5-4-33.3-11.5l10-12.3c7.2 6 14.7 8.9 22.9 8.9 6.8 0 11-3.1 11-7.8 0-4.7-3.2-7-13.2-9.6-16.8-4.4-25-10.8-25-23.7 0-14 11.7-23.8 29.4-23.8 12.3 0 22.2 3.4 30.3 9.8l-9.1 12.9c-6.8-5-13.6-7.5-21.1-7.5-6.2 0-9.8 2.4-9.8 6.6 0 4.6 3.5 6.7 14.9 9.8 16.3 4.3 23.4 10.9 23.4 23.7Z"/>
+    <text x="128" y="244" text-anchor="middle" font-family="'Inter','Segoe UI',sans-serif" font-size="36" font-weight="700" fill="#fff">Shopee</text>
+  </g>
+</svg>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Script from "next/script";
 
 type SessionEvent =
@@ -18,10 +18,19 @@ declare global {
 const FB_APP_ID = process.env.NEXT_PUBLIC_FB_APP_ID || "3048147058702810";
 const FB_EMBEDDED_SIGNUP_CONFIG_ID = process.env.NEXT_PUBLIC_FB_EMBEDDED_SIGNUP_CONFIG_ID || "2342508846172693";
 
-export function WhatsAppEmbeddedSignupButton() {
+type WhatsAppEmbeddedSignupButtonProps = {
+  onConnected?: () => void;
+  label?: string;
+  syncedLabel?: string;
+  className?: string;
+  style?: React.CSSProperties;
+};
+
+export function WhatsAppEmbeddedSignupButton({ onConnected, label, syncedLabel, className, style }: WhatsAppEmbeddedSignupButtonProps = {}) {
   const [sdkReady, setSdkReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [connected, setConnected] = useState(false);
 
   // Store whichever arrives first and combine later
   const codeRef = useRef<string | null>(null);
@@ -107,9 +116,12 @@ export function WhatsAppEmbeddedSignupButton() {
         }),
       });
       if (!res.ok) throw new Error(`Server responded ${res.status}`);
-      setStatus("WhatsApp connected. Well finish setup in the background.");
+      setStatus("WhatsApp connected. We’ll finish setup in the background.");
+      setConnected(true);
+      onConnected?.();
     } catch (err: any) {
       setStatus(`Failed to complete setup: ${err?.message || String(err)}`);
+      setConnected(false);
     } finally {
       setBusy(false);
     }
@@ -123,6 +135,7 @@ export function WhatsAppEmbeddedSignupButton() {
     codeRef.current = null;
     idsRef.current = null;
     sentRef.current = false;
+    setConnected(false);
 
     window.FB.login(fbLoginCallback, {
       config_id: FB_EMBEDDED_SIGNUP_CONFIG_ID, // configuration ID goes here
@@ -131,6 +144,33 @@ export function WhatsAppEmbeddedSignupButton() {
       extras: { version: "v3" },
     });
   }, [fbLoginCallback]);
+
+  const baseStyle = {
+    backgroundColor: "#1877f2",
+    borderRadius: 999,
+    color: "#fff",
+    cursor: canLaunch ? "pointer" : "not-allowed",
+    fontFamily: "Inter, system-ui, Helvetica, Arial, sans-serif",
+    fontSize: 14,
+    fontWeight: 600,
+    height: 36,
+    padding: "0 12px",
+    opacity: canLaunch ? 1 : 0.7,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    border: "1px solid #0f172a",
+    lineHeight: 1,
+    transition: "transform 120ms ease, opacity 120ms ease, box-shadow 120ms ease",
+  } satisfies CSSProperties;
+
+  const mergedStyle: CSSProperties = {
+    ...baseStyle,
+    ...style,
+    border: connected ? style?.border ?? "1.5px solid #22c55e" : style?.border ?? baseStyle.border,
+  };
+
+  const buttonLabel = connected ? syncedLabel ?? "Synced" : busy ? "Connecting…" : label ?? "Sync WhatsApp";
 
   return (
     <>
@@ -145,24 +185,10 @@ export function WhatsAppEmbeddedSignupButton() {
         onClick={launchWhatsAppSignup}
         disabled={!canLaunch}
         title={!sdkReady ? "Loading Facebook SDK…" : undefined}
-        style={{
-          backgroundColor: "#1877f2",
-          border: 0,
-          borderRadius: 6,
-          color: "#fff",
-          cursor: canLaunch ? "pointer" : "not-allowed",
-          fontFamily: "Inter, system-ui, Helvetica, Arial, sans-serif",
-          fontSize: 14,
-          fontWeight: 600,
-          height: 36,
-          padding: "0 14px",
-          opacity: canLaunch ? 1 : 0.7,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-        }}
+        className={className}
+        style={mergedStyle}
       >
-        {busy ? "Connecting…" : "Sync WhatsApp"}
+        {buttonLabel}
       </button>
       {status && (
         <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>

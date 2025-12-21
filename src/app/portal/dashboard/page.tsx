@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
-import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
 import { DonutChart } from "./components/DonutChart";
 import { KpiGrid } from "./components/KpiGrid";
 import { RequestsAreaChart } from "./components/RequestsAreaChart";
@@ -68,9 +67,7 @@ export default function DashboardPage() {
           <h1 style={{ fontSize: 28, letterSpacing: "-0.3px" }}>Dashboard</h1>
           <p className="muted" style={{ marginTop: 8 }}>Overview of your customer requests and performance.</p>
         </div>
-        <div style={{ alignSelf: "flex-start" }}>
-          <WhatsAppEmbeddedSignupButton />
-        </div>
+        <div style={{ alignSelf: "flex-start" }} />
       </div>
 
       <KpiGrid totals={(statsQ.data?.totals as StatsTotals) || {}} />

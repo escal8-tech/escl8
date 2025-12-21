@@ -50,13 +50,24 @@ export function parseSummary(value: unknown): { kind: "list"; items: string[] } 
 
     // If summary is stored as a JSON string of an array, parse it.
     if (s.startsWith("[") && s.endsWith("]")) {
+      // Try standard JSON first
       try {
         const parsed = JSON.parse(s);
         if (Array.isArray(parsed)) {
           return parseSummary(parsed);
         }
       } catch {
-        // ignore; fall through to plain text
+        // If the array uses single quotes, fall back to a tolerant parser
+        const inner = s.slice(1, -1).trim();
+        if (inner.length) {
+          const items = inner
+            .split(/,(?![^\[]*\])/)
+            .map((item) => item.trim())
+            .map((item) => item.replace(/^['"]|['"]$/g, ""))
+            .map((item) => item.replace(/^[-\s]+/, ""))
+            .filter(Boolean);
+          if (items.length) return { kind: "list", items };
+        }
       }
     }
 

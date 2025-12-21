@@ -18,6 +18,7 @@ export default function PortalNav() {
           <Link className={`nav-link ${isActive("/portal/upload") ? "active" : ""}`} href="/portal/upload">Upload</Link>
           <Link className={`nav-link ${isActive("/portal/dashboard") ? "active" : ""}`} href="/portal/dashboard">Dashboard</Link>
           <Link className={`nav-link ${isActive("/portal/bookings") ? "active" : ""}`} href="/portal/bookings">Bookings</Link>
+            <Link className={`nav-link ${isActive("/portal/sync") ? "active" : ""}`} href="/portal/sync">Sync</Link>
           <Link className={`nav-link ${isActive("/portal/settings") ? "active" : ""}`} href="/portal/settings">Settings</Link>
         </nav>
       </div>

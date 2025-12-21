@@ -89,22 +89,6 @@ export function RequestDrawer({ request, onClose }: Props) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginTop: 14 }}>
           <div className="glass" style={{ padding: 14 }}>
-            <div className="muted" style={{ fontSize: 12 }}>Summary</div>
-            {(() => {
-              const parsed = parseSummary(request.summary);
-              if (parsed.kind === "list") {
-                return (
-                  <ul style={{ margin: "10px 0 0 12px", padding: 0, display: "grid", gap: 6 }}>
-                    {parsed.items.map((item, idx) => (
-                      <li key={idx} style={{ lineHeight: 1.5 }}>{item}</li>
-                    ))}
-                  </ul>
-                );
-              }
-              return <p style={{ marginTop: 6, lineHeight: 1.6 }}>{parsed.text || "—"}</p>;
-            })()}
-          </div>
-          <div className="glass" style={{ padding: 14 }}>
             <div className="muted" style={{ fontSize: 12 }}>Follow-up needed?</div>
             <div style={{ fontSize: 16, marginTop: 6 }}>
               {request.needsFollowup ? "Yes" : "No"}
@@ -119,23 +103,20 @@ export function RequestDrawer({ request, onClose }: Props) {
         </div>
 
         <div className="glass" style={{ padding: 14, marginTop: 14 }}>
-          <div className="muted" style={{ fontSize: 12 }}>Raw text</div>
-          <pre
-            style={{
-              marginTop: 8,
-              whiteSpace: "pre-wrap",
-              fontFamily: "var(--mono)",
-              fontSize: 13,
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              padding: 12,
-              background: "rgba(0,0,0,0.03)",
-              maxHeight: 280,
-              overflow: "auto",
-            }}
-          >
-            {request.text ?? ""}
-          </pre>
+          <div className="muted" style={{ fontSize: 12 }}>Summary</div>
+          {(() => {
+            const parsed = parseSummary(request.summary);
+            if (parsed.kind === "list") {
+              return (
+                <ul style={{ margin: "10px 0 0 12px", padding: 0, display: "grid", gap: 6 }}>
+                  {parsed.items.map((item, idx) => (
+                    <li key={idx} style={{ lineHeight: 1.5 }}>{item}</li>
+                  ))}
+                </ul>
+              );
+            }
+            return <p style={{ marginTop: 6, lineHeight: 1.6 }}>{parsed.text || "—"}</p>;
+          })()}
         </div>
       </div>
     </div>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 768 768" role="img" aria-label="Lazada logo">
+  <defs>
+    <linearGradient id="bg" x1="0%" x2="0%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#3559ff" />
+      <stop offset="100%" stop-color="#0b1e7a" />
+    </linearGradient>
+    <linearGradient id="heart" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff8b1f" />
+      <stop offset="45%" stop-color="#ff3d59" />
+      <stop offset="100%" stop-color="#c02bff" />
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="704" height="704" rx="140" fill="url(#bg)" />
+  <path d="M384 192 520 252c14 6 24 20 24 35v178c0 15-9 29-24 35l-136 60-136-60c-15-6-24-20-24-35V287c0-15 9-29 24-35l136-60Z" fill="url(#heart)" />
+  <path d="M308 384c0-52 32-88 80-88 27 0 49 11 63 30l-24 16c-8-12-20-18-39-18-29 0-48 21-48 60s19 60 48 60c17 0 29-7 39-19l24 17c-14 20-36 31-63 31-48 0-80-36-80-89Z" fill="#fff" />
+</svg>
