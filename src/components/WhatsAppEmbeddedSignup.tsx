@@ -19,6 +19,7 @@ const FB_APP_ID = process.env.NEXT_PUBLIC_FB_APP_ID || "3048147058702810";
 const FB_EMBEDDED_SIGNUP_CONFIG_ID = process.env.NEXT_PUBLIC_FB_EMBEDDED_SIGNUP_CONFIG_ID || "2342508846172693";
 
 type WhatsAppEmbeddedSignupButtonProps = {
+  email?: string;
   onConnected?: () => void;
   label?: string;
   syncedLabel?: string;
@@ -26,7 +27,11 @@ type WhatsAppEmbeddedSignupButtonProps = {
   style?: React.CSSProperties;
 };
 
-export function WhatsAppEmbeddedSignupButton({ onConnected, label, syncedLabel, className, style }: WhatsAppEmbeddedSignupButtonProps = {}) {
+type SyncResponse =
+  | { ok: true; stored: boolean; setupComplete: boolean; message?: string }
+  | { ok: false; error: string; code?: string };
+
+export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, syncedLabel, className, style }: WhatsAppEmbeddedSignupButtonProps = {}) {
   const [sdkReady, setSdkReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -113,19 +118,33 @@ export function WhatsAppEmbeddedSignupButton({ onConnected, label, syncedLabel, 
           code: codeRef.current,
           wabaId: idsRef.current.wabaId,
           phoneNumberId: idsRef.current.phoneNumberId,
+          email,
         }),
       });
-      if (!res.ok) throw new Error(`Server responded ${res.status}`);
-      setStatus("WhatsApp connected. We’ll finish setup in the background.");
-      setConnected(true);
-      onConnected?.();
+      const payload = (await res.json().catch(() => null)) as SyncResponse | null;
+      if (!res.ok) {
+        const errMsg = payload && "error" in payload ? payload.error : `Server responded ${res.status}`;
+        throw new Error(errMsg);
+      }
+      if (!payload || payload.ok !== true) {
+        throw new Error("Unexpected server response");
+      }
+
+      if (payload.setupComplete) {
+        setStatus("WhatsApp synced. Setup complete.");
+        setConnected(true);
+        onConnected?.();
+      } else {
+        setStatus(payload.message || "WhatsApp linked, but setup is still pending on the server.");
+        setConnected(false);
+      }
     } catch (err: any) {
       setStatus(`Failed to complete setup: ${err?.message || String(err)}`);
       setConnected(false);
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [email, onConnected]);
 
   const launchWhatsAppSignup = useCallback(() => {
     if (!window.FB) return;

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
+import { getFirebaseAuth } from "@/lib/firebaseClient";
 
 type CardKey = "whatsapp" | "telegram" | "shopee" | "lazada" | "tiktok" | "instagram";
 
@@ -30,6 +31,7 @@ const cards: Card[] = [
 type SyncState = Record<CardKey, "idle" | "synced">;
 
 export default function SyncPage() {
+  const [email, setEmail] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<SyncState>({
     whatsapp: "idle",
     telegram: "idle",
@@ -40,6 +42,15 @@ export default function SyncPage() {
   });
 
   const markSynced = (key: CardKey) => setSyncState((s) => ({ ...s, [key]: "synced" }));
+
+  useEffect(() => {
+    try {
+      const auth = getFirebaseAuth();
+      setEmail(auth.currentUser?.email ?? null);
+    } catch {
+      setEmail(null);
+    }
+  }, []);
 
   const buttonBase = useMemo(() => ({
     height: 32,
@@ -142,6 +153,7 @@ export default function SyncPage() {
             if (card.key === "whatsapp") {
               return (
                 <WhatsAppEmbeddedSignupButton
+                  email={email ?? undefined}
                   onConnected={() => markSynced("whatsapp")}
                   label="Sync"
                   syncedLabel="Synced"

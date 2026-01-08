@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import { db } from "@/server/db/client";
+import { users, whatsappIdentities } from "../../../../../../drizzle/schema";
+import { eq } from "drizzle-orm";
+import { generateSixDigitPin } from "@/server/meta/crypto";
+import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
 
 // This endpoint receives the authorization code from Facebook Embedded Signup
 // along with the WhatsApp Business Account (WABA) ID and Phone Number ID.
@@ -10,22 +15,223 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { code, wabaId, phoneNumberId } = (await req.json()) as {
+    const { code, wabaId, phoneNumberId, email, wabaCurrency } = (await req.json()) as {
       code?: string;
       wabaId?: string;
       phoneNumberId?: string;
+      email?: string;
+      wabaCurrency?: string;
     };
+
     if (!code || !wabaId || !phoneNumberId) {
-      return NextResponse.json({ error: "Missing code, wabaId or phoneNumberId" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Missing code, wabaId or phoneNumberId" }, { status: 400 });
     }
 
-    // For now, just log and acknowledge. Replace with real integration.
-    console.log("[WhatsApp Sync] Received:", { wabaId, phoneNumberId, code: code.slice(0, 6) + "…" });
+    if (!email) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Missing user email (required to attach this WhatsApp identity to a business)",
+          code: "MISSING_EMAIL",
+        },
+        { status: 400 },
+      );
+    }
 
-    // Placeholder response
-    return NextResponse.json({ ok: true });
+    const user = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .then((r) => r[0] ?? null);
+    if (!user) {
+      return NextResponse.json({ ok: false, error: "User not found" }, { status: 404 });
+    }
+
+    const metaAppId = process.env.META_APP_ID;
+    const metaAppSecret = process.env.META_APP_SECRET;
+    const metaGraphApiVersion = process.env.META_GRAPH_API_VERSION ?? "v24.0";
+    const metaExtendedCreditLineId = process.env.META_EXTENDED_CREDIT_LINE_ID;
+    const metaSystemUserToken = process.env.META_SYSTEM_USER_TOKEN;
+    if (!metaAppId || !metaAppSecret) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Server missing META_APP_ID or META_APP_SECRET",
+          code: "MISSING_META_APP_CONFIG",
+        },
+        { status: 500 },
+      );
+    }
+
+    // Step 1: Exchange the token code for a customer business token.
+    // Tech Provider doc: GET /oauth/access_token with client_id, client_secret, code
+    const tokenRes = await graphJson<any>({
+      endpoint: graphEndpoint(metaGraphApiVersion, "/oauth/access_token"),
+      method: "GET",
+      query: {
+        client_id: metaAppId,
+        client_secret: metaAppSecret,
+        code,
+      },
+    });
+
+    const businessToken: string | undefined =
+      typeof tokenRes === "string"
+        ? tokenRes
+        : typeof tokenRes === "object" && tokenRes && typeof tokenRes.access_token === "string"
+          ? tokenRes.access_token
+          : undefined;
+
+    if (!businessToken) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Meta token exchange succeeded but no access token was returned",
+          code: "TOKEN_EXCHANGE_NO_TOKEN",
+        },
+        { status: 502 },
+      );
+    }
+
+    // Step 2: Subscribe to webhooks on the customer's WABA.
+    const subscribed = await graphJson<{ success?: boolean } | { success: true }>({
+      endpoint: graphEndpoint(metaGraphApiVersion, `/${wabaId}/subscribed_apps`),
+      method: "POST",
+      accessToken: businessToken,
+    });
+
+    // Step 3 (Solution Partner): Share your credit line with the customer.
+    if (!metaExtendedCreditLineId || !metaSystemUserToken) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Missing META_EXTENDED_CREDIT_LINE_ID or META_SYSTEM_USER_TOKEN (required for Solution Partner credit line sharing)",
+          code: "MISSING_CREDIT_LINE_CONFIG",
+        },
+        { status: 500 },
+      );
+    }
+
+    const currency = (wabaCurrency ?? process.env.META_DEFAULT_WABA_CURRENCY ?? "USD").toUpperCase();
+
+    const creditShareRes = await graphJson<{ allocation_config_id?: string; waba_id?: string }>({
+      endpoint: graphEndpoint(metaGraphApiVersion, `/${metaExtendedCreditLineId}/whatsapp_credit_sharing_and_attach`),
+      method: "POST",
+      accessToken: metaSystemUserToken,
+      query: {
+        waba_currency: currency,
+        waba_id: wabaId,
+      },
+    });
+
+    // Step 4: Register the customer's phone number.
+    const desiredPin = generateSixDigitPin();
+    const registered = await graphJson<{ success?: boolean } | { success: true }>({
+      endpoint: graphEndpoint(metaGraphApiVersion, `/${phoneNumberId}/register`),
+      method: "POST",
+      accessToken: businessToken,
+      json: {
+        messaging_product: "whatsapp",
+        pin: desiredPin,
+      },
+    });
+
+    const now = new Date();
+
+    // Persist the identity for routing + webhooks. Storing token and PIN in plaintext per user request.
+    // NOTE: this does NOT mean Cloud API registration/webhook subscription is complete.
+    await db
+      .insert(whatsappIdentities)
+      .values({
+        phoneNumberId,
+        businessId: user.businessId,
+        connectedByUserId: user.id,
+        wabaId,
+        businessToken: businessToken,
+
+        twoStepPin: desiredPin,
+
+        webhookSubscribedAt: now,
+        creditLineSharedAt: now,
+        creditLineAllocationConfigId: creditShareRes.allocation_config_id ?? null,
+        wabaCurrency: currency,
+        registeredAt: now,
+
+        isActive: true,
+        connectedAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: whatsappIdentities.phoneNumberId,
+        set: {
+          businessId: user.businessId,
+          connectedByUserId: user.id,
+          wabaId,
+
+          businessToken: businessToken,
+
+          twoStepPin: desiredPin,
+
+          webhookSubscribedAt: now,
+          creditLineSharedAt: now,
+          creditLineAllocationConfigId: creditShareRes.allocation_config_id ?? null,
+          wabaCurrency: currency,
+          registeredAt: now,
+
+          isActive: true,
+          connectedAt: now,
+          disconnectedAt: null,
+          updatedAt: now,
+        },
+      });
+
+    await db
+      .update(users)
+      .set({ whatsappConnected: true, updatedAt: new Date() })
+      .where(eq(users.id, user.id));
+
+    console.log("[WhatsApp Sync] Linked identity:", {
+      businessId: user.businessId,
+      wabaId,
+      phoneNumberId,
+      code: code.slice(0, 6) + "…",
+      subscribed,
+      creditShareRes,
+      registered,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      stored: true,
+      setupComplete: true,
+      message:
+        "WhatsApp onboarded (token exchanged, webhooks subscribed, credit line shared, phone registered).",
+    });
   } catch (err: any) {
+    if (err instanceof MetaGraphError) {
+      console.error("[WhatsApp Sync] Meta Graph error:", {
+        status: err.status,
+        endpoint: err.endpoint,
+        message: err.message,
+        graphError: err.graphError,
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: err.message,
+          code: "META_GRAPH_ERROR",
+          meta: {
+            status: err.status,
+            endpoint: err.endpoint,
+            ...err.graphError,
+          },
+        },
+        { status: 502 },
+      );
+    }
+
     console.error("[WhatsApp Sync] Error:", err);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Internal error" }, { status: 500 });
   }
 }

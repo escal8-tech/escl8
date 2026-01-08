@@ -115,6 +115,21 @@ export const whatsappIdentities = pgTable(
     wabaId: text("waba_id"),
     displayPhoneNumber: text("display_phone_number"),
 
+    // Customer-scoped business token (Business Integration System User token)
+    // Stored in plaintext on this column for simple retrieval. WARNING: less secure.
+    businessToken: text("business_token"),
+
+    // Phone number two-step verification PIN used for /register (plaintext).
+    twoStepPin: text("two_step_pin"),
+
+    webhookSubscribedAt: timestamp("webhook_subscribed_at", { withTimezone: true }),
+    registeredAt: timestamp("registered_at", { withTimezone: true }),
+
+    // Solution Partner: credit line sharing state
+    creditLineSharedAt: timestamp("credit_line_shared_at", { withTimezone: true }),
+    creditLineAllocationConfigId: text("credit_line_allocation_config_id"),
+    wabaCurrency: text("waba_currency"),
+
     isActive: boolean("is_active").notNull().default(true),
     connectedAt: timestamp("connected_at", { withTimezone: true }),
     disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
