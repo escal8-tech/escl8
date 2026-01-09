@@ -17,10 +17,14 @@ export default function SignupPage() {
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged?.((u) => {
-      if (u) router.replace("/portal/upload");
+      // If a user is already logged in and we're not mid-signup,
+      // redirect away from the signup page.
+      // Important: during signup, Firebase signs in immediately after account creation;
+      // redirecting here can interrupt the DB upsert that persists phone_number.
+      if (u && !busy) router.replace("/portal/upload");
     });
     return () => { if (typeof unsub === "function") unsub(); };
-  }, [auth, router]);
+  }, [auth, router, busy]);
 
   const handleSubmit = async ({ email, password, phoneNumber }: { email: string; password: string; phoneNumber: string }) => {
     setError(null);

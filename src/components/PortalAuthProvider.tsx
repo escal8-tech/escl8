@@ -4,12 +4,14 @@ import { ReactNode, useEffect, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { useRouter } from "next/navigation";
+import { trpc } from "@/utils/trpc";
 
 type Props = { children: ReactNode };
 
 export default function PortalAuthProvider({ children }: Props) {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const router = useRouter();
+  const { mutateAsync: ensureUser } = trpc.user.ensure.useMutation();
 
   useEffect(() => {
     let timeout: any;
@@ -35,8 +37,25 @@ export default function PortalAuthProvider({ children }: Props) {
   useEffect(() => {
     if (user === null) {
       router.replace("/portal");
+      return;
     }
-  }, [user, router]);
+    if (!user) return;
+
+    // Ensure there's a corresponding DB user row.
+    (async () => {
+      try {
+        const email = user.email;
+        if (email) {
+          await ensureUser({
+            email,
+            phoneNumber: user.phoneNumber ?? undefined,
+          });
+        }
+      } catch {
+        // If the DB sync fails, do not block portal navigation; downstream pages can surface errors.
+      }
+    })();
+  }, [user, router, ensureUser]);
 
   if (user === undefined) {
     return (
