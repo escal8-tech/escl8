@@ -7,6 +7,7 @@ import { DocumentCard } from "./components/DocumentCard";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { RetrainMessage } from "./components/RetrainMessage";
 import { DocSlot, DocType, ExistingMap } from "./types";
+import { trpc } from "@/utils/trpc";
 
 const DOC_SLOTS: DocSlot[] = [
   {
@@ -49,6 +50,8 @@ function UploadContent() {
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [retrainBusy, setRetrainBusy] = useState<DocType | null>(null);
   const [retrainMsg, setRetrainMsg] = useState<string | null>(null);
+
+  const retrainMutation = trpc.rag.enqueueRetrain.useMutation();
 
   useEffect(() => {
     try {
@@ -99,14 +102,9 @@ function UploadContent() {
     setRetrainMsg(null);
     setError(null);
     try {
-      const res = await fetch("/api/rag/retrain", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ docType }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Retrain failed");
-      setRetrainMsg(json.message || `Retrained ${docType}`);
+      if (!userEmail) throw new Error("Missing user email");
+      const json = await retrainMutation.mutateAsync({ email: userEmail, docType });
+      setRetrainMsg(`Queued retrain for ${docType} (job ${json.jobId})`);
     } catch (e: any) {
       setError(e?.message || "Retrain failed");
     } finally {

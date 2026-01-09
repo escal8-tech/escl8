@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { readdir, stat } from "fs/promises";
-import path from "path";
 import { db } from "@/server/db/client";
-import { users } from "@/../drizzle/schema";
+import { trainingDocuments, users } from "@/../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { storeFile } from "@/lib/storage";
 
@@ -17,40 +15,28 @@ const ALLOWED_MIME = new Set([
   "text/csv",
 ]);
 
-function safeName(name: string) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
-
-function rootDir() {
-  return path.join(process.cwd(), "uploads");
-}
-
 async function listCurrent(businessId: string) {
-  const base = path.join(rootDir(), businessId);
   const out: Record<DocType, { name: string; size: number } | null> = {
     considerations: null,
     conversations: null,
     inventory: null,
     bank: null,
     address: null,
-  } as any;
-  for (const key of Object.keys(out) as DocType[]) {
-    const dir = path.join(base, key);
-    try {
-      const files = await readdir(dir);
-      // choose the latest by mtime
-      let best: { name: string; size: number; mtimeMs: number } | null = null;
-      for (const f of files) {
-        const fp = path.join(dir, f);
-        const st = await stat(fp);
-        if (st.isFile()) {
-          const rec = { name: f, size: st.size, mtimeMs: st.mtimeMs };
-          if (!best || rec.mtimeMs > best.mtimeMs) best = rec;
-        }
-      }
-      out[key] = best ? { name: best.name, size: best.size } : null;
-    } catch {}
+  };
+
+  const rows = await db
+    .select()
+    .from(trainingDocuments)
+    .where(eq(trainingDocuments.businessId, businessId));
+
+  for (const row of rows) {
+    const dt = row.docType as DocType;
+    if (!dt || !(dt in out)) continue;
+    const name = row.originalFilename || row.blobPath.split("/").slice(-1)[0] || "latest";
+    const size = Number(row.sizeBytes ?? 0);
+    out[dt] = { name, size };
   }
+
   return out;
 }
 
@@ -104,14 +90,42 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Unsupported file type: ${mime}` }, { status: 415 });
     }
 
-    // Storage is handled by storeFile (Azure/local). No need to prepare local dirs here.
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+    const stored = await storeFile(businessId, docType, file.name, buffer, file.type || undefined);
 
-      const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      const stored = await storeFile(businessId, docType, file.name, buffer);
-  const latest = await listCurrent(businessId);
-      // Prefer just-uploaded file if listing doesn't reflect azure immediately
-      return NextResponse.json({ ok: true, file: latest[docType] || stored });
+    const now = new Date();
+    await db
+      .insert(trainingDocuments)
+      .values({
+        businessId,
+        docType,
+        blobPath: stored.blobPath,
+        blobUrl: stored.url,
+        originalFilename: file.name,
+        contentType: stored.contentType ?? file.type ?? null,
+        sizeBytes: stored.size,
+        indexingStatus: "not_indexed",
+        uploadedAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [trainingDocuments.businessId, trainingDocuments.docType],
+        set: {
+          blobPath: stored.blobPath,
+          blobUrl: stored.url,
+          originalFilename: file.name,
+          contentType: stored.contentType ?? file.type ?? null,
+          sizeBytes: stored.size,
+          indexingStatus: "not_indexed",
+          lastError: null,
+          updatedAt: now,
+          uploadedAt: now,
+        },
+      });
+
+    const latest = await listCurrent(businessId);
+    return NextResponse.json({ ok: true, file: latest[docType] ?? { name: file.name, size: stored.size } });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "Upload failed" }, { status: 500 });
   }

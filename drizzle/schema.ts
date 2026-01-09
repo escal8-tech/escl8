@@ -343,3 +343,88 @@ export type NewBooking = typeof bookings.$inferInsert;
 
 export type RequestRow = typeof requests.$inferSelect;
 export type NewRequest = typeof requests.$inferInsert;
+
+// ==========================
+// RAG / Training Documents
+// ==========================
+
+export const trainingDocuments = pgTable(
+  "training_documents",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
+
+    // One of the 5 portal doc slots
+    docType: text("doc_type").notNull(),
+
+    // Blob storage pointer (Azure)
+    blobPath: text("blob_path").notNull(),
+    blobUrl: text("blob_url"),
+
+    originalFilename: text("original_filename").notNull(),
+    contentType: text("content_type"),
+    sizeBytes: integer("size_bytes"),
+    sha256Hex: text("sha256_hex"),
+
+    // Indexing lifecycle
+    indexingStatus: text("indexing_status").notNull().default("not_indexed"),
+    lastIndexedAt: timestamp("last_indexed_at", { withTimezone: true }),
+    lastError: text("last_error"),
+
+    uploadedByUserId: text("uploaded_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    trainingDocsBizIdx: index("training_documents_business_id_idx").on(t.businessId),
+    trainingDocsBizTypeUx: uniqueIndex("training_documents_business_doc_type_ux").on(t.businessId, t.docType),
+  }),
+);
+
+export const ragJobs = pgTable(
+  "rag_jobs",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
+
+    docType: text("doc_type").notNull(),
+    trainingDocumentId: text("training_document_id").references(() => trainingDocuments.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+
+    status: text("status").notNull().default("queued"),
+    attempts: integer("attempts").notNull().default(0),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    error: text("error"),
+  },
+  (t) => ({
+    ragJobsBizIdx: index("rag_jobs_business_id_idx").on(t.businessId),
+    ragJobsStatusIdx: index("rag_jobs_status_idx").on(t.status),
+    ragJobsCreatedIdx: index("rag_jobs_created_at_idx").on(t.createdAt),
+  }),
+);
+
+export type TrainingDocumentRow = typeof trainingDocuments.$inferSelect;
+export type NewTrainingDocument = typeof trainingDocuments.$inferInsert;
+
+export type RagJobRow = typeof ragJobs.$inferSelect;
+export type NewRagJob = typeof ragJobs.$inferInsert;
