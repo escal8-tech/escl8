@@ -28,17 +28,32 @@ async function claimNextJob(): Promise<RagJobRow | null> {
         attempts = COALESCE(j.attempts, 0) + 1
     FROM next_job
     WHERE j.id = next_job.id
-    RETURNING j.*;
+    RETURNING
+      j.id as "id",
+      j.business_id as "businessId",
+      j.doc_type as "docType",
+      j.training_document_id as "trainingDocumentId",
+      j.status as "status",
+      j.attempts as "attempts",
+      j.created_at as "createdAt",
+      j.started_at as "startedAt",
+      j.finished_at as "finishedAt",
+      j.error as "error";
   `);
 
   // drizzle returns { rows } on node-postgres driver
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows = (res as any).rows as RagJobRow[] | undefined;
-  return rows?.[0] ?? null;
+  const job = rows?.[0] ?? null;
+  if (job) {
+    console.log(`[rag-worker] claimed job=${job.id} businessId=${job.businessId} docType=${job.docType} attempts=${job.attempts}`);
+  }
+  return job;
 }
 
 async function processJob(job: RagJobRow) {
   const docType = job.docType as string;
+  console.log(`[rag-worker] start job=${job.id} businessId=${job.businessId} docType=${docType}`);
 
   const doc = job.trainingDocumentId
     ? await db
@@ -88,11 +103,12 @@ async function processJob(job: RagJobRow) {
     .set({ status: "succeeded", finishedAt: new Date(), error: null })
     .where(eq(ragJobs.id, job.id));
 
-  console.log(`[rag-worker] Indexed businessId=${job.businessId} docType=${docType} chunks=${res.chunkCount}`);
+  console.log(`[rag-worker] done job=${job.id} businessId=${job.businessId} docType=${docType} chunks=${res.chunkCount}`);
 }
 
 async function failJob(job: RagJobRow, err: unknown) {
   const msg = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? err.stack : undefined;
   await db
     .update(ragJobs)
     .set({ status: "failed", finishedAt: new Date(), error: msg })
@@ -103,9 +119,15 @@ async function failJob(job: RagJobRow, err: unknown) {
       .update(trainingDocuments)
       .set({ indexingStatus: "failed", updatedAt: new Date(), lastError: msg })
       .where(eq(trainingDocuments.id, job.trainingDocumentId));
+  } else if (job.businessId && job.docType) {
+    await db
+      .update(trainingDocuments)
+      .set({ indexingStatus: "failed", updatedAt: new Date(), lastError: msg })
+      .where(and(eq(trainingDocuments.businessId, job.businessId), eq(trainingDocuments.docType, job.docType)));
   }
 
   console.error(`[rag-worker] Failed job=${job.id}: ${msg}`);
+  if (stack) console.error(stack);
 }
 
 async function main() {

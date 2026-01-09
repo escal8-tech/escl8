@@ -20,8 +20,10 @@ function getAzure() {
 export async function downloadBlobToBuffer(blobPath: string): Promise<BlobObject> {
   const { container } = getAzure();
   const blob = container.getBlobClient(blobPath);
+  console.log(`[rag:blob] download blobPath=${blobPath}`);
   const buf = await blob.downloadToBuffer();
   const props = await blob.getProperties();
+  console.log(`[rag:blob] downloaded bytes=${buf.length} contentType=${props.contentType || "unknown"}`);
   return {
     blobPath,
     buffer: buf,

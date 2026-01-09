@@ -8,6 +8,7 @@ import { ErrorBanner } from "./components/ErrorBanner";
 import { RetrainMessage } from "./components/RetrainMessage";
 import { DocSlot, DocType, ExistingMap } from "./types";
 import { trpc } from "@/utils/trpc";
+import { useToast } from "@/components/ToastProvider";
 
 const DOC_SLOTS: DocSlot[] = [
   {
@@ -50,8 +51,10 @@ function UploadContent() {
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [retrainBusy, setRetrainBusy] = useState<DocType | null>(null);
   const [retrainMsg, setRetrainMsg] = useState<string | null>(null);
+  const toast = useToast();
 
   const retrainMutation = trpc.rag.enqueueRetrain.useMutation();
+  const pollingRef = useState(() => new Map<DocType, number>())[0];
 
   useEffect(() => {
     try {
@@ -76,6 +79,11 @@ function UploadContent() {
     };
 
     fetchExisting();
+
+    return () => {
+      for (const id of pollingRef.values()) window.clearInterval(id);
+      pollingRef.clear();
+    };
   }, [userEmail]);
 
   const onUpload = async (docType: DocType, file: File | null) => {
@@ -101,12 +109,84 @@ function UploadContent() {
     setRetrainBusy(docType);
     setRetrainMsg(null);
     setError(null);
+
+    // Clear any existing poller for this slot.
+    const existingPoll = pollingRef.get(docType);
+    if (existingPoll) {
+      window.clearInterval(existingPoll);
+      pollingRef.delete(docType);
+    }
+
+    // Optimistically mark as queued in UI.
+    setExisting((prev) => {
+      const cur = prev[docType];
+      if (!cur) return prev;
+      return { ...prev, [docType]: { ...cur, indexingStatus: "queued", lastError: null } };
+    });
+
+    const toastId = toast.show({
+      type: "progress",
+      title: "Training started",
+      message: `Queued retrain for ${docType}…`,
+    });
+
     try {
       if (!userEmail) throw new Error("Missing user email");
       const json = await retrainMutation.mutateAsync({ email: userEmail, docType });
       setRetrainMsg(`Queued retrain for ${docType} (job ${json.jobId})`);
+
+      // Poll doc status via /api/upload/docs until indexed/failed.
+      const pollId = window.setInterval(async () => {
+        try {
+          const res = await fetch(`/api/upload/docs`, {
+            headers: userEmail ? { "x-user-email": userEmail } : undefined,
+          });
+          const body = await res.json();
+          if (!res.ok) return;
+
+          const next: ExistingMap = body.files || {};
+          setExisting(next);
+
+          const s = (next?.[docType]?.indexingStatus || "").toLowerCase();
+          if (s === "indexed") {
+            toast.update(toastId, {
+              type: "success",
+              title: "Training complete",
+              message: `${docType} trained successfully.`,
+              durationMs: 3500,
+            });
+            window.clearInterval(pollId);
+            pollingRef.delete(docType);
+          } else if (s === "failed") {
+            toast.update(toastId, {
+              type: "error",
+              title: "Training failed",
+              message: next?.[docType]?.lastError || `${docType} training failed. Check logs.`,
+              durationMs: 7000,
+            });
+            window.clearInterval(pollId);
+            pollingRef.delete(docType);
+          } else {
+            toast.update(toastId, {
+              type: "progress",
+              title: "Training in progress",
+              message: `Status: ${s || "queued"} (${docType})`,
+            });
+          }
+        } catch {
+          // ignore transient polling errors
+        }
+      }, 1500);
+
+      pollingRef.set(docType, pollId);
     } catch (e: any) {
       setError(e?.message || "Retrain failed");
+      toast.update(toastId, {
+        type: "error",
+        title: "Unable to start training",
+        message: e?.message || "Retrain failed",
+        durationMs: 7000,
+      });
     } finally {
       setRetrainBusy(null);
     }

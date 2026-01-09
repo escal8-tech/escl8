@@ -3,6 +3,7 @@ import { Figtree } from "next/font/google";
 import TopNavSwitcher from "../components/TopNavSwitcher";
 import FooterSwitcher from "@/components/FooterSwitcher";
 import { TRPCProvider } from "@/utils/trpc";
+import { ToastProvider } from "@/components/ToastProvider";
 import "./globals.css";
 
 const figtree = Figtree({
@@ -28,9 +29,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${figtree.variable}`}>
         <TRPCProvider>
-          <TopNavSwitcher />
-          <main className="site-main">{children}</main>
-          <FooterSwitcher />
+          <ToastProvider>
+            <TopNavSwitcher />
+            <main className="site-main">{children}</main>
+            <FooterSwitcher />
+          </ToastProvider>
         </TRPCProvider>
       </body>
     </html>

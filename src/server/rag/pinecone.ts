@@ -11,6 +11,7 @@ export function getPineconeIndex() {
   if (!apiKey) throw new Error("Missing PINECONE_API_KEY");
   if (!indexName) throw new Error("Missing PINECONE_INDEX_NAME");
 
+  console.log(`[rag:pinecone] using index=${indexName}`);
   const pc = new Pinecone({ apiKey });
   return pc.index(indexName);
 }

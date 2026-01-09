@@ -11,6 +11,7 @@ export const ragRouter = router({
   enqueueRetrain: publicProcedure
     .input(z.object({ email: z.string().email(), docType: docTypeSchema }))
     .mutation(async ({ input }) => {
+      console.log(`[rag] enqueueRetrain requested email=${input.email} docType=${input.docType}`);
       const user = await db.select().from(users).where(eq(users.email, input.email)).then((r) => r[0] ?? null);
       if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
 
@@ -36,6 +37,8 @@ export const ragRouter = router({
           createdAt: now,
         })
         .returning();
+
+      console.log(`[rag] queued job=${job.id} businessId=${user.businessId} docType=${input.docType} trainingDocumentId=${doc.id}`);
 
       await db
         .update(trainingDocuments)

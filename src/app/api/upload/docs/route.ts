@@ -16,7 +16,14 @@ const ALLOWED_MIME = new Set([
 ]);
 
 async function listCurrent(businessId: string) {
-  const out: Record<DocType, { name: string; size: number } | null> = {
+  const out: Record<DocType, {
+    name: string;
+    size: number;
+    indexingStatus: string;
+    lastIndexedAt: string | null;
+    lastError: string | null;
+    uploadedAt: string | null;
+  } | null> = {
     considerations: null,
     conversations: null,
     inventory: null,
@@ -34,7 +41,14 @@ async function listCurrent(businessId: string) {
     if (!dt || !(dt in out)) continue;
     const name = row.originalFilename || row.blobPath.split("/").slice(-1)[0] || "latest";
     const size = Number(row.sizeBytes ?? 0);
-    out[dt] = { name, size };
+    out[dt] = {
+      name,
+      size,
+      indexingStatus: String(row.indexingStatus ?? "not_indexed"),
+      lastIndexedAt: row.lastIndexedAt ? new Date(row.lastIndexedAt as any).toISOString() : null,
+      lastError: (row.lastError as any) ?? null,
+      uploadedAt: row.uploadedAt ? new Date(row.uploadedAt as any).toISOString() : null,
+    };
   }
 
   return out;

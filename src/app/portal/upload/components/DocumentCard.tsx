@@ -5,7 +5,7 @@ import { DocSlot } from "../types";
 
 type Props = {
   slot: DocSlot;
-  current: { name: string; size: number } | null | undefined;
+  current: { name: string; size: number; indexingStatus?: string; lastError?: string | null } | null | undefined;
   busy: boolean;
   retrainBusy: boolean;
   onUpload: (file: File | null) => void;
@@ -46,6 +46,11 @@ export function DocumentCard({ slot, current, busy, retrainBusy, onUpload, onRet
   const dropBorder = dragActive ? "2px dashed #60a5fa" : "2px dashed var(--border)";
   const dropBg = dragActive ? "rgba(37, 99, 235, 0.06)" : "rgba(255,255,255,0.03)";
 
+  const status = (current?.indexingStatus || "not_indexed").toLowerCase();
+  const isTraining = status === "queued" || status === "indexing" || retrainBusy;
+  const isIndexed = status === "indexed";
+  const canRetrain = Boolean(current) && !disabled && !isIndexed && !isTraining;
+
   return (
     <div className="glass" style={{ padding: 16, borderRadius: 16 }}>
       <h3 style={{ marginBottom: 6 }}>{slot.title}</h3>
@@ -80,6 +85,9 @@ export function DocumentCard({ slot, current, busy, retrainBusy, onUpload, onRet
               <p className="muted" style={{ margin: 0 }}>No file uploaded yet</p>
             )}
           </div>
+          {current?.lastError ? (
+            <p style={{ margin: 0, fontSize: 13, color: "crimson" }}>Last training error: {current.lastError}</p>
+          ) : null}
           {busy && <p className="muted" style={{ margin: 0 }}>Working…</p>}
         </div>
 
@@ -99,14 +107,14 @@ export function DocumentCard({ slot, current, busy, retrainBusy, onUpload, onRet
           <button
             type="button"
             className="btn"
-            disabled={retrainBusy || !current || disabled}
+            disabled={!canRetrain}
             onClick={(e) => {
               e.stopPropagation();
               onRetrain();
             }}
-            style={{ opacity: retrainBusy || !current || disabled ? 0.6 : 1 }}
+            style={{ opacity: !canRetrain ? 0.6 : 1 }}
           >
-            {retrainBusy ? "Retraining…" : "Retrain"}
+            {isTraining ? "Training…" : isIndexed ? "Trained" : "Retrain"}
           </button>
         </div>
       </div>

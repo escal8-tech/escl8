@@ -2,4 +2,13 @@ export type DocType = "considerations" | "conversations" | "inventory" | "bank" 
 
 export type DocSlot = { key: DocType; title: string; hint: string; accept: string };
 
-export type ExistingMap = Partial<Record<DocType, { name: string; size: number } | null>>;
+export type ExistingDoc = {
+	name: string;
+	size: number;
+	indexingStatus?: string;
+	lastIndexedAt?: string | null;
+	lastError?: string | null;
+	uploadedAt?: string | null;
+};
+
+export type ExistingMap = Partial<Record<DocType, ExistingDoc | null>>;
