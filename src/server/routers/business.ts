@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc";
+import { router, businessProcedure, protectedProcedure } from "../trpc";
 import { db } from "../db/client";
 import { businesses, users } from "../../../drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -13,15 +13,18 @@ async function getBusinessByUserEmail(email: string) {
 }
 
 export const businessRouter = router({
-  getMine: publicProcedure
+  getMine: businessProcedure
     .input(z.object({ email: z.string().email() }))
-    .query(async ({ input }) => {
-      const biz = await getBusinessByUserEmail(input.email);
-      if (!biz) return null;
-      return biz;
+    .query(async ({ input, ctx }) => {
+      if (ctx.userEmail && input.email !== ctx.userEmail) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
+      }
+
+      const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId));
+      return biz ?? null;
     }),
 
-  updateBookingConfig: publicProcedure
+  updateBookingConfig: businessProcedure
     .input(z.object({
       email: z.string().email(),
       businessId: z.string().min(1),
@@ -30,7 +33,14 @@ export const businessRouter = router({
       openTime: z.string().regex(/^\d{2}:\d{2}$/),
       closeTime: z.string().regex(/^\d{2}:\d{2}$/),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.userEmail && input.email !== ctx.userEmail) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
+      }
+      if (input.businessId !== ctx.businessId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
+      }
+
       const user = await db.select().from(users).where(eq(users.email, input.email)).then(r => r[0]);
       if (!user) {
         throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc";
+import { router, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { db } from "../db/client";
 import crypto from "crypto";
@@ -20,15 +20,18 @@ function businessNameFromEmail(email: string) {
 }
 
 export const userRouter = router({
-  ensure: publicProcedure
+  ensure: protectedProcedure
     .input(
       z.object({
         email: z.string().email(),
         phoneNumber: z.string().min(5).max(32).optional(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
+        if (ctx.userEmail && input.email !== ctx.userEmail) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
+        }
         const existing = await db.select().from(users).where(eq(users.email, input.email));
         if (existing[0]) {
           if (input.phoneNumber && !existing[0].phoneNumber) {
@@ -75,10 +78,16 @@ export const userRouter = router({
       }
     }),
 
-  getMe: publicProcedure
+  getMe: protectedProcedure
     .input(z.object({ email: z.string().email() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       try {
+        if (!ctx.userEmail) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
+        }
+        if (input.email !== ctx.userEmail) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
+        }
         const rows = await db.select().from(users).where(eq(users.email, input.email));
         return rows[0] ?? null;
       } catch (err: any) {
@@ -94,7 +103,7 @@ export const userRouter = router({
       }
     }),
 
-  upsert: publicProcedure
+  upsert: protectedProcedure
     .input(
       z.object({
         email: z.string().email(),
@@ -103,8 +112,14 @@ export const userRouter = router({
         businessId: z.string().min(1).optional(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
+        if (!ctx.userEmail) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
+        }
+        if (input.email !== ctx.userEmail) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
+        }
         const existing = await db.select().from(users).where(eq(users.email, input.email));
         const whatsappConnected = input.whatsappConnected ?? false;
 

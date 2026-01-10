@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc";
+import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { ragJobs, trainingDocuments, users } from "../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
@@ -8,17 +8,18 @@ import { TRPCError } from "@trpc/server";
 const docTypeSchema = z.enum(["considerations", "conversations", "inventory", "bank", "address"]);
 
 export const ragRouter = router({
-  enqueueRetrain: publicProcedure
+  enqueueRetrain: businessProcedure
     .input(z.object({ email: z.string().email(), docType: docTypeSchema }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.userEmail && input.email !== ctx.userEmail) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
+      }
       console.log(`[rag] enqueueRetrain requested email=${input.email} docType=${input.docType}`);
-      const user = await db.select().from(users).where(eq(users.email, input.email)).then((r) => r[0] ?? null);
-      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
 
       const doc = await db
         .select()
         .from(trainingDocuments)
-        .where(and(eq(trainingDocuments.businessId, user.businessId), eq(trainingDocuments.docType, input.docType)))
+        .where(and(eq(trainingDocuments.businessId, ctx.businessId), eq(trainingDocuments.docType, input.docType)))
         .then((r) => r[0] ?? null);
 
       if (!doc) {
@@ -29,7 +30,7 @@ export const ragRouter = router({
       const [job] = await db
         .insert(ragJobs)
         .values({
-          businessId: user.businessId,
+          businessId: ctx.businessId,
           docType: input.docType,
           trainingDocumentId: doc.id,
           status: "queued",
@@ -38,7 +39,7 @@ export const ragRouter = router({
         })
         .returning();
 
-      console.log(`[rag] queued job=${job.id} businessId=${user.businessId} docType=${input.docType} trainingDocumentId=${doc.id}`);
+      console.log(`[rag] queued job=${job.id} businessId=${ctx.businessId} docType=${input.docType} trainingDocumentId=${doc.id}`);
 
       await db
         .update(trainingDocuments)

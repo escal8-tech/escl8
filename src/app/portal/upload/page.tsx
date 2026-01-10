@@ -66,7 +66,11 @@ function UploadContent() {
     const fetchExisting = async () => {
       try {
         setBusy(true);
-        const res = await fetch(`/api/upload/docs`, { headers: userEmail ? { "x-user-email": userEmail } : undefined });
+        const auth = getFirebaseAuth();
+        const token = await auth.currentUser?.getIdToken();
+        const res = await fetch(`/api/upload/docs`, {
+          headers: token ? { authorization: `Bearer ${token}` } : undefined,
+        });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "Failed to load existing docs");
         setExisting(json.files || {});
@@ -94,7 +98,13 @@ function UploadContent() {
   const form = new FormData();
   form.append("file", file);
   form.append("docType", docType);
-  const res = await fetch("/api/upload/docs", { method: "POST", body: form, headers: userEmail ? { "x-user-email": userEmail } : undefined });
+  const auth = getFirebaseAuth();
+  const token = await auth.currentUser?.getIdToken();
+  const res = await fetch("/api/upload/docs", {
+    method: "POST",
+    body: form,
+    headers: token ? { authorization: `Bearer ${token}` } : undefined,
+  });
   const json = await res.json();
   if (!res.ok) throw new Error(json.error || "Upload failed");
   setExisting((prev) => ({ ...prev, [docType]: json.file }));
@@ -138,8 +148,10 @@ function UploadContent() {
       // Poll doc status via /api/upload/docs until indexed/failed.
       const pollId = window.setInterval(async () => {
         try {
+          const auth = getFirebaseAuth();
+          const token = await auth.currentUser?.getIdToken();
           const res = await fetch(`/api/upload/docs`, {
-            headers: userEmail ? { "x-user-email": userEmail } : undefined,
+            headers: token ? { authorization: `Bearer ${token}` } : undefined,
           });
           const body = await res.json();
           if (!res.ok) return;

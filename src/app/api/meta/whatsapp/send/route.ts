@@ -4,9 +4,22 @@ import { users, whatsappIdentities } from "../../../../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 // decryptSecret removed — prefer plaintext storage
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
+import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 
 export async function POST(req: Request) {
   try {
+    const auth = req.headers.get("authorization") || "";
+    const m = auth.match(/^Bearer\s+(.+)$/i);
+    if (!m) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const decoded = await verifyFirebaseIdToken(m[1]);
+    const authedEmail = decoded.email;
+    if (!authedEmail) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     const { email, phoneNumberId, to, text } = (await req.json()) as {
       email?: string;
       phoneNumberId?: string;
@@ -14,8 +27,8 @@ export async function POST(req: Request) {
       text?: string;
     };
 
-    if (!email) {
-      return NextResponse.json({ ok: false, error: "Missing email" }, { status: 400 });
+    if (email && email !== authedEmail) {
+      return NextResponse.json({ ok: false, error: "Email mismatch" }, { status: 403 });
     }
     if (!phoneNumberId || !to || !text) {
       return NextResponse.json({ ok: false, error: "Missing phoneNumberId, to, or text" }, { status: 400 });
@@ -24,7 +37,7 @@ export async function POST(req: Request) {
     const user = await db
       .select()
       .from(users)
-      .where(eq(users.email, email))
+      .where(eq(users.email, authedEmail))
       .then((r) => r[0] ?? null);
     if (!user) {
       return NextResponse.json({ ok: false, error: "User not found" }, { status: 404 });

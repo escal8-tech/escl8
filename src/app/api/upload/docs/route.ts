@@ -3,6 +3,7 @@ import { db } from "@/server/db/client";
 import { trainingDocuments, users } from "@/../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { storeFile } from "@/lib/storage";
+import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 
 export const dynamic = "force-dynamic";
 
@@ -54,23 +55,28 @@ async function listCurrent(businessId: string) {
   return out;
 }
 
-export async function GET(request: Request) {
-  const email = request.headers.get("x-user-email") || undefined;
-  let businessId: string | null = null;
-  if (email) {
-    try {
-      const rows = await db.select().from(users).where(eq(users.email, email));
-      const user = rows[0];
-      if (user?.businessId) businessId = user.businessId as string;
-    } catch {}
+async function getAuthedBusinessId(request: Request): Promise<string | null> {
+  const auth = request.headers.get("authorization") || "";
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  if (!m) return null;
+
+  try {
+    const decoded = await verifyFirebaseIdToken(m[1]);
+    const email = decoded.email;
+    if (!email) return null;
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return (user?.businessId as string) ?? null;
+  } catch {
+    return null;
   }
-  const files = businessId ? await listCurrent(businessId) : {
-    considerations: null,
-    conversations: null,
-    inventory: null,
-    bank: null,
-    address: null,
-  } as any;
+}
+
+export async function GET(request: Request) {
+  const businessId = await getAuthedBusinessId(request);
+  if (!businessId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const files = await listCurrent(businessId);
   return NextResponse.json({ ok: true, businessId, files });
 }
 
@@ -79,17 +85,9 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get("file");
     const docType = (formData.get("docType") as string) as DocType;
-    const email = request.headers.get("x-user-email") || undefined;
-    let businessId: string | null = null;
-    if (email) {
-      try {
-        const rows = await db.select().from(users).where(eq(users.email, email));
-        const user = rows[0];
-        if (user?.businessId) businessId = user.businessId as string;
-      } catch {}
-    }
+    const businessId = await getAuthedBusinessId(request);
     if (!businessId) {
-      return NextResponse.json({ error: "Business ID not set for user" }, { status: 400 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     if (!file || !(file instanceof File)) {

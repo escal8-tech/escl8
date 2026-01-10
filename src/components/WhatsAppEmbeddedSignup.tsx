@@ -1,5 +1,7 @@
 "use client";
 
+import { getFirebaseAuth } from "@/lib/firebaseClient";
+
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Script from "next/script";
 
@@ -111,9 +113,14 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
     if (!codeRef.current || !idsRef.current) return; // need both pieces first
     sentRef.current = true;
     try {
+      const auth = getFirebaseAuth();
+      const token = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/meta/whatsapp/sync", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           code: codeRef.current,
           wabaId: idsRef.current.wabaId,

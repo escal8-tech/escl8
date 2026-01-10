@@ -1,20 +1,25 @@
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc";
+import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { requests } from "../../../drizzle/schema";
 import { desc, eq } from "drizzle-orm";
 
 export const requestsRouter = router({
-  list: publicProcedure
+  list: businessProcedure
     .input(z.object({ limit: z.number().min(1).max(200).optional() }).optional())
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const limit = input?.limit ?? 50;
-      const rows = await db.select().from(requests).orderBy(desc(requests.createdAt)).limit(limit);
+      const rows = await db
+        .select()
+        .from(requests)
+        .where(eq(requests.businessId, ctx.businessId))
+        .orderBy(desc(requests.createdAt))
+        .limit(limit);
       return rows;
     }),
 
-  stats: publicProcedure.query(async () => {
-    const rows = await db.select().from(requests);
+  stats: businessProcedure.query(async ({ ctx }) => {
+    const rows = await db.select().from(requests).where(eq(requests.businessId, ctx.businessId));
     const bySentiment: Record<string, number> = {};
     const byStatus: Record<string, number> = {
       ONGOING: 0,

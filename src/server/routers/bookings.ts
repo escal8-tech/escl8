@@ -1,20 +1,21 @@
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc";
+import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { bookings } from "../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 
 export const bookingsRouter = router({
-  list: publicProcedure
+  list: businessProcedure
     .input(z.object({ businessId: z.string() }).optional())
-    .query(async ({ input }) => {
-      if (input?.businessId) {
-        return await db.select().from(bookings).where(eq(bookings.businessId, input.businessId));
+    .query(async ({ input, ctx }) => {
+      if (input?.businessId && input.businessId !== ctx.businessId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
       }
-      return await db.select().from(bookings);
+      return await db.select().from(bookings).where(eq(bookings.businessId, ctx.businessId));
     }),
 
-  create: publicProcedure
+  create: businessProcedure
     .input(z.object({
       userId: z.string(),
       businessId: z.string(),
@@ -24,9 +25,9 @@ export const bookingsRouter = router({
       phoneNumber: z.string().optional(),
       notes: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const [row] = await db.insert(bookings).values({
-        businessId: input.businessId,
+        businessId: ctx.businessId,
         userId: input.userId,
         startTime: new Date(input.startTime),
         durationMinutes: input.durationMinutes,
@@ -37,10 +38,13 @@ export const bookingsRouter = router({
       return row;
     }),
 
-  delete: publicProcedure
+  delete: businessProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(async ({ input }) => {
-      const [row] = await db.delete(bookings).where(eq(bookings.id, input.id)).returning();
+    .mutation(async ({ input, ctx }) => {
+      const [row] = await db
+        .delete(bookings)
+        .where(and(eq(bookings.id, input.id), eq(bookings.businessId, ctx.businessId)))
+        .returning();
       return row;
     }),
 });

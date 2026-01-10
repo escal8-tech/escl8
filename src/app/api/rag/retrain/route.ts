@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/server/db/client";
 import { users } from "@/../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 
 export const dynamic = "force-dynamic";
 
@@ -10,18 +11,23 @@ type DocType = "considerations" | "conversations" | "inventory" | "bank" | "addr
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const email = request.headers.get("x-user-email") || undefined;
+
+    const auth = request.headers.get("authorization") || "";
+    const m = auth.match(/^Bearer\s+(.+)$/i);
+    if (!m) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     let businessId: string | null = null;
-    if (email) {
-      try {
+    try {
+      const decoded = await verifyFirebaseIdToken(m[1]);
+      const email = decoded.email;
+      if (email) {
         const rows = await db.select().from(users).where(eq(users.email, email));
         const user = rows[0];
         if (user?.businessId) businessId = user.businessId as string;
-      } catch {}
-    }
-    if (!businessId) {
-      return NextResponse.json({ error: "Business ID not set for user" }, { status: 400 });
-    }
+      }
+    } catch {}
+
+    if (!businessId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const docType = (body.docType as DocType);
     if (!docType || !["considerations","conversations","inventory","bank","address"].includes(docType)) {
       return NextResponse.json({ error: "Invalid docType" }, { status: 400 });

@@ -4,6 +4,7 @@ import { users, whatsappIdentities } from "../../../../../../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { generateSixDigitPin } from "@/server/meta/crypto";
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
+import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 
 // This endpoint receives the authorization code from Facebook Embedded Signup
 // along with the WhatsApp Business Account (WABA) ID and Phone Number ID.
@@ -15,6 +16,18 @@ import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
 
 export async function POST(req: Request) {
   try {
+    const auth = req.headers.get("authorization") || "";
+    const m = auth.match(/^Bearer\s+(.+)$/i);
+    if (!m) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const decoded = await verifyFirebaseIdToken(m[1]);
+    const authedEmail = decoded.email;
+    if (!authedEmail) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     const { code, wabaId, phoneNumberId, email, wabaCurrency } = (await req.json()) as {
       code?: string;
       wabaId?: string;
@@ -27,21 +40,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Missing code, wabaId or phoneNumberId" }, { status: 400 });
     }
 
-    if (!email) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Missing user email (required to attach this WhatsApp identity to a business)",
-          code: "MISSING_EMAIL",
-        },
-        { status: 400 },
-      );
+    if (email && email !== authedEmail) {
+      return NextResponse.json({ ok: false, error: "Email mismatch" }, { status: 403 });
     }
 
     const user = await db
       .select()
       .from(users)
-      .where(eq(users.email, email))
+      .where(eq(users.email, authedEmail))
       .then((r) => r[0] ?? null);
     if (!user) {
       return NextResponse.json({ ok: false, error: "User not found" }, { status: 404 });
