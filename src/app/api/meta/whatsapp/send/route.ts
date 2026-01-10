@@ -7,6 +7,8 @@ import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
 import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 import { checkRateLimit } from "@/server/rateLimit";
 
+export const runtime = "nodejs";
+
 export async function POST(req: Request) {
   try {
     const rl = checkRateLimit(req, {

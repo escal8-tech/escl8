@@ -6,6 +6,7 @@ import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 import { checkRateLimit } from "@/server/rateLimit";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type DocType = "considerations" | "conversations" | "inventory" | "bank" | "address";
 

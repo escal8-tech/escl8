@@ -7,6 +7,8 @@ import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
 import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 import { checkRateLimit } from "@/server/rateLimit";
 
+export const runtime = "nodejs";
+
 // This endpoint receives the authorization code from Facebook Embedded Signup
 // along with the WhatsApp Business Account (WABA) ID and Phone Number ID.
 // TODO: Exchange the code for a System User access token on the server, then

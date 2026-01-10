@@ -7,6 +7,8 @@ import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 import { checkRateLimit } from "@/server/rateLimit";
 import { NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+
 function withExtraHeaders(res: Response, extra: Record<string, string>) {
   const headers = new Headers(res.headers);
   for (const [k, v] of Object.entries(extra)) headers.set(k, v);
