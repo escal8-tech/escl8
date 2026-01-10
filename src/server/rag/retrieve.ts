@@ -251,8 +251,34 @@ function formatContextWithCitations(chunks: RankedChunk[]): { context: string; c
       snippet: chunk.text.slice(0, 100) + (chunk.text.length > 100 ? "..." : ""),
     });
 
+    // Build enriched chunk text with metadata hints
+    let enrichedText = chunk.text;
+    
+    // Add question context for FAQ chunks
+    if (chunk.metadata.question && typeof chunk.metadata.question === 'string' && chunk.metadata.question.length > 0) {
+      enrichedText = `Q: ${chunk.metadata.question}\n${enrichedText}`;
+    }
+    
+    // Add price highlights if available
+    const prices = chunk.metadata.prices;
+    if (prices && typeof prices === 'string' && prices.length > 0) {
+      const priceList = prices.split('|').filter(Boolean).slice(0, 5);
+      if (priceList.length > 0) {
+        enrichedText += `\n[Prices mentioned: ${priceList.join(', ')}]`;
+      }
+    }
+    
+    // Add product context if available
+    const products = chunk.metadata.products;
+    if (products && typeof products === 'string' && products.length > 0) {
+      const productList = products.split('|').filter(Boolean).slice(0, 5);
+      if (productList.length > 0 && !enrichedText.toLowerCase().includes(productList[0].toLowerCase())) {
+        enrichedText += `\n[Products/Services: ${productList.join(', ')}]`;
+      }
+    }
+
     // Format chunk with citation marker
-    contextParts.push(`[${citationNum}] ${chunk.text}`);
+    contextParts.push(`[${citationNum}] ${enrichedText}`);
   }
 
   const context = contextParts.join("\n\n---\n\n");

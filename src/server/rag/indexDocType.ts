@@ -136,15 +136,22 @@ export async function indexSingleDocType(params: {
         metadata: {
           businessId,
           docType,
-          chunkType: chunk.chunkType,                        // NEW: chunk classification
-          headingContext: chunk.headingContext || "",        // NEW: parent heading (empty string if null)
+          chunkType: chunk.chunkType,                        // Chunk classification (pricing, policy, faq, etc.)
+          headingContext: chunk.headingContext || "",        // Parent heading (empty string if null)
           source: blobPath,
           filename,
           chunkIndex: chunk.chunkIndex,
-          charStart: chunk.charStart,                        // NEW: position tracking
+          charStart: chunk.charStart,                        // Position tracking
           charEnd: chunk.charEnd,
-          tokenEstimate: chunk.tokenEstimate,                // NEW: token count
+          tokenEstimate: chunk.tokenEstimate,                // Token count
           text: chunk.text,
+          // Enhanced metadata for enterprise retrieval
+          products: chunk.products.join("|"),                // Products/services (pipe-delimited for Pinecone)
+          keywords: chunk.keywords.join("|"),                // Searchable keywords (pipe-delimited)
+          prices: chunk.prices.join("|"),                    // Price values (pipe-delimited)
+          question: chunk.question || "",                    // FAQ question if applicable
+          contextBefore: chunk.contextBefore,                // Context from previous chunk
+          contextAfter: chunk.contextAfter,                  // Context from next chunk
         },
       };
     });

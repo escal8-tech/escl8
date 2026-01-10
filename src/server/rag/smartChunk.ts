@@ -7,6 +7,8 @@
  * - Optimal chunk sizes (150-350 tokens, ~600-1400 chars)
  * - Chunk type classification for metadata filtering
  * - Preserves context with smart overlap
+ * - Entity extraction (products, prices, keywords)
+ * - FAQ question extraction for HyDE matching
  */
 
 import OpenAI from "openai";
@@ -28,11 +30,168 @@ export interface SmartChunk {
   charStart: number;
   charEnd: number;
   tokenEstimate: number;
+  
+  // NEW: Enhanced metadata for enterprise retrieval
+  products: string[];          // Products/services mentioned
+  keywords: string[];          // Pre-extracted searchable terms
+  prices: string[];            // Extracted price values (e.g., "RM150", "$99")
+  question: string | null;     // For FAQ chunks, the question being answered
+  contextBefore: string;       // Brief context of preceding content
+  contextAfter: string;        // Brief context of following content
 }
 
 // Rough token estimation (1 token ≈ 4 chars for English)
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
+}
+
+/**
+ * Extract price values from text (e.g., "RM150", "$99.99", "£50")
+ */
+function extractPrices(text: string): string[] {
+  const pricePatterns = [
+    /(?:RM|MYR)\s*[\d,]+(?:\.\d{2})?/gi,        // Malaysian Ringgit
+    /\$\s*[\d,]+(?:\.\d{2})?/g,                  // Dollar sign
+    /(?:USD|US\$)\s*[\d,]+(?:\.\d{2})?/gi,      // US Dollar
+    /£\s*[\d,]+(?:\.\d{2})?/g,                   // British Pound
+    /€\s*[\d,]+(?:\.\d{2})?/g,                   // Euro
+    /₹\s*[\d,]+(?:\.\d{2})?/g,                   // Indian Rupee
+    /(?:SGD|S\$)\s*[\d,]+(?:\.\d{2})?/gi,       // Singapore Dollar
+    /[\d,]+(?:\.\d{2})?\s*(?:ringgit|dollars?|pounds?|euros?)/gi, // Written currencies
+  ];
+  
+  const prices: Set<string> = new Set();
+  for (const pattern of pricePatterns) {
+    const matches = text.match(pattern);
+    if (matches) {
+      matches.forEach(m => prices.add(m.trim()));
+    }
+  }
+  return [...prices].slice(0, 20); // Cap at 20 prices per chunk
+}
+
+/**
+ * Extract product/service names from text
+ */
+function extractProducts(text: string, headingContext: string | null): string[] {
+  const products: Set<string> = new Set();
+  
+  // Look for items in lists (often products/services)
+  const listMatches = text.match(/^[-•*]\s+([A-Z][^:\n]{2,50})$/gm);
+  if (listMatches) {
+    listMatches.forEach(m => {
+      const item = m.replace(/^[-•*]\s+/, '').trim();
+      if (item.length >= 3 && item.length <= 50) {
+        products.add(item);
+      }
+    });
+  }
+  
+  // Look for quoted product names
+  const quotedMatches = text.match(/["']([A-Za-z][^"']{2,40})["']/g);
+  if (quotedMatches) {
+    quotedMatches.forEach(m => {
+      const item = m.slice(1, -1).trim();
+      if (item.length >= 3) products.add(item);
+    });
+  }
+  
+  // Look for capitalized phrases (potential product names)
+  const capMatches = text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b/g);
+  if (capMatches) {
+    capMatches.forEach(m => {
+      // Filter out common non-product phrases
+      if (!/^(The |This |That |Our |Your |Please |Thank |Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i.test(m)) {
+        products.add(m);
+      }
+    });
+  }
+  
+  // Include heading context as potential product category
+  if (headingContext && headingContext.length <= 50) {
+    products.add(headingContext);
+  }
+  
+  return [...products].slice(0, 15); // Cap at 15 products per chunk
+}
+
+/**
+ * Extract searchable keywords from text
+ */
+function extractKeywords(text: string): string[] {
+  const keywords: Set<string> = new Set();
+  
+  // Extract significant words (longer words, likely important)
+  const words = text.toLowerCase().match(/\b[a-z]{4,}\b/g) || [];
+  const wordFreq: Record<string, number> = {};
+  
+  // Common stop words to exclude
+  const stopWords = new Set([
+    'this', 'that', 'with', 'from', 'have', 'been', 'were', 'will', 'would',
+    'could', 'should', 'their', 'there', 'which', 'about', 'into', 'more',
+    'other', 'some', 'such', 'than', 'then', 'these', 'they', 'through',
+    'very', 'your', 'also', 'each', 'just', 'like', 'make', 'when', 'only'
+  ]);
+  
+  words.forEach(word => {
+    if (!stopWords.has(word)) {
+      wordFreq[word] = (wordFreq[word] || 0) + 1;
+    }
+  });
+  
+  // Get top keywords by frequency
+  const sortedWords = Object.entries(wordFreq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([word]) => word);
+  
+  sortedWords.forEach(w => keywords.add(w));
+  
+  // Add any technical terms or specific patterns
+  const technicalMatches = text.match(/\b[A-Z]{2,}(?:-\d+)?\b/g); // Acronyms, model numbers
+  if (technicalMatches) {
+    technicalMatches.forEach(m => keywords.add(m.toLowerCase()));
+  }
+  
+  return [...keywords].slice(0, 25); // Cap at 25 keywords
+}
+
+/**
+ * Extract the question from FAQ-style content
+ */
+function extractQuestion(text: string, chunkType: ChunkType): string | null {
+  if (chunkType !== 'faq') return null;
+  
+  // Try various Q&A patterns
+  const patterns = [
+    /^Q:\s*(.+?)(?:\n|$)/im,
+    /^Question:\s*(.+?)(?:\n|$)/im,
+    /^\?\s*(.+?)(?:\n|$)/m,
+    /^(.+\?)\s*(?:\n|A:|Answer:)/im,
+    /^[-•]\s*(.+\?)$/m,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      const question = match[1].trim();
+      if (question.length >= 10 && question.length <= 200) {
+        return question;
+      }
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Get brief context from adjacent segments
+ */
+function getContextSummary(text: string | undefined, maxLength: number = 100): string {
+  if (!text) return "";
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= maxLength) return clean;
+  return clean.slice(0, maxLength - 3) + "...";
 }
 
 // Detect structural boundaries in text
@@ -395,7 +554,7 @@ export function smartChunkText(text: string, opts?: SmartChunkOptions): SmartChu
   
   console.log(`[rag:smartChunk] after merge=${mergedSegments.length}`);
   
-  // Step 4: Convert to SmartChunks with classification
+  // Step 4: Convert to SmartChunks with classification and entity extraction
   const chunks: SmartChunk[] = [];
   
   for (let i = 0; i < mergedSegments.length; i++) {
@@ -412,14 +571,28 @@ export function smartChunkText(text: string, opts?: SmartChunkOptions): SmartChu
       chunkText = `[${seg.headingContext}]\n${chunkText}`;
     }
     
+    const trimmedText = chunkText.trim();
+    const chunkType = classifyChunkType(trimmedText, seg.headingContext);
+    
+    // Get context from adjacent segments
+    const prevSeg = i > 0 ? mergedSegments[i - 1] : null;
+    const nextSeg = i < mergedSegments.length - 1 ? mergedSegments[i + 1] : null;
+    
     chunks.push({
-      text: chunkText.trim(),
-      chunkType: classifyChunkType(chunkText, seg.headingContext),
+      text: trimmedText,
+      chunkType,
       headingContext: seg.headingContext,
       chunkIndex: chunks.length,
       charStart: seg.startIdx,
       charEnd: seg.endIdx,
-      tokenEstimate: estimateTokens(chunkText)
+      tokenEstimate: estimateTokens(trimmedText),
+      // Enhanced metadata for enterprise retrieval
+      products: extractProducts(trimmedText, seg.headingContext),
+      keywords: extractKeywords(trimmedText),
+      prices: extractPrices(trimmedText),
+      question: extractQuestion(trimmedText, chunkType),
+      contextBefore: getContextSummary(prevSeg?.text),
+      contextAfter: getContextSummary(nextSeg?.text),
     });
   }
   
