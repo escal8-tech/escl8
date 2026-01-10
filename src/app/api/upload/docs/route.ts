@@ -4,6 +4,7 @@ import { trainingDocuments, users } from "@/../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { storeFile } from "@/lib/storage";
 import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
+import { checkRateLimit } from "@/server/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,12 @@ const ALLOWED_MIME = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "text/csv",
 ]);
+
+const DEFAULT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
+function maxUploadBytes() {
+  const n = Number(process.env.MAX_UPLOAD_BYTES ?? "");
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_UPLOAD_BYTES;
+}
 
 async function listCurrent(businessId: string) {
   const out: Record<DocType, {
@@ -72,16 +79,54 @@ async function getAuthedBusinessId(request: Request): Promise<string | null> {
 }
 
 export async function GET(request: Request) {
+  // Polling endpoint: allow relatively high volume.
+  const rl = checkRateLimit(request, {
+    name: "upload_docs_get",
+    max: Number(process.env.RATE_LIMIT_UPLOAD_DOCS_GET_MAX ?? "120"),
+    windowMs: Number(process.env.RATE_LIMIT_UPLOAD_DOCS_GET_WINDOW_MS ?? String(60_000)),
+  });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "Too Many Requests" },
+      {
+        status: 429,
+        headers: {
+          ...rl.headers,
+          "retry-after": String(Math.max(1, Math.ceil((rl.resetAtMs - Date.now()) / 1000))),
+        },
+      },
+    );
+  }
+
   const businessId = await getAuthedBusinessId(request);
   if (!businessId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const files = await listCurrent(businessId);
-  return NextResponse.json({ ok: true, businessId, files });
+  return NextResponse.json({ ok: true, businessId, files }, { headers: rl.headers });
 }
 
 export async function POST(request: Request) {
   try {
+    // Upload endpoint: stricter.
+    const rl = checkRateLimit(request, {
+      name: "upload_docs_post",
+      max: Number(process.env.RATE_LIMIT_UPLOAD_DOCS_POST_MAX ?? "20"),
+      windowMs: Number(process.env.RATE_LIMIT_UPLOAD_DOCS_POST_WINDOW_MS ?? String(60_000)),
+    });
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: "Too Many Requests" },
+        {
+          status: 429,
+          headers: {
+            ...rl.headers,
+            "retry-after": String(Math.max(1, Math.ceil((rl.resetAtMs - Date.now()) / 1000))),
+          },
+        },
+      );
+    }
+
     const formData = await request.formData();
     const file = formData.get("file");
     const docType = (formData.get("docType") as string) as DocType;
@@ -92,6 +137,14 @@ export async function POST(request: Request) {
 
     if (!file || !(file instanceof File)) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    }
+
+    const maxBytes = maxUploadBytes();
+    if (Number.isFinite(file.size) && file.size > maxBytes) {
+      return NextResponse.json(
+        { error: `File too large. Max allowed is ${maxBytes} bytes.` },
+        { status: 413 },
+      );
     }
     if (!docType || !["considerations","conversations","inventory","bank","address"].includes(docType)) {
       return NextResponse.json({ error: "Invalid docType" }, { status: 400 });
@@ -137,7 +190,10 @@ export async function POST(request: Request) {
       });
 
     const latest = await listCurrent(businessId);
-    return NextResponse.json({ ok: true, file: latest[docType] ?? { name: file.name, size: stored.size } });
+    return NextResponse.json(
+      { ok: true, file: latest[docType] ?? { name: file.name, size: stored.size } },
+      { headers: rl.headers },
+    );
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "Upload failed" }, { status: 500 });
   }

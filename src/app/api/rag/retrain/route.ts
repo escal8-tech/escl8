@@ -3,6 +3,7 @@ import { db } from "@/server/db/client";
 import { users } from "@/../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
+import { checkRateLimit } from "@/server/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,24 @@ type DocType = "considerations" | "conversations" | "inventory" | "bank" | "addr
 
 export async function POST(request: Request) {
   try {
+    const rl = checkRateLimit(request, {
+      name: "rag_retrain",
+      max: Number(process.env.RATE_LIMIT_RAG_RETRAIN_MAX ?? "10"),
+      windowMs: Number(process.env.RATE_LIMIT_RAG_RETRAIN_WINDOW_MS ?? String(60_000)),
+    });
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: "Too Many Requests" },
+        {
+          status: 429,
+          headers: {
+            ...rl.headers,
+            "retry-after": String(Math.max(1, Math.ceil((rl.resetAtMs - Date.now()) / 1000))),
+          },
+        },
+      );
+    }
+
     const body = await request.json();
 
     const auth = request.headers.get("authorization") || "";
@@ -41,7 +60,7 @@ export async function POST(request: Request) {
         error: "Deprecated. Use tRPC rag.enqueueRetrain.",
         code: "DEPRECATED",
       },
-      { status: 410 },
+      { status: 410, headers: rl.headers },
     );
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "Retrain failed" }, { status: 500 });

@@ -5,9 +5,28 @@ import { and, eq } from "drizzle-orm";
 // decryptSecret removed — prefer plaintext storage
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
 import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
+import { checkRateLimit } from "@/server/rateLimit";
 
 export async function POST(req: Request) {
   try {
+    const rl = checkRateLimit(req, {
+      name: "whatsapp_send",
+      max: Number(process.env.RATE_LIMIT_WHATSAPP_SEND_MAX ?? "30"),
+      windowMs: Number(process.env.RATE_LIMIT_WHATSAPP_SEND_WINDOW_MS ?? String(60_000)),
+    });
+    if (!rl.ok) {
+      return NextResponse.json(
+        { ok: false, error: "Too Many Requests" },
+        {
+          status: 429,
+          headers: {
+            ...rl.headers,
+            "retry-after": String(Math.max(1, Math.ceil((rl.resetAtMs - Date.now()) / 1000))),
+          },
+        },
+      );
+    }
+
     const auth = req.headers.get("authorization") || "";
     const m = auth.match(/^Bearer\s+(.+)$/i);
     if (!m) {
@@ -84,7 +103,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ ok: true, result: res });
+    return NextResponse.json({ ok: true, result: res }, { headers: rl.headers });
   } catch (err: any) {
     if (err instanceof MetaGraphError) {
       return NextResponse.json(

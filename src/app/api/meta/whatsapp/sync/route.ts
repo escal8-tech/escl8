@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { generateSixDigitPin } from "@/server/meta/crypto";
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
 import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
+import { checkRateLimit } from "@/server/rateLimit";
 
 // This endpoint receives the authorization code from Facebook Embedded Signup
 // along with the WhatsApp Business Account (WABA) ID and Phone Number ID.
@@ -16,6 +17,24 @@ import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 
 export async function POST(req: Request) {
   try {
+    const rl = checkRateLimit(req, {
+      name: "whatsapp_sync",
+      max: Number(process.env.RATE_LIMIT_WHATSAPP_SYNC_MAX ?? "10"),
+      windowMs: Number(process.env.RATE_LIMIT_WHATSAPP_SYNC_WINDOW_MS ?? String(60_000)),
+    });
+    if (!rl.ok) {
+      return NextResponse.json(
+        { ok: false, error: "Too Many Requests" },
+        {
+          status: 429,
+          headers: {
+            ...rl.headers,
+            "retry-after": String(Math.max(1, Math.ceil((rl.resetAtMs - Date.now()) / 1000))),
+          },
+        },
+      );
+    }
+
     const auth = req.headers.get("authorization") || "";
     const m = auth.match(/^Bearer\s+(.+)$/i);
     if (!m) {
@@ -207,13 +226,16 @@ export async function POST(req: Request) {
       registered,
     });
 
-    return NextResponse.json({
+    return NextResponse.json(
+      {
       ok: true,
       stored: true,
       setupComplete: true,
       message:
         "WhatsApp onboarded (token exchanged, webhooks subscribed, credit line shared, phone registered).",
-    });
+      },
+      { headers: rl.headers },
+    );
   } catch (err: any) {
     if (err instanceof MetaGraphError) {
       console.error("[WhatsApp Sync] Meta Graph error:", {
