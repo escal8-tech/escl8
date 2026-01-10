@@ -26,12 +26,12 @@ export default function SignupPage() {
     return () => { if (typeof unsub === "function") unsub(); };
   }, [auth, router, busy]);
 
-  const handleSubmit = async ({ email, password, phoneNumber }: { email: string; password: string; phoneNumber: string }) => {
+  const handleSubmit = async ({ email, password }: { email: string; password: string }) => {
     setError(null);
     setBusy(true);
     try {
       await createUserWithEmailAndPassword(auth, email, password);
-      await upsertUser.mutateAsync({ email, phoneNumber, whatsappConnected: false });
+      await upsertUser.mutateAsync({ email, whatsappConnected: false });
       router.push("/portal/upload");
     } catch (err: any) {
       console.error(err);
@@ -61,7 +61,7 @@ export default function SignupPage() {
             try {
               await handleSubmit(data);
             } catch (err: any) {
-              setError(err?.message || "Check email, password (min 6 chars), and phone number.");
+              setError(err?.message || "Check email and password (min 6 chars).");
             }
           }}
         />

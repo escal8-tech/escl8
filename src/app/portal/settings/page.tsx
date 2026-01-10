@@ -21,7 +21,6 @@ export default function SettingsPage() {
   const userQuery = trpc.user.getMe.useQuery({ email: email ?? "" }, { enabled: !!email });
   const businessQuery = trpc.business.getMine.useQuery({ email: email ?? "" }, { enabled: !!email });
   const updateBooking = trpc.business.updateBookingConfig.useMutation();
-  const phone = userQuery.data?.phoneNumber ?? null;
   const [unitCapacity, setUnitCapacity] = useState<number | undefined>(undefined);
   const [timeslotMinutes, setTimeslotMinutes] = useState<number | undefined>(undefined);
   const [openTime, setOpenTime] = useState<string | undefined>(undefined);
@@ -44,7 +43,7 @@ export default function SettingsPage() {
   return (
     <div style={{ padding: 20, display: "grid", gap: 14 }}>
       <SettingsHeader />
-      <ProfileCard email={email} phone={phone} onLogout={handleLogout} />
+      <ProfileCard email={email} onLogout={handleLogout} />
       <BookingSettingsForm
         unitCapacity={unitCapacity}
         timeslotMinutes={timeslotMinutes}

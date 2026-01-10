@@ -61,7 +61,6 @@ export const users = pgTable(
       .$defaultFn(() => crypto.randomUUID()),
 
     email: text("email").notNull(), // unique index below
-    phoneNumber: text("phone_number"),
 
     whatsappConnected: boolean("whatsapp_connected").notNull().default(false),
 

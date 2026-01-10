@@ -104,6 +104,21 @@ async function processJob(job: RagJobRow) {
     .where(eq(ragJobs.id, job.id));
 
   console.log(`[rag-worker] done job=${job.id} businessId=${job.businessId} docType=${docType} chunks=${res.chunkCount}`);
+
+  // After successful indexing, check if all 3 key docs are indexed and generate bot instructions
+  const keyDocTypes = ["considerations", "conversations", "inventory"];
+  if (keyDocTypes.includes(docType)) {
+    try {
+      const { generateAndSaveBotInstructions } = await import("../src/server/rag/generateBotInstructions");
+      const saved = await generateAndSaveBotInstructions(job.businessId);
+      if (saved) {
+        console.log(`[rag-worker] bot instructions generated and saved for businessId=${job.businessId}`);
+      }
+    } catch (instrErr: any) {
+      // Don't fail the job if instruction generation fails, just log it
+      console.error(`[rag-worker] failed to generate bot instructions: ${instrErr?.message || String(instrErr)}`);
+    }
+  }
 }
 
 async function failJob(job: RagJobRow, err: unknown) {

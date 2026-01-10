@@ -46,10 +46,7 @@ export default function PortalAuthProvider({ children }: Props) {
       try {
         const email = user.email;
         if (email) {
-          await ensureUser({
-            email,
-            phoneNumber: user.phoneNumber ?? undefined,
-          });
+          await ensureUser({ email });
         }
       } catch {
         // If the DB sync fails, do not block portal navigation; downstream pages can surface errors.

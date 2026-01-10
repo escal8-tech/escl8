@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { downloadBlobToBuffer } from "./blob";
 import { extractTextFromBuffer } from "./extractText";
-import { chunkText } from "./chunk";
+import { smartChunkText, classifyChunksWithLLM, SmartChunk } from "./smartChunk";
 import { embedTexts } from "./embed";
 import { getPineconeIndex } from "./pinecone";
 
@@ -94,12 +94,25 @@ export async function indexSingleDocType(params: {
   );
 
   const text = extracted.text;
-  const chunks = chunkText(text, {
-    chunkSize: Number(process.env.RAG_CHUNK_SIZE || 900),
-    overlap: Number(process.env.RAG_CHUNK_OVERLAP || 120),
+  
+  // Use enterprise-grade smart chunking with structure awareness
+  // Hardcoded optimal settings for best RAG performance
+  let smartChunks = smartChunkText(text, {
+    targetTokens: 250,    // Target tokens per chunk
+    minTokens: 100,       // Minimum tokens per chunk
+    maxTokens: 400,       // Maximum tokens per chunk
+    overlapTokens: 30,    // Overlap for context
   });
 
-  console.log(`[rag:index] chunked count=${chunks.length} (chunkSize=${process.env.RAG_CHUNK_SIZE || 900}, overlap=${process.env.RAG_CHUNK_OVERLAP || 120})`);
+  // Use LLM for more accurate chunk type classification
+  if (smartChunks.length > 0) {
+    console.log(`[rag:index] running LLM chunk classification...`);
+    smartChunks = await classifyChunksWithLLM(smartChunks);
+  }
+
+  console.log(`[rag:index] smart chunked count=${smartChunks.length} avgTokens=${
+    smartChunks.length ? Math.round(smartChunks.reduce((s, c) => s + c.tokenEstimate, 0) / smartChunks.length) : 0
+  }`);
 
   const index = getPineconeIndex();
 
@@ -109,31 +122,44 @@ export async function indexSingleDocType(params: {
   const batchSize = Number(process.env.RAG_EMBED_BATCH_SIZE || 64);
   let upserted = 0;
 
-  for (let i = 0; i < chunks.length; i += batchSize) {
-    const batch = chunks.slice(i, i + batchSize);
-    console.log(`[rag:index] embed batch ${(i / batchSize) + 1}/${Math.ceil(chunks.length / batchSize)} size=${batch.length}`);
-    const vectors = await embedTexts(batch);
+  for (let i = 0; i < smartChunks.length; i += batchSize) {
+    const batch = smartChunks.slice(i, i + batchSize);
+    const batchTexts = batch.map(c => c.text);
+    console.log(`[rag:index] embed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(smartChunks.length / batchSize)} size=${batch.length}`);
+    const vectors = await embedTexts(batchTexts);
 
     const records = vectors.map((values, j) => {
-      const idx = i + j;
+      const chunk = batch[j];
       return {
-        id: `${docType}:${hash}:${idx}`,
+        id: `${docType}:${hash}:${chunk.chunkIndex}`,
         values,
         metadata: {
           businessId,
           docType,
+          chunkType: chunk.chunkType,                        // NEW: chunk classification
+          headingContext: chunk.headingContext || "",        // NEW: parent heading (empty string if null)
           source: blobPath,
           filename,
-          chunkIndex: idx,
-          text: batch[j],
+          chunkIndex: chunk.chunkIndex,
+          charStart: chunk.charStart,                        // NEW: position tracking
+          charEnd: chunk.charEnd,
+          tokenEstimate: chunk.tokenEstimate,                // NEW: token count
+          text: chunk.text,
         },
       };
     });
 
     await index.namespace(businessId).upsert(records);
     upserted += records.length;
-    console.log(`[rag:index] pinecone upserted=${upserted}/${chunks.length}`);
+    console.log(`[rag:index] pinecone upserted=${upserted}/${smartChunks.length}`);
   }
+
+  // Log chunk type distribution for debugging
+  const typeCounts: Record<string, number> = {};
+  for (const chunk of smartChunks) {
+    typeCounts[chunk.chunkType] = (typeCounts[chunk.chunkType] || 0) + 1;
+  }
+  console.log(`[rag:index] chunk types: ${JSON.stringify(typeCounts)}`);
 
   console.log(`[rag:index] done businessId=${businessId} docType=${docType} upserted=${upserted}`);
   return { chunkCount: upserted, sha256: hash };

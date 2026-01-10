@@ -24,7 +24,6 @@ export const userRouter = router({
     .input(
       z.object({
         email: z.string().email(),
-        phoneNumber: z.string().min(5).max(32).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -34,15 +33,6 @@ export const userRouter = router({
         }
         const existing = await db.select().from(users).where(eq(users.email, input.email));
         if (existing[0]) {
-          if (input.phoneNumber && !existing[0].phoneNumber) {
-            const now = new Date();
-            const [updated] = await db
-              .update(users)
-              .set({ phoneNumber: input.phoneNumber, updatedAt: now })
-              .where(eq(users.id, existing[0].id))
-              .returning();
-            return updated ?? existing[0];
-          }
           return existing[0];
         }
 
@@ -61,7 +51,6 @@ export const userRouter = router({
             .insert(users)
             .values({
               email: input.email,
-              phoneNumber: input.phoneNumber,
               whatsappConnected: false,
               businessId: bizId,
               createdAt: now,
@@ -107,7 +96,6 @@ export const userRouter = router({
     .input(
       z.object({
         email: z.string().email(),
-        phoneNumber: z.string().min(5).max(32).optional(),
         whatsappConnected: z.boolean().optional(),
         businessId: z.string().min(1).optional(),
       }),
@@ -143,7 +131,6 @@ export const userRouter = router({
               const [updatedUser] = await tx
                 .update(users)
                 .set({
-                  phoneNumber: input.phoneNumber,
                   whatsappConnected,
                   businessId: bizId,
                   updatedAt: now,
@@ -158,7 +145,6 @@ export const userRouter = router({
           const [updated] = await db
             .update(users)
             .set({
-              phoneNumber: input.phoneNumber,
               whatsappConnected,
               businessId: finalBusinessId,
               updatedAt: now,
@@ -183,7 +169,6 @@ export const userRouter = router({
               .insert(users)
               .values({
                 email: input.email,
-                phoneNumber: input.phoneNumber,
                 whatsappConnected,
                 businessId: bizId,
                 createdAt: now,
@@ -198,7 +183,6 @@ export const userRouter = router({
           .insert(users)
           .values({
             email: input.email,
-            phoneNumber: input.phoneNumber,
             whatsappConnected,
             businessId: requestedBusinessId,
             createdAt: now,
