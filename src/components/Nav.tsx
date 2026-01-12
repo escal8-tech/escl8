@@ -13,13 +13,13 @@ export default function Nav() {
   const pathname = usePathname();
   return (
     <header className="site-header" style={{ width: '100%' }}>
-      <div style={{ maxWidth: 1800, margin: '0 auto', padding: '0px 80px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 20 }}>
+      <div style={{ maxWidth: 1800, margin: '0 auto', padding: '8px 80px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 70 }}>
         <Link href="/" className="brand">
           <Image
-            src="/8.png"
+            src="/favikon.png"
             alt="Escl8 Logo"
-            width={320}
-            height={96}
+            width={140}
+            height={50}
             style={{ objectFit: 'contain' }}
             priority
           />
