@@ -42,8 +42,8 @@ export default function Footer() {
               <Image
                 src="/8.png"
                 alt="Escl8 Logo"
-                width={220}
-                height={66}
+                width={420}
+                height={126}
                 style={{ objectFit: "contain" }}
               />
             </Link>
