@@ -106,7 +106,7 @@ export default function Home() {
 
         {/* Frosted band background fills the entire area between the two lines */}
         <div className="full-bleed frost-band" style={{ padding: '90px 0' }}>
-          <div className="container" style={{ maxWidth: 1320 }}>
+          <div className="container" style={{ maxWidth: 1500 }}>
             <div style={{ textAlign: 'center', marginBottom: 60 }}>
               <h2 style={{ fontSize: '38px', letterSpacing: '-0.5px', background: 'linear-gradient(135deg, var(--gold-light), var(--gold))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Why teams choose Escl8?</h2>
               <p className="muted" style={{ marginTop: 14, fontSize: 18 }}>Three reasons brands deploy AI sales agents that feel human day one.</p>
@@ -197,8 +197,8 @@ export default function Home() {
           FEATURE SECTION 1: Dashboard - Image Right, Fading Out
           ═══════════════════════════════════════════════════════════════════════════ */}
       <section className="section feature-section" style={{ paddingTop: 100, paddingBottom: 100, overflow: 'hidden' }}>
-        <div className="container" style={{ maxWidth: 1600 }}>
-          <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 80, alignItems: 'center' }}>
+        <div className="container" style={{ maxWidth: 1800 }}>
+          <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 140, alignItems: 'center' }}>
             {/* Content - Left */}
             <div className="feature-content">
               <span className="eyebrow" style={{ marginBottom: 16 }}>Intelligent Analytics</span>
@@ -270,8 +270,8 @@ export default function Home() {
           FEATURE SECTION 2: Unified Inbox - Image Left
           ═══════════════════════════════════════════════════════════════════════════ */}
       <section className="section feature-section" style={{ paddingTop: 100, paddingBottom: 100, overflow: 'hidden', background: 'rgba(15, 23, 42, 0.3)' }}>
-        <div className="container" style={{ maxWidth: 1600 }}>
-          <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 120, alignItems: 'center' }}>
+        <div className="container" style={{ maxWidth: 1800 }}>
+          <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 180, alignItems: 'center' }}>
             {/* Screenshot - Left, Fading Out to Edge */}
             <div className="feature-image-wrapper feature-image-left" style={{ position: 'relative', marginLeft: '-25%' }}>
               <div className="screenshot-container" style={{
@@ -344,8 +344,8 @@ export default function Home() {
           FEATURE SECTION 3: CRM System - Image Right
           ═══════════════════════════════════════════════════════════════════════════ */}
       <section className="section feature-section" style={{ paddingTop: 100, paddingBottom: 100, overflow: 'hidden' }}>
-        <div className="container" style={{ maxWidth: 1600 }}>
-          <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: 120, alignItems: 'center' }}>
+        <div className="container" style={{ maxWidth: 1800 }}>
+          <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: 180, alignItems: 'center' }}>
             {/* Content - Left */}
             <div className="feature-content" style={{ paddingLeft: '5%' }}>
               <span className="eyebrow" style={{ marginBottom: 16 }}>Customer Intelligence</span>
@@ -419,7 +419,7 @@ export default function Home() {
           ═══════════════════════════════════════════════════════════════════════════ */}
       <section className="section" style={{ paddingTop: 80, paddingBottom: 80 }}>
         <div className="full-bleed frost-band" style={{ padding: '80px 0' }}>
-          <div className="container" style={{ maxWidth: 1320 }}>
+          <div className="container" style={{ maxWidth: 1500 }}>
             <div style={{ textAlign: 'center', marginBottom: 50 }}>
               <h2 style={{ 
                 fontSize: '32px', 

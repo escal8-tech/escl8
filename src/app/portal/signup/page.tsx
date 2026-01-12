@@ -42,29 +42,44 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="container" style={{ maxWidth: 520, padding: "60px 0 80px" }}>
-      <div
-        style={{
-          padding: "32px 32px 40px",
-          border: "1px solid transparent",
-          outline: "2px solid var(--border)",
-          outlineOffset: 0,
-          borderRadius: 16,
-          background: "transparent",
-        }}
-      >
-        <SignupHeader />
-        <SignupForm
-          busy={busy}
-          error={error}
-          onSubmit={async (data) => {
-            try {
-              await handleSubmit(data);
-            } catch (err: any) {
-              setError(err?.message || "Check email and password (min 6 chars).");
-            }
+    <div className="auth-screen">
+      <div className="auth-top">
+        <a className="auth-brand" href="/">
+          <img
+            src="/8.png"
+            alt="Escl8"
+            width={120}
+            height={36}
+            style={{ objectFit: "contain" }}
+          />
+        </a>
+      </div>
+      <div className="auth-main">
+        <div
+          style={{
+            maxWidth: 520,
+            width: "100%",
+            padding: "32px 32px 40px",
+            border: "1px solid transparent",
+            outline: "2px solid var(--border)",
+            outlineOffset: 0,
+            borderRadius: 16,
+            background: "transparent",
           }}
-        />
+        >
+          <SignupHeader />
+          <SignupForm
+            busy={busy}
+            error={error}
+            onSubmit={async (data) => {
+              try {
+                await handleSubmit(data);
+              } catch (err: any) {
+                setError(err?.message || "Check email and password (min 6 chars).");
+              }
+            }}
+          />
+        </div>
       </div>
     </div>
   );

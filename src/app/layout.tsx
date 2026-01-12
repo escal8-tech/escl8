@@ -25,8 +25,8 @@ export const metadata: Metadata = {
     "Escl8 builds fully customized, human-like AI sales and support agents for SMBs and enterprises. Upload your docs, connect WhatsApp, and go live fast.",
   metadataBase: new URL("http://localhost:5000"),
   icons: [
-    { rel: "icon", url: "/8.png", type: "image/png" },
-    { rel: "apple-touch-icon", url: "/8.png" },
+    { rel: "icon", url: "/favikon.png", type: "image/png" },
+    { rel: "apple-touch-icon", url: "/favikon.png" },
   ],
 };
 

@@ -122,24 +122,25 @@ export default function Sidebar({
       style={{ width: sidebarWidth }}
     >
       {/* Brand */}
-      <div className="sidebar-brand">
-        <Link href="/portal/dashboard" className="sidebar-brand-logo">
+      <div className="sidebar-brand" style={{ justifyContent: "center" }}>
+        <Link 
+          href="/portal/dashboard" 
+          className="sidebar-brand-logo"
+          style={{ 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "center",
+            width: "100%",
+          }}
+        >
           <Image
-            src="/8.png"
+            src="/favikon.png"
             alt="Escl8"
-            width={collapsed ? 40 : 120}
-            height={38}
+            width={collapsed ? 40 : 140}
+            height={collapsed ? 40 : 140}
             style={{ objectFit: "contain" }}
           />
         </Link>
-        <button
-          onClick={() => onCollapsedChange(!collapsed)}
-          className="sidebar-collapse-btn"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          style={{ display: collapsed ? "none" : "flex" }}
-        >
-          {Icons.chevronLeft}
-        </button>
       </div>
 
       {/* Navigation */}
@@ -238,31 +239,54 @@ export default function Sidebar({
                 )}
               </div>
             </div>
-            <Link
-              href="/portal/settings"
-              className={`sidebar-settings-btn ${isActive("/portal/settings") ? "active" : ""}`}
-              title="Settings"
-              onClick={onMobileClose}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                color: isActive("/portal/settings") ? "#D4A84B" : "#94a3b8",
-                background: isActive("/portal/settings") 
-                  ? "linear-gradient(135deg, rgba(184, 134, 11, 0.2) 0%, rgba(0, 51, 160, 0.15) 100%)"
-                  : "rgba(15, 23, 42, 0.6)",
-                border: isActive("/portal/settings") 
-                  ? "1px solid rgba(184, 134, 11, 0.4)"
-                  : "1px solid rgba(255, 255, 255, 0.1)",
-                transition: "all 0.2s ease",
-                flexShrink: 0,
-              }}
-            >
-              {Icons.settings}
-            </Link>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Link
+                href="/portal/settings"
+                className={`sidebar-settings-btn ${isActive("/portal/settings") ? "active" : ""}`}
+                title="Settings"
+                onClick={onMobileClose}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  color: isActive("/portal/settings") ? "#D4A84B" : "#94a3b8",
+                  background: isActive("/portal/settings") 
+                    ? "linear-gradient(135deg, rgba(184, 134, 11, 0.2) 0%, rgba(0, 51, 160, 0.15) 100%)"
+                    : "rgba(15, 23, 42, 0.6)",
+                  border: isActive("/portal/settings") 
+                    ? "1px solid rgba(184, 134, 11, 0.4)"
+                    : "1px solid rgba(255, 255, 255, 0.1)",
+                  transition: "all 0.2s ease",
+                  flexShrink: 0,
+                }}
+              >
+                {Icons.settings}
+              </Link>
+              <button
+                onClick={() => onCollapsedChange(true)}
+                title="Collapse sidebar"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  color: "#94a3b8",
+                  background: "rgba(15, 23, 42, 0.6)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  cursor: "pointer",
+                  transition: "all 0.2s ease",
+                  flexShrink: 0,
+                }}
+                aria-label="Collapse sidebar"
+              >
+                {Icons.chevronLeft}
+              </button>
+            </div>
           </div>
         )}
 
