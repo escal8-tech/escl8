@@ -7,8 +7,8 @@ export const metadata: Metadata = {
 export default function PrivacyPage() {
   return (
     <div className="legal-page">
-      <div className="container legal">
-        <div className="frost-card" style={{ padding: 28 }}>
+      <div className="container">
+        <div className="frost-card">
         <h1>Privacy Policy</h1>
         <p>Last updated: {new Date().toLocaleDateString()}</p>
 

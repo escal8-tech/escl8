@@ -1,14 +1,21 @@
 import type { Metadata } from "next";
-import { Figtree } from "next/font/google";
+import { Montserrat, Catamaran } from "next/font/google";
 import TopNavSwitcher from "../components/TopNavSwitcher";
 import FooterSwitcher from "@/components/FooterSwitcher";
 import { TRPCProvider } from "@/utils/trpc";
 import { ToastProvider } from "@/components/ToastProvider";
 import "./globals.css";
 
-const figtree = Figtree({
-  variable: "--font-figtree",
+const montserrat = Montserrat({
+  variable: "--font-montserrat",
   subsets: ["latin"],
+  weight: ["700", "800"],
+});
+
+const catamaran = Catamaran({
+  variable: "--font-catamaran",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 
@@ -17,7 +24,10 @@ export const metadata: Metadata = {
   description:
     "Escl8 builds fully customized, human-like AI sales and support agents for SMBs and enterprises. Upload your docs, connect WhatsApp, and go live fast.",
   metadataBase: new URL("http://localhost:5000"),
-  icons: [{ rel: "icon", url: "/favicon.ico" }],
+  icons: [
+    { rel: "icon", url: "/8.png", type: "image/png" },
+    { rel: "apple-touch-icon", url: "/8.png" },
+  ],
 };
 
 export default function RootLayout({
@@ -27,7 +37,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${figtree.variable}`}>
+      <body className={`${montserrat.variable} ${catamaran.variable}`}>
         <TRPCProvider>
           <ToastProvider>
             <TopNavSwitcher />

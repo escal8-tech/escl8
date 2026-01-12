@@ -9,7 +9,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-figtree)", "system-ui", "ui-sans-serif", "sans-serif"],
+        sans: ["var(--font-catamaran)", "Catamaran", "system-ui", "ui-sans-serif", "sans-serif"],
+        heading: ["var(--font-montserrat)", "Montserrat", "system-ui", "ui-sans-serif", "sans-serif"],
       },
     },
   },

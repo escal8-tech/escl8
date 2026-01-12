@@ -14,11 +14,15 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   // Protected portal routes: show nav and require auth
   return (
-    <>
+    <div className="portal-layout">
       <PortalNav />
-      <PortalAuthProvider>
-        {children}
-      </PortalAuthProvider>
-    </>
+      <main className="portal-main" style={{ paddingTop: 64 }}>
+        <PortalAuthProvider>
+          <div className="portal-content">
+            {children}
+          </div>
+        </PortalAuthProvider>
+      </main>
+    </div>
   );
 }

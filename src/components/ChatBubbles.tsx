@@ -17,10 +17,10 @@ type Props = {
   className?: string;
 };
 
-// Stream of large alternating chat bubbles that animate in from off-screen with teardrop tails.
+// Stream of large alternating chat bubbles that animate in from off-screen with smooth scroll animations.
 export default function ChatBubbles({ items, startSide = 'left', className = '' }: Props) {
   return (
-    <div className={`chat-stream flex flex-col gap-16 ${className}`}>
+    <div className={`chat-stream ${className}`}>
       {items.map((item, i) => (
         <AnimatedBubble
           key={i}
@@ -28,38 +28,45 @@ export default function ChatBubbles({ items, startSide = 'left', className = '' 
           side={(item.side ?? (i % 2 === 0 ? startSide : startSide === 'left' ? 'right' : 'left')) as
             | 'left'
             | 'right'}
+          index={i}
         />
       ))}
     </div>
   );
 }
 
-function AnimatedBubble({ text, side }: { text: string; side: 'left' | 'right' }) {
+function AnimatedBubble({ text, side, index }: { text: string; side: 'left' | 'right'; index: number }) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
-    const fromX = side === 'left' ? -200 : 200;
+    // Start position - further off screen for smoother entrance
+    const fromX = side === 'left' ? -120 : 120;
+
+    // Set initial state
+    gsap.set(el, { 
+      opacity: 0, 
+      x: fromX,
+      scale: 0.95
+    });
 
     const ctx = gsap.context(() => {
-      gsap.fromTo(
-        el,
-        { opacity: 0, x: fromX, y: 30 },
-        {
-          opacity: 1,
-          x: 0,
-          y: 0,
-          duration: 0.9,
-          ease: 'power3.out',
-          scrollTrigger: {
-            trigger: el,
-            start: 'top 80%',   // when bubble enters viewport
-            toggleActions: 'play none none none',
-          },
-        }
-      );
+      gsap.to(el, {
+        opacity: 1,
+        x: 0,
+        scale: 1,
+        duration: 1,
+        ease: 'power2.out',
+        scrollTrigger: {
+          trigger: el,
+          start: 'top 85%',
+          end: 'top 50%',
+          toggleActions: 'play none none none',
+        },
+        delay: index * 0.1, // Stagger effect
+      });
     });
 
     return () => {
@@ -68,7 +75,7 @@ function AnimatedBubble({ text, side }: { text: string; side: 'left' | 'right' }
         if (st.trigger === el) st.kill();
       });
     };
-  }, [side]);
+  }, [side, index]);
 
   return (
     <div ref={ref} className={`chat-bubble ${side}`} data-side={side}>
