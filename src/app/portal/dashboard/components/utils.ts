@@ -35,13 +35,20 @@ export function statusColors(status: string | null | undefined) {
 export function parseSummary(value: unknown): { kind: "list"; items: string[] } | { kind: "text"; text: string } {
   if (value == null) return { kind: "text", text: "" };
 
+  // Helper to clean individual items
+  const cleanItem = (s: string): string => {
+    return s
+      .trim()
+      .replace(/^["']|["']$/g, "") // Remove surrounding quotes
+      .replace(/^[-•\s]+/, "") // Remove leading dashes, bullets, spaces
+      .trim();
+  };
+
   if (Array.isArray(value)) {
     const items = value
-      .map((v) => String(v ?? "").trim())
-      .filter(Boolean)
-      // tolerate items already starting with a dash
-      .map((s) => (s.startsWith("- ") ? s.slice(2) : s));
-    return { kind: "list", items };
+      .map((v) => cleanItem(String(v ?? "")))
+      .filter(Boolean);
+    return items.length ? { kind: "list", items } : { kind: "text", text: "" };
   }
 
   if (typeof value === "string") {
@@ -57,15 +64,35 @@ export function parseSummary(value: unknown): { kind: "list"; items: string[] } 
           return parseSummary(parsed);
         }
       } catch {
-        // If the array uses single quotes, fall back to a tolerant parser
+        // If the array uses single quotes or other formats, fall back to a tolerant parser
         const inner = s.slice(1, -1).trim();
         if (inner.length) {
-          const items = inner
-            .split(/,(?![^\[]*\])/)
-            .map((item) => item.trim())
-            .map((item) => item.replace(/^['"]|['"]$/g, ""))
-            .map((item) => item.replace(/^[-\s]+/, ""))
-            .filter(Boolean);
+          // Split by comma, but not inside quotes
+          const items: string[] = [];
+          let current = "";
+          let inQuote = false;
+          let quoteChar = "";
+          
+          for (let i = 0; i < inner.length; i++) {
+            const char = inner[i];
+            if ((char === '"' || char === "'") && !inQuote) {
+              inQuote = true;
+              quoteChar = char;
+            } else if (char === quoteChar && inQuote) {
+              inQuote = false;
+              quoteChar = "";
+            } else if (char === "," && !inQuote) {
+              const cleaned = cleanItem(current);
+              if (cleaned) items.push(cleaned);
+              current = "";
+              continue;
+            }
+            current += char;
+          }
+          // Don't forget the last item
+          const cleaned = cleanItem(current);
+          if (cleaned) items.push(cleaned);
+          
           if (items.length) return { kind: "list", items };
         }
       }
@@ -74,9 +101,8 @@ export function parseSummary(value: unknown): { kind: "list"; items: string[] } 
     // If it's a newline-delimited list, show bullets.
     const lines = s
       .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => (l.startsWith("- ") ? l.slice(2) : l));
+      .map((l) => cleanItem(l))
+      .filter(Boolean);
     if (lines.length >= 2) return { kind: "list", items: lines };
 
     return { kind: "text", text: s };

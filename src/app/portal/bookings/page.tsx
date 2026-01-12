@@ -85,8 +85,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 24,
-    maxWidth: 1600,
-    margin: "0 auto",
+    width: "100%",
     padding: "0 24px",
   },
   header: {
@@ -120,7 +119,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 12,
-    flexWrap: "wrap" as const,
   },
   navBtn: {
     display: "flex",

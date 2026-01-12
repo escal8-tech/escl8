@@ -228,7 +228,6 @@ function RequestRowItem({ request, onSelect }: { request: RequestRow; onSelect: 
 
   const displayPhone = request.customerNumber || "Unknown";
   const initials = displayPhone.slice(-2).toUpperCase();
-  const summaryText = typeof request.summary === "string" ? request.summary : request.text || "No summary";
   const statusValue = request.resolutionStatus || "pending";
   const sentimentValue = request.sentiment || "neutral";
 
@@ -245,11 +244,6 @@ function RequestRowItem({ request, onSelect }: { request: RequestRow; onSelect: 
               {request.paid ? "Paid" : "Unpaid"}
             </div>
           </div>
-        </div>
-      </td>
-      <td>
-        <div className="truncate" style={{ maxWidth: 250 }}>
-          {summaryText}
         </div>
       </td>
       <td>
@@ -318,7 +312,42 @@ function RequestDrawer({
               </h4>
               <div className="card">
                 <div className="card-body">
-                  <p className="text-muted">{typeof request.summary === "string" ? request.summary : request.text || "No summary available"}</p>
+                  {(() => {
+                    const raw = typeof request.summary === "string" ? request.summary : request.text || "";
+                    if (!raw) return <p className="text-muted">No summary available</p>;
+                    
+                    // Parse JSON array string like ["- item1", "- item2"]
+                    let items: string[] = [];
+                    const trimmed = raw.trim();
+                    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+                      try {
+                        const parsed = JSON.parse(trimmed);
+                        if (Array.isArray(parsed)) {
+                          items = parsed.map((s: unknown) => 
+                            String(s ?? "").trim().replace(/^[-•]\s*/, "")
+                          ).filter(Boolean);
+                        }
+                      } catch {
+                        // Fallback: split by comma inside brackets
+                        const inner = trimmed.slice(1, -1);
+                        items = inner.split(/['"],\s*['"]/).map(s => 
+                          s.replace(/^['"]|['"]$/g, "").replace(/^[-•]\s*/, "").trim()
+                        ).filter(Boolean);
+                      }
+                    }
+                    
+                    if (items.length > 0) {
+                      return (
+                        <ul style={{ margin: 0, paddingLeft: "var(--space-4)", display: "grid", gap: "var(--space-2)" }}>
+                          {items.map((item, idx) => (
+                            <li key={idx} className="text-muted" style={{ lineHeight: 1.5 }}>{item}</li>
+                          ))}
+                        </ul>
+                      );
+                    }
+                    
+                    return <p className="text-muted">{raw}</p>;
+                  })()}
                 </div>
               </div>
             </div>
@@ -540,7 +569,6 @@ export default function DashboardPage() {
             <thead>
               <tr>
                 <th>Customer</th>
-                <th>Summary</th>
                 <th>Status</th>
                 <th>Sentiment</th>
                 <th>Date</th>
@@ -549,13 +577,13 @@ export default function DashboardPage() {
             <tbody>
               {listQ.isLoading ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: "center", padding: "var(--space-8)" }}>
+                  <td colSpan={4} style={{ textAlign: "center", padding: "var(--space-8)" }}>
                     <div className="spinner" style={{ margin: "0 auto" }} />
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={4}>
                     <div className="empty-state" style={{ padding: "var(--space-8)" }}>
                       <div className="empty-state-icon">{Icons.messageCircle}</div>
                       <div className="empty-state-title">No requests yet</div>

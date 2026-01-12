@@ -176,21 +176,40 @@ export default function Sidebar({
 
       {/* Footer - User info with settings button */}
       <div className="sidebar-footer">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: collapsed ? 0 : 12,
-            padding: collapsed ? 10 : "10px 12px",
-            borderRadius: 12,
-            background: "linear-gradient(135deg, rgba(184, 134, 11, 0.15) 0%, rgba(0, 51, 160, 0.1) 100%)",
-            border: "1px solid rgba(184, 134, 11, 0.2)",
-            justifyContent: collapsed ? "center" : "space-between",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
-            <div className="avatar avatar-sm">{userInitials}</div>
-            {!collapsed && (
+        {collapsed ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
+            <div 
+              className="avatar avatar-sm" 
+              title={displayName}
+              style={{ cursor: "default" }}
+            >
+              {userInitials}
+            </div>
+            <Link
+              href="/portal/settings"
+              className={`sidebar-nav-item ${isActive("/portal/settings") ? "active" : ""}`}
+              title="Settings"
+              onClick={onMobileClose}
+              style={{ justifyContent: "center", width: "100%" }}
+            >
+              <span className="sidebar-nav-icon">{Icons.settings}</span>
+            </Link>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "10px 12px",
+              borderRadius: 12,
+              background: "linear-gradient(135deg, rgba(184, 134, 11, 0.15) 0%, rgba(0, 51, 160, 0.1) 100%)",
+              border: "1px solid rgba(184, 134, 11, 0.2)",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
+              <div className="avatar avatar-sm">{userInitials}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
                   style={{
@@ -218,9 +237,7 @@ export default function Sidebar({
                   </div>
                 )}
               </div>
-            )}
-          </div>
-          {!collapsed && (
+            </div>
             <Link
               href="/portal/settings"
               className={`sidebar-settings-btn ${isActive("/portal/settings") ? "active" : ""}`}
@@ -246,38 +263,23 @@ export default function Sidebar({
             >
               {Icons.settings}
             </Link>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Collapsed state: show settings and expand buttons */}
+        {/* Collapsed state: show expand button */}
         {collapsed && (
-          <>
-            <Link
-              href="/portal/settings"
-              className={`sidebar-nav-item ${isActive("/portal/settings") ? "active" : ""}`}
-              title="Settings"
-              onClick={onMobileClose}
-              style={{ 
-                position: "relative", 
-                marginTop: 8,
-                justifyContent: "center",
-              }}
-            >
-              <span className="sidebar-nav-icon">{Icons.settings}</span>
-            </Link>
-            <button
-              onClick={() => onCollapsedChange(false)}
-              className="sidebar-collapse-btn"
-              style={{
-                width: "100%",
-                marginTop: 8,
-                transform: "rotate(180deg)",
-              }}
-              aria-label="Expand sidebar"
-            >
-              {Icons.chevronLeft}
-            </button>
-          </>
+          <button
+            onClick={() => onCollapsedChange(false)}
+            className="sidebar-collapse-btn"
+            style={{
+              width: "100%",
+              marginTop: 8,
+              transform: "rotate(180deg)",
+            }}
+            aria-label="Expand sidebar"
+          >
+            {Icons.chevronLeft}
+          </button>
         )}
       </div>
     </aside>

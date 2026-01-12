@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 export default function FooterSwitcher() {
   const pathname = usePathname();
-  // Hide footer on portal auth pages
-  if (pathname === "/portal" || pathname?.startsWith("/portal/signup")) return null;
+  // Hide footer on all portal pages
+  if (pathname?.startsWith("/portal")) return null;
   return <Footer />;
 }
