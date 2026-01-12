@@ -120,6 +120,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 12,
+    flexWrap: "wrap" as const,
   },
   navBtn: {
     display: "flex",
@@ -133,6 +134,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#f1f5f9",
     cursor: "pointer",
     transition: "all 0.2s ease",
+    flexShrink: 0,
   },
   weekDisplay: {
     display: "flex",
@@ -145,6 +147,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     fontWeight: 500,
     color: "#f1f5f9",
+    whiteSpace: "nowrap" as const,
+    minWidth: "fit-content",
   },
   todayBtn: {
     display: "flex",
@@ -160,6 +164,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     transition: "all 0.2s ease",
     boxShadow: "0 0 20px rgba(184, 134, 11, 0.3)",
+    flexShrink: 0,
   },
   dateInput: {
     padding: "12px 16px",
@@ -170,6 +175,8 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#f1f5f9",
     cursor: "pointer",
     outline: "none",
+    minWidth: 140,
+    colorScheme: "dark",
   },
   stats: {
     display: "grid",
@@ -807,36 +814,28 @@ export default function BookingsPage() {
 
   return (
     <div style={styles.page}>
-      {/* Header */}
-      <div style={styles.header}>
-        <div style={styles.headerLeft}>
-          <h1 style={styles.title}>Bookings Calendar</h1>
-          <p style={styles.subtitle}>
-            Manage your appointment schedule and availability
-          </p>
+      {/* Date Controls */}
+      <div style={styles.headerControls}>
+        <button style={styles.navBtn} onClick={goPrevWeek}>
+          {Icons.chevronLeft}
+        </button>
+        <div style={styles.weekDisplay}>
+          <span style={{ color: "var(--accent)" }}>{Icons.calendar}</span>
+          {formatWeekRange()}
         </div>
-        <div style={styles.headerControls}>
-          <button style={styles.navBtn} onClick={goPrevWeek}>
-            {Icons.chevronLeft}
-          </button>
-          <div style={styles.weekDisplay}>
-            <span style={{ color: "var(--accent)" }}>{Icons.calendar}</span>
-            {formatWeekRange()}
-          </div>
-          <button style={styles.navBtn} onClick={goNextWeek}>
-            {Icons.chevronRight}
-          </button>
-          <input
-            type="date"
-            style={styles.dateInput}
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-          />
-          <button style={styles.todayBtn} onClick={goToday}>
-            {Icons.today}
-            Today
-          </button>
-        </div>
+        <button style={styles.navBtn} onClick={goNextWeek}>
+          {Icons.chevronRight}
+        </button>
+        <input
+          type="date"
+          style={styles.dateInput}
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+        />
+        <button style={styles.todayBtn} onClick={goToday}>
+          {Icons.today}
+          Today
+        </button>
       </div>
 
       {/* Stats */}

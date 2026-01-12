@@ -360,28 +360,6 @@ export default function SyncPage() {
 
   return (
     <div style={styles.page}>
-      {/* Header */}
-      <div style={styles.header}>
-        <div style={styles.headerLeft}>
-          <h1 style={styles.title}>Integrations</h1>
-          <p style={styles.subtitle}>
-            Connect your messaging and commerce channels. WhatsApp and Telegram are available now; 
-            more integrations coming soon.
-          </p>
-        </div>
-        <div style={styles.stats}>
-          <div style={styles.statCard}>
-            <div style={{ ...styles.statIcon, background: "rgba(16, 185, 129, 0.1)", color: "var(--success)" }}>
-              {Icons.check}
-            </div>
-            <div style={styles.statInfo}>
-              <span style={styles.statValue}>{syncedCount}/{availableCount}</span>
-              <span style={styles.statLabel}>Connected</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Cards Grid */}
       <div style={styles.grid}>
         {cards.map((card) => {

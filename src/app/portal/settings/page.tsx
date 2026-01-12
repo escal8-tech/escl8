@@ -973,16 +973,6 @@ export default function SettingsPage() {
 
   return (
     <div style={styles.page}>
-      {/* Header */}
-      <div style={styles.header}>
-        <div>
-          <h1 style={styles.headerTitle}>Settings</h1>
-          <p style={styles.headerSubtitle}>
-            Manage your account, booking configuration, and integrations
-          </p>
-        </div>
-      </div>
-
       {/* Tabs */}
       <div style={styles.tabs}>
         {tabConfig.map((tab) => (

@@ -433,14 +433,6 @@ export default function DashboardPage() {
 
   return (
     <div className="fade-in">
-      {/* Page Header */}
-      <div className="page-header">
-        <h1 className="page-title">Dashboard</h1>
-        <p className="page-description">
-          Welcome back! Here's an overview of your customer interactions.
-        </p>
-      </div>
-
       {/* Stats Grid */}
       <div className="grid grid-cols-5 gap-6 stagger-children" style={{ marginBottom: "var(--space-8)" }}>
         <StatCard

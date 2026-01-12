@@ -890,29 +890,6 @@ function UploadContent() {
 
   return (
     <div style={styles.page}>
-      {/* Header */}
-      <div style={styles.header}>
-        <div style={styles.headerLeft}>
-          <h1 style={styles.title}>Document Training</h1>
-          <p style={styles.subtitle}>
-            Upload your business documents to train your AI assistant. The more context you provide, 
-            the better your AI will understand your business.
-          </p>
-        </div>
-        <div style={styles.stats}>
-          <div style={styles.statItem}>
-            <span style={styles.statValue}>{stats.uploaded}/{stats.total}</span>
-            <span style={styles.statLabel}>Uploaded</span>
-          </div>
-          <div style={styles.statItem}>
-            <span style={{ ...styles.statValue, color: "var(--success)" }}>
-              {stats.trained}/{stats.total}
-            </span>
-            <span style={styles.statLabel}>Trained</span>
-          </div>
-        </div>
-      </div>
-
       {/* Tip Card */}
       <div style={styles.tipCard}>
         <div style={styles.tipIcon}>{Icons.bot}</div>

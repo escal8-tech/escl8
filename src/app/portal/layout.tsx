@@ -16,7 +16,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   return (
     <div className="portal-layout">
       <PortalNav />
-      <main className="portal-main" style={{ paddingTop: 64 }}>
+      <main className="portal-main" style={{ paddingTop: 72 }}>
         <PortalAuthProvider>
           <div className="portal-content">
             {children}
