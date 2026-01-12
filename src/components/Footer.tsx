@@ -205,25 +205,17 @@ export default function Footer() {
           <div
             style={{
               display: "flex",
+              alignItems: "center",
               gap: 20,
-              fontSize: 13,
-              color: "var(--muted)",
             }}
           >
-            <span
-              style={{
-                padding: "4px 12px",
-                background: "rgba(184, 134, 11, 0.1)",
-                borderRadius: 999,
-                border: "1px solid rgba(184, 134, 11, 0.2)",
-                color: "var(--gold-light)",
-                fontSize: 11,
-                fontWeight: 600,
-                letterSpacing: "0.05em",
-              }}
-            >
-              META BUSINESS PARTNER
-            </span>
+            <Image
+              src="/meta-business-partner.png"
+              alt="Meta Business Partner"
+              width={130}
+              height={52}
+              style={{ objectFit: "contain", borderRadius: 10 }}
+            />
           </div>
         </div>
       </div>

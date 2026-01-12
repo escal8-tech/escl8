@@ -21,26 +21,6 @@ export default function Home() {
               <Link className="btn btn-primary" href="/portal">
                 Create your agent
               </Link>
-              <span
-                className="badge"
-                style={{
-                  padding: 6,
-                  borderRadius: 10,
-                  background: "#fff",
-                  boxShadow: "0 8px 20px rgba(15, 23, 42, 0.18)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  border: "1px solid rgba(148, 163, 184, 0.25)",
-                }}
-              >
-                <Image
-                  src="/meta-business-partner.png"
-                  alt="Meta Business Partner"
-                  width={130}
-                  height={52}
-                />
-              </span>
             </div>
           </div>
           <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
