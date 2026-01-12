@@ -19,12 +19,12 @@ export function RequestsTable({ rows, onSelect }: Props) {
 
   // Get unique values for filters
   const sentiments = useMemo(() => {
-    const unique = new Set(rows.map((r) => r.sentiment).filter(Boolean));
+    const unique = new Set(rows.map((r) => r.sentiment).filter((s): s is string => Boolean(s)));
     return Array.from(unique).sort();
   }, [rows]);
 
   const statuses = useMemo(() => {
-    const unique = new Set(rows.map((r) => r.resolutionStatus).filter(Boolean));
+    const unique = new Set(rows.map((r) => r.resolutionStatus).filter((s): s is string => Boolean(s)));
     return Array.from(unique).sort();
   }, [rows]);
 
