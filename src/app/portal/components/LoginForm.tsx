@@ -13,7 +13,7 @@ export function LoginForm({ state, onSubmit, onGoogle }: {
   onGoogle: () => Promise<void> | void;
 }) {
   return (
-    <div className="frost-card" style={{ width: "100%", maxWidth: 420, padding: "36px 32px 40px" }}>
+    <div className="frost-card" style={{ width: "100%", maxWidth: 720, padding: "40px 44px 48px" }}>
       <div style={{ marginBottom: 24, textAlign: "center" }}>
         <h1 style={{ fontSize: 28, letterSpacing: "-0.5px", marginBottom: 8, color: "var(--foreground)" }}>Welcome Back</h1>
         <p style={{ fontSize: 14, color: "var(--muted)" }}>Sign in to your Escl8 account</p>

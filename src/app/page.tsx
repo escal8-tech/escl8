@@ -44,14 +44,20 @@ export default function Home() {
               </span>
             </div>
           </div>
-          <div className="glass ring-gradient neon-shadow" style={{ padding: "0 18px", overflow: "hidden" }}>
+          <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             <Image
-              src="/whatsapp-hero.svg"
-              alt="Chat preview"
-              width={420}
-              height={380}
+              src="/mobile.png"
+              alt="WhatsApp AI Agent Demo - 24/7 Customer Support"
+              width={540}
+              height={700}
               priority
-              style={{ display: 'block', margin: '0 auto' }}
+              style={{ 
+                display: 'block', 
+                maxWidth: '100%',
+                height: 'auto',
+                filter: 'drop-shadow(0 25px 50px rgba(0, 0, 0, 0.4))',
+                transform: 'translate(15px, -20px)',
+              }}
             />
           </div>
         </div>
@@ -147,7 +153,7 @@ export default function Home() {
             </div>
             
             {/* Screenshot - Right, Fading Out to Edge */}
-            <div className="feature-image-wrapper feature-image-right" style={{ position: 'relative', marginRight: '-15%' }}>
+            <div className="feature-image-wrapper feature-image-right" style={{ position: 'relative', marginRight: '-25%' }}>
               <div className="screenshot-container" style={{
                 position: 'relative',
                 borderRadius: 16,
@@ -185,9 +191,9 @@ export default function Home() {
           ═══════════════════════════════════════════════════════════════════════════ */}
       <section className="section feature-section" style={{ paddingTop: 100, paddingBottom: 100, overflow: 'hidden', background: 'rgba(15, 23, 42, 0.3)' }}>
         <div className="container" style={{ maxWidth: 1400 }}>
-          <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 80, alignItems: 'center' }}>
+          <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 120, alignItems: 'center' }}>
             {/* Screenshot - Left, Fading Out to Edge */}
-            <div className="feature-image-wrapper feature-image-left" style={{ position: 'relative', marginLeft: '-15%' }}>
+            <div className="feature-image-wrapper feature-image-left" style={{ position: 'relative', marginLeft: '-25%' }}>
               <div className="screenshot-container" style={{
                 position: 'relative',
                 borderRadius: 16,
@@ -218,7 +224,7 @@ export default function Home() {
             </div>
             
             {/* Content - Right */}
-            <div className="feature-content">
+            <div className="feature-content" style={{ paddingRight: '5%' }}>
               <span className="eyebrow" style={{ marginBottom: 16 }}>All-in-One Platform</span>
               <h2 style={{ 
                 fontSize: 'clamp(2rem, 4vw, 2.8rem)', 
@@ -259,9 +265,9 @@ export default function Home() {
           ═══════════════════════════════════════════════════════════════════════════ */}
       <section className="section feature-section" style={{ paddingTop: 100, paddingBottom: 100, overflow: 'hidden' }}>
         <div className="container" style={{ maxWidth: 1400 }}>
-          <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 80, alignItems: 'center' }}>
+          <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: 120, alignItems: 'center' }}>
             {/* Content - Left */}
-            <div className="feature-content">
+            <div className="feature-content" style={{ paddingLeft: '5%' }}>
               <span className="eyebrow" style={{ marginBottom: 16 }}>Customer Intelligence</span>
               <h2 style={{ 
                 fontSize: 'clamp(2rem, 4vw, 2.8rem)', 
@@ -295,7 +301,7 @@ export default function Home() {
             </div>
             
             {/* Screenshot - Right, Fading Out to Edge */}
-            <div className="feature-image-wrapper feature-image-right" style={{ position: 'relative', marginRight: '-15%' }}>
+            <div className="feature-image-wrapper feature-image-right" style={{ position: 'relative', marginRight: '-25%' }}>
               <div className="screenshot-container" style={{
                 position: 'relative',
                 borderRadius: 16,

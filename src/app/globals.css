@@ -215,14 +215,6 @@ img, video { max-width: 100%; display: block; }
   transition: all var(--transition-base);
 }
 
-.glass:hover {
-  border-color: var(--border-gold);
-  box-shadow: 
-    0 12px 40px rgba(0, 0, 0, 0.5),
-    0 0 0 1px var(--border-gold),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
 .glass-gold {
   background: linear-gradient(
     135deg,
@@ -251,12 +243,6 @@ img, video { max-width: 100%; display: block; }
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   transition: all var(--transition-base);
-}
-
-.card:hover {
-  border-color: var(--border-gold);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
 }
 
 .card-body { padding: var(--space-6); }
@@ -808,11 +794,6 @@ tr:last-child td {
   border: 1px solid rgba(184, 134, 11, 0.3);
 }
 
-#pricing .glass:hover {
-  border-color: var(--gold);
-  box-shadow: 0 0 30px rgba(184, 134, 11, 0.15), var(--shadow-xl);
-}
-
 #pricing .glass h3 {
   font-size: var(--text-xl);
   background: linear-gradient(135deg, var(--foreground), var(--gold-light));
@@ -1216,12 +1197,6 @@ tr:last-child td {
   backdrop-filter: blur(10px);
 }
 
-.stat-card:hover {
-  border-color: var(--gold);
-  box-shadow: 0 0 25px rgba(184, 134, 11, 0.2), var(--shadow-lg);
-  transform: translateY(-2px);
-}
-
 .stat-card-header {
   display: flex;
   align-items: center;
@@ -1623,13 +1598,6 @@ tr:last-child td {
   backdrop-filter: blur(10px);
 }
 
-.portal-layout .card:hover,
-.portal-layout .glass:hover,
-.portal-layout .chart-card:hover {
-  border-color: var(--gold) !important;
-  box-shadow: 0 0 25px rgba(184, 134, 11, 0.15), 0 10px 40px rgba(0, 0, 0, 0.3) !important;
-}
-
 .portal-layout .table-container {
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(26, 31, 46, 0.8) 100%);
   border: 1px solid rgba(184, 134, 11, 0.25);
@@ -1784,10 +1752,6 @@ tr:last-child td {
   border-radius: var(--radius-xl);
   padding: var(--space-5);
   transition: all var(--transition-base);
-}
-
-.chart-card:hover {
-  border-color: var(--border-gold);
 }
 
 .chart-header {
@@ -2165,11 +2129,6 @@ tr:last-child td {
   transition: all var(--transition-base);
 }
 
-.document-card:hover {
-  border-color: var(--border-gold);
-  transform: translateY(-1px);
-}
-
 .document-icon {
   width: 40px;
   height: 40px;
@@ -2207,10 +2166,6 @@ tr:last-child td {
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   transition: all var(--transition-base);
-}
-
-.integration-card:hover {
-  border-color: var(--border-gold);
 }
 
 .integration-card.connected {
