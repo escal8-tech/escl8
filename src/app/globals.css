@@ -600,6 +600,16 @@ tr:last-child td {
   overflow: hidden;
 }
 
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('/hero.png') center center / cover no-repeat;
+  opacity: 0.08;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .hero-bg {
   position: absolute;
   inset: 0;
@@ -608,9 +618,12 @@ tr:last-child td {
     radial-gradient(ellipse 60% 40% at 80% 60%, rgba(184, 134, 11, 0.15), transparent),
     radial-gradient(ellipse 50% 30% at 20% 80%, rgba(0, 212, 255, 0.1), transparent);
   pointer-events: none;
+  z-index: 1;
 }
 
 .hero-grid {
+  position: relative;
+  z-index: 2;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-16);
@@ -750,7 +763,7 @@ tr:last-child td {
 
 .container {
   width: 100%;
-  max-width: 1280px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 0 var(--space-6);
 }

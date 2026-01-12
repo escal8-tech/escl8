@@ -1,6 +1,5 @@
 import Link from "next/link";
 import Image from "next/image";
-import ChatBubbles from "@/components/ChatBubbles";
 import ContactForm from "@/components/ContactForm";
 
 export default function Home() {
@@ -11,9 +10,9 @@ export default function Home() {
         <div className="hero-bg" aria-hidden />
         <div className="container hero-grid">
           <div>
-            <span className="eyebrow">WhatsApp first</span>
+            <span className="eyebrow">AI-powered customer service</span>
             <h1>
-              Human‑like AI sales agents for WhatsApp — powered by your content
+              Human‑like AI sales agents for all your channels — powered by your content
             </h1>
             <p className="lead">
               Train on your docs. Set your brand tone. Launch a revenue‑driving AI sales agent where your customers already are.
@@ -63,16 +62,41 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Chat bubbles section - appears on scroll */}
-      <section id="features" className="section" style={{ overflow: 'visible', paddingTop: 60, paddingBottom: 60 }}>
-        <ChatBubbles
-          startSide="left"
-          items={[
-            { text: "WhatsApp native — Optimized for sales flows: replies, follow‑ups, catalog prompts, payments hand‑offs." },
-            { text: "Document‑grounded — Upload PDFs, docs, and KB exports. Answers stay on‑brand and on‑fact." },
-            { text: "Human‑like tone — Define your voice once. The agent maintains context like a real rep." },
-          ]}
-        />
+      {/* How It Works - Clean Step Process */}
+      <section id="features" className="section" style={{ paddingTop: 80, paddingBottom: 80 }}>
+        <div className="container">
+          <div style={{ textAlign: 'center', marginBottom: 50 }}>
+            <h2 style={{ 
+              fontSize: '38px', 
+              letterSpacing: '-0.5px', 
+              background: 'linear-gradient(135deg, var(--gold-light), var(--gold))', 
+              WebkitBackgroundClip: 'text', 
+              WebkitTextFillColor: 'transparent', 
+              backgroundClip: 'text' 
+            }}>
+              How It Works
+            </h2>
+            <p className="muted" style={{ marginTop: 14, fontSize: 18 }}>
+              Get your AI agent running in minutes, not weeks.
+            </p>
+          </div>
+          
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            gap: 0,
+            flexWrap: 'wrap',
+          }}>
+            <StepCard number={1} title="Connect your service" description="Link WhatsApp, Shopee, Lazada, or other platforms" />
+            <StepConnector />
+            <StepCard number={2} title="Upload your documents" description="Add FAQs, catalogs, policies — any knowledge base" />
+            <StepConnector />
+            <StepCard number={3} title="Configure your agent" description="Set tone, guardrails, and response preferences" />
+            <StepConnector />
+            <StepCard number={4} title="Go live & monitor" description="AI handles everything — you track results" />
+          </div>
+        </div>
       </section>
 
       {/* Why use section */}
@@ -82,7 +106,7 @@ export default function Home() {
 
         {/* Frosted band background fills the entire area between the two lines */}
         <div className="full-bleed frost-band" style={{ padding: '90px 0' }}>
-          <div className="container" style={{ maxWidth: 1180 }}>
+          <div className="container" style={{ maxWidth: 1320 }}>
             <div style={{ textAlign: 'center', marginBottom: 60 }}>
               <h2 style={{ fontSize: '38px', letterSpacing: '-0.5px', background: 'linear-gradient(135deg, var(--gold-light), var(--gold))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Why teams choose Escl8?</h2>
               <p className="muted" style={{ marginTop: 14, fontSize: 18 }}>Three reasons brands deploy AI sales agents that feel human day one.</p>
@@ -114,10 +138,66 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════════════════════════════════════
+          SUPPORTED PLATFORMS SECTION
+          ═══════════════════════════════════════════════════════════════════════════ */}
+      <section className="section" style={{ paddingTop: 80, paddingBottom: 80 }}>
+        <div className="container">
+          <div style={{ textAlign: 'center', marginBottom: 50 }}>
+            <h2 style={{ 
+              fontSize: '38px', 
+              letterSpacing: '-0.5px', 
+              background: 'linear-gradient(135deg, var(--gold-light), var(--gold))', 
+              WebkitBackgroundClip: 'text', 
+              WebkitTextFillColor: 'transparent', 
+              backgroundClip: 'text' 
+            }}>
+              Works With All Your Channels
+            </h2>
+            <p className="muted" style={{ marginTop: 14, fontSize: 18 }}>
+              One AI agent that handles customer conversations across every platform.
+            </p>
+          </div>
+          
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(4, 1fr)', 
+            gap: 24,
+            maxWidth: 900,
+            margin: '0 auto',
+          }}>
+            <PlatformCard 
+              name="WhatsApp" 
+              icon="/whatsapp.svg"
+              status="live"
+            />
+            <PlatformCard 
+              name="Shopee" 
+              icon="/shopee.svg"
+              status="coming"
+            />
+            <PlatformCard 
+              name="Lazada" 
+              icon="/lazada.svg"
+              status="coming"
+            />
+            <PlatformCard 
+              name="Telegram" 
+              icon="/telegram.svg"
+              status="coming"
+            />
+          </div>
+          
+          <p className="muted" style={{ textAlign: 'center', marginTop: 32, fontSize: 14 }}>
+            More platforms coming soon. <Link href="#contact" style={{ color: 'var(--gold)', textDecoration: 'underline' }}>Request an integration</Link>
+          </p>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════════════════════════
           FEATURE SECTION 1: Dashboard - Image Right, Fading Out
           ═══════════════════════════════════════════════════════════════════════════ */}
       <section className="section feature-section" style={{ paddingTop: 100, paddingBottom: 100, overflow: 'hidden' }}>
-        <div className="container" style={{ maxWidth: 1400 }}>
+        <div className="container" style={{ maxWidth: 1600 }}>
           <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 80, alignItems: 'center' }}>
             {/* Content - Left */}
             <div className="feature-content">
@@ -190,7 +270,7 @@ export default function Home() {
           FEATURE SECTION 2: Unified Inbox - Image Left
           ═══════════════════════════════════════════════════════════════════════════ */}
       <section className="section feature-section" style={{ paddingTop: 100, paddingBottom: 100, overflow: 'hidden', background: 'rgba(15, 23, 42, 0.3)' }}>
-        <div className="container" style={{ maxWidth: 1400 }}>
+        <div className="container" style={{ maxWidth: 1600 }}>
           <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 120, alignItems: 'center' }}>
             {/* Screenshot - Left, Fading Out to Edge */}
             <div className="feature-image-wrapper feature-image-left" style={{ position: 'relative', marginLeft: '-25%' }}>
@@ -264,7 +344,7 @@ export default function Home() {
           FEATURE SECTION 3: CRM System - Image Right
           ═══════════════════════════════════════════════════════════════════════════ */}
       <section className="section feature-section" style={{ paddingTop: 100, paddingBottom: 100, overflow: 'hidden' }}>
-        <div className="container" style={{ maxWidth: 1400 }}>
+        <div className="container" style={{ maxWidth: 1600 }}>
           <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: 120, alignItems: 'center' }}>
             {/* Content - Left */}
             <div className="feature-content" style={{ paddingLeft: '5%' }}>
@@ -339,7 +419,7 @@ export default function Home() {
           ═══════════════════════════════════════════════════════════════════════════ */}
       <section className="section" style={{ paddingTop: 80, paddingBottom: 80 }}>
         <div className="full-bleed frost-band" style={{ padding: '80px 0' }}>
-          <div className="container" style={{ maxWidth: 1180 }}>
+          <div className="container" style={{ maxWidth: 1320 }}>
             <div style={{ textAlign: 'center', marginBottom: 50 }}>
               <h2 style={{ 
                 fontSize: '32px', 
@@ -449,5 +529,130 @@ function IconChart() {
       <path d="M3 3v18h18" />
       <path d="M7 14l4-4 4 3 5-7" />
     </svg>
+  );
+}
+
+// Step Card Component for "How It Works" section
+function StepCard({ number, title, description }: { number: number; title: string; description: string }) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 16,
+      padding: '24px 28px',
+      background: 'rgba(255, 255, 255, 0.03)',
+      border: '1px solid rgba(255, 255, 255, 0.08)',
+      borderRadius: 16,
+      minWidth: 260,
+      maxWidth: 300,
+    }}>
+      <div style={{
+        width: 48,
+        height: 48,
+        borderRadius: '50%',
+        border: '2px solid var(--gold)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 18,
+        fontWeight: 600,
+        color: 'var(--gold)',
+        flexShrink: 0,
+      }}>
+        {number}
+      </div>
+      <div>
+        <div style={{ fontWeight: 600, fontSize: 16, color: 'var(--foreground)', marginBottom: 4 }}>
+          {title}
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.4 }}>
+          {description}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Connector between steps
+function StepConnector() {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      padding: '0 8px',
+    }}>
+      <div style={{
+        width: 40,
+        height: 2,
+        background: 'linear-gradient(90deg, var(--gold) 0%, var(--gold) 50%, transparent 50%, transparent 100%)',
+        backgroundSize: '8px 2px',
+        opacity: 0.5,
+      }} />
+    </div>
+  );
+}
+
+// Platform Card Component for supported services
+function PlatformCard({ name, icon, status }: { name: string; icon: string; status: 'live' | 'coming' }) {
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: 16,
+      padding: '32px 24px',
+      background: 'rgba(255, 255, 255, 0.03)',
+      border: '1px solid rgba(255, 255, 255, 0.08)',
+      borderRadius: 16,
+      position: 'relative',
+      transition: 'all 0.2s ease',
+    }}>
+      {status === 'live' && (
+        <span style={{
+          position: 'absolute',
+          top: 12,
+          right: 12,
+          padding: '4px 10px',
+          fontSize: 11,
+          fontWeight: 600,
+          color: '#22c55e',
+          background: 'rgba(34, 197, 94, 0.15)',
+          borderRadius: 999,
+          border: '1px solid rgba(34, 197, 94, 0.3)',
+        }}>
+          LIVE
+        </span>
+      )}
+      {status === 'coming' && (
+        <span style={{
+          position: 'absolute',
+          top: 12,
+          right: 12,
+          padding: '4px 10px',
+          fontSize: 11,
+          fontWeight: 600,
+          color: 'var(--gold)',
+          background: 'rgba(184, 134, 11, 0.15)',
+          borderRadius: 999,
+          border: '1px solid rgba(184, 134, 11, 0.3)',
+        }}>
+          SOON
+        </span>
+      )}
+      <Image 
+        src={icon} 
+        alt={name} 
+        width={48} 
+        height={48}
+        style={{ opacity: status === 'coming' ? 0.6 : 1 }}
+      />
+      <span style={{ 
+        fontSize: 16, 
+        fontWeight: 500, 
+        color: status === 'coming' ? 'var(--muted)' : 'var(--foreground)',
+      }}>
+        {name}
+      </span>
+    </div>
   );
 }
