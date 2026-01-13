@@ -182,6 +182,8 @@ export const usersRelations = relations(users, ({ one }) => ({
 export const businessesRelations = relations(businesses, ({ many }) => ({
   users: many(users),
   whatsappIdentities: many(whatsappIdentities),
+  customers: many(customers),
+  requests: many(requests),
 }));
 
 export const whatsappIdentitiesRelations = relations(whatsappIdentities, ({ one }) => ({
@@ -271,6 +273,94 @@ export const messageEvents = pgTable(
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
+/**
+ * CUSTOMERS = CRM table for unique WhatsApp users per business.
+ * 
+ * Composite PK: (businessId, waId) ensures one customer per phone per business.
+ * Cached aggregates for fast dashboard queries (updated on each request).
+ */
+export const customers = pgTable(
+  "customers",
+  {
+    // Composite primary key: business + phone number
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    waId: text("wa_id").notNull(), // E.164 phone number (e.g., "60123456789")
+
+    // Profile info (can be updated from WhatsApp profile API or manually)
+    name: text("name"),
+    profilePictureUrl: text("profile_picture_url"),
+
+    // Cached aggregates (updated on each request for fast reads)
+    totalRequests: integer("total_requests").notNull().default(0),
+    totalRevenue: numeric("total_revenue", { precision: 12, scale: 2 }).notNull().default("0"),
+    successfulRequests: integer("successful_requests").notNull().default(0), // resolved requests
+
+    // Lead scoring & intent signals
+    leadScore: integer("lead_score").notNull().default(0), // 0-100, derived from behavior
+    isHighIntent: boolean("is_high_intent").notNull().default(false),
+    
+    // Sentiment tracking (last or average)
+    lastSentiment: text("last_sentiment"), // "positive" | "neutral" | "negative"
+    
+    // Activity timestamps
+    firstMessageAt: timestamp("first_message_at", { withTimezone: true }),
+    lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+
+    // Manual CRM fields
+    tags: jsonb("tags").$type<string[]>().default([]),
+    notes: text("notes"),
+    assignedToUserId: text("assigned_to_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+
+    // Status
+    status: text("status").notNull().default("active"), // "active" | "vip" | "blocked" | "archived"
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // Composite primary key
+    customersPk: uniqueIndex("customers_pk").on(t.businessId, t.waId),
+    
+    // Fast lookups
+    customersBusinessIdx: index("customers_business_id_idx").on(t.businessId),
+    customersWaIdIdx: index("customers_wa_id_idx").on(t.waId),
+    customersLastMessageIdx: index("customers_last_message_at_idx").on(t.lastMessageAt),
+    customersLeadScoreIdx: index("customers_lead_score_idx").on(t.leadScore),
+    customersHighIntentIdx: index("customers_high_intent_idx").on(t.businessId, t.isHighIntent),
+    customersTotalRevenueIdx: index("customers_total_revenue_idx").on(t.businessId, t.totalRevenue),
+
+    // Sanity checks
+    customersBusinessIdNonEmpty: check(
+      "customers_business_id_nonempty",
+      sql`length(btrim(${t.businessId})) > 0`,
+    ),
+    customersWaIdNonEmpty: check(
+      "customers_wa_id_nonempty",
+      sql`length(btrim(${t.waId})) > 0`,
+    ),
+  }),
+);
+
+export const customersRelations = relations(customers, ({ one, many }) => ({
+  business: one(businesses, {
+    fields: [customers.businessId],
+    references: [businesses.id],
+  }),
+  assignedTo: one(users, {
+    fields: [customers.assignedToUserId],
+    references: [users.id],
+  }),
+  requests: many(requests),
+}));
+
+export type CustomerRow = typeof customers.$inferSelect;
+export type NewCustomer = typeof customers.$inferInsert;
+
 // Customer requests (per business dashboard)
 export const requests = pgTable(
   "requests",
@@ -315,11 +405,15 @@ export const requests = pgTable(
   }),
 );
 
-// Optional relations
+// Relations: requests -> business & customer
 export const requestsRelations = relations(requests, ({ one }) => ({
   business: one(businesses, {
     fields: [requests.businessId],
     references: [businesses.id],
+  }),
+  customer: one(customers, {
+    fields: [requests.businessId, requests.customerNumber],
+    references: [customers.businessId, customers.waId],
   }),
 }));
 

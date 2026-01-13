@@ -17,6 +17,14 @@ const Icons = {
       <rect x="14" y="14" width="7" height="7" rx="1" />
     </svg>
   ),
+  customers: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  ),
   upload: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -59,6 +67,7 @@ const Icons = {
 // Nav items without settings (moved to footer)
 const navItems = [
   { href: "/portal/dashboard", label: "Dashboard", icon: "dashboard" },
+  { href: "/portal/customers", label: "Customers", icon: "customers" },
   { href: "/portal/upload", label: "Documents", icon: "upload" },
   { href: "/portal/bookings", label: "Bookings", icon: "calendar" },
   { href: "/portal/sync", label: "WhatsApp Sync", icon: "sync" },
