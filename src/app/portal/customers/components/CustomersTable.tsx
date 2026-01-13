@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { CustomerRow } from "../types";
+import type { CustomerRow, Source } from "../types";
+import { SOURCE_CONFIG } from "../types";
 
 type Props = {
   rows: CustomerRow[];
-  onSelect: (waId: string) => void;
+  onSelect: (source: string, externalId: string) => void;
 };
 
 const PAGE_SIZE = 15;
@@ -14,9 +15,17 @@ export function CustomersTable({ rows, onSelect }: Props) {
   const [page, setPage] = useState(0);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [intentFilter, setIntentFilter] = useState<string>("all");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("lastMessageAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [search, setSearch] = useState("");
+
+  // Get unique sources from data
+  const availableSources = useMemo(() => {
+    const sources = new Set<string>();
+    rows.forEach((r) => sources.add(r.source));
+    return Array.from(sources).sort();
+  }, [rows]);
 
   // Apply filters
   const filteredRows = useMemo(() => {
@@ -24,15 +33,18 @@ export function CustomersTable({ rows, onSelect }: Props) {
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
       if (intentFilter === "high" && !r.isHighIntent) return false;
       if (intentFilter === "low" && r.isHighIntent) return false;
+      if (sourceFilter !== "all" && r.source !== sourceFilter) return false;
       if (search) {
         const searchLower = search.toLowerCase();
         const matchesName = r.name?.toLowerCase().includes(searchLower);
-        const matchesPhone = r.waId.includes(search);
-        if (!matchesName && !matchesPhone) return false;
+        const matchesExternalId = r.externalId.toLowerCase().includes(searchLower);
+        const matchesPhone = r.phone?.includes(search);
+        const matchesEmail = r.email?.toLowerCase().includes(searchLower);
+        if (!matchesName && !matchesExternalId && !matchesPhone && !matchesEmail) return false;
       }
       return true;
     });
-  }, [rows, statusFilter, intentFilter, search]);
+  }, [rows, statusFilter, intentFilter, sourceFilter, search]);
 
   // Sort
   const sortedRows = useMemo(() => {
@@ -229,6 +241,22 @@ export function CustomersTable({ rows, onSelect }: Props) {
             <option value="high">High intent</option>
             <option value="low">Regular</option>
           </select>
+          <select
+            value={sourceFilter}
+            onChange={(e) => {
+              setSourceFilter(e.target.value);
+              setPage(0);
+            }}
+            style={selectStyle}
+            aria-label="Filter by source"
+          >
+            <option value="all">All channels</option>
+            {availableSources.map((s) => (
+              <option key={s} value={s}>
+                {SOURCE_CONFIG[s as Source]?.icon ?? "📱"} {SOURCE_CONFIG[s as Source]?.label ?? s}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -253,6 +281,9 @@ export function CustomersTable({ rows, onSelect }: Props) {
               >
                 Customer
                 <SortIcon field="name" />
+              </th>
+              <th style={{ textAlign: "center", padding: "12px 8px" }}>
+                Source
               </th>
               <th
                 onClick={() => handleSort("totalRequests")}
@@ -313,8 +344,8 @@ export function CustomersTable({ rows, onSelect }: Props) {
           <tbody>
             {paginatedRows.map((row) => (
               <tr
-                key={row.waId}
-                onClick={() => onSelect(row.waId)}
+                key={`${row.source}-${row.externalId}`}
+                onClick={() => onSelect(row.source, row.externalId)}
                 style={{
                   borderBottom: "1px solid var(--border)",
                   cursor: "pointer",
@@ -345,7 +376,7 @@ export function CustomersTable({ rows, onSelect }: Props) {
                         flexShrink: 0,
                       }}
                     >
-                      {row.name?.[0]?.toUpperCase() ?? row.waId.slice(-2)}
+                      {row.name?.[0]?.toUpperCase() ?? row.externalId.slice(-2)}
                     </div>
                     <div>
                       <div style={{ fontWeight: 500 }}>
@@ -372,10 +403,30 @@ export function CustomersTable({ rows, onSelect }: Props) {
                           marginTop: 2,
                         }}
                       >
-                        +{row.waId}
+                        {row.phone ? `+${row.phone}` : row.externalId}
                       </div>
                     </div>
                   </div>
+                </td>
+                <td style={{ textAlign: "center", padding: "12px 8px" }}>
+                  {(() => {
+                    const config = SOURCE_CONFIG[row.source as Source];
+                    return (
+                      <span
+                        title={config?.label ?? row.source}
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 4,
+                          background: `${config?.color ?? "#94A3B8"}20`,
+                          color: config?.color ?? "#94A3B8",
+                          fontSize: 12,
+                          fontWeight: 500,
+                        }}
+                      >
+                        {config?.icon ?? "📱"} {config?.label ?? row.source}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td style={{ textAlign: "center", padding: "12px 8px" }}>
                   {row.totalRequests}

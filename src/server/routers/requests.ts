@@ -1,25 +1,50 @@
 import { z } from "zod";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
-import { requests } from "../../../drizzle/schema";
-import { desc, eq } from "drizzle-orm";
+import { requests, SUPPORTED_SOURCES } from "../../../drizzle/schema";
+import { desc, eq, and } from "drizzle-orm";
+
+// Source validation
+const sourceSchema = z.enum(SUPPORTED_SOURCES);
 
 export const requestsRouter = router({
   list: businessProcedure
-    .input(z.object({ limit: z.number().min(1).max(200).optional() }).optional())
+    .input(
+      z
+        .object({
+          limit: z.number().min(1).max(200).optional(),
+          source: sourceSchema.optional(), // filter by source
+        })
+        .optional()
+    )
     .query(async ({ input, ctx }) => {
       const limit = input?.limit ?? 50;
+
+      // Build query based on filters
+      let whereClause = eq(requests.businessId, ctx.businessId);
+      if (input?.source) {
+        whereClause = and(whereClause, eq(requests.source, input.source))!;
+      }
+
       const rows = await db
         .select()
         .from(requests)
-        .where(eq(requests.businessId, ctx.businessId))
+        .where(whereClause)
         .orderBy(desc(requests.createdAt))
         .limit(limit);
       return rows;
     }),
 
-  stats: businessProcedure.query(async ({ ctx }) => {
-    const rows = await db.select().from(requests).where(eq(requests.businessId, ctx.businessId));
+  stats: businessProcedure
+    .input(z.object({ source: sourceSchema.optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      // Build query based on filters
+      let whereClause = eq(requests.businessId, ctx.businessId);
+      if (input?.source) {
+        whereClause = and(whereClause, eq(requests.source, input.source))!;
+      }
+
+      const rows = await db.select().from(requests).where(whereClause);
     const bySentiment: Record<string, number> = {};
     const byStatus: Record<string, number> = {
       ONGOING: 0,

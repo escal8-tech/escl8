@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { RequestRow } from "./types";
+import type { RequestRow, Source } from "./types";
+import { SOURCE_CONFIG } from "./types";
 import { formatMoney } from "./utils";
 
 type Props = {
@@ -16,6 +17,7 @@ export function RequestsTable({ rows, onSelect }: Props) {
   const [sentimentFilter, setSentimentFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [paidFilter, setPaidFilter] = useState<string>("all");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
 
   // Get unique values for filters
   const sentiments = useMemo(() => {
@@ -28,18 +30,24 @@ export function RequestsTable({ rows, onSelect }: Props) {
     return Array.from(unique).sort();
   }, [rows]);
 
+  const sources = useMemo(() => {
+    const unique = new Set(rows.map((r) => r.source || "whatsapp").filter((s): s is string => Boolean(s)));
+    return Array.from(unique).sort();
+  }, [rows]);
+
   // Apply filters
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
       if (sentimentFilter !== "all" && r.sentiment !== sentimentFilter) return false;
       if (statusFilter !== "all" && r.resolutionStatus !== statusFilter) return false;
+      if (sourceFilter !== "all" && (r.source || "whatsapp") !== sourceFilter) return false;
       if (paidFilter !== "all") {
         const isPaid = paidFilter === "yes";
         if (r.paid !== isPaid) return false;
       }
       return true;
     });
-  }, [rows, sentimentFilter, statusFilter, paidFilter]);
+  }, [rows, sentimentFilter, statusFilter, sourceFilter, paidFilter]);
 
   // Paginate
   const totalPages = Math.ceil(filteredRows.length / PAGE_SIZE);
@@ -101,6 +109,19 @@ export function RequestsTable({ rows, onSelect }: Props) {
             <option value="yes">Paid</option>
             <option value="no">Not paid</option>
           </select>
+          <select
+            value={sourceFilter}
+            onChange={(e) => handleFilterChange(setSourceFilter)(e.target.value)}
+            style={selectStyle}
+            aria-label="Filter by source"
+          >
+            <option value="all">All channels</option>
+            {sources.map((s) => (
+              <option key={s} value={s}>
+                {SOURCE_CONFIG[s as Source]?.icon ?? "📱"} {SOURCE_CONFIG[s as Source]?.label ?? s}
+              </option>
+            ))}
+          </select>
           <span className="muted" style={{ fontSize: 13 }}>{filteredRows.length} shown</span>
         </div>
       </div>
@@ -108,40 +129,63 @@ export function RequestsTable({ rows, onSelect }: Props) {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ textAlign: "left", fontSize: 13, color: "var(--muted)" }}>
-              <th style={{ padding: "10px 8px" }}>Customer number</th>
+              <th style={{ padding: "10px 8px" }}>Channel</th>
+              <th style={{ padding: "10px 8px" }}>Customer</th>
               <th style={{ padding: "10px 8px" }}>Sentiment</th>
-              <th style={{ padding: "10px 8px" }}>Resolution status</th>
+              <th style={{ padding: "10px 8px" }}>Status</th>
               <th style={{ padding: "10px 8px" }}>Price</th>
               <th style={{ padding: "10px 8px" }}>Paid</th>
               <th style={{ padding: "10px 8px" }}>Created</th>
             </tr>
           </thead>
           <tbody>
-            {paginatedRows.map((r) => (
-              <tr
-                key={r.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => onSelect(r.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") onSelect(r.id);
-                }}
-                style={{
-                  borderTop: "1px solid var(--border)",
-                  cursor: "pointer",
-                }}
-              >
-                <td style={{ padding: "12px 8px" }}>{r.customerNumber}</td>
-                <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.sentiment}</td>
-                <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.resolutionStatus}</td>
-                <td style={{ padding: "12px 8px" }}>{formatMoney(r.price)}</td>
-                <td style={{ padding: "12px 8px" }}>{r.paid ? "Yes" : "No"}</td>
-                <td style={{ padding: "12px 8px" }}>{new Date(r.createdAt as any).toLocaleString()}</td>
-              </tr>
-            ))}
+            {paginatedRows.map((r) => {
+              const source = r.source || "whatsapp";
+              const config = SOURCE_CONFIG[source as Source];
+              return (
+                <tr
+                  key={r.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelect(r.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") onSelect(r.id);
+                  }}
+                  style={{
+                    borderTop: "1px solid var(--border)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <td style={{ padding: "12px 8px" }}>
+                    <span
+                      title={config?.label ?? source}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        fontSize: 11,
+                        fontWeight: 500,
+                        background: `${config?.color ?? "#94A3B8"}20`,
+                        color: config?.color ?? "#94A3B8",
+                      }}
+                    >
+                      {config?.icon ?? "📱"} {config?.label ?? source}
+                    </span>
+                  </td>
+                  <td style={{ padding: "12px 8px" }}>{r.customerNumber}</td>
+                  <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.sentiment}</td>
+                  <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.resolutionStatus}</td>
+                  <td style={{ padding: "12px 8px" }}>{formatMoney(r.price)}</td>
+                  <td style={{ padding: "12px 8px" }}>{r.paid ? "Yes" : "No"}</td>
+                  <td style={{ padding: "12px 8px" }}>{new Date(r.createdAt as Date | string).toLocaleString()}</td>
+                </tr>
+              );
+            })}
             {paginatedRows.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ padding: 16 }} className="muted">No requests match filters.</td>
+                <td colSpan={7} style={{ padding: 16 }} className="muted">No requests match filters.</td>
               </tr>
             )}
           </tbody>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { CustomerRow } from "../types";
+import type { CustomerRow, Source } from "../types";
+import { SOURCE_CONFIG } from "../types";
 import { trpc } from "@/utils/trpc";
 
 type Props = {
@@ -25,13 +26,15 @@ export function CustomerDrawer({ customer, onClose }: Props) {
     },
   });
 
-  // Fetch requests for this customer
+  // Fetch requests for this customer (by source + externalId)
   const { data: requests } = trpc.customers.getRequests.useQuery(
-    { waId: customer?.waId ?? "" },
+    { source: customer?.source as Source, externalId: customer?.externalId ?? "" },
     { enabled: !!customer }
   );
 
   if (!customer) return null;
+
+  const sourceConfig = SOURCE_CONFIG[customer.source as Source];
 
   const formatDate = (date: Date | null) => {
     if (!date) return "—";
@@ -68,19 +71,45 @@ export function CustomerDrawer({ customer, onClose }: Props) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "resolved":
+      case "completed":
         return "#22c55e";
       case "pending":
+      case "needs_followup":
         return "var(--gold)";
       case "requires_assistance":
+      case "failed":
         return "#ef4444";
       default:
         return "var(--muted)";
     }
   };
 
+  const getSourceBadge = (source: string) => {
+    const config = SOURCE_CONFIG[source as Source];
+    if (!config) return null;
+    return (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "2px 8px",
+          borderRadius: 999,
+          fontSize: 11,
+          fontWeight: 500,
+          background: `${config.color}20`,
+          color: config.color,
+        }}
+      >
+        {config.icon} {config.label}
+      </span>
+    );
+  };
+
   const handleSaveNotes = () => {
     updateMutation.mutate({
-      waId: customer.waId,
+      source: customer.source as Source,
+      externalId: customer.externalId,
       notes,
       tags,
     });
@@ -92,7 +121,8 @@ export function CustomerDrawer({ customer, onClose }: Props) {
       setTags(newTags);
       setNewTag("");
       updateMutation.mutate({
-        waId: customer.waId,
+        source: customer.source as Source,
+        externalId: customer.externalId,
         tags: newTags,
       });
     }
@@ -102,14 +132,16 @@ export function CustomerDrawer({ customer, onClose }: Props) {
     const newTags = tags.filter((t) => t !== tag);
     setTags(newTags);
     updateMutation.mutate({
-      waId: customer.waId,
+      source: customer.source as Source,
+      externalId: customer.externalId,
       tags: newTags,
     });
   };
 
   const handleStatusChange = (status: string) => {
     updateMutation.mutate({
-      waId: customer.waId,
+      source: customer.source as Source,
+      externalId: customer.externalId,
       status,
     });
   };
@@ -182,7 +214,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
               flexShrink: 0,
             }}
           >
-            {customer.name?.[0]?.toUpperCase() ?? customer.waId.slice(-2)}
+            {customer.name?.[0]?.toUpperCase() ?? customer.externalId.slice(-2)}
           </div>
           <div style={{ flex: 1 }}>
             <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 2 }}>
@@ -203,8 +235,28 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                 </span>
               )}
             </h2>
-            <div style={{ fontSize: 13, color: "var(--muted)" }}>
-              +{customer.waId}
+            <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 6 }}>
+              {customer.phone ? `+${customer.phone}` : customer.externalId}
+              {customer.email && (
+                <span style={{ marginLeft: 8 }}>• {customer.email}</span>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  fontSize: 10,
+                  fontWeight: 500,
+                  background: `${sourceConfig?.color ?? "#94A3B8"}20`,
+                  color: sourceConfig?.color ?? "#94A3B8",
+                }}
+              >
+                {sourceConfig?.icon ?? "📱"} {sourceConfig?.label ?? customer.source}
+              </span>
             </div>
           </div>
           <button
@@ -403,7 +455,16 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                   No requests found
                 </div>
               ) : (
-                requests.map((req) => (
+                requests.map((req: {
+                  id: string;
+                  sentiment: string;
+                  resolutionStatus: string;
+                  source: string;
+                  price: string | null;
+                  paid: boolean;
+                  summary: string | null;
+                  createdAt: Date;
+                }) => (
                   <div
                     key={req.id}
                     style={{
@@ -418,19 +479,23 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                         justifyContent: "space-between",
                         alignItems: "flex-start",
                         marginBottom: 8,
+                        gap: 8,
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: 11,
-                          color: getStatusColor(req.resolutionStatus),
-                          textTransform: "capitalize",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {req.resolutionStatus.replace("_", " ")}
-                      </span>
-                      <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        {getSourceBadge(req.source)}
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: getStatusColor(req.resolutionStatus),
+                            textTransform: "capitalize",
+                            fontWeight: 500,
+                          }}
+                        >
+                          {req.resolutionStatus.replace("_", " ")}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>
                         {formatDate(req.createdAt)}
                       </span>
                     </div>

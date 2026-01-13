@@ -6,12 +6,16 @@ import { CustomersTable } from "./components/CustomersTable";
 import { CustomerDrawer } from "./components/CustomerDrawer";
 
 export default function CustomersPage() {
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  // Store selected customer as source + externalId
+  const [selectedCustomer, setSelectedCustomer] = useState<{
+    source: string;
+    externalId: string;
+  } | null>(null);
   
   const { data: customers, isLoading } = trpc.customers.list.useQuery();
   
-  const selectedCustomer = customers?.find(
-    (c) => c.waId === selectedCustomerId
+  const customer = customers?.find(
+    (c) => c.source === selectedCustomer?.source && c.externalId === selectedCustomer?.externalId
   );
 
   return (
@@ -31,19 +35,19 @@ export default function CustomersPage() {
         >
           <p style={{ fontSize: 18, marginBottom: 8 }}>No customers yet</p>
           <p style={{ fontSize: 14, opacity: 0.7 }}>
-            Customers will appear here when they message your WhatsApp number.
+            Customers will appear here when they message you.
           </p>
         </div>
       ) : (
         <CustomersTable
           rows={customers}
-          onSelect={(waId) => setSelectedCustomerId(waId)}
+          onSelect={(source, externalId) => setSelectedCustomer({ source, externalId })}
         />
       )}
 
       <CustomerDrawer
-        customer={selectedCustomer ?? null}
-        onClose={() => setSelectedCustomerId(null)}
+        customer={customer ?? null}
+        onClose={() => setSelectedCustomer(null)}
       />
     </main>
   );

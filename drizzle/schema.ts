@@ -274,23 +274,53 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
 /**
- * CUSTOMERS = CRM table for unique WhatsApp users per business.
+ * SUPPORTED SOURCES - all channels the platform can handle
+ * Add new sources here as the platform expands
+ */
+export const SUPPORTED_SOURCES = [
+  'whatsapp',
+  'shopee',
+  'lazada',
+  'telegram',
+  'instagram',
+  'facebook',
+  'email',
+  'web',
+  'other',
+] as const;
+export type Source = (typeof SUPPORTED_SOURCES)[number];
+
+/**
+ * CUSTOMERS = CRM table for unique customers per source per business.
  * 
- * Composite PK: (businessId, waId) ensures one customer per phone per business.
- * Cached aggregates for fast dashboard queries (updated on each request).
+ * Composite PK: (businessId, source, externalId) - one row per customer per channel.
+ * If same person uses WhatsApp + Shopee + Lazada, they get 3 separate rows.
+ * This is intentional: cross-platform matching is error-prone and unnecessary.
+ * Each channel has its own customer profile, stats, and history.
  */
 export const customers = pgTable(
   "customers",
   {
-    // Composite primary key: business + phone number
+    // Composite primary key: business + source + external identifier
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
-    waId: text("wa_id").notNull(), // E.164 phone number (e.g., "60123456789")
+    
+    // Source/channel this customer came from
+    source: text("source").notNull().default("whatsapp"), // whatsapp | shopee | lazada | telegram | etc.
+    
+    // External ID from that source (phone for WhatsApp, shop user ID for Shopee, etc.)
+    // Kept as waId for backward compatibility with existing data
+    externalId: text("wa_id").notNull(),
 
-    // Profile info (can be updated from WhatsApp profile API or manually)
+    // Profile info (can be updated from platform APIs or manually)
     name: text("name"),
+    email: text("email"),
+    phone: text("phone"), // separate from externalId since Shopee ID != phone
     profilePictureUrl: text("profile_picture_url"),
+    
+    // Platform-specific metadata (username, shop name, etc.)
+    platformMeta: jsonb("platform_meta").$type<Record<string, unknown>>().default({}),
 
     // Cached aggregates (updated on each request for fast reads)
     totalRequests: integer("total_requests").notNull().default(0),
@@ -323,12 +353,14 @@ export const customers = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // Composite primary key
-    customersPk: uniqueIndex("customers_pk").on(t.businessId, t.waId),
+    // Composite primary key: business + source + externalId
+    customersPk: uniqueIndex("customers_pk_v2").on(t.businessId, t.source, t.externalId),
     
     // Fast lookups
     customersBusinessIdx: index("customers_business_id_idx").on(t.businessId),
-    customersWaIdIdx: index("customers_wa_id_idx").on(t.waId),
+    customersSourceIdx: index("customers_source_idx").on(t.source),
+    customersBusinessSourceIdx: index("customers_business_source_idx").on(t.businessId, t.source),
+    customersExternalIdIdx: index("customers_external_id_idx").on(t.externalId),
     customersLastMessageIdx: index("customers_last_message_at_idx").on(t.lastMessageAt),
     customersLeadScoreIdx: index("customers_lead_score_idx").on(t.leadScore),
     customersHighIntentIdx: index("customers_high_intent_idx").on(t.businessId, t.isHighIntent),
@@ -339,9 +371,9 @@ export const customers = pgTable(
       "customers_business_id_nonempty",
       sql`length(btrim(${t.businessId})) > 0`,
     ),
-    customersWaIdNonEmpty: check(
-      "customers_wa_id_nonempty",
-      sql`length(btrim(${t.waId})) > 0`,
+    customersExternalIdNonEmpty: check(
+      "customers_external_id_nonempty",
+      sql`length(btrim(${t.externalId})) > 0`,
     ),
   }),
 );
@@ -361,18 +393,25 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
 export type CustomerRow = typeof customers.$inferSelect;
 export type NewCustomer = typeof customers.$inferInsert;
 
-// Customer requests (per business dashboard)
+// Customer requests (per business dashboard) - multi-source
 export const requests = pgTable(
   "requests",
   {
     id: text("id").primaryKey().notNull().$defaultFn(() => crypto.randomUUID()),
 
-    // NEW: tenant scope
+    // Tenant scope
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
 
+    // Customer identifier (phone, email, platform ID)
     customerNumber: text("customer_number").notNull(),
+
+    // Source/channel this request came from (defaults to whatsapp for existing data)
+    source: text("source").notNull().default("whatsapp"), // whatsapp | shopee | lazada | telegram | etc.
+
+    // Platform-specific metadata (order ID, chat ID, etc.)
+    sourceMeta: jsonb("source_meta").$type<Record<string, unknown>>().default({}),
 
     sentiment: text("sentiment").notNull(), // "positive" | "neutral" | "negative"
     resolutionStatus: text("resolution_status").notNull(), // "open" | "resolved" | "pending" | "requires_assistance"
@@ -391,6 +430,8 @@ export const requests = pgTable(
     requestsCustomerIdx: index("requests_customer_number_idx").on(t.customerNumber),
     requestsBusinessCustomerIdx: index("requests_business_customer_idx").on(t.businessId, t.customerNumber),
     requestsStatusIdx: index("requests_resolution_status_idx").on(t.resolutionStatus),
+    requestsSourceIdx: index("requests_source_idx").on(t.source),
+    requestsBusinessSourceIdx: index("requests_business_source_idx").on(t.businessId, t.source),
 
     // sanity
     requestsIdNonEmpty: check("requests_id_nonempty", sql`length(btrim(${t.id})) > 0`),
@@ -412,8 +453,8 @@ export const requestsRelations = relations(requests, ({ one }) => ({
     references: [businesses.id],
   }),
   customer: one(customers, {
-    fields: [requests.businessId, requests.customerNumber],
-    references: [customers.businessId, customers.waId],
+    fields: [requests.businessId, requests.source, requests.customerNumber],
+    references: [customers.businessId, customers.source, customers.externalId],
   }),
 }));
 
