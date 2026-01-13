@@ -1,563 +1,305 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { CustomerRow, Source } from "../types";
-import { SOURCE_CONFIG } from "../types";
+import { CustomerRow, Source, SOURCE_CONFIG } from "../types";
+import { SUPPORTED_SOURCES } from "@/../drizzle/schema";
+import { trpc } from "@/utils/trpc";
 
-type Props = {
+interface Props {
   rows: CustomerRow[];
-  onSelect: (source: string, externalId: string) => void;
-};
+  onSelect: (id: string) => void;
+}
 
-const PAGE_SIZE = 15;
+function SourceBadge({ source }: { source: Source }) {
+  const config = SOURCE_CONFIG[source];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${config.bgColor}`}
+    >
+      {config.label}
+    </span>
+  );
+}
+
+function SentimentBadge({ sentiment }: { sentiment: string | null }) {
+  if (!sentiment) return <span className="text-gray-400">—</span>;
+
+  const colors: Record<string, string> = {
+    positive: "bg-green-100 text-green-800",
+    neutral: "bg-gray-100 text-gray-800",
+    negative: "bg-red-100 text-red-800",
+  };
+
+  return (
+    <span
+      className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${colors[sentiment] ?? colors.neutral}`}
+    >
+      {sentiment}
+    </span>
+  );
+}
+
+function LeadScoreBar({ score }: { score: number }) {
+  const color =
+    score >= 70 ? "#22c55e" : score >= 40 ? "#eab308" : "#ef4444";
+
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        className="h-2 rounded-full bg-gray-200"
+        style={{ width: 60 }}
+      >
+        <div
+          className="h-2 rounded-full transition-all"
+          style={{ width: `${score}%`, backgroundColor: color }}
+        />
+      </div>
+      <span className="text-xs text-gray-600">{score}</span>
+    </div>
+  );
+}
 
 export function CustomersTable({ rows, onSelect }: Props) {
-  const [page, setPage] = useState(0);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [intentFilter, setIntentFilter] = useState<string>("all");
-  const [sourceFilter, setSourceFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("lastMessageAt");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sourceFilter, setSourceFilter] = useState<Source | "all">("all");
+  const [sortKey, setSortKey] = useState<keyof CustomerRow>("lastMessageAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [search, setSearch] = useState("");
 
-  // Get unique sources from data
-  const availableSources = useMemo(() => {
-    const sources = new Set<string>();
-    rows.forEach((r) => sources.add(r.source));
-    return Array.from(sources).sort();
-  }, [rows]);
+  // Get source counts for filter dropdown
+  const { data: sourceCounts } = trpc.customers.getSourceCounts.useQuery();
 
-  // Apply filters
   const filteredRows = useMemo(() => {
-    return rows.filter((r) => {
-      if (statusFilter !== "all" && r.status !== statusFilter) return false;
-      if (intentFilter === "high" && !r.isHighIntent) return false;
-      if (intentFilter === "low" && r.isHighIntent) return false;
-      if (sourceFilter !== "all" && r.source !== sourceFilter) return false;
-      if (search) {
-        const searchLower = search.toLowerCase();
-        const matchesName = r.name?.toLowerCase().includes(searchLower);
-        const matchesExternalId = r.externalId.toLowerCase().includes(searchLower);
-        const matchesPhone = r.phone?.includes(search);
-        const matchesEmail = r.email?.toLowerCase().includes(searchLower);
-        if (!matchesName && !matchesExternalId && !matchesPhone && !matchesEmail) return false;
-      }
-      return true;
-    });
-  }, [rows, statusFilter, intentFilter, sourceFilter, search]);
+    let result = [...rows];
 
-  // Sort
-  const sortedRows = useMemo(() => {
-    return [...filteredRows].sort((a, b) => {
-      let aVal: number | string | Date | null = null;
-      let bVal: number | string | Date | null = null;
+    // Filter by source
+    if (sourceFilter !== "all") {
+      result = result.filter((r) => r.source === sourceFilter);
+    }
 
-      switch (sortBy) {
-        case "lastMessageAt":
-          aVal = a.lastMessageAt?.getTime() ?? 0;
-          bVal = b.lastMessageAt?.getTime() ?? 0;
-          break;
-        case "totalRevenue":
-          aVal = parseFloat(a.totalRevenue);
-          bVal = parseFloat(b.totalRevenue);
-          break;
-        case "totalRequests":
-          aVal = a.totalRequests;
-          bVal = b.totalRequests;
-          break;
-        case "leadScore":
-          aVal = a.leadScore;
-          bVal = b.leadScore;
-          break;
-        case "name":
-          aVal = a.name?.toLowerCase() ?? "";
-          bVal = b.name?.toLowerCase() ?? "";
-          break;
-        default:
-          return 0;
+    // Search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (r) =>
+          r.name?.toLowerCase().includes(q) ||
+          r.externalId.toLowerCase().includes(q) ||
+          r.email?.toLowerCase().includes(q) ||
+          r.phone?.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      const aVal = a[sortKey];
+      const bVal = b[sortKey];
+
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return sortDir === "asc" ? -1 : 1;
+      if (bVal == null) return sortDir === "asc" ? 1 : -1;
+
+      if (aVal instanceof Date && bVal instanceof Date) {
+        return sortDir === "asc"
+          ? aVal.getTime() - bVal.getTime()
+          : bVal.getTime() - aVal.getTime();
       }
 
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-      return 0;
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return sortDir === "asc" ? aVal - bVal : bVal - aVal;
+      }
+
+      const aStr = String(aVal);
+      const bStr = String(bVal);
+      return sortDir === "asc"
+        ? aStr.localeCompare(bStr)
+        : bStr.localeCompare(aStr);
     });
-  }, [filteredRows, sortBy, sortDir]);
 
-  // Paginate
-  const totalPages = Math.ceil(sortedRows.length / PAGE_SIZE);
-  const paginatedRows = useMemo(() => {
-    const start = page * PAGE_SIZE;
-    return sortedRows.slice(start, start + PAGE_SIZE);
-  }, [sortedRows, page]);
+    return result;
+  }, [rows, sourceFilter, searchQuery, sortKey, sortDir]);
 
-  const handleSort = (field: string) => {
-    if (sortBy === field) {
-      setSortDir(sortDir === "asc" ? "desc" : "asc");
+  const handleSort = (key: keyof CustomerRow) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
-      setSortBy(field);
+      setSortKey(key);
       setSortDir("desc");
     }
   };
 
-  const selectStyle: React.CSSProperties = {
-    padding: "6px 10px",
-    borderRadius: 6,
-    border: "1px solid var(--border)",
-    background: "var(--glass-bg)",
-    color: "var(--foreground)",
-    fontSize: 13,
-    minWidth: 120,
-  };
-
-  const inputStyle: React.CSSProperties = {
-    padding: "6px 12px",
-    borderRadius: 6,
-    border: "1px solid var(--border)",
-    background: "var(--glass-bg)",
-    color: "var(--foreground)",
-    fontSize: 13,
-    minWidth: 200,
-  };
-
-  const formatDate = (date: Date | null) => {
-    if (!date) return "—";
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }).format(date);
-  };
-
-  const formatCurrency = (value: string) => {
-    const num = parseFloat(value);
-    if (num === 0) return "—";
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "MYR",
-    }).format(num);
-  };
-
-  const getSentimentColor = (sentiment: string | null) => {
-    switch (sentiment) {
-      case "positive":
-        return "#22c55e";
-      case "negative":
-        return "#ef4444";
-      default:
-        return "var(--muted)";
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const colors: Record<string, { bg: string; text: string }> = {
-      active: { bg: "rgba(34, 197, 94, 0.1)", text: "#22c55e" },
-      vip: { bg: "rgba(184, 134, 11, 0.2)", text: "var(--gold-light)" },
-      blocked: { bg: "rgba(239, 68, 68, 0.1)", text: "#ef4444" },
-      archived: { bg: "rgba(148, 163, 184, 0.1)", text: "var(--muted)" },
-    };
-    const style = colors[status] ?? colors.active;
-    return (
-      <span
-        style={{
-          padding: "2px 8px",
-          borderRadius: 999,
-          fontSize: 11,
-          fontWeight: 500,
-          background: style.bg,
-          color: style.text,
-          textTransform: "capitalize",
-        }}
-      >
-        {status}
-      </span>
-    );
-  };
-
-  const SortIcon = ({ field }: { field: string }) => {
-    if (sortBy !== field) return null;
-    return (
-      <span style={{ marginLeft: 4, fontSize: 10 }}>
-        {sortDir === "asc" ? "▲" : "▼"}
-      </span>
-    );
+  const SortIcon = ({ column }: { column: keyof CustomerRow }) => {
+    if (sortKey !== column) return null;
+    return <span className="ml-1">{sortDir === "asc" ? "↑" : "↓"}</span>;
   };
 
   return (
-    <div className="glass" style={{ marginTop: 0 }}>
+    <div className="glass" style={{ overflow: "hidden" }}>
+      {/* Header */}
       <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-          flexWrap: "wrap",
-          gap: 12,
-        }}
+        className="flex items-center justify-between gap-4 border-b"
+        style={{ borderColor: "var(--border)", padding: "24px 28px" }}
       >
-        <h2 style={{ fontSize: 18 }}>Customers</h2>
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <input
-            type="text"
-            placeholder="Search name or phone..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(0);
-            }}
-            style={inputStyle}
-          />
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPage(0);
-            }}
-            style={selectStyle}
-            aria-label="Filter by status"
-          >
-            <option value="all">All statuses</option>
-            <option value="active">Active</option>
-            <option value="vip">VIP</option>
-            <option value="blocked">Blocked</option>
-            <option value="archived">Archived</option>
-          </select>
-          <select
-            value={intentFilter}
-            onChange={(e) => {
-              setIntentFilter(e.target.value);
-              setPage(0);
-            }}
-            style={selectStyle}
-            aria-label="Filter by intent"
-          >
-            <option value="all">All intent levels</option>
-            <option value="high">High intent</option>
-            <option value="low">Regular</option>
-          </select>
+        <div>
+          <h2 className="text-xl font-semibold">Customers</h2>
+          <p className="text-sm text-gray-500">
+            {filteredRows.length} customer{filteredRows.length !== 1 ? "s" : ""}
+            {sourceFilter !== "all" && ` from ${SOURCE_CONFIG[sourceFilter].label}`}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Source Filter */}
           <select
             value={sourceFilter}
-            onChange={(e) => {
-              setSourceFilter(e.target.value);
-              setPage(0);
+            onChange={(e) => setSourceFilter(e.target.value as Source | "all")}
+            className="px-3 py-2 rounded-lg border text-sm"
+            style={{
+              background: "var(--surface)",
+              borderColor: "var(--border)",
+              color: "var(--foreground)",
             }}
-            style={selectStyle}
-            aria-label="Filter by source"
           >
-            <option value="all">All channels</option>
-            {availableSources.map((s) => (
-              <option key={s} value={s}>
-                {SOURCE_CONFIG[s as Source]?.icon ?? "📱"} {SOURCE_CONFIG[s as Source]?.label ?? s}
-              </option>
-            ))}
+            <option value="all">All Sources ({rows.length})</option>
+            {SUPPORTED_SOURCES.map((src) => {
+              const count = sourceCounts?.[src] ?? 0;
+              if (count === 0) return null;
+              return (
+                <option key={src} value={src}>
+                  {SOURCE_CONFIG[src].icon} {SOURCE_CONFIG[src].label} ({count})
+                </option>
+              );
+            })}
           </select>
+
+          {/* Search */}
+          <input
+            type="text"
+            placeholder="Search customers..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="px-3 py-2 rounded-lg border text-sm"
+            style={{
+              background: "var(--surface)",
+              borderColor: "var(--border)",
+              color: "var(--foreground)",
+              width: 220,
+            }}
+          />
         </div>
       </div>
 
+      {/* Table */}
       <div style={{ overflowX: "auto" }}>
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: 14,
-          }}
-        >
+        <table className="w-full text-sm">
           <thead>
-            <tr style={{ borderBottom: "1px solid var(--border)" }}>
+            <tr
+              className="border-b"
+              style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+            >
               <th
+                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
+                onClick={() => handleSort("source")}
+              >
+                Source <SortIcon column="source" />
+              </th>
+              <th
+                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
                 onClick={() => handleSort("name")}
-                style={{
-                  textAlign: "left",
-                  padding: "12px 8px",
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
               >
-                Customer
-                <SortIcon field="name" />
-              </th>
-              <th style={{ textAlign: "center", padding: "12px 8px" }}>
-                Source
+                Customer <SortIcon column="name" />
               </th>
               <th
+                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
                 onClick={() => handleSort("totalRequests")}
-                style={{
-                  textAlign: "center",
-                  padding: "12px 8px",
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
               >
-                Requests
-                <SortIcon field="totalRequests" />
+                Requests <SortIcon column="totalRequests" />
               </th>
               <th
+                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
                 onClick={() => handleSort("totalRevenue")}
-                style={{
-                  textAlign: "right",
-                  padding: "12px 8px",
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
               >
-                Revenue
-                <SortIcon field="totalRevenue" />
+                Revenue <SortIcon column="totalRevenue" />
               </th>
               <th
+                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
                 onClick={() => handleSort("leadScore")}
-                style={{
-                  textAlign: "center",
-                  padding: "12px 8px",
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
               >
-                Lead Score
-                <SortIcon field="leadScore" />
-              </th>
-              <th style={{ textAlign: "center", padding: "12px 8px" }}>
-                Sentiment
-              </th>
-              <th style={{ textAlign: "center", padding: "12px 8px" }}>
-                Status
+                Lead Score <SortIcon column="leadScore" />
               </th>
               <th
-                onClick={() => handleSort("lastMessageAt")}
-                style={{
-                  textAlign: "right",
-                  padding: "12px 8px",
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
+                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
+                onClick={() => handleSort("lastSentiment")}
               >
-                Last Active
-                <SortIcon field="lastMessageAt" />
+                Sentiment <SortIcon column="lastSentiment" />
+              </th>
+              <th
+                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
+                onClick={() => handleSort("lastMessageAt")}
+              >
+                Last Active <SortIcon column="lastMessageAt" />
               </th>
             </tr>
           </thead>
           <tbody>
-            {paginatedRows.map((row) => (
+            {filteredRows.map((row) => (
               <tr
-                key={`${row.source}-${row.externalId}`}
-                onClick={() => onSelect(row.source, row.externalId)}
-                style={{
-                  borderBottom: "1px solid var(--border)",
-                  cursor: "pointer",
-                  transition: "background 0.15s",
-                }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.background =
-                    "rgba(184, 134, 11, 0.05)")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = "transparent")
-                }
+                key={row.id}
+                onClick={() => onSelect(row.id)}
+                className="border-b cursor-pointer transition-colors hover:bg-gray-50/50"
+                style={{ borderColor: "var(--border)" }}
               >
-                <td style={{ padding: "12px 8px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: "50%",
-                        background: "linear-gradient(135deg, var(--gold), var(--gold-light))",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: "#000",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {row.name?.[0]?.toUpperCase() ?? row.externalId.slice(-2)}
+                <td className="px-4 py-3">
+                  <SourceBadge source={row.source} />
+                </td>
+                <td className="px-4 py-3">
+                  <div>
+                    <div className="font-medium flex items-center gap-2">
+                      {row.name || row.externalId}
+                      {row.isHighIntent && (
+                        <span title="High Intent" className="text-yellow-500">
+                          ⭐
+                        </span>
+                      )}
                     </div>
-                    <div>
-                      <div style={{ fontWeight: 500 }}>
-                        {row.name || "Unknown"}
-                        {row.isHighIntent && (
-                          <span
-                            style={{
-                              marginLeft: 6,
-                              fontSize: 10,
-                              padding: "2px 6px",
-                              background: "rgba(184, 134, 11, 0.2)",
-                              color: "var(--gold-light)",
-                              borderRadius: 4,
-                            }}
-                          >
-                            HIGH INTENT
-                          </span>
-                        )}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "var(--muted)",
-                          marginTop: 2,
-                        }}
-                      >
-                        {row.phone ? `+${row.phone}` : row.externalId}
-                      </div>
-                    </div>
+                    {row.name && (
+                      <div className="text-xs text-gray-500">{row.externalId}</div>
+                    )}
+                    {row.email && (
+                      <div className="text-xs text-gray-400">{row.email}</div>
+                    )}
                   </div>
                 </td>
-                <td style={{ textAlign: "center", padding: "12px 8px" }}>
-                  {(() => {
-                    const config = SOURCE_CONFIG[row.source as Source];
-                    return (
-                      <span
-                        title={config?.label ?? row.source}
-                        style={{
-                          padding: "4px 8px",
-                          borderRadius: 4,
-                          background: `${config?.color ?? "#94A3B8"}20`,
-                          color: config?.color ?? "#94A3B8",
-                          fontSize: 12,
-                          fontWeight: 500,
-                        }}
-                      >
-                        {config?.icon ?? "📱"} {config?.label ?? row.source}
-                      </span>
-                    );
-                  })()}
+                <td className="px-4 py-3">
+                  <span className="font-medium">{row.totalRequests}</span>
                 </td>
-                <td style={{ textAlign: "center", padding: "12px 8px" }}>
-                  {row.totalRequests}
-                </td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    padding: "12px 8px",
-                    fontWeight: 500,
-                    color: parseFloat(row.totalRevenue) > 0 ? "#22c55e" : "var(--muted)",
-                  }}
-                >
-                  {formatCurrency(row.totalRevenue)}
-                </td>
-                <td style={{ textAlign: "center", padding: "12px 8px" }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 40,
-                        height: 6,
-                        background: "var(--glass-bg)",
-                        borderRadius: 3,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${row.leadScore}%`,
-                          height: "100%",
-                          background:
-                            row.leadScore > 70
-                              ? "#22c55e"
-                              : row.leadScore > 40
-                              ? "var(--gold)"
-                              : "var(--muted)",
-                        }}
-                      />
-                    </div>
-                    <span style={{ fontSize: 12 }}>{row.leadScore}</span>
-                  </div>
-                </td>
-                <td style={{ textAlign: "center", padding: "12px 8px" }}>
-                  <span
-                    style={{
-                      color: getSentimentColor(row.lastSentiment),
-                      textTransform: "capitalize",
-                      fontSize: 12,
-                    }}
-                  >
-                    {row.lastSentiment || "—"}
+                <td className="px-4 py-3">
+                  <span className="font-medium">
+                    ${parseFloat(row.totalRevenue || "0").toLocaleString()}
                   </span>
                 </td>
-                <td style={{ textAlign: "center", padding: "12px 8px" }}>
-                  {getStatusBadge(row.status)}
+                <td className="px-4 py-3">
+                  <LeadScoreBar score={row.leadScore} />
                 </td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    padding: "12px 8px",
-                    color: "var(--muted)",
-                    fontSize: 13,
-                  }}
-                >
-                  {formatDate(row.lastMessageAt)}
+                <td className="px-4 py-3">
+                  <SentimentBadge sentiment={row.lastSentiment} />
+                </td>
+                <td className="px-4 py-3 text-gray-500">
+                  {row.lastMessageAt
+                    ? new Date(row.lastMessageAt).toLocaleDateString()
+                    : "—"}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginTop: 16,
-            paddingTop: 16,
-            borderTop: "1px solid var(--border)",
-          }}
-        >
-          <span style={{ fontSize: 13, color: "var(--muted)" }}>
-            Showing {page * PAGE_SIZE + 1}–
-            {Math.min((page + 1) * PAGE_SIZE, sortedRows.length)} of{" "}
-            {sortedRows.length}
-          </span>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 6,
-                border: "1px solid var(--border)",
-                background: page === 0 ? "transparent" : "var(--glass-bg)",
-                color: page === 0 ? "var(--muted)" : "var(--foreground)",
-                cursor: page === 0 ? "not-allowed" : "pointer",
-                fontSize: 13,
-              }}
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-              disabled={page >= totalPages - 1}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 6,
-                border: "1px solid var(--border)",
-                background:
-                  page >= totalPages - 1 ? "transparent" : "var(--glass-bg)",
-                color:
-                  page >= totalPages - 1 ? "var(--muted)" : "var(--foreground)",
-                cursor: page >= totalPages - 1 ? "not-allowed" : "pointer",
-                fontSize: 13,
-              }}
-            >
-              Next
-            </button>
+        {filteredRows.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            {searchQuery || sourceFilter !== "all"
+              ? "No customers match your filters"
+              : "No customers found"}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

@@ -4,19 +4,21 @@ import { useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { CustomersTable } from "./components/CustomersTable";
 import { CustomerDrawer } from "./components/CustomerDrawer";
+import type { CustomerRow, Source } from "./types";
 
 export default function CustomersPage() {
-  // Store selected customer as source + externalId
-  const [selectedCustomer, setSelectedCustomer] = useState<{
-    source: string;
-    externalId: string;
-  } | null>(null);
+  // Store selected customer by ID
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   
   const { data: customers, isLoading } = trpc.customers.list.useQuery();
   
-  const customer = customers?.find(
-    (c) => c.source === selectedCustomer?.source && c.externalId === selectedCustomer?.externalId
-  );
+  // Cast the source field to Source type (it comes as string from the DB)
+  const typedCustomers = customers?.map((c) => ({
+    ...c,
+    source: c.source as Source,
+  })) as CustomerRow[] | undefined;
+  
+  const customer = typedCustomers?.find((c) => c.id === selectedCustomerId);
 
   return (
     <main style={{ padding: 32 }}>
@@ -24,7 +26,7 @@ export default function CustomersPage() {
         <div style={{ textAlign: "center", padding: 60, color: "var(--muted)" }}>
           Loading customers...
         </div>
-      ) : !customers?.length ? (
+      ) : !typedCustomers?.length ? (
         <div
           className="glass"
           style={{
@@ -40,14 +42,14 @@ export default function CustomersPage() {
         </div>
       ) : (
         <CustomersTable
-          rows={customers}
-          onSelect={(source, externalId) => setSelectedCustomer({ source, externalId })}
+          rows={typedCustomers}
+          onSelect={(id) => setSelectedCustomerId(id)}
         />
       )}
 
       <CustomerDrawer
         customer={customer ?? null}
-        onClose={() => setSelectedCustomer(null)}
+        onClose={() => setSelectedCustomerId(null)}
       />
     </main>
   );

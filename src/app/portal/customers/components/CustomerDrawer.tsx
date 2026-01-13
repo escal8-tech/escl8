@@ -26,9 +26,9 @@ export function CustomerDrawer({ customer, onClose }: Props) {
     },
   });
 
-  // Fetch requests for this customer (by source + externalId)
+  // Fetch requests for this customer by ID
   const { data: requests } = trpc.customers.getRequests.useQuery(
-    { source: customer?.source as Source, externalId: customer?.externalId ?? "" },
+    { customerId: customer?.id ?? "" },
     { enabled: !!customer }
   );
 
@@ -108,8 +108,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
 
   const handleSaveNotes = () => {
     updateMutation.mutate({
-      source: customer.source as Source,
-      externalId: customer.externalId,
+      id: customer.id,
       notes,
       tags,
     });
@@ -121,8 +120,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
       setTags(newTags);
       setNewTag("");
       updateMutation.mutate({
-        source: customer.source as Source,
-        externalId: customer.externalId,
+        id: customer.id,
         tags: newTags,
       });
     }
@@ -132,16 +130,14 @@ export function CustomerDrawer({ customer, onClose }: Props) {
     const newTags = tags.filter((t) => t !== tag);
     setTags(newTags);
     updateMutation.mutate({
-      source: customer.source as Source,
-      externalId: customer.externalId,
+      id: customer.id,
       tags: newTags,
     });
   };
 
   const handleStatusChange = (status: string) => {
     updateMutation.mutate({
-      source: customer.source as Source,
-      externalId: customer.externalId,
+      id: customer.id,
       status,
     });
   };

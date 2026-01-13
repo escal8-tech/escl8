@@ -15,6 +15,20 @@
       "when": 1768284341449,
       "tag": "0001_gray_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1768285905021,
+      "tag": "0002_tranquil_gambit",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1768293822825,
+      "tag": "0003_strong_black_knight",
+      "breakpoints": true
     }
   ]
 }

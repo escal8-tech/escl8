@@ -198,6 +198,9 @@ export const whatsappIdentitiesRelations = relations(whatsappIdentities, ({ one 
 }));
 
 /**
+ * @deprecated Use `customers` table instead. This table is kept for backwards compatibility
+ * and will be removed in a future migration. Do not use for new code.
+ * 
  * OPTIONAL: customer threads (CRM-light), per business.
  * Not required for routing, but useful for tracking and summaries outside WhatsApp.
  */
@@ -293,30 +296,36 @@ export type Source = (typeof SUPPORTED_SOURCES)[number];
 /**
  * CUSTOMERS = CRM table for unique customers per source per business.
  * 
- * Composite PK: (businessId, source, externalId) - one row per customer per channel.
- * If same person uses WhatsApp + Shopee + Lazada, they get 3 separate rows.
+ * Has a UUID primary key for easy FK references.
+ * Unique constraint on (businessId, source, externalId) - one row per customer per channel.
+ * If same person uses WhatsApp + Instagram + Facebook, they get 3 separate rows.
  * This is intentional: cross-platform matching is error-prone and unnecessary.
  * Each channel has its own customer profile, stats, and history.
  */
 export const customers = pgTable(
   "customers",
   {
-    // Composite primary key: business + source + external identifier
+    // UUID primary key for easy FK references
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+
+    // Business scope
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
     
     // Source/channel this customer came from
-    source: text("source").notNull().default("whatsapp"), // whatsapp | shopee | lazada | telegram | etc.
+    source: text("source").notNull().default("whatsapp"), // whatsapp | instagram | facebook | telegram | etc.
     
-    // External ID from that source (phone for WhatsApp, shop user ID for Shopee, etc.)
-    // Kept as waId for backward compatibility with existing data
-    externalId: text("wa_id").notNull(),
+    // External ID from that source (phone for WhatsApp, IGSID for Instagram, PSID for Messenger, etc.)
+    externalId: text("external_id").notNull(),
 
     // Profile info (can be updated from platform APIs or manually)
     name: text("name"),
     email: text("email"),
-    phone: text("phone"), // separate from externalId since Shopee ID != phone
+    phone: text("phone"), // separate from externalId since platform ID != phone
     profilePictureUrl: text("profile_picture_url"),
     
     // Platform-specific metadata (username, shop name, etc.)
@@ -325,14 +334,14 @@ export const customers = pgTable(
     // Cached aggregates (updated on each request for fast reads)
     totalRequests: integer("total_requests").notNull().default(0),
     totalRevenue: numeric("total_revenue", { precision: 12, scale: 2 }).notNull().default("0"),
-    successfulRequests: integer("successful_requests").notNull().default(0), // resolved requests
+    successfulRequests: integer("successful_requests").notNull().default(0),
 
     // Lead scoring & intent signals
-    leadScore: integer("lead_score").notNull().default(0), // 0-100, derived from behavior
+    leadScore: integer("lead_score").notNull().default(0),
     isHighIntent: boolean("is_high_intent").notNull().default(false),
     
-    // Sentiment tracking (last or average)
-    lastSentiment: text("last_sentiment"), // "positive" | "neutral" | "negative"
+    // Sentiment tracking
+    lastSentiment: text("last_sentiment"),
     
     // Activity timestamps
     firstMessageAt: timestamp("first_message_at", { withTimezone: true }),
@@ -347,14 +356,17 @@ export const customers = pgTable(
     }),
 
     // Status
-    status: text("status").notNull().default("active"), // "active" | "vip" | "blocked" | "archived"
+    status: text("status").notNull().default("active"),
+
+    // Soft delete
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // Composite primary key: business + source + externalId
-    customersPk: uniqueIndex("customers_pk_v2").on(t.businessId, t.source, t.externalId),
+    // Unique constraint: business + source + externalId (one customer per channel)
+    customersCompositeUx: uniqueIndex("customers_composite_ux").on(t.businessId, t.source, t.externalId),
     
     // Fast lookups
     customersBusinessIdx: index("customers_business_id_idx").on(t.businessId),
@@ -365,8 +377,14 @@ export const customers = pgTable(
     customersLeadScoreIdx: index("customers_lead_score_idx").on(t.leadScore),
     customersHighIntentIdx: index("customers_high_intent_idx").on(t.businessId, t.isHighIntent),
     customersTotalRevenueIdx: index("customers_total_revenue_idx").on(t.businessId, t.totalRevenue),
+    // Soft delete filter
+    customersDeletedAtIdx: index("customers_deleted_at_idx").on(t.deletedAt),
 
     // Sanity checks
+    customersIdNonEmpty: check(
+      "customers_id_nonempty",
+      sql`length(btrim(${t.id})) > 0`,
+    ),
     customersBusinessIdNonEmpty: check(
       "customers_business_id_nonempty",
       sql`length(btrim(${t.businessId})) > 0`,
@@ -404,13 +422,19 @@ export const requests = pgTable(
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
 
-    // Customer identifier (phone, email, platform ID)
-    customerNumber: text("customer_number").notNull(),
+    // FK to customer (UUID)
+    customerId: text("customer_id").references(() => customers.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+
+    // Customer phone number (nullable - some platforms like Instagram/Messenger don't have phone)
+    customerNumber: text("customer_number"),
 
     // Source/channel this request came from (defaults to whatsapp for existing data)
-    source: text("source").notNull().default("whatsapp"), // whatsapp | shopee | lazada | telegram | etc.
+    source: text("source").notNull().default("whatsapp"), // whatsapp | instagram | facebook | telegram | etc.
 
-    // Platform-specific metadata (order ID, chat ID, etc.)
+    // Platform-specific metadata (order ID, chat ID, conversation ID, etc.)
     sourceMeta: jsonb("source_meta").$type<Record<string, unknown>>().default({}),
 
     sentiment: text("sentiment").notNull(), // "positive" | "neutral" | "negative"
@@ -421,6 +445,9 @@ export const requests = pgTable(
 
     summary: text("summary"),
 
+    // Soft delete
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -428,20 +455,19 @@ export const requests = pgTable(
     // dashboard queries
     requestsBusinessIdx: index("requests_business_id_idx").on(t.businessId),
     requestsCustomerIdx: index("requests_customer_number_idx").on(t.customerNumber),
+    requestsCustomerIdIdx: index("requests_customer_id_idx").on(t.customerId),
     requestsBusinessCustomerIdx: index("requests_business_customer_idx").on(t.businessId, t.customerNumber),
     requestsStatusIdx: index("requests_resolution_status_idx").on(t.resolutionStatus),
     requestsSourceIdx: index("requests_source_idx").on(t.source),
     requestsBusinessSourceIdx: index("requests_business_source_idx").on(t.businessId, t.source),
+    requestsCreatedAtIdx: index("requests_created_at_idx").on(t.createdAt),
+    requestsDeletedAtIdx: index("requests_deleted_at_idx").on(t.deletedAt),
 
     // sanity
     requestsIdNonEmpty: check("requests_id_nonempty", sql`length(btrim(${t.id})) > 0`),
     requestsBusinessIdNonEmpty: check(
       "requests_business_id_nonempty",
       sql`length(btrim(${t.businessId})) > 0`,
-    ),
-    requestsCustomerNonEmpty: check(
-      "requests_customer_number_nonempty",
-      sql`length(btrim(${t.customerNumber})) > 0`,
     ),
   }),
 );
@@ -453,21 +479,25 @@ export const requestsRelations = relations(requests, ({ one }) => ({
     references: [businesses.id],
   }),
   customer: one(customers, {
-    fields: [requests.businessId, requests.source, requests.customerNumber],
-    references: [customers.businessId, customers.source, customers.externalId],
+    fields: [requests.customerId],
+    references: [customers.id],
   }),
 }));
 
-// Bookings per user
+// Bookings per business (userId is a platform user identifier, not a FK since many users share same business)
 export const bookings = pgTable("bookings", {
   id: text("id").primaryKey().notNull().$defaultFn(() => crypto.randomUUID()),
   businessId: text("business_id").notNull().references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  // userId is a platform user identifier (e.g. phone number, email) - NOT a FK to users table
+  // Multiple dashboard users can manage the same business's bookings
   userId: text("user_id").notNull(),
   startTime: timestamp("start_time", { withTimezone: true }).notNull(),
   durationMinutes: integer("duration_minutes").notNull().default(60),
   unitsBooked: integer("units_booked").notNull().default(1),
   phoneNumber: text("phone_number"),
   notes: text("notes"),
+  // Soft delete
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
