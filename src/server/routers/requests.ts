@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
-import { requests, SUPPORTED_SOURCES } from "../../../drizzle/schema";
-import { desc, eq, and, sql, isNull } from "drizzle-orm";
+import { requests, customers, SUPPORTED_SOURCES } from "../../../drizzle/schema";
+import { desc, eq, and, sql, isNull, inArray } from "drizzle-orm";
 
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
 
@@ -14,11 +14,27 @@ export const requestsRouter = router({
           limit: z.number().min(1).max(200).optional(),
           source: sourceSchema.optional(),
           includeDeleted: z.boolean().optional(),
+          whatsappIdentityId: z.string().nullish(), // null/undefined = all numbers
         })
         .optional()
     )
     .query(async ({ input, ctx }) => {
       const limit = input?.limit ?? 50;
+
+      // If filtering by phone number, get customer IDs first
+      let customerIdsForPhone: string[] | null = null;
+      if (input?.whatsappIdentityId) {
+        const matchingCustomers = await db
+          .select({ id: customers.id })
+          .from(customers)
+          .where(
+            and(
+              eq(customers.businessId, ctx.businessId),
+              eq(customers.whatsappIdentityId, input.whatsappIdentityId)
+            )
+          );
+        customerIdsForPhone = matchingCustomers.map((c) => c.id);
+      }
 
       const conditions = [eq(requests.businessId, ctx.businessId)];
       if (input?.source) {
@@ -27,6 +43,14 @@ export const requestsRouter = router({
       // Exclude soft-deleted by default
       if (!input?.includeDeleted) {
         conditions.push(isNull(requests.deletedAt));
+      }
+      // Filter by phone number through customer relation
+      if (customerIdsForPhone !== null) {
+        if (customerIdsForPhone.length === 0) {
+          // No customers match this phone number, return empty
+          return [];
+        }
+        conditions.push(inArray(requests.customerId, customerIdsForPhone));
       }
 
       const rows = await db
@@ -43,16 +67,45 @@ export const requestsRouter = router({
       z
         .object({
           source: sourceSchema.optional(),
+          whatsappIdentityId: z.string().nullish(), // null/undefined = all numbers
         })
         .optional()
     )
     .query(async ({ ctx, input }) => {
+      // If filtering by phone number, get customer IDs first
+      let customerIdsForPhone: string[] | null = null;
+      if (input?.whatsappIdentityId) {
+        const matchingCustomers = await db
+          .select({ id: customers.id })
+          .from(customers)
+          .where(
+            and(
+              eq(customers.businessId, ctx.businessId),
+              eq(customers.whatsappIdentityId, input.whatsappIdentityId)
+            )
+          );
+        customerIdsForPhone = matchingCustomers.map((c) => c.id);
+      }
+
       const conditions = [
         eq(requests.businessId, ctx.businessId),
         isNull(requests.deletedAt),
       ];
       if (input?.source) {
         conditions.push(eq(requests.source, input.source));
+      }
+      // Filter by phone number through customer relation
+      if (customerIdsForPhone !== null) {
+        if (customerIdsForPhone.length === 0) {
+          // No customers match, return empty stats
+          return {
+            totals: { count: 0, revenue: 0, paidCount: 0, deflectionRate: 0, followUpRate: 0 },
+            bySentiment: {},
+            byStatus: { ONGOING: 0, NEEDS_FOLLOWUP: 0, FAILED: 0, COMPLETED: 0 },
+            bySource: {},
+          };
+        }
+        conditions.push(inArray(requests.customerId, customerIdsForPhone));
       }
 
       const rows = await db

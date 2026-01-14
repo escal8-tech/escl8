@@ -11,13 +11,14 @@ export const customersRouter = router({
   /**
    * List all customers for the current business (excludes soft-deleted)
    * Each row is one customer per source (same person on 4 platforms = 4 rows)
-   * Can filter by source
+   * Can filter by source and/or whatsappIdentityId
    */
   list: businessProcedure
     .input(
       z.object({
         source: sourceSchema.optional(),
         includeDeleted: z.boolean().optional(),
+        whatsappIdentityId: z.string().nullish(), // null/undefined = all numbers
       }).optional()
     )
     .query(async ({ ctx, input }) => {
@@ -30,6 +31,11 @@ export const customersRouter = router({
       // Exclude soft-deleted by default
       if (!input?.includeDeleted) {
         conditions.push(isNull(customers.deletedAt));
+      }
+
+      // Filter by phone number if specified
+      if (input?.whatsappIdentityId) {
+        conditions.push(eq(customers.whatsappIdentityId, input.whatsappIdentityId));
       }
 
       const rows = await db

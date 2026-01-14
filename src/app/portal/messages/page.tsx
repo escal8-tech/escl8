@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/utils/trpc";
+import { usePhoneFilter } from "@/components/PhoneFilterContext";
 
 function formatTimestamp(d: Date | null | undefined) {
   if (!d) return "";
@@ -64,6 +65,7 @@ function ProfileIcon({ name, size = 40 }: { name?: string | null; size?: number 
 }
 
 export default function MessagesPage() {
+  const { selectedPhoneNumberId } = usePhoneFilter();
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -82,7 +84,10 @@ export default function MessagesPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
 
-  const recentThreadsQuery = trpc.messages.listRecentThreads.useQuery({ limit: 50 });
+  const recentThreadsQuery = trpc.messages.listRecentThreads.useQuery({
+    limit: 50,
+    ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
+  });
 
   const filteredThreads = useMemo(() => {
     const threads = recentThreadsQuery.data ?? [];
@@ -122,6 +127,11 @@ export default function MessagesPage() {
     setHasMore(false);
     setIsLoadingMore(false);
   }, [activeThreadId]);
+
+  // Clear selected thread when phone filter changes
+  useEffect(() => {
+    setSelectedThreadId(null);
+  }, [selectedPhoneNumberId]);
 
   // Handle initial load
   useEffect(() => {

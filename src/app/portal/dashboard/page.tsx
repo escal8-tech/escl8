@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
+import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import type { DonutDatum, RequestRow, StatsTotals } from "./components/types";
 
 // Icons
@@ -408,8 +409,14 @@ function RequestDrawer({
 }
 
 export default function DashboardPage() {
-  const listQ = trpc.requests.list.useQuery({ limit: 100 });
-  const statsQ = trpc.requests.stats.useQuery();
+  const { selectedPhoneNumberId } = usePhoneFilter();
+  const listQ = trpc.requests.list.useQuery({
+    limit: 100,
+    ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
+  });
+  const statsQ = trpc.requests.stats.useQuery(
+    selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : undefined
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const rows = useMemo(() => normalizeRequests(listQ.data || []), [listQ.data]);

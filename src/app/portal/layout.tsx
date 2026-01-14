@@ -2,6 +2,7 @@
 import { usePathname } from "next/navigation";
 import PortalNav from "@/components/PortalNav";
 import PortalAuthProvider from "@/components/PortalAuthProvider";
+import { PhoneFilterProvider } from "@/components/PhoneFilterContext";
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -14,15 +15,17 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   // Protected portal routes: show nav and require auth
   return (
-    <div className="portal-layout">
-      <PortalNav />
-      <main className="portal-main" style={{ paddingTop: 72 }}>
-        <PortalAuthProvider>
-          <div className="portal-content">
-            {children}
-          </div>
-        </PortalAuthProvider>
-      </main>
-    </div>
+    <PortalAuthProvider>
+      <PhoneFilterProvider>
+        <div className="portal-layout">
+          <PortalNav />
+          <main className="portal-main" style={{ paddingTop: 72 }}>
+            <div className="portal-content">
+              {children}
+            </div>
+          </main>
+        </div>
+      </PhoneFilterProvider>
+    </PortalAuthProvider>
   );
 }

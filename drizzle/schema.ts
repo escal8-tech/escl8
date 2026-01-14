@@ -240,6 +240,12 @@ export const customers = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
+
+    // Which phone number / WhatsApp identity this customer contacted (nullable for non-WhatsApp sources)
+    whatsappIdentityId: text("whatsapp_identity_id").references(() => whatsappIdentities.phoneNumberId, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
     
     // Source/channel this customer came from
     source: text("source").notNull().default("whatsapp"), // whatsapp | instagram | facebook | telegram | etc.
@@ -290,11 +296,13 @@ export const customers = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // Unique constraint: business + source + externalId (one customer per channel)
-    customersCompositeUx: uniqueIndex("customers_composite_ux").on(t.businessId, t.source, t.externalId),
+    // Unique constraint: business + source + externalId + whatsappIdentityId (one customer per channel per phone number)
+    // For WhatsApp: same person messaging 2 different business phone numbers = 2 customer rows
+    customersCompositeUx: uniqueIndex("customers_composite_ux").on(t.businessId, t.source, t.externalId, t.whatsappIdentityId),
     
     // Fast lookups
     customersBusinessIdx: index("customers_business_id_idx").on(t.businessId),
+    customersWhatsappIdentityIdx: index("customers_whatsapp_identity_id_idx").on(t.whatsappIdentityId),
     customersSourceIdx: index("customers_source_idx").on(t.source),
     customersBusinessSourceIdx: index("customers_business_source_idx").on(t.businessId, t.source),
     customersExternalIdIdx: index("customers_external_id_idx").on(t.externalId),
@@ -345,8 +353,13 @@ export const messageThreads = pgTable(
       .notNull()
       .references(() => customers.id, { onDelete: "cascade", onUpdate: "cascade" }),
 
-    // one thread per (business, customer) by default; if you later want multiple threads per customer,
-    // relax the unique index below and add an externalConversationId instead.
+    // Which phone number / WhatsApp identity this thread is for
+    whatsappIdentityId: text("whatsapp_identity_id").references(() => whatsappIdentities.phoneNumberId, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+
+    // one thread per (business, customer, whatsappIdentityId) - allows same customer to have threads with different phone numbers
     status: text("status").notNull().default("open"),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
 
@@ -359,12 +372,14 @@ export const messageThreads = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    messageThreadsBusinessCustomerUx: uniqueIndex("message_threads_business_customer_ux").on(
+    messageThreadsBusinessCustomerIdentityUx: uniqueIndex("message_threads_business_customer_identity_ux").on(
       t.businessId,
       t.customerId,
+      t.whatsappIdentityId,
     ),
     messageThreadsBusinessIdx: index("message_threads_business_id_idx").on(t.businessId),
     messageThreadsCustomerIdx: index("message_threads_customer_id_idx").on(t.customerId),
+    messageThreadsWhatsappIdentityIdx: index("message_threads_whatsapp_identity_id_idx").on(t.whatsappIdentityId),
     messageThreadsLastMessageIdx: index("message_threads_last_message_at_idx").on(t.lastMessageAt),
     messageThreadsDeletedAtIdx: index("message_threads_deleted_at_idx").on(t.deletedAt),
   }),
@@ -417,6 +432,10 @@ export const messageThreadsRelations = relations(messageThreads, ({ one, many })
     fields: [messageThreads.customerId],
     references: [customers.id],
   }),
+  whatsappIdentity: one(whatsappIdentities, {
+    fields: [messageThreads.whatsappIdentityId],
+    references: [whatsappIdentities.phoneNumberId],
+  }),
   messages: many(threadMessages),
 }));
 
@@ -431,6 +450,10 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
   business: one(businesses, {
     fields: [customers.businessId],
     references: [businesses.id],
+  }),
+  whatsappIdentity: one(whatsappIdentities, {
+    fields: [customers.whatsappIdentityId],
+    references: [whatsappIdentities.phoneNumberId],
   }),
   assignedTo: one(users, {
     fields: [customers.assignedToUserId],
@@ -454,7 +477,7 @@ export const requests = pgTable(
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
 
-    // FK to customer (UUID)
+    // FK to customer (UUID) - whatsappIdentityId is available through customer relation
     customerId: text("customer_id").references(() => customers.id, {
       onDelete: "set null",
       onUpdate: "cascade",
@@ -504,7 +527,7 @@ export const requests = pgTable(
   }),
 );
 
-// Relations: requests -> business & customer
+// Relations: requests -> business & customer (whatsappIdentity available through customer)
 export const requestsRelations = relations(requests, ({ one }) => ({
   business: one(businesses, {
     fields: [requests.businessId],

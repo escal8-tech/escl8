@@ -11,14 +11,28 @@ export const messagesRouter = router({
   /**
    * List recent threads for the current business, joined with customer info.
    * This is used to populate the Messages UI even when the user hasn't searched yet.
+   * Optionally filter by whatsappIdentityId (phone number).
    */
   listRecentThreads: businessProcedure
     .input(
       z.object({
         limit: z.number().int().min(1).max(200).optional().default(50),
+        whatsappIdentityId: z.string().nullish(), // null/undefined = all numbers
       }),
     )
     .query(async ({ ctx, input }) => {
+      const whereConditions = [
+        eq(messageThreads.businessId, ctx.businessId),
+        isNull(messageThreads.deletedAt),
+        eq(customers.businessId, ctx.businessId),
+        isNull(customers.deletedAt),
+      ];
+
+      // If a specific phone number is selected, filter by it
+      if (input.whatsappIdentityId) {
+        whereConditions.push(eq(messageThreads.whatsappIdentityId, input.whatsappIdentityId));
+      }
+
       const rows = await db
         .select({
           threadId: messageThreads.id,
@@ -30,17 +44,11 @@ export const messagesRouter = router({
           status: messageThreads.status,
           lastMessageAt: messageThreads.lastMessageAt,
           threadCreatedAt: messageThreads.createdAt,
+          whatsappIdentityId: messageThreads.whatsappIdentityId,
         })
         .from(messageThreads)
         .innerJoin(customers, eq(messageThreads.customerId, customers.id))
-        .where(
-          and(
-            eq(messageThreads.businessId, ctx.businessId),
-            isNull(messageThreads.deletedAt),
-            eq(customers.businessId, ctx.businessId),
-            isNull(customers.deletedAt),
-          ),
-        )
+        .where(and(...whereConditions))
         .orderBy(desc(messageThreads.lastMessageAt), desc(messageThreads.createdAt))
         .limit(input.limit);
 

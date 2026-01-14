@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { router, businessProcedure, protectedProcedure } from "../trpc";
 import { db } from "../db/client";
-import { businesses, users } from "../../../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { businesses, users, whatsappIdentities } from "../../../drizzle/schema";
+import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
 async function getBusinessByUserEmail(email: string) {
@@ -13,6 +13,29 @@ async function getBusinessByUserEmail(email: string) {
 }
 
 export const businessRouter = router({
+  /**
+   * List all WhatsApp phone numbers for the current business.
+   */
+  listPhoneNumbers: businessProcedure.query(async ({ ctx }) => {
+    const rows = await db
+      .select({
+        phoneNumberId: whatsappIdentities.phoneNumberId,
+        displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
+        isActive: whatsappIdentities.isActive,
+        connectedAt: whatsappIdentities.connectedAt,
+      })
+      .from(whatsappIdentities)
+      .where(
+        and(
+          eq(whatsappIdentities.businessId, ctx.businessId),
+          eq(whatsappIdentities.isActive, true),
+        ),
+      )
+      .orderBy(whatsappIdentities.connectedAt);
+
+    return rows;
+  }),
+
   getMine: businessProcedure
     .input(z.object({ email: z.string().email() }))
     .query(async ({ input, ctx }) => {

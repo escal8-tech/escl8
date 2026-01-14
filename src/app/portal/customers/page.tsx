@@ -2,15 +2,19 @@
 
 import { useState } from "react";
 import { trpc } from "@/utils/trpc";
+import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { CustomersTable } from "./components/CustomersTable";
 import { CustomerDrawer } from "./components/CustomerDrawer";
 import type { CustomerRow, Source } from "./types";
 
 export default function CustomersPage() {
+  const { selectedPhoneNumberId } = usePhoneFilter();
   // Store selected customer by ID
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   
-  const { data: customers, isLoading } = trpc.customers.list.useQuery();
+  const { data: customers, isLoading } = trpc.customers.list.useQuery(
+    selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : undefined
+  );
   
   // Cast the source field to Source type (it comes as string from the DB)
   const typedCustomers = customers?.map((c) => ({
