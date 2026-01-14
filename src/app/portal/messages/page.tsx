@@ -105,13 +105,13 @@ export default function MessagesPage() {
 
   // Initial messages query (newest messages first load)
   const messagesQuery = trpc.messages.listMessages.useQuery(
-    { threadId: activeThreadId ?? "", limit: 30 },
+    { threadId: activeThreadId ?? "", limit: 20 },
     { enabled: !!activeThreadId },
   );
 
   // Load older messages query
   const olderMessagesQuery = trpc.messages.listMessages.useQuery(
-    { threadId: activeThreadId ?? "", limit: 30, cursor: cursor ?? undefined },
+    { threadId: activeThreadId ?? "", limit: 20, cursor: cursor ?? undefined },
     { enabled: !!activeThreadId && !!cursor && isLoadingMore },
   );
 
@@ -160,13 +160,13 @@ export default function MessagesPage() {
     }
   }, [olderMessagesQuery.data, isLoadingMore]);
 
-  // Load more when scrolling near top
+  // Load more when scrolling near top (trigger ~3 messages before reaching oldest)
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container || isLoadingMore || !hasMore) return;
 
-    // Trigger load when within 100px of top
-    if (container.scrollTop < 100 && allMessages.length > 0) {
+    // Trigger load when within ~200px of top (roughly 3 messages before oldest)
+    if (container.scrollTop < 200 && allMessages.length > 0) {
       setIsLoadingMore(true);
       setCursor(allMessages[0].id);
     }

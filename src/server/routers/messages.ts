@@ -123,7 +123,7 @@ export const messagesRouter = router({
     .input(
       z.object({
         threadId: z.string().min(1),
-        limit: z.number().int().min(1).max(100).optional().default(30),
+        limit: z.number().int().min(1).max(100).optional().default(20),
         cursor: z.string().optional(), // message ID to fetch messages before
       }),
     )
