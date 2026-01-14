@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/utils/trpc";
 
 function formatTimestamp(d: Date | null | undefined) {
@@ -67,6 +67,21 @@ export default function MessagesPage() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Message pagination state
+  const [allMessages, setAllMessages] = useState<Array<{
+    id: string;
+    direction: string;
+    messageType: string | null;
+    textBody: string | null;
+    meta: unknown;
+    createdAt: Date;
+  }>>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const prevScrollHeightRef = useRef<number>(0);
+
   const recentThreadsQuery = trpc.messages.listRecentThreads.useQuery({ limit: 50 });
 
   const filteredThreads = useMemo(() => {
@@ -85,13 +100,77 @@ export default function MessagesPage() {
     if (selectedThreadId && filteredThreads.some((t) => t.threadId === selectedThreadId)) {
       return selectedThreadId;
     }
-    return null; // Don't auto-select, show empty state
+    return null;
   }, [selectedThreadId, filteredThreads]);
 
+  // Initial messages query (newest messages first load)
   const messagesQuery = trpc.messages.listMessages.useQuery(
-    { threadId: activeThreadId ?? "", limit: 200 },
+    { threadId: activeThreadId ?? "", limit: 30 },
     { enabled: !!activeThreadId },
   );
+
+  // Load older messages query
+  const olderMessagesQuery = trpc.messages.listMessages.useQuery(
+    { threadId: activeThreadId ?? "", limit: 30, cursor: cursor ?? undefined },
+    { enabled: !!activeThreadId && !!cursor && isLoadingMore },
+  );
+
+  // Reset messages when thread changes
+  useEffect(() => {
+    setAllMessages([]);
+    setCursor(null);
+    setHasMore(false);
+    setIsLoadingMore(false);
+  }, [activeThreadId]);
+
+  // Handle initial load
+  useEffect(() => {
+    if (messagesQuery.data && !cursor) {
+      setAllMessages(messagesQuery.data.messages);
+      setHasMore(messagesQuery.data.hasMore);
+      setCursor(null);
+      // Scroll to bottom on initial load
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      }, 50);
+    }
+  }, [messagesQuery.data, cursor]);
+
+  // Handle loading older messages
+  useEffect(() => {
+    if (olderMessagesQuery.data && isLoadingMore) {
+      const container = messagesContainerRef.current;
+      if (container) {
+        prevScrollHeightRef.current = container.scrollHeight;
+      }
+      
+      setAllMessages((prev) => [...olderMessagesQuery.data.messages, ...prev]);
+      setHasMore(olderMessagesQuery.data.hasMore);
+      setIsLoadingMore(false);
+      
+      // Maintain scroll position after prepending
+      setTimeout(() => {
+        if (container) {
+          const newScrollHeight = container.scrollHeight;
+          container.scrollTop = newScrollHeight - prevScrollHeightRef.current;
+        }
+      }, 10);
+    }
+  }, [olderMessagesQuery.data, isLoadingMore]);
+
+  // Load more when scrolling near top
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container || isLoadingMore || !hasMore) return;
+
+    // Trigger load when within 100px of top
+    if (container.scrollTop < 100 && allMessages.length > 0) {
+      setIsLoadingMore(true);
+      setCursor(allMessages[0].id);
+    }
+  }, [isLoadingMore, hasMore, allMessages]);
 
   const selectedThread = useMemo(() => {
     if (!activeThreadId) return null;
@@ -328,6 +407,8 @@ export default function MessagesPage() {
 
             {/* Messages area */}
             <div
+              ref={messagesContainerRef}
+              onScroll={handleScroll}
               style={{
                 flex: 1,
                 overflow: "auto",
@@ -336,17 +417,46 @@ export default function MessagesPage() {
                 background: "linear-gradient(180deg, rgba(0,0,0,0.1) 0%, transparent 100%)",
               }}
             >
+              {/* Load more indicator */}
+              {(isLoadingMore || (hasMore && allMessages.length > 0)) && (
+                <div style={{ textAlign: "center", padding: "12px 0", marginBottom: 8 }}>
+                  {isLoadingMore ? (
+                    <div style={{ color: "var(--muted)", fontSize: 12 }}>Loading older messages…</div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (allMessages.length > 0) {
+                          setIsLoadingMore(true);
+                          setCursor(allMessages[0].id);
+                        }
+                      }}
+                      style={{
+                        background: "rgba(255,255,255,0.05)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                        padding: "6px 12px",
+                        fontSize: 12,
+                        color: "var(--muted)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Load older messages
+                    </button>
+                  )}
+                </div>
+              )}
+              
               {messagesQuery.isLoading ? (
                 <div style={{ color: "var(--muted)", padding: 20, fontSize: 13, textAlign: "center" }}>
                   Loading messages…
                 </div>
-              ) : !messagesQuery.data?.length ? (
+              ) : !allMessages.length ? (
                 <div style={{ color: "var(--muted)", padding: 20, fontSize: 13, textAlign: "center" }}>
                   No messages in this conversation yet.
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {messagesQuery.data.map((m) => {
+                  {allMessages.map((m) => {
                     const inbound = m.direction === "inbound";
                     return (
                       <div

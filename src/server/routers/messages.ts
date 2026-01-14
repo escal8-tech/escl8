@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { customers, messageThreads, threadMessages, SUPPORTED_SOURCES } from "@/../drizzle/schema";
-import { and, asc, desc, eq, ilike, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNull, lt, or } from "drizzle-orm";
 
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
 
@@ -115,12 +115,16 @@ export const messagesRouter = router({
 
   /**
    * List messages for a thread (enforces business scoping).
+   * Supports cursor-based pagination for infinite scroll.
+   * Returns messages in descending order (newest first) for easier pagination,
+   * client reverses for display.
    */
   listMessages: businessProcedure
     .input(
       z.object({
         threadId: z.string().min(1),
-        limit: z.number().int().min(1).max(500).optional().default(200),
+        limit: z.number().int().min(1).max(100).optional().default(30),
+        cursor: z.string().optional(), // message ID to fetch messages before
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -140,6 +144,18 @@ export const messagesRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Thread not found" });
       }
 
+      // If cursor provided, get the createdAt of that message for pagination
+      let cursorDate: Date | null = null;
+      if (input.cursor) {
+        const [cursorMsg] = await db
+          .select({ createdAt: threadMessages.createdAt })
+          .from(threadMessages)
+          .where(eq(threadMessages.id, input.cursor))
+          .limit(1);
+        cursorDate = cursorMsg?.createdAt ?? null;
+      }
+
+      // Fetch messages older than cursor (or all if no cursor), newest first
       const rows = await db
         .select({
           id: threadMessages.id,
@@ -150,10 +166,26 @@ export const messagesRouter = router({
           createdAt: threadMessages.createdAt,
         })
         .from(threadMessages)
-        .where(eq(threadMessages.threadId, input.threadId))
-        .orderBy(asc(threadMessages.createdAt))
-        .limit(input.limit);
+        .where(
+          cursorDate
+            ? and(
+                eq(threadMessages.threadId, input.threadId),
+                lt(threadMessages.createdAt, cursorDate),
+              )
+            : eq(threadMessages.threadId, input.threadId),
+        )
+        .orderBy(desc(threadMessages.createdAt))
+        .limit(input.limit + 1); // Fetch one extra to check if there are more
 
-      return rows;
+      const hasMore = rows.length > input.limit;
+      const messages = hasMore ? rows.slice(0, input.limit) : rows;
+
+      // Return in ascending order for display (oldest first within batch)
+      // Client will prepend older batches
+      return {
+        messages: messages.reverse(),
+        nextCursor: hasMore ? messages[0]?.id : null,
+        hasMore,
+      };
     }),
 });
