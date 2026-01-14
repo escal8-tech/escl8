@@ -68,6 +68,7 @@ const Icons = {
 const navItems = [
   { href: "/portal/dashboard", label: "Dashboard", icon: "dashboard" },
   { href: "/portal/customers", label: "Customers", icon: "customers" },
+  { href: "/portal/messages", label: "Messages", icon: "customers" },
   { href: "/portal/upload", label: "Documents", icon: "upload" },
   { href: "/portal/bookings", label: "Bookings", icon: "calendar" },
   { href: "/portal/sync", label: "WhatsApp Sync", icon: "sync" },

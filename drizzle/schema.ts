@@ -183,6 +183,7 @@ export const businessesRelations = relations(businesses, ({ many }) => ({
   users: many(users),
   whatsappIdentities: many(whatsappIdentities),
   customers: many(customers),
+  messageThreads: many(messageThreads),
   requests: many(requests),
 }));
 
@@ -196,82 +197,6 @@ export const whatsappIdentitiesRelations = relations(whatsappIdentities, ({ one 
     references: [users.id],
   }),
 }));
-
-/**
- * @deprecated Use `customers` table instead. This table is kept for backwards compatibility
- * and will be removed in a future migration. Do not use for new code.
- * 
- * OPTIONAL: customer threads (CRM-light), per business.
- * Not required for routing, but useful for tracking and summaries outside WhatsApp.
- */
-export const customerThreads = pgTable(
-  "customer_threads",
-  {
-    id: text("id")
-      .primaryKey()
-      .notNull()
-      .$defaultFn(() => crypto.randomUUID()),
-
-    businessId: text("business_id").notNull(),
-
-    // WhatsApp customer identifier => messages[i].from
-    customerWaId: text("customer_wa_id").notNull(),
-
-    // last seen / state
-    lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
-    status: text("status").default("open"), // open | closed | vip | spam (whatever you decide)
-
-    // Optional metadata (tags, lead source, notes)
-    meta: jsonb("meta").$type<Record<string, unknown>>().default({}),
-
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    uniqCustomerPerBusiness: uniqueIndex("customer_threads_business_customer_uidx").on(t.businessId, t.customerWaId),
-    customerThreadsBusinessIdx: index("customer_threads_business_id_idx").on(t.businessId),
-    customerThreadsLastMsgIdx: index("customer_threads_last_message_at_idx").on(t.lastMessageAt),
-  })
-);
-
-/**
- * OPTIONAL: message log table (audit + debugging + analytics).
- * Can be big; if you store this, make sure you have retention or partitioning.
- */
-export const messageEvents = pgTable(
-  "message_events",
-  {
-    id: text("id")
-      .primaryKey()
-      .notNull()
-      .$defaultFn(() => crypto.randomUUID()),
-
-    businessId: text("business_id").notNull(),
-    userId: text("user_id"), // tenant owner or agent (optional)
-    customerWaId: text("customer_wa_id"), // messages[i].from
-
-    // Meta message id for idempotency / tracing
-    inboundMessageId: text("inbound_message_id"),
-
-    direction: text("direction").notNull(), // inbound | outbound
-    channel: text("channel").notNull().default("whatsapp_cloud"), // whatsapp_cloud | twilio_whatsapp | voice
-
-    // Raw-ish content (don’t store secrets)
-    messageType: text("message_type"), // text | audio | image | etc.
-    textBody: text("text_body"),
-
-    // Useful for debugging routing
-    toPhoneNumberId: text("to_phone_number_id"),
-
-    // Timing
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    messageEventsBusinessIdx: index("message_events_business_id_idx").on(t.businessId),
-    messageEventsInboundIdIdx: index("message_events_inbound_message_id_idx").on(t.inboundMessageId),
-    messageEventsCreatedIdx: index("message_events_created_at_idx").on(t.createdAt),
-  })
-);
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -396,6 +321,112 @@ export const customers = pgTable(
   }),
 );
 
+/**
+ * MESSAGE THREADS = canonical conversation container.
+ *
+ * Requirements:
+ * - each thread belongs to exactly 1 business
+ * - each thread belongs to exactly 1 customer (customer is already scoped to business)
+ * - messages belong to exactly 1 thread
+ */
+export const messageThreads = pgTable(
+  "message_threads",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
+
+    customerId: text("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade", onUpdate: "cascade" }),
+
+    // one thread per (business, customer) by default; if you later want multiple threads per customer,
+    // relax the unique index below and add an externalConversationId instead.
+    status: text("status").notNull().default("open"),
+    lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+
+    meta: jsonb("meta").$type<Record<string, unknown>>().default({}),
+
+    // Soft delete (optional)
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    messageThreadsBusinessCustomerUx: uniqueIndex("message_threads_business_customer_ux").on(
+      t.businessId,
+      t.customerId,
+    ),
+    messageThreadsBusinessIdx: index("message_threads_business_id_idx").on(t.businessId),
+    messageThreadsCustomerIdx: index("message_threads_customer_id_idx").on(t.customerId),
+    messageThreadsLastMessageIdx: index("message_threads_last_message_at_idx").on(t.lastMessageAt),
+    messageThreadsDeletedAtIdx: index("message_threads_deleted_at_idx").on(t.deletedAt),
+  }),
+);
+
+/**
+ * THREAD MESSAGES = individual message records.
+ *
+ * Keep this minimal; store raw payloads only if you need them.
+ */
+export const threadMessages = pgTable(
+  "thread_messages",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => messageThreads.id, { onDelete: "cascade", onUpdate: "cascade" }),
+
+    // Platform message id (Meta message id, IG message id, etc.) for idempotency.
+    externalMessageId: text("external_message_id"),
+
+    direction: text("direction").notNull(), // inbound | outbound
+    messageType: text("message_type"), // text | audio | image | etc.
+    textBody: text("text_body"),
+
+    meta: jsonb("meta").$type<Record<string, unknown>>().default({}),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    threadMessagesThreadIdx: index("thread_messages_thread_id_idx").on(t.threadId),
+    threadMessagesCreatedIdx: index("thread_messages_created_at_idx").on(t.createdAt),
+    // Only enforce uniqueness when we actually have an external id.
+    threadMessagesExternalUx: uniqueIndex("thread_messages_external_message_id_ux")
+      .on(t.externalMessageId)
+      .where(sql`${t.externalMessageId} is not null`),
+  }),
+);
+
+export const messageThreadsRelations = relations(messageThreads, ({ one, many }) => ({
+  business: one(businesses, {
+    fields: [messageThreads.businessId],
+    references: [businesses.id],
+  }),
+  customer: one(customers, {
+    fields: [messageThreads.customerId],
+    references: [customers.id],
+  }),
+  messages: many(threadMessages),
+}));
+
+export const threadMessagesRelations = relations(threadMessages, ({ one }) => ({
+  thread: one(messageThreads, {
+    fields: [threadMessages.threadId],
+    references: [messageThreads.id],
+  }),
+}));
+
 export const customersRelations = relations(customers, ({ one, many }) => ({
   business: one(businesses, {
     fields: [customers.businessId],
@@ -405,6 +436,7 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
     fields: [customers.assignedToUserId],
     references: [users.id],
   }),
+  threads: many(messageThreads),
   requests: many(requests),
 }));
 
