@@ -890,9 +890,8 @@ tr:last-child td {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-4) var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid rgba(184, 134, 11, 0.3);
-  min-height: 72px;
   background: linear-gradient(90deg, rgba(184, 134, 11, 0.1) 0%, transparent 100%);
 }
 

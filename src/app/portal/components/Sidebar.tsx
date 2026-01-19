@@ -132,25 +132,30 @@ export default function Sidebar({
       style={{ width: sidebarWidth }}
     >
       {/* Brand */}
-      <div className="sidebar-brand" style={{ justifyContent: "center" }}>
-        <Link 
-          href="/portal/dashboard" 
-          className="sidebar-brand-logo"
+      <div 
+        className="sidebar-brand"
+        style={{ 
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "95px",
+          padding: "12px 16px",
+          borderBottom: "1px solid rgba(184, 134, 11, 0.3)",
+          background: "linear-gradient(90deg, rgba(184, 134, 11, 0.1) 0%, transparent 100%)"
+        }}
+      >
+        <Image
+          src="/favikon.png"
+          alt="Escl8"
+          width={collapsed ? 40 : 225}
+          height={collapsed ? 40 : 225}
           style={{ 
-            display: "flex", 
-            alignItems: "center", 
-            justifyContent: "center",
-            width: "100%",
+            objectFit: "contain",
+            transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+            maxHeight: collapsed ? "40px" : "95px"
           }}
-        >
-          <Image
-            src="/favikon.png"
-            alt="Escl8"
-            width={collapsed ? 40 : 140}
-            height={collapsed ? 40 : 140}
-            style={{ objectFit: "contain" }}
-          />
-        </Link>
+          priority
+        />
       </div>
 
       {/* Navigation */}
