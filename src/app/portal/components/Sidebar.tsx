@@ -138,21 +138,23 @@ export default function Sidebar({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          height: "95px",
-          padding: "12px 16px",
+            height: collapsed ? "72px" : "96px", /* taller when expanded to fit larger logo */
+          padding: collapsed ? "8px 16px" : "10px 16px",
           borderBottom: "1px solid rgba(184, 134, 11, 0.3)",
-          background: "linear-gradient(90deg, rgba(184, 134, 11, 0.1) 0%, transparent 100%)"
+          background: "linear-gradient(90deg, rgba(184, 134, 11, 0.1) 0%, transparent 100%)",
+          boxSizing: "border-box"
         }}
       >
         <Image
           src="/favikon.png"
           alt="Escl8"
-          width={collapsed ? 40 : 225}
-          height={collapsed ? 40 : 225}
+          width={collapsed ? 40 : 245}
+          height={collapsed ? 40 : 245}
           style={{ 
             objectFit: "contain",
             transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
-            maxHeight: collapsed ? "40px" : "95px"
+              maxHeight: collapsed ? "40px" : "92px", /* larger in expanded state (20% bigger) */
+            transform: collapsed ? "none" : "translateY(0px)" /* slight nudge */
           }}
           priority
         />
