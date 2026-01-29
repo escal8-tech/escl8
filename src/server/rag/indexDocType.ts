@@ -90,18 +90,19 @@ export async function indexSingleDocType(params: {
   });
 
   console.log(
-    `[rag:index] extracted chars=${extracted.text.length} pages=${extracted.pageCount ?? "?"}`,
+    `[rag:index] extracted chars=${extracted.text.length} pages=${extracted.pageCount ?? "?"} pagesArray=${extracted.pages?.length ?? 0}`,
   );
 
   const text = extracted.text;
   
-  // Use enterprise-grade smart chunking with structure awareness
-  // Hardcoded optimal settings for best RAG performance
+  // Use page-wise chunking for better context preservation
+  // Pass pages array if available for page-boundary-aware chunking
   let smartChunks = smartChunkText(text, {
-    targetTokens: 250,    // Target tokens per chunk
-    minTokens: 100,       // Minimum tokens per chunk
-    maxTokens: 400,       // Maximum tokens per chunk
-    overlapTokens: 30,    // Overlap for context
+    targetTokens: 800,    // Larger chunks (~1 page worth)
+    minTokens: 200,       // Minimum tokens per chunk
+    maxTokens: 1500,      // Allow full pages
+    overlapTokens: 50,    // Overlap for context
+    pages: extracted.pages,  // Pass page array for page-wise chunking
   });
 
   // Use LLM for more accurate chunk type classification
@@ -130,6 +131,21 @@ export async function indexSingleDocType(params: {
 
     const records = vectors.map((values, j) => {
       const chunk = batch[j];
+
+      // Pinecone metadata limit is 40KB per vector.
+      // Truncate large fields to stay safely under limit (~30KB target).
+      const MAX_TEXT_CHARS = 8000;       // ~8KB for main text
+      const MAX_CONTEXT_CHARS = 500;     // ~0.5KB each for context
+      const MAX_LIST_CHARS = 500;        // ~0.5KB for products/keywords/prices
+
+      const truncate = (s: string | undefined | null, max: number) =>
+        s && s.length > max ? s.slice(0, max) + "…" : s || "";
+
+      const truncateList = (arr: string[], max: number) => {
+        const joined = arr.join("|");
+        return joined.length > max ? joined.slice(0, max) + "…" : joined;
+      };
+
       return {
         id: `${docType}:${hash}:${chunk.chunkIndex}`,
         values,
@@ -137,21 +153,21 @@ export async function indexSingleDocType(params: {
           businessId,
           docType,
           chunkType: chunk.chunkType,                        // Chunk classification (pricing, policy, faq, etc.)
-          headingContext: chunk.headingContext || "",        // Parent heading (empty string if null)
+          headingContext: truncate(chunk.headingContext, 200),
           source: blobPath,
           filename,
           chunkIndex: chunk.chunkIndex,
           charStart: chunk.charStart,                        // Position tracking
           charEnd: chunk.charEnd,
           tokenEstimate: chunk.tokenEstimate,                // Token count
-          text: chunk.text,
-          // Enhanced metadata for enterprise retrieval
-          products: chunk.products.join("|"),                // Products/services (pipe-delimited for Pinecone)
-          keywords: chunk.keywords.join("|"),                // Searchable keywords (pipe-delimited)
-          prices: chunk.prices.join("|"),                    // Price values (pipe-delimited)
-          question: chunk.question || "",                    // FAQ question if applicable
-          contextBefore: chunk.contextBefore,                // Context from previous chunk
-          contextAfter: chunk.contextAfter,                  // Context from next chunk
+          text: truncate(chunk.text, MAX_TEXT_CHARS),
+          // Enhanced metadata for enterprise retrieval (truncated to fit limit)
+          products: truncateList(chunk.products, MAX_LIST_CHARS),
+          keywords: truncateList(chunk.keywords, MAX_LIST_CHARS),
+          prices: truncateList(chunk.prices, MAX_LIST_CHARS),
+          question: truncate(chunk.question, 500),
+          contextBefore: truncate(chunk.contextBefore, MAX_CONTEXT_CHARS),
+          contextAfter: truncate(chunk.contextAfter, MAX_CONTEXT_CHARS),
         },
       };
     });

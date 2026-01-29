@@ -404,7 +404,8 @@ function segmentByStructure(text: string): StructuralSegment[] {
 }
 
 /**
- * Smart split for long segments that exceed target size
+ * Smart split for long segments that exceed target size.
+ * Uses multiple strategies: sentences, newlines, then hard character splits.
  */
 function splitLongSegment(
   segment: StructuralSegment,
@@ -413,6 +414,7 @@ function splitLongSegment(
 ): StructuralSegment[] {
   const text = segment.text;
   
+  // If already small enough, return as-is
   if (text.length <= targetChars * 1.2) {
     return [segment];
   }
@@ -446,36 +448,100 @@ function splitLongSegment(
       });
     }
     
-    return results;
+    return results.length > 0 ? results : [segment];
   }
   
-  // For paragraphs and other text, split by sentences
-  const sentences = text.match(/[^.!?]+[.!?]+\s*/g) || [text];
+  // Strategy 1: Try splitting by sentence boundaries
+  // More robust regex that handles multiple sentence endings and edge cases
+  const sentencePattern = /[^.!?\n]+(?:[.!?]+|\n|$)/g;
+  let parts: string[] = text.match(sentencePattern) || [];
+  
+  // Strategy 2: If no sentences found or still too long, split by newlines/paragraphs
+  if (parts.length <= 1) {
+    parts = text.split(/\n\n+/).filter(s => s.trim().length > 0);
+  }
+  
+  // Strategy 3: If still just one block, split by single newlines
+  if (parts.length <= 1) {
+    parts = text.split(/\n/).filter(s => s.trim().length > 0);
+  }
+  
+  // Strategy 4: If STILL one giant block (no newlines), do hard character splits
+  if (parts.length <= 1 && text.length > targetChars) {
+    const hardChunks: StructuralSegment[] = [];
+    let pos = 0;
+    while (pos < text.length) {
+      // Try to find a good break point (space, punctuation) near target
+      let endPos = Math.min(pos + targetChars, text.length);
+      if (endPos < text.length) {
+        // Look for last space/punctuation within last 20% of chunk
+        const searchStart = Math.max(pos, endPos - Math.floor(targetChars * 0.2));
+        const searchRegion = text.slice(searchStart, endPos);
+        const lastBreak = Math.max(
+          searchRegion.lastIndexOf(' '),
+          searchRegion.lastIndexOf('.'),
+          searchRegion.lastIndexOf(','),
+          searchRegion.lastIndexOf('\n')
+        );
+        if (lastBreak > 0) {
+          endPos = searchStart + lastBreak + 1;
+        }
+      }
+      
+      const chunkText = text.slice(pos, endPos).trim();
+      if (chunkText.length > 0) {
+        hardChunks.push({
+          ...segment,
+          text: chunkText,
+          startIdx: segment.startIdx + pos,
+          endIdx: segment.startIdx + endPos,
+        });
+      }
+      
+      // Move forward with small overlap for context
+      pos = endPos - overlapChars;
+      if (pos <= (hardChunks.length > 0 ? endPos - targetChars : 0)) {
+        pos = endPos; // Prevent infinite loop
+      }
+    }
+    return hardChunks.length > 0 ? hardChunks : [segment];
+  }
+  
+  // Normal sentence/paragraph batching
   let currentBatch: string[] = [];
   let currentLen = 0;
   
-  for (const sentence of sentences) {
-    if (currentLen + sentence.length > targetChars && currentBatch.length > 0) {
+  for (const part of parts) {
+    const partLen = part.length;
+    
+    // If this single part is bigger than target, recursively split it
+    if (partLen > targetChars * 1.5 && currentBatch.length === 0) {
+      const subSegment: StructuralSegment = { ...segment, text: part };
+      results.push(...splitLongSegment(subSegment, targetChars, overlapChars));
+      continue;
+    }
+    
+    if (currentLen + partLen > targetChars && currentBatch.length > 0) {
       results.push({
         ...segment,
-        text: currentBatch.join('').trim()
+        text: currentBatch.join(' ').trim()
       });
-      // Keep last sentence for overlap
+      // Keep last part for overlap context
       currentBatch = currentBatch.length > 0 ? [currentBatch[currentBatch.length - 1]] : [];
-      currentLen = currentBatch.reduce((sum, s) => sum + s.length, 0);
+      currentLen = currentBatch.reduce((sum, s) => sum + s.length + 1, 0);
     }
-    currentBatch.push(sentence);
-    currentLen += sentence.length;
+    currentBatch.push(part.trim());
+    currentLen += partLen + 1;
   }
   
   if (currentBatch.length > 0) {
     results.push({
       ...segment,
-      text: currentBatch.join('').trim()
+      text: currentBatch.join(' ').trim()
     });
   }
   
-  return results;
+  return results.length > 0 ? results : [segment];
 }
 
 /**
@@ -515,26 +581,167 @@ function mergeSmallSegments(
 }
 
 export interface SmartChunkOptions {
-  targetTokens?: number;      // Target tokens per chunk (default: 250)
-  minTokens?: number;         // Minimum tokens per chunk (default: 100)
-  maxTokens?: number;         // Maximum tokens per chunk (default: 400)
-  overlapTokens?: number;     // Overlap tokens for context (default: 30)
+  targetTokens?: number;      // Target tokens per chunk (default: 800 for ~1 page)
+  minTokens?: number;         // Minimum tokens per chunk (default: 200)
+  maxTokens?: number;         // Maximum tokens per chunk (default: 1500)
+  overlapTokens?: number;     // Overlap tokens for context (default: 50)
+  pages?: string[];           // Pre-split page texts for page-wise chunking
 }
 
 /**
- * Enterprise-grade smart chunking with structure awareness
+ * Split a single page into smaller chunks when it exceeds max size.
+ * Tries to split at paragraph/sentence boundaries.
+ */
+function splitPageIntoChunks(pageText: string, pageNum: number, maxChars: number, overlapChars: number): string[] {
+  if (pageText.length <= maxChars) {
+    return [pageText];
+  }
+  
+  const chunks: string[] = [];
+  
+  // Try splitting by paragraphs first (double newlines or single newlines)
+  let parts = pageText.split(/\n\n+/).filter(p => p.trim().length > 0);
+  if (parts.length <= 1) {
+    parts = pageText.split(/\n/).filter(p => p.trim().length > 0);
+  }
+  
+  // If still no good splits, split by sentences
+  if (parts.length <= 1) {
+    parts = pageText.match(/[^.!?]+[.!?]+/g) || [];
+    if (parts.length === 0) {
+      // Last resort: hard split by character count
+      let pos = 0;
+      while (pos < pageText.length) {
+        let endPos = Math.min(pos + maxChars, pageText.length);
+        // Try to find a space near the end
+        if (endPos < pageText.length) {
+          const lastSpace = pageText.lastIndexOf(' ', endPos);
+          if (lastSpace > pos + maxChars * 0.7) {
+            endPos = lastSpace;
+          }
+        }
+        chunks.push(pageText.slice(pos, endPos).trim());
+        pos = endPos - overlapChars;
+        if (pos <= (chunks.length > 0 ? endPos - maxChars : 0)) pos = endPos;
+      }
+      return chunks.filter(c => c.length > 0);
+    }
+  }
+  
+  // Batch parts into chunks that fit within maxChars
+  let currentChunk: string[] = [];
+  let currentLen = 0;
+  
+  for (const part of parts) {
+    const partLen = part.length;
+    
+    if (currentLen + partLen > maxChars && currentChunk.length > 0) {
+      chunks.push(currentChunk.join('\n').trim());
+      // Keep last part for overlap
+      currentChunk = [currentChunk[currentChunk.length - 1]];
+      currentLen = currentChunk[0]?.length || 0;
+    }
+    
+    currentChunk.push(part.trim());
+    currentLen += partLen + 1;
+  }
+  
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk.join('\n').trim());
+  }
+  
+  return chunks.filter(c => c.length > 0);
+}
+
+/**
+ * Enterprise-grade smart chunking with structure awareness.
+ * Prefers page-wise chunking when pages array is provided.
  */
 export function smartChunkText(text: string, opts?: SmartChunkOptions): SmartChunk[] {
-  const targetTokens = opts?.targetTokens ?? 250;
-  const minTokens = opts?.minTokens ?? 100;
-  const maxTokens = opts?.maxTokens ?? 400;
-  const overlapTokens = opts?.overlapTokens ?? 30;
+  const targetTokens = opts?.targetTokens ?? 800;
+  const minTokens = opts?.minTokens ?? 200;
+  const maxTokens = opts?.maxTokens ?? 1500;
+  const overlapTokens = opts?.overlapTokens ?? 50;
+  const pages = opts?.pages;
   
   // Convert to characters (rough: 1 token ≈ 4 chars)
   const targetChars = targetTokens * 4;
   const minChars = minTokens * 4;
   const maxChars = maxTokens * 4;
   const overlapChars = overlapTokens * 4;
+  
+  // ===== PAGE-WISE CHUNKING (preferred when pages available) =====
+  if (pages && pages.length > 0) {
+    console.log(`[rag:smartChunk] using page-wise chunking, ${pages.length} pages`);
+    
+    const chunks: SmartChunk[] = [];
+    let charOffset = 0;
+    
+    for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
+      const pageText = pages[pageIdx].trim();
+      if (pageText.length === 0) continue;
+      
+      const pageStart = charOffset;
+      const pageEnd = charOffset + pageText.length;
+      charOffset = pageEnd + 20; // Account for page boundary marker
+      
+      // If page is small enough, keep as single chunk
+      if (pageText.length <= maxChars) {
+        const chunkText = `[Page ${pageIdx + 1}]\n${pageText}`;
+        const chunkType = classifyChunkType(pageText, null);
+        
+        chunks.push({
+          text: chunkText,
+          chunkType,
+          headingContext: `Page ${pageIdx + 1}`,
+          chunkIndex: chunks.length,
+          charStart: pageStart,
+          charEnd: pageEnd,
+          tokenEstimate: estimateTokens(chunkText),
+          products: extractProducts(pageText, null),
+          keywords: extractKeywords(pageText),
+          prices: extractPrices(pageText),
+          question: extractQuestion(pageText, chunkType),
+          contextBefore: pageIdx > 0 ? getContextSummary(pages[pageIdx - 1], 150) : "",
+          contextAfter: pageIdx < pages.length - 1 ? getContextSummary(pages[pageIdx + 1], 150) : "",
+        });
+      } else {
+        // Page is too large, split it into sub-chunks but keep page context
+        const subChunks = splitPageIntoChunks(pageText, pageIdx + 1, maxChars, overlapChars);
+        
+        for (let subIdx = 0; subIdx < subChunks.length; subIdx++) {
+          const subText = subChunks[subIdx];
+          const chunkText = `[Page ${pageIdx + 1}, Part ${subIdx + 1}/${subChunks.length}]\n${subText}`;
+          const chunkType = classifyChunkType(subText, null);
+          
+          chunks.push({
+            text: chunkText,
+            chunkType,
+            headingContext: `Page ${pageIdx + 1}`,
+            chunkIndex: chunks.length,
+            charStart: pageStart,
+            charEnd: pageEnd,
+            tokenEstimate: estimateTokens(chunkText),
+            products: extractProducts(subText, null),
+            keywords: extractKeywords(subText),
+            prices: extractPrices(subText),
+            question: extractQuestion(subText, chunkType),
+            contextBefore: subIdx > 0 ? getContextSummary(subChunks[subIdx - 1], 150) : (pageIdx > 0 ? getContextSummary(pages[pageIdx - 1], 150) : ""),
+            contextAfter: subIdx < subChunks.length - 1 ? getContextSummary(subChunks[subIdx + 1], 150) : (pageIdx < pages.length - 1 ? getContextSummary(pages[pageIdx + 1], 150) : ""),
+          });
+        }
+      }
+    }
+    
+    console.log(`[rag:smartChunk] page-wise chunks=${chunks.length} avgTokens=${
+      chunks.length ? Math.round(chunks.reduce((sum, c) => sum + c.tokenEstimate, 0) / chunks.length) : 0
+    }`);
+    
+    return chunks;
+  }
+  
+  // ===== FALLBACK: Structure-based chunking when no pages =====
+  console.log(`[rag:smartChunk] no pages array, using structure-based chunking`);
   
   // Step 1: Segment by structure
   let segments = segmentByStructure(text);

@@ -3,7 +3,11 @@ import mammoth from "mammoth";
 export type ExtractedDoc = {
   text: string;
   pageCount?: number;
+  pages?: string[];  // Individual page texts for page-wise chunking
 };
+
+// Page boundary marker used when preserving page structure
+export const PAGE_BOUNDARY = "\n\n---PAGE_BREAK---\n\n";
 
 function normalizeText(t: string): string {
   return (t || "").replace(/\s+/g, " ").trim();
@@ -31,14 +35,45 @@ export async function extractTextFromBuffer(params: {
     const parser = new PDFParse({ data: buffer });
     const result = await parser.getText();
     
-    const rawText = result.text || "";
-    const normalized = normalizeText(rawText);
+    // Extract per-page text if available
+    const pages: string[] = [];
+    if (result.pages && Array.isArray(result.pages)) {
+      for (const page of result.pages) {
+        const pageText = normalizeText(page.text || "");
+        if (pageText.length > 0) {
+          pages.push(pageText);
+        }
+      }
+    }
     
-    console.log(`[rag:extract] pdf pages=${result.numpages} rawChars=${rawText.length} normalizedChars=${normalized.length} sample="${normalized.slice(0, 100)}"`);
+    // If pages array wasn't populated, try splitting by form feed or page markers
+    const rawText = result.text || "";
+    if (pages.length === 0 && rawText.length > 0) {
+      // Try to split by form feed (\f) which some PDFs use
+      const ffSplit = rawText.split(/\f/);
+      if (ffSplit.length > 1) {
+        for (const p of ffSplit) {
+          const pageText = normalizeText(p);
+          if (pageText.length > 0) {
+            pages.push(pageText);
+          }
+        }
+      }
+    }
+    
+    // Build combined text with page boundaries preserved
+    const textWithBoundaries = pages.length > 1 
+      ? pages.join(PAGE_BOUNDARY)
+      : normalizeText(rawText);
+    
+    const normalized = pages.length > 1 ? textWithBoundaries : normalizeText(rawText);
+    
+    console.log(`[rag:extract] pdf pages=${result.numpages} extractedPages=${pages.length} rawChars=${rawText.length} normalizedChars=${normalized.length} sample="${normalized.slice(0, 100)}"`);
     
     return {
       text: normalized,
-      pageCount: result.numpages || undefined,
+      pageCount: result.numpages || pages.length || undefined,
+      pages: pages.length > 0 ? pages : undefined,
     };
   }
 
