@@ -138,29 +138,21 @@ export async function POST(req: Request) {
     });
 
     // Step 3 (Solution Partner): Share your credit line with the customer.
-    if (!metaExtendedCreditLineId) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Missing META_EXTENDED_CREDIT_LINE_ID (required for Solution Partner credit line sharing)",
-          code: "MISSING_CREDIT_LINE_CONFIG",
-        },
-        { status: 500 },
-      );
-    }
-
+    let creditShareRes: { allocation_config_id?: string; waba_id?: string } | null = null;
     const currency = (wabaCurrency ?? process.env.META_DEFAULT_WABA_CURRENCY ?? "USD").toUpperCase();
-
-    const creditShareRes = await graphJson<{ allocation_config_id?: string; waba_id?: string }>({
-      endpoint: graphEndpoint(metaGraphApiVersion, `/${metaExtendedCreditLineId}/whatsapp_credit_sharing_and_attach`),
-      method: "POST",
-      accessToken: metaSystemUserToken,
-      query: {
-        waba_currency: currency,
-        waba_id: wabaId,
-      },
-    });
+    if (metaExtendedCreditLineId) {
+      creditShareRes = await graphJson<{ allocation_config_id?: string; waba_id?: string }>({
+        endpoint: graphEndpoint(metaGraphApiVersion, `/${metaExtendedCreditLineId}/whatsapp_credit_sharing_and_attach`),
+        method: "POST",
+        accessToken: metaSystemUserToken,
+        query: {
+          waba_currency: currency,
+          waba_id: wabaId,
+        },
+      });
+    } else {
+      console.log("[WhatsApp Sync] Skipping credit line sharing (no META_EXTENDED_CREDIT_LINE_ID)");
+    }
 
     // Step 4: Register the customer's phone number.
     const desiredPin = generateSixDigitPin();
@@ -189,7 +181,7 @@ export async function POST(req: Request) {
 
         webhookSubscribedAt: now,
         creditLineSharedAt: now,
-        creditLineAllocationConfigId: creditShareRes.allocation_config_id ?? null,
+        creditLineAllocationConfigId: creditShareRes?.allocation_config_id ?? null,
         wabaCurrency: currency,
         registeredAt: now,
 
@@ -208,7 +200,7 @@ export async function POST(req: Request) {
 
           webhookSubscribedAt: now,
           creditLineSharedAt: now,
-          creditLineAllocationConfigId: creditShareRes.allocation_config_id ?? null,
+          creditLineAllocationConfigId: creditShareRes?.allocation_config_id ?? null,
           wabaCurrency: currency,
           registeredAt: now,
 
