@@ -19,7 +19,6 @@ function getQueueClient() {
 
   const service = QueueServiceClient.fromConnectionString(conn);
   const queue = service.getQueueClient(queueName);
-  queue.messageEncoding = "base64";
   cachedQueueClient = queue;
   return queue;
 }
