@@ -20,6 +20,7 @@ export type ChunkType =
   | "example_dialogue"
   | "contact_info"
   | "product_info"
+  | "product_index"
   | "general";
 
 export interface SmartChunk {

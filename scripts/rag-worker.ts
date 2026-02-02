@@ -4,11 +4,62 @@ import { sql } from "drizzle-orm";
 import { db } from "../src/server/db/client";
 import { ragJobs, trainingDocuments } from "../drizzle/schema";
 import { and, eq } from "drizzle-orm";
+import { ensureRagQueue } from "../src/server/rag/queue";
 
 type RagJobRow = typeof ragJobs.$inferSelect;
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+type QueueReceipt = {
+  messageId: string;
+  popReceipt: string;
+};
+
+async function claimNextJobFromQueue(): Promise<{ job: RagJobRow; receipt: QueueReceipt } | null> {
+  const queue = await ensureRagQueue();
+  const visibilityTimeout = Number(process.env.RAG_QUEUE_VISIBILITY_TIMEOUT || 120);
+  const res = await queue.receiveMessages({ numberOfMessages: 1, visibilityTimeout });
+  const msg = res.receivedMessageItems?.[0];
+  if (!msg) return null;
+
+  let payload: { jobId?: string } = {};
+  try {
+    payload = JSON.parse(msg.messageText || "{}");
+  } catch {
+    await queue.deleteMessage(msg.messageId, msg.popReceipt);
+    return null;
+  }
+
+  if (!payload.jobId) {
+    await queue.deleteMessage(msg.messageId, msg.popReceipt);
+    return null;
+  }
+
+  const [job] = await db.select().from(ragJobs).where(eq(ragJobs.id, payload.jobId));
+  if (!job) {
+    await queue.deleteMessage(msg.messageId, msg.popReceipt);
+    return null;
+  }
+
+  if (job.status !== "queued") {
+    await queue.deleteMessage(msg.messageId, msg.popReceipt);
+    return null;
+  }
+
+  await db
+    .update(ragJobs)
+    .set({
+      status: "running",
+      startedAt: new Date(),
+      attempts: sql`COALESCE(${ragJobs.attempts}, 0) + 1`,
+    })
+    .where(eq(ragJobs.id, job.id));
+
+  console.log(`[rag-worker] claimed job=${job.id} businessId=${job.businessId} docType=${job.docType} attempts=${(job.attempts ?? 0) + 1}`);
+
+  return { job: { ...job, status: "running", attempts: (job.attempts ?? 0) + 1 }, receipt: { messageId: msg.messageId, popReceipt: msg.popReceipt } };
 }
 
 async function claimNextJob(): Promise<RagJobRow | null> {
@@ -147,19 +198,47 @@ async function failJob(job: RagJobRow, err: unknown) {
 
 async function main() {
   const pollMs = Number(process.env.RAG_WORKER_POLL_MS || 1500);
-  console.log(`[rag-worker] started (poll=${pollMs}ms)`);
+  const mode = (process.env.RAG_WORKER_MODE || "").toLowerCase();
+  let useQueue = mode === "queue" || (mode !== "db");
+  if (useQueue) {
+    try {
+      await ensureRagQueue();
+    } catch (err: any) {
+      console.error(`[rag-worker] queue init failed, falling back to db polling: ${err?.message || String(err)}`);
+      useQueue = false;
+    }
+  }
+  console.log(`[rag-worker] started (poll=${pollMs}ms mode=${useQueue ? "queue" : "db"})`);
 
   while (true) {
-    const job = await claimNextJob();
-    if (!job) {
-      await sleep(pollMs);
-      continue;
-    }
+    if (useQueue) {
+      const claimed = await claimNextJobFromQueue();
+      if (!claimed) {
+        await sleep(pollMs);
+        continue;
+      }
 
-    try {
-      await processJob(job);
-    } catch (e) {
-      await failJob(job, e);
+      try {
+        await processJob(claimed.job);
+        const queue = await ensureRagQueue();
+        await queue.deleteMessage(claimed.receipt.messageId, claimed.receipt.popReceipt);
+      } catch (e) {
+        await failJob(claimed.job, e);
+        const queue = await ensureRagQueue();
+        await queue.deleteMessage(claimed.receipt.messageId, claimed.receipt.popReceipt);
+      }
+    } else {
+      const job = await claimNextJob();
+      if (!job) {
+        await sleep(pollMs);
+        continue;
+      }
+
+      try {
+        await processJob(job);
+      } catch (e) {
+        await failJob(job, e);
+      }
     }
   }
 }

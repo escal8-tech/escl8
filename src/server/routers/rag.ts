@@ -6,9 +6,10 @@ import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { generateAndSaveBotInstructions, areKeyDocsIndexed } from "../rag/generateBotInstructions";
 import { retrieve, getGroundedContext } from "../rag/retrieve";
+import { enqueueRagJobMessage } from "../rag/queue";
 
 const docTypeSchema = z.enum(["considerations", "conversations", "inventory", "bank", "address"]);
-const chunkTypeSchema = z.enum(["pricing", "policy", "faq", "example_dialogue", "contact_info", "product_info", "general"]);
+const chunkTypeSchema = z.enum(["pricing", "policy", "faq", "example_dialogue", "contact_info", "product_info", "product_index", "general"]);
 
 export const ragRouter = router({
   enqueueRetrain: businessProcedure
@@ -48,6 +49,13 @@ export const ragRouter = router({
         .update(trainingDocuments)
         .set({ indexingStatus: "queued", updatedAt: new Date(), lastError: null })
         .where(eq(trainingDocuments.id, doc.id));
+
+      try {
+        await enqueueRagJobMessage(job.id);
+      } catch (err: any) {
+        console.error(`[rag] enqueue queue failed job=${job.id}: ${err?.message || String(err)}`);
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to enqueue training job" });
+      }
 
       return { ok: true, jobId: job.id, mode: "queued" };
     }),

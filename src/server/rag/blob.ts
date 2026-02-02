@@ -30,3 +30,17 @@ export async function downloadBlobToBuffer(blobPath: string): Promise<BlobObject
     contentType: props.contentType || undefined,
   };
 }
+
+export async function uploadTextToBlob(params: { blobPath: string; text: string; contentType?: string }) {
+  const { container } = getAzure();
+  const blob = container.getBlockBlobClient(params.blobPath);
+  const buf = Buffer.from(params.text, "utf8");
+  await blob.uploadData(buf, {
+    blobHTTPHeaders: { blobContentType: params.contentType || "text/plain" },
+  });
+  console.log(`[rag:blob] uploaded text blobPath=${params.blobPath} bytes=${buf.length}`);
+  return {
+    blobPath: params.blobPath,
+    size: buf.length,
+  };
+}
