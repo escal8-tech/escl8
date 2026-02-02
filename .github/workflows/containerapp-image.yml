@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: escl8
+  IMAGE_NAME: escal8-agent
 
 jobs:
   build-and-push:
