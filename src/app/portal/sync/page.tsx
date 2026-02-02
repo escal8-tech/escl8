@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
+import { trpc } from "@/utils/trpc";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ICONS
@@ -265,6 +266,8 @@ export default function SyncPage() {
     tiktok: "idle",
     instagram: "idle",
   });
+  const phoneNumbersQuery = trpc.business.listPhoneNumbers.useQuery();
+  const whatsappConnected = (phoneNumbersQuery.data?.length ?? 0) > 0;
 
   const markSynced = (key: CardKey) => setSyncState((s) => ({ ...s, [key]: "synced" }));
 
@@ -311,7 +314,7 @@ export default function SyncPage() {
   };
 
   const renderAction = (card: Card) => {
-    const isSynced = syncState[card.key] === "synced";
+    const isSynced = card.key === "whatsapp" ? whatsappConnected : syncState[card.key] === "synced";
 
     if (!card.canSync) {
       return (
@@ -326,7 +329,11 @@ export default function SyncPage() {
       return (
         <WhatsAppEmbeddedSignupButton
           email={email ?? undefined}
-          onConnected={() => markSynced("whatsapp")}
+          connected={whatsappConnected}
+          onConnected={() => {
+            markSynced("whatsapp");
+            phoneNumbersQuery.refetch();
+          }}
           label="Connect"
           syncedLabel="Connected"
           className="btn"

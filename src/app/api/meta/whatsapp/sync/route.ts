@@ -79,6 +79,16 @@ export async function POST(req: Request) {
     const metaGraphApiVersion = process.env.META_GRAPH_API_VERSION ?? "v24.0";
     const metaExtendedCreditLineId = process.env.META_EXTENDED_CREDIT_LINE_ID;
     const metaSystemUserToken = process.env.META_SYSTEM_USER_TOKEN;
+    if (!metaSystemUserToken) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Missing META_SYSTEM_USER_TOKEN (required to register phone numbers)",
+          code: "MISSING_SYSTEM_USER_TOKEN",
+        },
+        { status: 500 },
+      );
+    }
     if (!metaAppId || !metaAppSecret) {
       return NextResponse.json(
         {
@@ -128,12 +138,12 @@ export async function POST(req: Request) {
     });
 
     // Step 3 (Solution Partner): Share your credit line with the customer.
-    if (!metaExtendedCreditLineId || !metaSystemUserToken) {
+    if (!metaExtendedCreditLineId) {
       return NextResponse.json(
         {
           ok: false,
           error:
-            "Missing META_EXTENDED_CREDIT_LINE_ID or META_SYSTEM_USER_TOKEN (required for Solution Partner credit line sharing)",
+            "Missing META_EXTENDED_CREDIT_LINE_ID (required for Solution Partner credit line sharing)",
           code: "MISSING_CREDIT_LINE_CONFIG",
         },
         { status: 500 },
@@ -157,7 +167,7 @@ export async function POST(req: Request) {
     const registered = await graphJson<{ success?: boolean } | { success: true }>({
       endpoint: graphEndpoint(metaGraphApiVersion, `/${phoneNumberId}/register`),
       method: "POST",
-      accessToken: businessToken,
+      accessToken: metaSystemUserToken,
       json: {
         messaging_product: "whatsapp",
         pin: desiredPin,
@@ -175,8 +185,6 @@ export async function POST(req: Request) {
         businessId: user.businessId,
         connectedByUserId: user.id,
         wabaId,
-        businessToken: businessToken,
-
         twoStepPin: desiredPin,
 
         webhookSubscribedAt: now,
@@ -195,8 +203,6 @@ export async function POST(req: Request) {
           businessId: user.businessId,
           connectedByUserId: user.id,
           wabaId,
-
-          businessToken: businessToken,
 
           twoStepPin: desiredPin,
 

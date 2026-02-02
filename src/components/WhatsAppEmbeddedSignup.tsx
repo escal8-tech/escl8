@@ -25,6 +25,7 @@ type WhatsAppEmbeddedSignupButtonProps = {
   onConnected?: () => void;
   label?: string;
   syncedLabel?: string;
+  connected?: boolean;
   className?: string;
   style?: React.CSSProperties;
 };
@@ -33,7 +34,7 @@ type SyncResponse =
   | { ok: true; stored: boolean; setupComplete: boolean; message?: string }
   | { ok: false; error: string; code?: string };
 
-export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, syncedLabel, className, style }: WhatsAppEmbeddedSignupButtonProps = {}) {
+export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, syncedLabel, connected: connectedProp, className, style }: WhatsAppEmbeddedSignupButtonProps = {}) {
   const [sdkReady, setSdkReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -45,6 +46,12 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
   const sentRef = useRef(false);
 
   const canLaunch = useMemo(() => sdkReady && !busy, [sdkReady, busy]);
+
+  useEffect(() => {
+    if (typeof connectedProp === "boolean") {
+      setConnected(connectedProp);
+    }
+  }, [connectedProp]);
 
   // Initialize FB SDK once loaded
   useEffect(() => {
