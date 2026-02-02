@@ -320,6 +320,36 @@ export function injectAliasesIntoFormatted(formatted: string, aliases: ProductAl
   return out.join("\n");
 }
 
+async function repairFormattedCoverage(params: { original: string; formatted: string; missingProducts: string[]; missingVariants: string[] }): Promise<string> {
+  const model = process.env.RAG_PRODUCT_REPAIR_MODEL || DEFAULT_MODEL;
+  const prompt = `You are repairing a formatted product document to include missing items.
+Given ORIGINAL and FORMATTED, insert the missing products/variants into the correct product blocks.
+Do NOT remove existing data. Keep formatting consistent with the template.
+Return ONLY the corrected formatted Markdown.
+
+Missing products:
+${params.missingProducts.join("; ") || "none"}
+
+Missing variants/pricing tiers:
+${params.missingVariants.join("; ") || "none"}
+
+ORIGINAL:
+${params.original}
+
+FORMATTED:
+${params.formatted}`.trim();
+
+  const c = getClient();
+  const res = await c.chat.completions.create({
+    model,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0,
+    max_tokens: 1400,
+  });
+
+  return (res.choices[0]?.message?.content || "").trim();
+}
+
 export async function formatProductDocWithLLM(text: string): Promise<{ formatted: string; report: ProductFormatReport[]; coverage: ProductCoverageReport }> {
   const normalized = normalizeWhitespace(text);
   if (!normalized) return { formatted: normalized, report: [], coverage: { ok: true, missingProducts: [], missingVariants: [] } };
@@ -358,10 +388,26 @@ export async function formatProductDocWithLLM(text: string): Promise<{ formatted
   }
 
   const formatted = results.join("\n\n");
-  const coverage = await validateProductCoverage(normalized, formatted);
+  let coverage = await validateProductCoverage(normalized, formatted);
+  let repaired = formatted;
+
+  const maxAttempts = Number(process.env.RAG_PRODUCT_REPAIR_ATTEMPTS || 2);
+  for (let attempt = 1; attempt <= maxAttempts && !coverage.ok; attempt++) {
+    repaired = await repairFormattedCoverage({
+      original: normalized,
+      formatted: repaired,
+      missingProducts: coverage.missingProducts,
+      missingVariants: coverage.missingVariants,
+    });
+    if (!repaired) {
+      break;
+    }
+    coverage = await validateProductCoverage(normalized, repaired);
+  }
+
   if (!coverage.ok) {
     throw new Error(`Product coverage validation failed: ${coverage.missingProducts.slice(0, 3).join("; ") || "missing products"} ${coverage.missingVariants.slice(0, 3).join("; ") || ""}`.trim());
   }
 
-  return { formatted, report, coverage };
+  return { formatted: repaired, report, coverage };
 }
