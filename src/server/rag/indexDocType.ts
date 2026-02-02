@@ -194,32 +194,12 @@ function splitTextWithOverlap(text: string, maxTokens: number, overlapTokens: nu
   return chunks;
 }
 
-function buildHierarchicalChunksFromSections(
+function buildFullChunksFromSections(
   sections: Section[],
-  opts: { abstractTokens: number; maxTokens: number; overlapTokens: number; questionFromTitle?: boolean },
+  opts: { maxTokens: number; overlapTokens: number; questionFromTitle?: boolean },
 ): SmartChunk[] {
   const chunks: SmartChunk[] = [];
   for (const section of sections) {
-    const abstract = makeAbstract(section.text, opts.abstractTokens);
-    const abstractText = `Title: ${section.title}\nAbstract: ${abstract}`;
-    const abstractKeywords = extractKeywordsLite(abstractText);
-
-    chunks.push({
-      text: abstractText,
-      chunkType: "section_abstract",
-      headingContext: section.title,
-      chunkIndex: chunks.length,
-      charStart: 0,
-      charEnd: 0,
-      tokenEstimate: estimateTokens(abstractText),
-      products: [],
-      keywords: abstractKeywords,
-      prices: extractPricesLite(abstractText),
-      question: opts.questionFromTitle ? section.title : null,
-      contextBefore: "",
-      contextAfter: "",
-    });
-
     const fullParts = splitTextWithOverlap(section.text, opts.maxTokens, opts.overlapTokens);
     for (const part of fullParts) {
       const fullText = `Title: ${section.title}\n${part}`;
@@ -244,8 +224,12 @@ function buildHierarchicalChunksFromSections(
 }
 
 function buildInventoryHierarchicalChunks(text: string, pages?: string[]): SmartChunk[] {
-  const sections = buildSectionsFromPages(splitIntoPages(text, pages));
-  return buildHierarchicalChunksFromSections(sections, { abstractTokens: 150, maxTokens: 900, overlapTokens: 80 });
+  const pageTexts = splitIntoPages(text, pages);
+  const sections: Section[] = pageTexts.map((p, i) => ({
+    title: `Page ${i + 1}`,
+    text: p,
+  }));
+  return buildFullChunksFromSections(sections, { maxTokens: 500, overlapTokens: 60 });
 }
 
 function buildConversationHierarchicalChunks(text: string, pages?: string[]): SmartChunk[] {
@@ -256,7 +240,7 @@ function buildConversationHierarchicalChunks(text: string, pages?: string[]): Sm
   if (sections.length === 0) {
     sections = buildSectionsFromPages(splitIntoPages(text, pages));
   }
-  return buildHierarchicalChunksFromSections(sections, { abstractTokens: 120, maxTokens: 400, overlapTokens: 40, questionFromTitle: true });
+  return buildFullChunksFromSections(sections, { maxTokens: 400, overlapTokens: 40, questionFromTitle: true });
 }
 
 async function deleteExistingVectorsForDocType(params: {
