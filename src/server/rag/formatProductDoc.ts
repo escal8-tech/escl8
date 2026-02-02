@@ -396,27 +396,23 @@ ${text}`.trim();
 
 async function extractProductBlock(params: { product: string; raw: string }): Promise<string> {
   const model = process.env.RAG_PRODUCT_EXTRACT_MODEL || DEFAULT_MODEL;
-  const prompt = `Extract ONLY details for the product: "${params.product}" from RAW.
-Return structured Markdown exactly in this template:
-## Product: ${params.product}
-Summary: <1-3 sentences>
-Features:
-- ...
-Options/Variants:
-- ...
-Pricing:
-- ...
-Specs:
-- ...
-Policies/Constraints:
-- ...
-Details:
-- <verbatim lines that do not fit above>
+  const prompt = `Extract ONLY verbatim lines for the product "${params.product}".
+Return JSON ONLY in this shape:
+{
+  "summary": ["line", ...],
+  "features": ["line", ...],
+  "options": ["line", ...],
+  "pricing": ["line", ...],
+  "specs": ["line", ...],
+  "policies": ["line", ...],
+  "details": ["line", ...]
+}
 
 Rules:
+- Every line must be copied verbatim from RAW.
+- If unsure, put the line under "details".
+- Do not invent or rewrite.
 - Do not include other products.
-- If info is missing, use "unknown".
-- Preserve prices/tiers/conditions accurately.
 
 RAW:
 ${params.raw}`.trim();
@@ -425,7 +421,7 @@ ${params.raw}`.trim();
     model,
     messages: [{ role: "user", content: prompt }],
     temperature: 0,
-    max_tokens: 1200,
+    max_tokens: 900,
   });
   return (res.choices[0]?.message?.content || "").trim();
 }
@@ -476,8 +472,12 @@ export async function formatProductDocWithLLM(text: string): Promise<{ formatted
   const normalized = normalizeWhitespace(text);
   if (!normalized) return { formatted: normalized, report: [], coverage: { ok: true, missingProducts: [], missingVariants: [] } };
 
+  const rawLines = normalized.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const rawSet = new Set(rawLines.map(l => l.toLowerCase()));
+
   const candidates = extractCandidateProducts(normalized);
-  const products = await refineProductListWithLLM(normalized, candidates);
+  const refined = await refineProductListWithLLM(normalized, candidates);
+  const products = refined.filter(p => rawSet.has(p.toLowerCase()) || normalized.toLowerCase().includes(p.toLowerCase()));
 
   const report: ProductFormatReport[] = [];
   const blocks: string[] = [];
@@ -485,30 +485,79 @@ export async function formatProductDocWithLLM(text: string): Promise<{ formatted
 
   for (const product of products) {
     idx += 1;
-    let block = await extractProductBlock({ product, raw: normalized });
-    let validation = await validateProductBlock({ product, raw: normalized, block });
-    const maxAttempts = Number(process.env.RAG_PRODUCT_REPAIR_ATTEMPTS || 2);
-    for (let attempt = 1; attempt <= maxAttempts && !validation.ok; attempt++) {
-      block = await repairFormattedCoverage({
-        original: normalized,
-        formatted: block,
-        missingProducts: [],
-        missingVariants: validation.missingVariants,
-      });
-      if (!block) break;
-      validation = await validateProductBlock({ product, raw: normalized, block });
+    const productLower = product.toLowerCase();
+    const contextLines: string[] = [];
+    const maxContext = Number(process.env.RAG_PRODUCT_CONTEXT_LINES || 2);
+
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i];
+      if (line.toLowerCase().includes(productLower)) {
+        contextLines.push(line);
+        for (let j = 1; j <= maxContext; j++) {
+          const next = rawLines[i + j];
+          if (!next) break;
+          if (/^(\d+\.|[-•])\s+[A-Z]/.test(next)) break;
+          contextLines.push(next);
+        }
+      }
     }
-    if (!validation.ok) {
-      block = fallbackAppendRaw(block, normalized, product);
+
+    const uniqueContext = Array.from(new Set(contextLines));
+    const rawContext = uniqueContext.join("\n");
+
+    let extracted = await extractProductBlock({ product, raw: rawContext || normalized });
+    let parsed: Record<string, string[]> = {};
+    const match = extracted.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch {
+        parsed = {};
+      }
     }
+
+    const pick = (key: string) =>
+      (parsed[key] || []).map(String).map(s => s.trim()).filter(s => rawSet.has(s.toLowerCase()));
+
+    const summary = pick("summary");
+    const features = pick("features");
+    const options = pick("options");
+    const pricing = pick("pricing");
+    const specs = pick("specs");
+    const policies = pick("policies");
+    const details = pick("details");
+
+    const used = new Set([...summary, ...features, ...options, ...pricing, ...specs, ...policies, ...details].map(l => l.toLowerCase()));
+    const missing = uniqueContext.filter(l => !used.has(l.toLowerCase()));
+
+    const linesOrUnknown = (arr: string[]) => (arr.length ? arr : ["unknown"]);
+    const blockLines = [
+      `## Product: ${product}`,
+      `Summary:`,
+      ...linesOrUnknown(summary).map(l => `- ${l}`),
+      `Features:`,
+      ...linesOrUnknown(features).map(l => `- ${l}`),
+      `Options/Variants:`,
+      ...linesOrUnknown(options).map(l => `- ${l}`),
+      `Pricing:`,
+      ...linesOrUnknown(pricing).map(l => `- ${l}`),
+      `Specs:`,
+      ...linesOrUnknown(specs).map(l => `- ${l}`),
+      `Policies/Constraints:`,
+      ...linesOrUnknown(policies).map(l => `- ${l}`),
+      `Details:`,
+      ...linesOrUnknown([...details, ...missing]).map(l => `- ${l}`),
+    ];
+
     report.push({
       sectionIndex: idx,
       chunkIndex: 1,
-      ok: validation.ok,
-      missingFacts: validation.missingVariants,
-      notes: validation.notes,
+      ok: missing.length === 0,
+      missingFacts: missing,
+      notes: missing.length ? "Unassigned lines appended to Details." : undefined,
     });
-    blocks.push(block);
+
+    blocks.push(blockLines.join("\n"));
   }
 
   const formatted = blocks.join("\n\n");
