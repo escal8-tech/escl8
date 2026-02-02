@@ -37,5 +37,9 @@ COPY --from=base /app/.next/static ./.next/static
 COPY --from=base /app/public ./public
 COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/package.json ./package.json
+COPY --from=base /app/scripts ./scripts
+COPY --from=base /app/src ./src
+COPY --from=base /app/drizzle ./drizzle
+COPY --from=base /app/tsconfig.json ./tsconfig.json
 EXPOSE 3000
 CMD ["node", "server.js"]
