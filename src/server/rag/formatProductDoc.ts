@@ -350,64 +350,168 @@ ${params.formatted}`.trim();
   return (res.choices[0]?.message?.content || "").trim();
 }
 
+function extractCandidateProducts(text: string): string[] {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const candidates: string[] = [];
+  for (const line of lines) {
+    if (/^\d+\.\s+/.test(line) || /^[-•]\s+/.test(line)) {
+      const name = line.replace(/^\d+\.\s+/, "").replace(/^[-•]\s+/, "").split("–")[0].split("-")[0].trim();
+      if (name.length >= 3 && name.length <= 120) candidates.push(name);
+    }
+    if (/[A-Z][a-z].+\s+\((?:RM|MYR|USD|US\$|\$|£|€|₹)/.test(line)) {
+      const name = line.split("(")[0].trim();
+      if (name.length >= 3 && name.length <= 120) candidates.push(name);
+    }
+  }
+  return Array.from(new Set(candidates)).slice(0, 200);
+}
+
+async function refineProductListWithLLM(text: string, candidates: string[]): Promise<string[]> {
+  const model = process.env.RAG_PRODUCT_LIST_MODEL || DEFAULT_MODEL;
+  const prompt = `You are extracting a clean list of product/tour names from a raw document.
+Return JSON array of product names only.
+
+Candidates (may include noise):
+${candidates.join("; ")}
+
+RAW:
+${text}`.trim();
+  const c = getClient();
+  const res = await c.chat.completions.create({
+    model,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0,
+    max_tokens: 500,
+  });
+  const content = (res.choices[0]?.message?.content || "").trim();
+  const match = content.match(/\[[\s\S]*\]/);
+  if (!match) return candidates;
+  try {
+    const arr = JSON.parse(match[0]) as string[];
+    return Array.from(new Set(arr.map(String).map(s => s.trim()).filter(Boolean)));
+  } catch {
+    return candidates;
+  }
+}
+
+async function extractProductBlock(params: { product: string; raw: string }): Promise<string> {
+  const model = process.env.RAG_PRODUCT_EXTRACT_MODEL || DEFAULT_MODEL;
+  const prompt = `Extract ONLY details for the product: "${params.product}" from RAW.
+Return structured Markdown exactly in this template:
+## Product: ${params.product}
+Summary: <1-3 sentences>
+Features:
+- ...
+Options/Variants:
+- ...
+Pricing:
+- ...
+Specs:
+- ...
+Policies/Constraints:
+- ...
+Details:
+- <verbatim lines that do not fit above>
+
+Rules:
+- Do not include other products.
+- If info is missing, use "unknown".
+- Preserve prices/tiers/conditions accurately.
+
+RAW:
+${params.raw}`.trim();
+  const c = getClient();
+  const res = await c.chat.completions.create({
+    model,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0,
+    max_tokens: 1200,
+  });
+  return (res.choices[0]?.message?.content || "").trim();
+}
+
+async function validateProductBlock(params: { product: string; raw: string; block: string }): Promise<ProductCoverageReport> {
+  const model = process.env.RAG_PRODUCT_VALIDATE_MODEL || DEFAULT_VALIDATE_MODEL;
+  const prompt = `Validate that the FORMATTED block contains all key facts for the product "${params.product}".
+Return JSON ONLY:
+{"ok": true|false, "missingProducts": [], "missingVariants": ["..."], "notes": "optional"}
+MissingVariants should list missing pricing tiers/options/features that matter.
+
+RAW:
+${params.raw}
+
+FORMATTED:
+${params.block}`.trim();
+  const c = getClient();
+  const res = await c.chat.completions.create({
+    model,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0,
+    max_tokens: 400,
+  });
+  const content = (res.choices[0]?.message?.content || "").trim();
+  const match = content.match(/\{[\s\S]*\}/);
+  if (!match) return { ok: false, missingProducts: [], missingVariants: ["validator_non_json"] };
+  try {
+    const obj = JSON.parse(match[0]);
+    return {
+      ok: Boolean(obj.ok),
+      missingProducts: [],
+      missingVariants: Array.isArray(obj.missingVariants) ? obj.missingVariants.map(String) : [],
+      notes: typeof obj.notes === "string" ? obj.notes : undefined,
+    };
+  } catch {
+    return { ok: false, missingProducts: [], missingVariants: ["validator_invalid_json"] };
+  }
+}
+
+function fallbackAppendRaw(block: string, raw: string, product: string): string {
+  const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const matched = lines.filter(l => l.toLowerCase().includes(product.toLowerCase())).slice(0, 30);
+  if (matched.length === 0) return block;
+  return `${block}\n\nDetails:\n- ${matched.join("\n- ")}`;
+}
+
 export async function formatProductDocWithLLM(text: string): Promise<{ formatted: string; report: ProductFormatReport[]; coverage: ProductCoverageReport }> {
   const normalized = normalizeWhitespace(text);
   if (!normalized) return { formatted: normalized, report: [], coverage: { ok: true, missingProducts: [], missingVariants: [] } };
 
-  const sections = splitIntoSections(normalized);
-  const maxChars = Number(process.env.RAG_PRODUCT_FORMAT_MAX_CHARS || 6000);
-  const results: string[] = [];
+  const candidates = extractCandidateProducts(normalized);
+  const products = await refineProductListWithLLM(normalized, candidates);
+
   const report: ProductFormatReport[] = [];
+  const blocks: string[] = [];
+  let idx = 0;
 
-  for (let i = 0; i < sections.length; i++) {
-    const section = sections[i];
-    const chunks = chunkSection(section, maxChars);
-    for (let j = 0; j < chunks.length; j++) {
-      try {
-        const formatted = await formatSectionWithLLM(chunks[j], i + 1);
-        if (!formatted) throw new Error("Empty formatted section");
-        const reconciled = await reconcileFormattedSection(chunks[j], formatted, i + 1);
-        if (!reconciled) throw new Error("Empty reconciled section");
-        const validation = await validateFormattedSection(chunks[j], reconciled, i + 1);
-        report.push({
-          sectionIndex: i + 1,
-          chunkIndex: j + 1,
-          ok: validation.ok,
-          missingFacts: validation.missingFacts,
-          notes: validation.notes,
-        });
-        if (!validation.ok) {
-          throw new Error(`Validator failed: ${validation.missingFacts.slice(0, 3).join("; ") || "missing facts"}`);
-        }
-        results.push(reconciled);
-      } catch (err: any) {
-        console.error(`[rag:formatProduct] LLM failed section=${i + 1} chunk=${j + 1}: ${err?.message || String(err)}`);
-        throw err;
-      }
+  for (const product of products) {
+    idx += 1;
+    let block = await extractProductBlock({ product, raw: normalized });
+    let validation = await validateProductBlock({ product, raw: normalized, block });
+    const maxAttempts = Number(process.env.RAG_PRODUCT_REPAIR_ATTEMPTS || 2);
+    for (let attempt = 1; attempt <= maxAttempts && !validation.ok; attempt++) {
+      block = await repairFormattedCoverage({
+        original: normalized,
+        formatted: block,
+        missingProducts: [],
+        missingVariants: validation.missingVariants,
+      });
+      if (!block) break;
+      validation = await validateProductBlock({ product, raw: normalized, block });
     }
-  }
-
-  const formatted = results.join("\n\n");
-  let coverage = await validateProductCoverage(normalized, formatted);
-  let repaired = formatted;
-
-  const maxAttempts = Number(process.env.RAG_PRODUCT_REPAIR_ATTEMPTS || 2);
-  for (let attempt = 1; attempt <= maxAttempts && !coverage.ok; attempt++) {
-    repaired = await repairFormattedCoverage({
-      original: normalized,
-      formatted: repaired,
-      missingProducts: coverage.missingProducts,
-      missingVariants: coverage.missingVariants,
+    if (!validation.ok) {
+      block = fallbackAppendRaw(block, normalized, product);
+    }
+    report.push({
+      sectionIndex: idx,
+      chunkIndex: 1,
+      ok: validation.ok,
+      missingFacts: validation.missingVariants,
+      notes: validation.notes,
     });
-    if (!repaired) {
-      break;
-    }
-    coverage = await validateProductCoverage(normalized, repaired);
+    blocks.push(block);
   }
 
-  if (!coverage.ok) {
-    throw new Error(`Product coverage validation failed: ${coverage.missingProducts.slice(0, 3).join("; ") || "missing products"} ${coverage.missingVariants.slice(0, 3).join("; ") || ""}`.trim());
-  }
-
-  return { formatted: repaired, report, coverage };
+  const formatted = blocks.join("\n\n");
+  const coverage = await validateProductCoverage(normalized, formatted);
+  return { formatted, report, coverage };
 }
