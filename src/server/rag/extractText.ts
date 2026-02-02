@@ -13,14 +13,25 @@ function normalizeText(t: string): string {
   return (t || "").replace(/\s+/g, " ").trim();
 }
 
+function normalizeTextPreserveLines(t: string): string {
+  return (t || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export async function extractTextFromBuffer(params: {
   buffer: Buffer;
   filename: string;
   contentType?: string;
+  preserveLineBreaks?: boolean;
 }): Promise<ExtractedDoc> {
   const { buffer, filename } = params;
   const lower = filename.toLowerCase();
   const contentType = (params.contentType || "").toLowerCase();
+  const normalize = params.preserveLineBreaks ? normalizeTextPreserveLines : normalizeText;
 
   if (lower.endsWith(".pdf") || contentType === "application/pdf") {
     // pdf-parse v2 uses PDFParse class constructor
@@ -39,7 +50,7 @@ export async function extractTextFromBuffer(params: {
     const pages: string[] = [];
     if (result.pages && Array.isArray(result.pages)) {
       for (const page of result.pages) {
-        const pageText = normalizeText(page.text || "");
+        const pageText = normalize(page.text || "");
         if (pageText.length > 0) {
           pages.push(pageText);
         }
@@ -53,7 +64,7 @@ export async function extractTextFromBuffer(params: {
       const ffSplit = rawText.split(/\f/);
       if (ffSplit.length > 1) {
         for (const p of ffSplit) {
-          const pageText = normalizeText(p);
+          const pageText = normalize(p);
           if (pageText.length > 0) {
             pages.push(pageText);
           }
@@ -64,9 +75,9 @@ export async function extractTextFromBuffer(params: {
     // Build combined text with page boundaries preserved
     const textWithBoundaries = pages.length > 1 
       ? pages.join(PAGE_BOUNDARY)
-      : normalizeText(rawText);
+      : normalize(rawText);
     
-    const normalized = pages.length > 1 ? textWithBoundaries : normalizeText(rawText);
+    const normalized = pages.length > 1 ? textWithBoundaries : normalize(rawText);
     
     console.log(`[rag:extract] pdf pages=${result.numpages} extractedPages=${pages.length} rawChars=${rawText.length} normalizedChars=${normalized.length} sample="${normalized.slice(0, 100)}"`);
     
@@ -79,7 +90,7 @@ export async function extractTextFromBuffer(params: {
 
   if (lower.endsWith(".docx") || contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
     const res = await mammoth.extractRawText({ buffer });
-    return { text: normalizeText(res.value || "") };
+    return { text: normalize(res.value || "") };
   }
 
   // Basic plaintext/csv
@@ -89,7 +100,7 @@ export async function extractTextFromBuffer(params: {
     contentType.startsWith("text/") ||
     contentType === "application/json"
   ) {
-    return { text: normalizeText(buffer.toString("utf8")) };
+    return { text: normalize(buffer.toString("utf8")) };
   }
 
   // Legacy .doc (binary) is not supported here.

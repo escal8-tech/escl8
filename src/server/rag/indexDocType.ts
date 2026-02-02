@@ -1,11 +1,9 @@
 import crypto from "crypto";
 import { downloadBlobToBuffer, uploadTextToBlob } from "./blob";
-import { extractTextFromBuffer } from "./extractText";
+import { extractTextFromBuffer, PAGE_BOUNDARY } from "./extractText";
 import { smartChunkText, classifyChunksWithLLM, SmartChunk } from "./smartChunk";
 import { embedTexts } from "./embed";
 import { getPineconeIndex } from "./pinecone";
-import { formatConversationForChunking } from "./formatDoc";
-import { formatProductDocWithLLM, extractProductAliasesWithLLM, injectAliasesIntoFormatted, ProductAliasMap } from "./formatProductDoc";
 
 export type DocType = "considerations" | "conversations" | "inventory" | "bank" | "address";
 
@@ -37,204 +35,228 @@ function extractKeywordsLite(text: string): string[] {
     .map(([w]) => w);
 }
 
-function buildConversationChunks(formattedText: string): SmartChunk[] {
-  const blocks = formattedText.split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
-  const chunks: SmartChunk[] = [];
-  let charOffset = 0;
+type Section = { title: string; text: string };
 
-  for (const block of blocks) {
-    const questionMatch = block.match(/Q:\s*([^\n]+)/i);
-    const answerMatch = block.match(/A:\s*([\s\S]+)/i);
-    const question = questionMatch?.[1]?.trim() || null;
-    const answer = answerMatch?.[1]?.trim() || "";
-    const text = block;
-
-    const start = charOffset;
-    const end = charOffset + block.length;
-    charOffset = end + 2;
-
-    chunks.push({
-      text,
-      chunkType: "faq",
-      headingContext: null,
-      chunkIndex: chunks.length,
-      charStart: start,
-      charEnd: end,
-      tokenEstimate: estimateTokens(text),
-      products: [],
-      keywords: [],
-      prices: [],
-      question,
-      contextBefore: "",
-      contextAfter: "",
-    });
-  }
-
-  return chunks;
+function splitIntoPages(text: string, pages?: string[]): string[] {
+  if (pages && pages.length > 0) return pages;
+  if (text.includes(PAGE_BOUNDARY)) return text.split(PAGE_BOUNDARY).map(p => p.trim()).filter(Boolean);
+  return [text];
 }
 
-type ProductSection = {
-  name: string;
-  content: string;
-};
+function isHeadingLine(line: string): boolean {
+  const clean = line.replace(/[—–]/g, "-").trim();
+  if (!clean) return false;
+  if (/^[-=]{3,}$/.test(clean)) return false;
+  if (/^\d+\.\s+/.test(clean)) return false;
+  if (/^[-•]\s+/.test(clean)) return false;
+  if (/^\d+\)\s+/.test(clean)) return true; // tours style
+  if (clean.length > 80) return false;
+  if (/^[A-Z][A-Z0-9 &/.-]{3,}$/.test(clean)) return true;
+  if (/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,6}$/.test(clean)) return true;
+  return false;
+}
 
-function splitProductBlocks(formattedText: string): string[] {
-  const lines = formattedText.split(/\r?\n/);
-  const blocks: string[] = [];
-  let current: string[] = [];
+function buildSectionsFromPages(pages: string[]): Section[] {
+  const sections: Section[] = [];
+  let current: Section | null = null;
+
+  for (const page of pages) {
+    const lines = page.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    for (const line of lines) {
+      if (isHeadingLine(line)) {
+        if (current && current.text.trim().length > 0) {
+          sections.push(current);
+        }
+        const title = line.replace(/^\d+\)\s+/, "").trim();
+        current = { title, text: "" };
+        continue;
+      }
+      if (!current) {
+        current = { title: "Section", text: "" };
+      }
+      current.text += (current.text ? "\n" : "") + line;
+    }
+    if (current) {
+      current.text += "\n";
+    }
+  }
+
+  if (current && current.text.trim().length > 0) {
+    sections.push(current);
+  }
+
+  return sections;
+}
+
+function buildConversationSections(text: string, pages?: string[]): Section[] {
+  const allText = splitIntoPages(text, pages).join("\n");
+  const lines = allText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const sections: Section[] = [];
+  let currentQ: string | null = null;
+  let answer: string[] = [];
+
+  const flush = () => {
+    if (!currentQ) return;
+    const ans = answer.join("\n").trim();
+    const body = `Q: ${currentQ}\nA: ${ans || "unknown"}`;
+    sections.push({ title: currentQ, text: body });
+    currentQ = null;
+    answer = [];
+  };
 
   for (const line of lines) {
-    if (line.trim().startsWith("## Product:")) {
-      if (current.length > 0) {
-        blocks.push(current.join("\n").trim());
-        current = [];
-      }
-    }
-    current.push(line);
-  }
-  if (current.length > 0) blocks.push(current.join("\n").trim());
-  return blocks.filter(b => b.length > 0);
-}
-
-function parseProductSections(block: string): { productName: string; sections: ProductSection[] } {
-  const lines = block.split(/\r?\n/);
-  const header = lines.find(l => l.trim().startsWith("## Product:")) || "## Product: Unknown";
-  const productName = header.replace(/^##\s*Product:\s*/i, "").trim() || "Unknown";
-
-  const sections: ProductSection[] = [];
-  const sectionNames = [
-    "Summary",
-    "Features",
-    "Options/Variants",
-    "Pricing",
-    "Specs",
-    "Policies/Constraints",
-    "Details",
-  ];
-  const sectionRegex = new RegExp(`^(${sectionNames.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")}):\\s*$`, "i");
-
-  let currentName = "Summary";
-  let currentLines: string[] = [];
-
-  for (const line of lines.slice(1)) {
-    const match = line.match(sectionRegex);
-    if (match) {
-      if (currentLines.length > 0) {
-        sections.push({ name: currentName, content: currentLines.join("\n").trim() });
-      }
-      currentName = match[1];
-      currentLines = [];
+    const qMatch = line.match(/^\d+[.)]\s+(.+)/);
+    const qPrefix = line.match(/^(q|question)\s*[:\-–]\s*(.+)$/i);
+    if (qMatch || qPrefix) {
+      flush();
+      currentQ = (qMatch ? qMatch[1] : qPrefix?.[2] || "").trim();
       continue;
     }
-    currentLines.push(line);
+    const aPrefix = line.match(/^(a|answer)\s*[:\-–]\s*(.+)$/i);
+    if (aPrefix) {
+      if (!currentQ) currentQ = "Question";
+      answer.push(aPrefix[2].trim());
+      continue;
+    }
+    if (currentQ) {
+      answer.push(line);
+    }
   }
+  flush();
 
-  if (currentLines.length > 0) {
-    sections.push({ name: currentName, content: currentLines.join("\n").trim() });
-  }
-
-  return { productName, sections: sections.filter(s => s.content.length > 0) };
+  return sections;
 }
 
-function splitSectionByParagraphs(content: string, maxChars: number): string[] {
-  if (content.length <= maxChars) return [content];
-  const parts = content.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+function buildParagraphSections(text: string, pages?: string[]): Section[] {
+  const allText = splitIntoPages(text, pages).join("\n");
+  const blocks = allText.split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
+  const sections: Section[] = [];
+  const minChars = Number(process.env.RAG_CONVO_BLOCK_MIN_CHARS || 80);
+
+  for (let i = 0; i < blocks.length; i++) {
+    let block = blocks[i];
+    const next = blocks[i + 1];
+    if (block.endsWith("?") && next) {
+      block = `${block}\n${next}`;
+      i += 1;
+    }
+    if (block.length < minChars && next) {
+      block = `${block}\n${next}`;
+      i += 1;
+    }
+    sections.push({ title: `Block ${sections.length + 1}`, text: block });
+  }
+
+  return sections;
+}
+
+function makeAbstract(text: string, targetTokens: number): string {
+  const maxChars = targetTokens * 4;
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  let out = "";
+  for (const s of sentences) {
+    if ((out + s).length > maxChars) break;
+    out = out ? `${out} ${s}` : s;
+  }
+  if (!out) {
+    out = text.slice(0, maxChars);
+  }
+  return out.trim();
+}
+
+function splitTextWithOverlap(text: string, maxTokens: number, overlapTokens: number): string[] {
+  const maxChars = maxTokens * 4;
+  const overlapChars = overlapTokens * 4;
+  if (text.length <= maxChars) return [text];
+  const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
   const chunks: string[] = [];
   let buf: string[] = [];
   let len = 0;
-  const overlapParas = Number(process.env.RAG_INVENTORY_SECTION_OVERLAP_PARAS || 1);
 
-  for (const part of parts) {
-    if (len + part.length + 2 > maxChars && buf.length > 0) {
-      chunks.push(buf.join("\n\n"));
-      const overlap = overlapParas > 0 ? buf.slice(-overlapParas) : [];
+  for (const line of lines) {
+    if (len + line.length + 1 > maxChars && buf.length > 0) {
+      chunks.push(buf.join("\n"));
+      let overlap: string[] = [];
+      let oLen = 0;
+      for (let i = buf.length - 1; i >= 0; i--) {
+        const l = buf[i];
+        if (oLen + l.length + 1 > overlapChars) break;
+        overlap.unshift(l);
+        oLen += l.length + 1;
+      }
       buf = overlap;
-      len = overlap.reduce((s, p) => s + p.length + 2, 0);
+      len = oLen;
     }
-    buf.push(part);
-    len += part.length + 2;
+    buf.push(line);
+    len += line.length + 1;
   }
-  if (buf.length > 0) chunks.push(buf.join("\n\n"));
-  return chunks.length > 0 ? chunks : [content];
+  if (buf.length > 0) chunks.push(buf.join("\n"));
+  return chunks;
 }
 
-function buildInventoryChunks(formattedText: string, aliases: ProductAliasMap = {}): SmartChunk[] {
-  const blocks = splitProductBlocks(formattedText);
+function buildHierarchicalChunksFromSections(
+  sections: Section[],
+  opts: { abstractTokens: number; maxTokens: number; overlapTokens: number; questionFromTitle?: boolean },
+): SmartChunk[] {
   const chunks: SmartChunk[] = [];
-  const maxChars = Number(process.env.RAG_INVENTORY_SECTION_MAX_CHARS || 6000);
-  const productNames: string[] = [];
+  for (const section of sections) {
+    const abstract = makeAbstract(section.text, opts.abstractTokens);
+    const abstractText = `Title: ${section.title}\nAbstract: ${abstract}`;
+    const abstractKeywords = extractKeywordsLite(abstractText);
 
-  for (const block of blocks) {
-    const { productName, sections } = parseProductSections(block);
-    productNames.push(productName);
-    const aliasList = aliases[productName] || [];
-    for (const section of sections) {
-      const contentChunks = splitSectionByParagraphs(section.content, maxChars);
-      for (const c of contentChunks) {
-        const text = `Product: ${productName}\nSection: ${section.name}\n${c}`;
-        let chunkType: SmartChunk["chunkType"] = "product_info";
-        const name = section.name.toLowerCase();
-        if (name.includes("pricing")) chunkType = "pricing";
-        else if (name.includes("policy")) chunkType = "policy";
-        else if (name.includes("details")) chunkType = "general";
-
-        const keywords = Array.from(new Set([...extractKeywordsLite(text), ...aliasList]));
-        const prices = extractPricesLite(text);
-
-        chunks.push({
-          text,
-          chunkType,
-          headingContext: productName,
-          chunkIndex: chunks.length,
-          charStart: 0,
-          charEnd: 0,
-          tokenEstimate: estimateTokens(text),
-          products: [productName],
-          keywords,
-          prices,
-          question: null,
-          contextBefore: "",
-          contextAfter: "",
-        });
-      }
-    }
-  }
-
-  if (productNames.length > 0) {
-    const uniqueNames = Array.from(new Set(productNames));
-    const indexLines = uniqueNames.map((n, i) => {
-      const a = aliases[n] || [];
-      return `${i + 1}. ${n}${a.length ? ` (aliases: ${a.join(", ")})` : ""}`;
-    });
-    const indexText = `Product Index:\n${indexLines.join("\n")}`;
-    chunks.unshift({
-      text: indexText,
-      chunkType: "product_index",
-      headingContext: "Product Index",
-      chunkIndex: 0,
+    chunks.push({
+      text: abstractText,
+      chunkType: "section_abstract",
+      headingContext: section.title,
+      chunkIndex: chunks.length,
       charStart: 0,
       charEnd: 0,
-      tokenEstimate: estimateTokens(indexText),
-      products: uniqueNames,
-      keywords: extractKeywordsLite(indexText),
-      prices: [],
-      question: null,
+      tokenEstimate: estimateTokens(abstractText),
+      products: [],
+      keywords: abstractKeywords,
+      prices: extractPricesLite(abstractText),
+      question: opts.questionFromTitle ? section.title : null,
       contextBefore: "",
       contextAfter: "",
     });
 
-    for (let i = 0; i < chunks.length; i++) {
-      chunks[i].chunkIndex = i;
+    const fullParts = splitTextWithOverlap(section.text, opts.maxTokens, opts.overlapTokens);
+    for (const part of fullParts) {
+      const fullText = `Title: ${section.title}\n${part}`;
+      chunks.push({
+        text: fullText,
+        chunkType: "section_full",
+        headingContext: section.title,
+        chunkIndex: chunks.length,
+        charStart: 0,
+        charEnd: 0,
+        tokenEstimate: estimateTokens(fullText),
+        products: [],
+        keywords: extractKeywordsLite(fullText),
+        prices: extractPricesLite(fullText),
+        question: opts.questionFromTitle ? section.title : null,
+        contextBefore: "",
+        contextAfter: "",
+      });
     }
   }
-
   return chunks;
 }
 
-function extractProductNamesFromFormatted(formattedText: string): string[] {
-  const blocks = splitProductBlocks(formattedText);
-  const names = blocks.map(b => parseProductSections(b).productName).filter(Boolean);
-  return Array.from(new Set(names));
+function buildInventoryHierarchicalChunks(text: string, pages?: string[]): SmartChunk[] {
+  const sections = buildSectionsFromPages(splitIntoPages(text, pages));
+  return buildHierarchicalChunksFromSections(sections, { abstractTokens: 150, maxTokens: 900, overlapTokens: 80 });
+}
+
+function buildConversationHierarchicalChunks(text: string, pages?: string[]): SmartChunk[] {
+  let sections = buildConversationSections(text, pages);
+  if (sections.length === 0) {
+    sections = buildParagraphSections(text, pages);
+  }
+  if (sections.length === 0) {
+    sections = buildSectionsFromPages(splitIntoPages(text, pages));
+  }
+  return buildHierarchicalChunksFromSections(sections, { abstractTokens: 120, maxTokens: 400, overlapTokens: 40, questionFromTitle: true });
 }
 
 async function deleteExistingVectorsForDocType(params: {
@@ -313,6 +335,7 @@ export async function indexSingleDocType(params: {
     buffer: blob.buffer,
     filename,
     contentType: params.contentType ?? blob.contentType,
+    preserveLineBreaks: docType === "conversations" || docType === "inventory",
   });
 
   console.log(
@@ -320,136 +343,26 @@ export async function indexSingleDocType(params: {
   );
 
   let text = extracted.text;
-  let formattedText: string | null = null;
-  let aliases: ProductAliasMap = {};
-
-  if (docType === "conversations") {
+  if (docType === "conversations" || docType === "inventory") {
     const rawBlobPath = `${businessId}/${docType}/raw.txt`;
     await uploadTextToBlob({ blobPath: rawBlobPath, text, contentType: "text/plain" });
-
-    formattedText = formatConversationForChunking(text);
-    if (!formattedText || formattedText.length === 0) {
-      throw new Error("Conversation document formatting failed (empty result). Please try again later.");
-    }
-    text = formattedText;
-    const formattedBlobPath = `${businessId}/${docType}/formatted.txt`;
-    await uploadTextToBlob({ blobPath: formattedBlobPath, text: formattedText, contentType: "text/plain" });
-
-    const reportBlobPath = `${businessId}/${docType}/format_report.json`;
-    await uploadTextToBlob({
-      blobPath: reportBlobPath,
-      text: JSON.stringify({ generatedAt: new Date().toISOString(), formatter: "rule-based" }, null, 2),
-      contentType: "application/json",
-    });
-  }
-
-  if (docType === "inventory") {
-    const rawBlobPath = `${businessId}/${docType}/raw.txt`;
-    await uploadTextToBlob({ blobPath: rawBlobPath, text, contentType: "text/plain" });
-
-    const res = await formatProductDocWithLLM(text);
-    if (!res.formatted || res.formatted.length === 0) {
-      throw new Error("Product document formatting failed (empty result). Please try again later.");
-    }
-    formattedText = res.formatted;
-    text = res.formatted;
-    const formattedBlobPath = `${businessId}/${docType}/formatted.txt`;
-    await uploadTextToBlob({ blobPath: formattedBlobPath, text: res.formatted, contentType: "text/plain" });
-
-    const reportBlobPath = `${businessId}/${docType}/format_report.json`;
-    await uploadTextToBlob({
-      blobPath: reportBlobPath,
-      text: JSON.stringify({ generatedAt: new Date().toISOString(), report: res.report, coverage: res.coverage }, null, 2),
-      contentType: "application/json",
-    });
-
-    try {
-      aliases = await extractProductAliasesWithLLM(res.formatted);
-    } catch (err: any) {
-      console.error(`[rag:index] product alias extraction failed: ${err?.message || String(err)}`);
-    }
-
-    const formattedWithInlineAliases = Object.keys(aliases).length ? injectAliasesIntoFormatted(res.formatted, aliases) : res.formatted;
-    text = formattedWithInlineAliases;
-    const productNames = extractProductNamesFromFormatted(formattedWithInlineAliases);
-    if (Object.keys(aliases).length) {
-      const formattedAliasBlobPath = `${businessId}/${docType}/formatted_with_aliases.txt`;
-      await uploadTextToBlob({
-        blobPath: formattedAliasBlobPath,
-        text: formattedWithInlineAliases,
-        contentType: "text/plain",
-      });
-    }
-    const missingFactCount = res.report.reduce((sum, r) => sum + (r.missingFacts?.length || 0), 0);
-    const audit = {
-      generatedAt: new Date().toISOString(),
-      productCount: productNames.length,
-      products: productNames,
-      aliases,
-      coverage: res.coverage,
-      missingFactCount,
-      sectionChecks: res.report.map(r => ({
-        sectionIndex: r.sectionIndex,
-        chunkIndex: r.chunkIndex,
-        ok: r.ok,
-        missingFacts: r.missingFacts,
-        notes: r.notes,
-      })),
-    };
-    const auditBase = `${businessId}/${docType}/audit`;
-    await uploadTextToBlob({
-      blobPath: `${auditBase}/summary.json`,
-      text: JSON.stringify(audit, null, 2),
-      contentType: "application/json",
-    });
-    await uploadTextToBlob({
-      blobPath: `${auditBase}/summary.txt`,
-      text: [
-        `Product Audit Summary`,
-        `Generated: ${audit.generatedAt}`,
-        `Products (${productNames.length}): ${productNames.join(", ") || "none"}`,
-        `Aliases: ${Object.keys(aliases).length ? Object.entries(aliases).map(([k, v]) => `${k} -> ${v.join(", ")}`).join(" | ") : "none"}`,
-        `Coverage OK: ${res.coverage.ok}`,
-        `Missing Products: ${res.coverage.missingProducts.join("; ") || "none"}`,
-        `Missing Variants: ${res.coverage.missingVariants.join("; ") || "none"}`,
-        `Missing Facts (total): ${missingFactCount}`,
-      ].join("\n"),
-      contentType: "text/plain",
-    });
   }
   
   // Use page-wise chunking for better context preservation
   // Pass pages array if available for page-boundary-aware chunking
-  const chunkOpts =
-    docType === "conversations"
-      ? {
-          targetTokens: 300,
-          minTokens: 80,
-          maxTokens: 600,
-          overlapTokens: 30,
-          pages: undefined,
-        }
-      : docType === "inventory"
-        ? {
-            targetTokens: 500,
-            minTokens: 120,
-            maxTokens: 900,
-            overlapTokens: 40,
-            pages: undefined,
-          }
-        : {
-            targetTokens: 800,
-            minTokens: 200,
-            maxTokens: 1500,
-            overlapTokens: 50,
-            pages: extracted.pages,
-          };
+  const chunkOpts = {
+    targetTokens: 700,
+    minTokens: 200,
+    maxTokens: 900,
+    overlapTokens: 80,
+    pages: extracted.pages,
+  };
 
   let smartChunks =
     docType === "conversations"
-      ? buildConversationChunks(text)
+      ? buildConversationHierarchicalChunks(text, extracted.pages)
       : docType === "inventory"
-        ? buildInventoryChunks(text, typeof aliases === "object" ? aliases : {})
+        ? buildInventoryHierarchicalChunks(text, extracted.pages)
         : smartChunkText(text, chunkOpts);
 
   // Use LLM for more accurate chunk type classification (skip for structured chunks)

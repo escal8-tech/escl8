@@ -32,7 +32,10 @@ function appendTurn(turns: ConversationTurn[], role: ConversationTurn["role"], t
 
 function parseConversationTurns(text: string): ConversationTurn[] {
   const turns: ConversationTurn[] = [];
-  const lines = text.split(/\r?\n/);
+  let lines = text.split(/\r?\n/);
+  if (lines.length <= 1) {
+    lines = text.split(/(?:\bQ:|\bA:)/i).map(s => s.trim()).filter(Boolean);
+  }
 
   for (const raw of lines) {
     const line = raw.trim();

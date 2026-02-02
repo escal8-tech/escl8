@@ -9,7 +9,7 @@ import { retrieve, getGroundedContext } from "../rag/retrieve";
 import { enqueueRagJobMessage } from "../rag/queue";
 
 const docTypeSchema = z.enum(["considerations", "conversations", "inventory", "bank", "address"]);
-const chunkTypeSchema = z.enum(["pricing", "policy", "faq", "example_dialogue", "contact_info", "product_info", "product_index", "general"]);
+const chunkTypeSchema = z.enum(["pricing", "policy", "faq", "example_dialogue", "contact_info", "product_info", "product_index", "section_abstract", "section_full", "general"]);
 
 export const ragRouter = router({
   enqueueRetrain: businessProcedure

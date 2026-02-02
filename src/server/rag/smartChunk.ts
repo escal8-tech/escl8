@@ -21,6 +21,8 @@ export type ChunkType =
   | "contact_info"
   | "product_info"
   | "product_index"
+  | "section_abstract"
+  | "section_full"
   | "general";
 
 export interface SmartChunk {
