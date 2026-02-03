@@ -110,6 +110,9 @@ export const whatsappIdentities = pgTable(
       onUpdate: "cascade",
     }),
 
+    // Which bot type this number is connected to (default to AGENT for existing rows).
+    botType: text("bot_type").notNull().default("AGENT"),
+
     // Optional debug/admin fields
     wabaId: text("waba_id"),
     displayPhoneNumber: text("display_phone_number"),
@@ -161,6 +164,10 @@ export const whatsappIdentities = pgTable(
     waIdentitiesBusinessIdNonEmpty: check(
       "wa_identities_business_id_nonempty",
       sql`length(btrim(${t.businessId})) > 0`,
+    ),
+    waIdentitiesBotTypeValid: check(
+      "wa_identities_bot_type_valid",
+      sql`${t.botType} in ('AGENT', 'CONCIERGE', 'RESERVATION')`,
     ),
 
     // lifecycle sanity (optional): if disconnectedAt exists, isActive should typically be false
