@@ -109,14 +109,6 @@ const DOC_SLOT_ICONS: Record<DocType, React.ReactNode> = {
   address: Icons.mapPin,
 };
 
-const DOC_SLOT_COLORS: Record<DocType, string> = {
-  considerations: "#0033A0",
-  conversations: "#00D4FF",
-  inventory: "#10B981",
-  bank: "#8B5CF6",
-  address: "#F59E0B",
-};
-
 /* ─────────────────────────────────────────────────────────────────────────────
    DOC SLOTS CONFIGURATION
 ───────────────────────────────────────────────────────────────────────────── */
@@ -217,6 +209,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
     gap: 20,
+    alignItems: "stretch",
   },
   card: {
     background: "var(--card)",
@@ -225,6 +218,9 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: "hidden",
     boxShadow: "var(--shadow-sm)",
     transition: "all 0.3s ease",
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
   },
   cardHeader: {
     display: "flex",
@@ -240,7 +236,8 @@ const styles: Record<string, React.CSSProperties> = {
     width: 48,
     height: 48,
     borderRadius: 14,
-    color: "#fff",
+    color: "var(--gold-light)",
+    background: "rgba(184, 134, 11, 0.2)",
     flexShrink: 0,
   },
   cardInfo: {
@@ -271,6 +268,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   cardBody: {
     padding: 24,
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+    flex: 1,
   },
   dropzone: {
     border: "2px dashed var(--border)",
@@ -285,6 +286,7 @@ const styles: Record<string, React.CSSProperties> = {
     transition: "all 0.2s ease",
     minHeight: 180,
     textAlign: "center" as const,
+    flex: 1,
   },
   dropzoneActive: {
     borderColor: "var(--accent)",
@@ -316,7 +318,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 16,
     borderRadius: 12,
     background: "var(--background)",
-    marginTop: 16,
   },
   fileIcon: {
     display: "flex",
@@ -357,7 +358,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: "rgba(239, 68, 68, 0.1)",
     color: "var(--danger)",
     fontSize: 13,
-    marginTop: 12,
   },
   cardActions: {
     display: "flex",
@@ -425,12 +425,17 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "12px 16px",
     borderRadius: 10,
     background: "rgba(0, 212, 255, 0.1)",
-    marginTop: 12,
   },
   progressText: {
     fontSize: 13,
     color: "var(--accent)",
     fontWeight: 500,
+  },
+  statusArea: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    minHeight: 120,
   },
   tipCard: {
     display: "flex",
@@ -569,13 +574,12 @@ function DocumentCard({
   };
 
   const statusBadge = getStatusBadge();
-  const iconColor = DOC_SLOT_COLORS[slot.key];
 
   return (
     <div style={styles.card}>
       {/* Card Header */}
       <div style={styles.cardHeader}>
-        <div style={{ ...styles.cardIcon, background: iconColor }}>
+        <div style={styles.cardIcon}>
           {DOC_SLOT_ICONS[slot.key]}
         </div>
         <div style={styles.cardInfo}>
@@ -617,39 +621,54 @@ function DocumentCard({
           </p>
         </div>
 
-        {/* Current File Info */}
-        {current && (
-          <div style={styles.fileInfo}>
-            <div style={styles.fileIcon}>{Icons.file}</div>
-            <div style={styles.fileDetails}>
-              <span style={styles.fileName}>{current.name}</span>
-              <span style={styles.fileSize}>
-                {(current.size / 1024).toFixed(1)} KB
-                {current.uploadedAt && (
-                  <> • Uploaded {new Date(current.uploadedAt).toLocaleDateString()}</>
-                )}
+        <div style={styles.statusArea}>
+          {/* Current File Info */}
+          {current ? (
+            <div style={styles.fileInfo}>
+              <div style={styles.fileIcon}>{Icons.file}</div>
+              <div style={styles.fileDetails}>
+                <span style={styles.fileName}>{current.name}</span>
+                <span style={styles.fileSize}>
+                  {(current.size / 1024).toFixed(1)} KB
+                  {current.uploadedAt && (
+                    <> • Uploaded {new Date(current.uploadedAt).toLocaleDateString()}</>
+                  )}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...styles.fileInfo, visibility: "hidden" }}>
+              <div style={styles.fileIcon}>{Icons.file}</div>
+              <div style={styles.fileDetails}>
+                <span style={styles.fileName}>Placeholder</span>
+                <span style={styles.fileSize}>0.0 KB</span>
+              </div>
+            </div>
+          )}
+
+          {/* Training Progress */}
+          {isTraining ? (
+            <div style={styles.progressContainer}>
+              {Icons.loader}
+              <span style={styles.progressText}>
+                Training AI on this document...
               </span>
             </div>
-          </div>
-        )}
+          ) : (
+            <div style={{ ...styles.progressContainer, visibility: "hidden" }}>
+              {Icons.loader}
+              <span style={styles.progressText}>Training AI on this document...</span>
+            </div>
+          )}
 
-        {/* Training Progress */}
-        {isTraining && (
-          <div style={styles.progressContainer}>
-            {Icons.loader}
-            <span style={styles.progressText}>
-              Training AI on this document...
-            </span>
-          </div>
-        )}
-
-        {/* Error Message */}
-        {current?.lastError && (
-          <div style={styles.errorText}>
-            {Icons.alert}
-            <span>{current.lastError}</span>
-          </div>
-        )}
+          {/* Error Message */}
+          {current?.lastError && (
+            <div style={styles.errorText}>
+              {Icons.alert}
+              <span>{current.lastError}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Card Actions */}
