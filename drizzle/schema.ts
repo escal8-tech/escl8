@@ -270,6 +270,7 @@ export const customers = pgTable(
     platformMeta: jsonb("platform_meta").$type<Record<string, unknown>>().default({}),
 
     // Cached aggregates (updated on each request for fast reads)
+    botPaused: boolean("bot_paused").notNull().default(false),
     totalRequests: integer("total_requests").notNull().default(0),
     totalRevenue: numeric("total_revenue", { precision: 12, scale: 2 }).notNull().default("0"),
     successfulRequests: integer("successful_requests").notNull().default(0),

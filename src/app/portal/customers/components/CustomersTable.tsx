@@ -213,6 +213,7 @@ export function CustomersTable({ rows, onSelect }: Props) {
               >
                 Requests <SortIcon column="totalRequests" />
               </th>
+              <th className="px-4 py-3 text-left font-medium">Bot</th>
               <th
                 className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
                 onClick={() => handleSort("totalRevenue")}
@@ -270,6 +271,15 @@ export function CustomersTable({ rows, onSelect }: Props) {
                 </td>
                 <td className="px-4 py-3">
                   <span className="font-medium">{row.totalRequests}</span>
+                </td>
+                <td className="px-4 py-3">
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                      row.botPaused ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"
+                    }`}
+                  >
+                    {row.botPaused ? "Paused" : "Active"}
+                  </span>
                 </td>
                 <td className="px-4 py-3">
                   <span className="font-medium">

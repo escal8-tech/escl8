@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
-import type { DonutDatum, RequestRow, StatsTotals } from "./components/types";
+import type { DonutDatum, RequestRow } from "./components/types";
 
 // Icons
 const Icons = {
@@ -77,6 +77,17 @@ const Icons = {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
       <circle cx="12" cy="12" r="3" />
+    </svg>
+  ),
+  pause: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="6" y="4" width="4" height="16" rx="1" />
+      <rect x="14" y="4" width="4" height="16" rx="1" />
+    </svg>
+  ),
+  play: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="6 4 20 12 6 20 6 4" />
     </svg>
   ),
 };
@@ -185,21 +196,34 @@ function AreaChart({ data }: { data: { date: string; count: number }[] }) {
   }
 
   const maxCount = Math.max(...data.map((d) => d.count), 1);
-  const width = 100;
-  const height = 40;
-  const padding = 2;
+  const width = 120;
+  const height = 50;
+  const chartLeft = 12;
+  const chartRight = 4;
+  const chartTop = 4;
+  const chartBottom = 12;
+  const chartWidth = width - chartLeft - chartRight;
+  const chartHeight = height - chartTop - chartBottom;
 
   const points = data.map((d, i) => {
-    const x = padding + ((width - padding * 2) / (data.length - 1 || 1)) * i;
-    const y = height - padding - ((d.count / maxCount) * (height - padding * 2));
+    const x = chartLeft + (chartWidth / (data.length - 1 || 1)) * i;
+    const y = chartTop + (1 - d.count / maxCount) * chartHeight;
     return `${x},${y}`;
   });
 
-  const areaPath = `M${padding},${height - padding} L${points.join(" L")} L${width - padding},${height - padding} Z`;
+  const areaPath = `M${chartLeft},${chartTop + chartHeight} L${points.join(" L")} L${chartLeft + chartWidth},${chartTop + chartHeight} Z`;
   const linePath = `M${points.join(" L")}`;
+  const xLabelLeft = data[0]?.date ?? "";
+  const xLabelRight = data[data.length - 1]?.date ?? "";
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: 160 }} preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: 220 }} preserveAspectRatio="none">
+      <g stroke="var(--border)" strokeWidth="0.4">
+        {Array.from({ length: 4 }).map((_, i) => {
+          const y = chartTop + (chartHeight / 3) * i;
+          return <line key={i} x1={chartLeft} y1={y} x2={chartLeft + chartWidth} y2={y} />;
+        })}
+      </g>
       <defs>
         <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.3" />
@@ -207,13 +231,26 @@ function AreaChart({ data }: { data: { date: string; count: number }[] }) {
         </linearGradient>
       </defs>
       <path d={areaPath} fill="url(#areaGradient)" />
-      <path d={linePath} fill="none" stroke="var(--primary)" strokeWidth="0.5" strokeLinecap="round" />
+      <path d={linePath} fill="none" stroke="var(--primary)" strokeWidth="0.8" strokeLinecap="round" />
+      <g fill="var(--muted)" fontSize="3.2">
+        <text x={chartLeft - 1} y={chartTop + 2} textAnchor="end">{maxCount}</text>
+        <text x={chartLeft - 1} y={chartTop + chartHeight + 2} textAnchor="end">0</text>
+        <text x={chartLeft} y={height - 2} textAnchor="start">{xLabelLeft}</text>
+        <text x={chartLeft + chartWidth} y={height - 2} textAnchor="end">{xLabelRight}</text>
+      </g>
     </svg>
   );
 }
 
 // Request Row Component
 function RequestRowItem({ request, onSelect }: { request: RequestRow; onSelect: () => void }) {
+  const utils = trpc.useUtils();
+  const togglePause = trpc.customers.setBotPaused.useMutation({
+    onSuccess: () => {
+      utils.requests.list.invalidate();
+      utils.customers.list.invalidate();
+    },
+  });
   const statusColors: Record<string, string> = {
     resolved: "badge-success",
     in_progress: "badge-info",
@@ -231,6 +268,15 @@ function RequestRowItem({ request, onSelect }: { request: RequestRow; onSelect: 
   const initials = displayPhone.slice(-2).toUpperCase();
   const statusValue = request.resolutionStatus || "pending";
   const sentimentValue = request.sentiment || "neutral";
+  const createdAt = new Date(request.createdAt);
+  const today = new Date();
+  const isToday =
+    createdAt.getDate() === today.getDate() &&
+    createdAt.getMonth() === today.getMonth() &&
+    createdAt.getFullYear() === today.getFullYear();
+  const isCompleted = statusValue.toLowerCase() === "completed" || statusValue.toLowerCase() === "resolved";
+  const canToggle = Boolean(request.customerId) && isToday && !isCompleted;
+  const paused = Boolean(request.botPaused);
 
   return (
     <tr onClick={onSelect} style={{ cursor: "pointer" }}>
@@ -259,6 +305,36 @@ function RequestRowItem({ request, onSelect }: { request: RequestRow; onSelect: 
       </td>
       <td className="text-muted" style={{ fontSize: "var(--text-xs)" }}>
         {new Date(request.createdAt).toLocaleDateString()}
+      </td>
+      <td>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!canToggle || togglePause.isLoading) return;
+            togglePause.mutate({
+              customerId: request.customerId as string,
+              botPaused: !paused,
+            });
+          }}
+          disabled={!canToggle || togglePause.isLoading}
+          title={
+            !request.customerId
+              ? "No customer linked"
+              : !isToday
+              ? "Only today's conversation can be paused"
+              : isCompleted
+              ? "Completed conversations cannot be paused"
+              : paused
+              ? "Resume bot"
+              : "Pause bot"
+          }
+          style={{ opacity: !canToggle ? 0.5 : 1 }}
+        >
+          <span style={{ width: 16, height: 16 }}>{paused ? Icons.play : Icons.pause}</span>
+          {paused ? "Resume" : "Pause"}
+        </button>
       </td>
     </tr>
   );
@@ -417,6 +493,7 @@ export default function DashboardPage() {
   const statsQ = trpc.requests.stats.useQuery(
     selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : undefined
   );
+  const customerStatsQ = trpc.customers.getStats.useQuery();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const rows = useMemo(() => normalizeRequests(listQ.data || []), [listQ.data]);
@@ -465,43 +542,19 @@ export default function DashboardPage() {
     ] satisfies DonutDatum[];
   }, [statsQ.data]);
 
-  const totals = (statsQ.data?.totals as StatsTotals) || {};
+  const highIntentCount = Number((customerStatsQ.data as { highIntentCount?: number } | undefined)?.highIntentCount ?? 0);
+  const statusBreakdown = useMemo(
+    () => [
+      ...statusSeries,
+      { name: "HIGH_INTENT", value: highIntentCount, color: "#7c3aed" },
+    ],
+    [statusSeries, highIntentCount]
+  );
 
   return (
     <div className="fade-in">
-      {/* Stats Grid */}
-      <div className="grid grid-cols-5 gap-6 stagger-children" style={{ marginBottom: "var(--space-8)" }}>
-        <StatCard
-          label="Total Requests"
-          value={totals.count ?? "—"}
-          icon={<span style={{ width: 20, height: 20 }}>{Icons.messageCircle}</span>}
-        />
-        <StatCard
-          label="Revenue"
-          value={`$${(totals.revenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
-          icon={<span style={{ width: 20, height: 20 }}>{Icons.dollarSign}</span>}
-        />
-        <StatCard
-          label="Paid"
-          value={totals.paidCount ?? "—"}
-          icon={<span style={{ width: 20, height: 20 }}>{Icons.checkCircle}</span>}
-        />
-        <StatCard
-          label="Deflection Rate"
-          value={typeof totals.deflectionRate === "number" ? `${Math.round(totals.deflectionRate * 100)}%` : "—"}
-          icon={<span style={{ width: 20, height: 20 }}>{Icons.trendingUp}</span>}
-          trend={totals.deflectionRate && totals.deflectionRate > 0.7 ? "up" : "neutral"}
-        />
-        <StatCard
-          label="Follow-up Rate"
-          value={typeof totals.followUpRate === "number" ? `${Math.round(totals.followUpRate * 100)}%` : "—"}
-          icon={<span style={{ width: 20, height: 20 }}>{Icons.activity}</span>}
-          trend={totals.followUpRate && totals.followUpRate < 0.2 ? "up" : totals.followUpRate && totals.followUpRate > 0.3 ? "down" : "neutral"}
-        />
-      </div>
-
       {/* Charts Row */}
-      <div className="grid grid-cols-3 gap-6" style={{ marginBottom: "var(--space-8)" }}>
+      <div className="grid grid-cols-4 gap-6" style={{ marginBottom: "var(--space-8)" }}>
         {/* Activity Chart */}
         <div className="chart-card" style={{ gridColumn: "span 2" }}>
           <div className="chart-header">
@@ -509,6 +562,24 @@ export default function DashboardPage() {
             <div className="badge badge-default">Last 30 days</div>
           </div>
           <AreaChart data={timeSeries.slice(-30)} />
+        </div>
+
+        {/* Status Donut */}
+        <div className="chart-card">
+          <div className="chart-header">
+            <h3 className="chart-title">Status Breakdown</h3>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "var(--space-4)" }}>
+            <MiniDonutChart data={statusBreakdown} size={140} />
+          </div>
+          <div className="chart-legend" style={{ justifyContent: "center", marginTop: "var(--space-4)" }}>
+            {statusBreakdown.map((s) => (
+              <div key={s.name} className="chart-legend-item">
+                <div className="chart-legend-dot" style={{ background: s.color }} />
+                <span style={{ textTransform: "capitalize" }}>{s.name.replace("_", " ").toLowerCase()}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Sentiment Donut */}
@@ -528,35 +599,6 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
-      </div>
-
-      {/* Status Overview */}
-      <div className="grid grid-cols-4 gap-4" style={{ marginBottom: "var(--space-8)" }}>
-        {statusSeries.map((status) => (
-          <div key={status.name} className="card hover-lift">
-            <div className="card-body" style={{ textAlign: "center" }}>
-              <div
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: "var(--radius-lg)",
-                  background: `${status.color}15`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  margin: "0 auto var(--space-3)",
-                }}
-              >
-                <span style={{ color: status.color, fontWeight: 700, fontSize: "var(--text-lg)" }}>
-                  {status.value}
-                </span>
-              </div>
-              <div className="text-muted" style={{ fontSize: "var(--text-xs)", textTransform: "capitalize" }}>
-                {status.name.replace("_", " ").toLowerCase()}
-              </div>
-            </div>
-          </div>
-        ))}
       </div>
 
       {/* Recent Requests Table */}
@@ -579,18 +621,19 @@ export default function DashboardPage() {
                 <th>Status</th>
                 <th>Sentiment</th>
                 <th>Date</th>
+                <th>Bot</th>
               </tr>
             </thead>
             <tbody>
               {listQ.isLoading ? (
                 <tr>
-                  <td colSpan={4} style={{ textAlign: "center", padding: "var(--space-8)" }}>
+                  <td colSpan={5} style={{ textAlign: "center", padding: "var(--space-8)" }}>
                     <div className="spinner" style={{ margin: "0 auto" }} />
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={4}>
+                  <td colSpan={5}>
                     <div className="empty-state" style={{ padding: "var(--space-8)" }}>
                       <div className="empty-state-icon">{Icons.messageCircle}</div>
                       <div className="empty-state-title">No requests yet</div>

@@ -56,10 +56,14 @@ export const requestsRouter = router({
       const rows = await db
         .select()
         .from(requests)
+        .leftJoin(customers, eq(requests.customerId, customers.id))
         .where(and(...conditions))
         .orderBy(desc(requests.createdAt))
         .limit(limit);
-      return rows;
+      return rows.map((row) => ({
+        ...row.requests,
+        botPaused: row.customers?.botPaused ?? false,
+      }));
     }),
 
   stats: businessProcedure

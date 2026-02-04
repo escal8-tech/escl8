@@ -73,6 +73,7 @@ export interface CustomerRow {
   email: string | null;
   phone: string | null;
   platformMeta: Record<string, unknown> | null;
+  botPaused: boolean;
   totalRequests: number;
   totalRevenue: string;
   successfulRequests: number;
@@ -104,4 +105,3 @@ export interface CustomerWithRequests extends CustomerRow {
     createdAt: Date;
   }[];
 }
-

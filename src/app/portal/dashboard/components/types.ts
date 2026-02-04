@@ -8,6 +8,7 @@ export type Source = 'whatsapp' | 'shopee' | 'lazada' | 'telegram' | 'instagram'
 
 export type RequestRow = {
   id: string;
+  customerId?: string | null;
   customerNumber: string;
   sentiment: string | null;
   resolutionStatus: string | null;
@@ -20,6 +21,7 @@ export type RequestRow = {
   needsFollowup?: boolean;
   paymentDetails?: string | null;
   text?: string | null;
+  botPaused?: boolean;
 };
 
 export type StatsTotals = {

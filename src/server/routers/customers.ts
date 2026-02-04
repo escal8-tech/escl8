@@ -366,6 +366,24 @@ export const customersRouter = router({
     }
     return counts;
   }),
+
+  setBotPaused: businessProcedure
+    .input(z.object({
+      customerId: z.string(),
+      botPaused: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await db
+        .update(customers)
+        .set({ botPaused: input.botPaused, updatedAt: new Date() })
+        .where(and(
+          eq(customers.businessId, ctx.businessId),
+          eq(customers.id, input.customerId),
+          isNull(customers.deletedAt),
+        ))
+        .returning();
+      return row ?? null;
+    }),
 });
 
 function calculateLeadScore(data: {
