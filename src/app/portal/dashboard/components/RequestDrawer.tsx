@@ -11,7 +11,7 @@ type Props = {
 export function RequestDrawer({ request, onClose }: Props) {
   if (!request) return null;
 
-  const colors = statusColors(request.status ?? request.resolutionStatus);
+  const colors = statusColors(request.status);
 
   return (
     <div
@@ -65,7 +65,7 @@ export function RequestDrawer({ request, onClose }: Props) {
             >
               <span style={{ width: 10, height: 10, borderRadius: 999, background: colors.text }} />
               <span style={{ textTransform: "capitalize", fontWeight: 600 }}>
-                {request.status ?? request.resolutionStatus ?? "Unknown"}
+                {request.status ?? "Unknown"}
               </span>
             </span>
           </div>

@@ -28,7 +28,7 @@ export function RequestsTable({ rows, onSelect }: Props) {
   const statuses = useMemo(() => {
     const unique = new Set(
       rows
-        .map((r) => r.status ?? r.resolutionStatus)
+        .map((r) => r.status)
         .filter((s): s is string => Boolean(s))
     );
     return Array.from(unique).sort();
@@ -43,8 +43,7 @@ export function RequestsTable({ rows, onSelect }: Props) {
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
       if (sentimentFilter !== "all" && r.sentiment !== sentimentFilter) return false;
-      const statusValue = r.status ?? r.resolutionStatus;
-      if (statusFilter !== "all" && statusValue !== statusFilter) return false;
+      if (statusFilter !== "all" && r.status !== statusFilter) return false;
       if (sourceFilter !== "all" && (r.source || "whatsapp") !== sourceFilter) return false;
       if (paidFilter !== "all") {
         const isPaid = paidFilter === "yes";
@@ -181,10 +180,26 @@ export function RequestsTable({ rows, onSelect }: Props) {
                   </td>
                   <td style={{ padding: "12px 8px" }}>{r.customerNumber}</td>
                   <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.sentiment}</td>
-                  <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.status ?? r.resolutionStatus}</td>
+                  <td style={{ padding: "12px 8px" }}>
+                    {(r.status || "").replace(/_/g, " ").toUpperCase()}
+                  </td>
                   <td style={{ padding: "12px 8px" }}>{formatMoney(r.price)}</td>
                   <td style={{ padding: "12px 8px" }}>{r.paid ? "Yes" : "No"}</td>
-                  <td style={{ padding: "12px 8px" }}>{new Date(r.createdAt as Date | string).toLocaleString()}</td>
+                  <td style={{ padding: "12px 8px" }}>
+                    {(() => {
+                      const d = new Date(r.createdAt as Date | string);
+                      const today = new Date();
+                      const yesterday = new Date();
+                      yesterday.setDate(today.getDate() - 1);
+                      const sameDay = (a: Date, b: Date) =>
+                        a.getFullYear() === b.getFullYear() &&
+                        a.getMonth() === b.getMonth() &&
+                        a.getDate() === b.getDate();
+                      if (sameDay(d, today)) return "Today";
+                      if (sameDay(d, yesterday)) return "Yesterday";
+                      return d.toLocaleDateString();
+                    })()}
+                  </td>
                 </tr>
               );
             })}

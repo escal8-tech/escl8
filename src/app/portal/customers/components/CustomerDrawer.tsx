@@ -454,7 +454,6 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                 requests.map((req: {
                   id: string;
                   sentiment: string;
-                  resolutionStatus: string;
                   status?: string | null;
                   type?: string | null;
                   source: string;
@@ -485,12 +484,12 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                         <span
                           style={{
                             fontSize: 11,
-                            color: getStatusColor(req.status ?? req.resolutionStatus),
+                            color: getStatusColor(req.status),
                             textTransform: "capitalize",
                             fontWeight: 500,
                           }}
                         >
-                          {(req.status ?? req.resolutionStatus).replace("_", " ")}
+                          {(req.status ?? "ongoing").replace("_", " ")}
                         </span>
                       </div>
                       <span style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>

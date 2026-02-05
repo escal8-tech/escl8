@@ -11,7 +11,6 @@ export type RequestRow = {
   customerId?: string | null;
   customerNumber: string;
   sentiment: string | null;
-  resolutionStatus: string | null;
   status?: string | null;
   type?: string | null;
   source?: string; // whatsapp | shopee | lazada | etc.

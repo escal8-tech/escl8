@@ -128,7 +128,6 @@ export const customersRouter = router({
         .select({
           id: requests.id,
           sentiment: requests.sentiment,
-          resolutionStatus: requests.resolutionStatus,
           status: requests.status,
           type: requests.type,
           source: requests.source,
@@ -222,8 +221,7 @@ export const customersRouter = router({
       source: sourceSchema,
       externalId: z.string(),
       sentiment: z.string(),
-      resolutionStatus: z.string(),
-      status: z.string().optional(),
+      status: z.string(),
       type: z.string().optional(),
       price: z.string().optional(),
       paid: z.boolean().optional(),
@@ -234,7 +232,7 @@ export const customersRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const now = new Date();
-      const statusValue = (input.status ?? input.resolutionStatus ?? "").toLowerCase();
+      const statusValue = (input.status ?? "").toLowerCase();
       const isSuccessful = statusValue === "completed" || statusValue === "resolved";
 
       const [existing] = await db

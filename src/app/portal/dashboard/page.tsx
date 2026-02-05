@@ -270,7 +270,7 @@ function RequestRowItem({ request, onSelect }: { request: RequestRow; onSelect: 
 
   const displayPhone = request.customerNumber || "Unknown";
   const initials = displayPhone.slice(-2).toUpperCase();
-  const statusValue = request.status ?? request.resolutionStatus ?? "ongoing";
+  const statusValue = request.status ?? "ongoing";
   const sentimentValue = request.sentiment || "neutral";
   const createdAt = new Date(request.createdAt);
   const today = new Date();
@@ -440,22 +440,22 @@ function RequestDrawer({
                   <div className="text-muted" style={{ fontSize: "var(--text-xs)", marginBottom: "var(--space-2)" }}>
                     Status
                   </div>
-                  {(() => {
-                    const statusValue = (request.status ?? request.resolutionStatus ?? "ongoing").toLowerCase();
-                    const badge =
-                      statusValue === "completed" || statusValue === "resolved"
-                        ? "success"
-                        : statusValue === "failed"
-                        ? "error"
-                        : statusValue === "assistance_required" || statusValue === "assistance-required"
-                        ? "warning"
-                        : "info";
-                    return (
-                      <span className={`badge badge-${badge}`}>
-                        {statusValue.replace("_", " ")}
-                      </span>
-                    );
-                  })()}
+          {(() => {
+            const statusValue = (request.status ?? "ongoing").toLowerCase();
+            const badge =
+              statusValue === "completed" || statusValue === "resolved"
+                ? "success"
+                : statusValue === "failed"
+                ? "error"
+                : statusValue === "assistance_required" || statusValue === "assistance-required"
+                ? "warning"
+                : "info";
+            return (
+              <span className={`badge badge-${badge}`}>
+                {statusValue.replace("_", " ")}
+              </span>
+            );
+          })()}
                 </div>
               </div>
               <div className="card">

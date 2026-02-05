@@ -501,7 +501,6 @@ export const requests = pgTable(
     sourceMeta: jsonb("source_meta").$type<Record<string, unknown>>().default({}),
 
     sentiment: text("sentiment").notNull(), // "positive" | "neutral" | "negative"
-    resolutionStatus: text("resolution_status").notNull(), // "open" | "resolved" | "pending" | "requires_assistance"
     status: text("status").notNull().default("ongoing"), // "ongoing" | "completed" | "failed" | "assistance_required"
     type: text("type").notNull().default("browsing"), // "high_intent_lead" | "low_intent_lead" | "browsing" | etc
 
