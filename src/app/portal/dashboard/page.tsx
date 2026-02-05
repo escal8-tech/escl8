@@ -312,13 +312,13 @@ function RequestRowItem({ request, onSelect }: { request: RequestRow; onSelect: 
           className="btn btn-ghost btn-sm"
           onClick={(e) => {
             e.stopPropagation();
-            if (!canToggle || togglePause.isLoading) return;
+            if (!canToggle || togglePause.isPending) return;
             togglePause.mutate({
               customerId: request.customerId as string,
               botPaused: !paused,
             });
           }}
-          disabled={!canToggle || togglePause.isLoading}
+          disabled={!canToggle || togglePause.isPending}
           title={
             !request.customerId
               ? "No customer linked"
