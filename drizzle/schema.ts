@@ -509,6 +509,7 @@ export const requests = pgTable(
     paid: boolean("paid").notNull().default(false),
 
     summary: text("summary"),
+    botVersion: text("bot_version"),
 
     // Soft delete
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
