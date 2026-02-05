@@ -484,7 +484,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                         <span
                           style={{
                             fontSize: 11,
-                            color: getStatusColor(req.status),
+                            color: getStatusColor(req.status ?? "ongoing"),
                             textTransform: "capitalize",
                             fontWeight: 500,
                           }}
