@@ -299,16 +299,30 @@ function RequestRowItem({ request, onSelect }: { request: RequestRow; onSelect: 
       </td>
       <td>
         <span className={`badge ${statusColors[statusValue] || "badge-default"}`}>
-          {statusValue.replace("_", " ")}
+          {statusValue.replace(/_/g, " ").toUpperCase()}
+        </span>
+      </td>
+      <td>
+        <span className="badge badge-default">
+          {(request.type ?? "BROWSING").replace(/_/g, " ").toUpperCase()}
         </span>
       </td>
       <td>
         <span className={`badge ${sentimentColors[sentimentValue] || "badge-default"}`}>
-          {sentimentValue}
+          {sentimentValue.toUpperCase()}
         </span>
       </td>
       <td className="text-muted" style={{ fontSize: "var(--text-xs)" }}>
-        {new Date(request.createdAt).toLocaleDateString()}
+        {(() => {
+          const created = new Date(request.createdAt);
+          const today = new Date();
+          const createdKey = created.toISOString().slice(0, 10);
+          const todayKey = today.toISOString().slice(0, 10);
+          const yesterdayKey = new Date(today.getTime() - 86400000).toISOString().slice(0, 10);
+          if (createdKey === todayKey) return "Today";
+          if (createdKey === yesterdayKey) return "Yesterday";
+          return created.toLocaleDateString();
+        })()}
       </td>
       <td>
         <button
@@ -440,22 +454,22 @@ function RequestDrawer({
                   <div className="text-muted" style={{ fontSize: "var(--text-xs)", marginBottom: "var(--space-2)" }}>
                     Status
                   </div>
-          {(() => {
-            const statusValue = (request.status ?? "ongoing").toLowerCase();
-            const badge =
-              statusValue === "completed" || statusValue === "resolved"
-                ? "success"
-                : statusValue === "failed"
-                ? "error"
-                : statusValue === "assistance_required" || statusValue === "assistance-required"
-                ? "warning"
-                : "info";
-            return (
-              <span className={`badge badge-${badge}`}>
-                {statusValue.replace("_", " ")}
-              </span>
-            );
-          })()}
+                  {(() => {
+                    const statusValue = (request.status ?? "ongoing").toLowerCase();
+                    const badge =
+                      statusValue === "completed" || statusValue === "resolved"
+                        ? "success"
+                        : statusValue === "failed"
+                        ? "error"
+                        : statusValue === "assistance_required" || statusValue === "assistance-required"
+                        ? "warning"
+                        : "info";
+                    return (
+                      <span className={`badge badge-${badge}`}>
+                        {statusValue.replace(/_/g, " ").toUpperCase()}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
               <div className="card">
@@ -559,14 +573,17 @@ export default function DashboardPage() {
     ] satisfies DonutDatum[];
   }, [statsQ.data]);
 
-  const highIntentCount = Number((customerStatsQ.data as { highIntentCount?: number } | undefined)?.highIntentCount ?? 0);
-  const statusBreakdown = useMemo(
-    () => [
-      ...statusSeries,
-      { name: "HIGH_INTENT", value: highIntentCount, color: "#7c3aed" },
-    ],
-    [statusSeries, highIntentCount]
-  );
+  const statusBreakdown = useMemo(() => {
+    const by = (statsQ.data as { byStatus?: Record<string, number> })?.byStatus || {};
+    const ongoing = Number(by.ONGOING ?? 0);
+    const failed = Number(by.FAILED ?? 0);
+    const completed = Number(by.COMPLETED ?? 0);
+    return [
+      { name: "ONGOING", value: ongoing, color: "#0033A0" },
+      { name: "FAILED", value: failed, color: "#ef4444" },
+      { name: "SUCCESS", value: completed, color: "#10b981" },
+    ] satisfies DonutDatum[];
+  }, [statsQ.data]);
 
   return (
     <div className="fade-in">
@@ -636,6 +653,7 @@ export default function DashboardPage() {
               <tr>
                 <th>Customer</th>
                 <th>Status</th>
+                <th>Type</th>
                 <th>Sentiment</th>
                 <th>Date</th>
                 <th>Bot</th>
@@ -644,13 +662,13 @@ export default function DashboardPage() {
             <tbody>
               {listQ.isLoading ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: "center", padding: "var(--space-8)" }}>
+                  <td colSpan={6} style={{ textAlign: "center", padding: "var(--space-8)" }}>
                     <div className="spinner" style={{ margin: "0 auto" }} />
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <div className="empty-state" style={{ padding: "var(--space-8)" }}>
                       <div className="empty-state-icon">{Icons.messageCircle}</div>
                       <div className="empty-state-title">No requests yet</div>

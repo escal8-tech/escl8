@@ -179,7 +179,7 @@ export function RequestsTable({ rows, onSelect }: Props) {
                     </span>
                   </td>
                   <td style={{ padding: "12px 8px" }}>{r.customerNumber}</td>
-                  <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.sentiment}</td>
+                  <td style={{ padding: "12px 8px" }}>{(r.sentiment || "").toUpperCase()}</td>
                   <td style={{ padding: "12px 8px" }}>
                     {(r.status || "").replace(/_/g, " ").toUpperCase()}
                   </td>
