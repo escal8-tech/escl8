@@ -129,6 +129,8 @@ export const customersRouter = router({
           id: requests.id,
           sentiment: requests.sentiment,
           resolutionStatus: requests.resolutionStatus,
+          status: requests.status,
+          type: requests.type,
           source: requests.source,
           customerId: requests.customerId,
           customerNumber: requests.customerNumber,
@@ -221,6 +223,8 @@ export const customersRouter = router({
       externalId: z.string(),
       sentiment: z.string(),
       resolutionStatus: z.string(),
+      status: z.string().optional(),
+      type: z.string().optional(),
       price: z.string().optional(),
       paid: z.boolean().optional(),
       name: z.string().optional(),
@@ -230,6 +234,8 @@ export const customersRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const now = new Date();
+      const statusValue = (input.status ?? input.resolutionStatus ?? "").toLowerCase();
+      const isSuccessful = statusValue === "completed" || statusValue === "resolved";
 
       const [existing] = await db
         .select()
@@ -245,7 +251,7 @@ export const customersRouter = router({
 
       if (existing) {
         const newTotalRequests = (existing.totalRequests ?? 0) + 1;
-        const newSuccessful = input.resolutionStatus === "resolved"
+        const newSuccessful = isSuccessful
           ? (existing.successfulRequests ?? 0) + 1
           : existing.successfulRequests ?? 0;
         const addedRevenue = input.paid && input.price ? parseFloat(input.price) : 0;
@@ -295,7 +301,7 @@ export const customersRouter = router({
         const addedRevenue = input.paid && input.price ? parseFloat(input.price) : 0;
         const leadScore = calculateLeadScore({
           totalRequests: 1,
-          successfulRequests: input.resolutionStatus === "resolved" ? 1 : 0,
+          successfulRequests: isSuccessful ? 1 : 0,
           totalRevenue: addedRevenue,
           sentiment: input.sentiment,
         });
@@ -309,7 +315,7 @@ export const customersRouter = router({
           phone: input.phone,
           platformMeta: input.platformMeta ?? {},
           totalRequests: 1,
-          successfulRequests: input.resolutionStatus === "resolved" ? 1 : 0,
+          successfulRequests: isSuccessful ? 1 : 0,
           totalRevenue: addedRevenue.toFixed(2),
           lastSentiment: input.sentiment,
           firstMessageAt: now,

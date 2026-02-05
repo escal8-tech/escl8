@@ -455,6 +455,8 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                   id: string;
                   sentiment: string;
                   resolutionStatus: string;
+                  status?: string | null;
+                  type?: string | null;
                   source: string;
                   price: string | null;
                   paid: boolean;
@@ -483,12 +485,12 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                         <span
                           style={{
                             fontSize: 11,
-                            color: getStatusColor(req.resolutionStatus),
+                            color: getStatusColor(req.status ?? req.resolutionStatus),
                             textTransform: "capitalize",
                             fontWeight: 500,
                           }}
                         >
-                          {req.resolutionStatus.replace("_", " ")}
+                          {(req.status ?? req.resolutionStatus).replace("_", " ")}
                         </span>
                       </div>
                       <span style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>

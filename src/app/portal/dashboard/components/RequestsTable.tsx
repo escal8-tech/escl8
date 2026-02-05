@@ -26,7 +26,11 @@ export function RequestsTable({ rows, onSelect }: Props) {
   }, [rows]);
 
   const statuses = useMemo(() => {
-    const unique = new Set(rows.map((r) => r.resolutionStatus).filter((s): s is string => Boolean(s)));
+    const unique = new Set(
+      rows
+        .map((r) => r.status ?? r.resolutionStatus)
+        .filter((s): s is string => Boolean(s))
+    );
     return Array.from(unique).sort();
   }, [rows]);
 
@@ -39,7 +43,8 @@ export function RequestsTable({ rows, onSelect }: Props) {
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
       if (sentimentFilter !== "all" && r.sentiment !== sentimentFilter) return false;
-      if (statusFilter !== "all" && r.resolutionStatus !== statusFilter) return false;
+      const statusValue = r.status ?? r.resolutionStatus;
+      if (statusFilter !== "all" && statusValue !== statusFilter) return false;
       if (sourceFilter !== "all" && (r.source || "whatsapp") !== sourceFilter) return false;
       if (paidFilter !== "all") {
         const isPaid = paidFilter === "yes";
@@ -176,7 +181,7 @@ export function RequestsTable({ rows, onSelect }: Props) {
                   </td>
                   <td style={{ padding: "12px 8px" }}>{r.customerNumber}</td>
                   <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.sentiment}</td>
-                  <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.resolutionStatus}</td>
+                  <td style={{ padding: "12px 8px", textTransform: "capitalize" }}>{r.status ?? r.resolutionStatus}</td>
                   <td style={{ padding: "12px 8px" }}>{formatMoney(r.price)}</td>
                   <td style={{ padding: "12px 8px" }}>{r.paid ? "Yes" : "No"}</td>
                   <td style={{ padding: "12px 8px" }}>{new Date(r.createdAt as Date | string).toLocaleString()}</td>

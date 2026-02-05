@@ -135,6 +135,7 @@ export const requestsRouter = router({
         if (s === "needs_followup" || s === "needs-followup") return "NEEDS_FOLLOWUP";
         if (s === "failed") return "FAILED";
         if (s === "completed") return "COMPLETED";
+        if (s === "assistance_required" || s === "assistance-required") return "NEEDS_FOLLOWUP";
 
         // legacy mappings from older schema/comments
         if (s === "open") return "ONGOING";
@@ -150,7 +151,7 @@ export const requestsRouter = router({
         const s = (r.sentiment || "unknown").toLowerCase();
         bySentiment[s] = (bySentiment[s] ?? 0) + 1;
 
-        const st = normalizeStatus(r.resolutionStatus);
+        const st = normalizeStatus((r as typeof r & { status?: string | null }).status ?? r.resolutionStatus);
         byStatus[st] = (byStatus[st] ?? 0) + 1;
 
         // Track by source

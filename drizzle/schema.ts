@@ -502,6 +502,8 @@ export const requests = pgTable(
 
     sentiment: text("sentiment").notNull(), // "positive" | "neutral" | "negative"
     resolutionStatus: text("resolution_status").notNull(), // "open" | "resolved" | "pending" | "requires_assistance"
+    status: text("status").notNull().default("ongoing"), // "ongoing" | "completed" | "failed" | "assistance_required"
+    type: text("type").notNull().default("browsing"), // "high_intent_lead" | "low_intent_lead" | "browsing" | etc
 
     price: numeric("price", { precision: 10, scale: 2 }).default("0"),
     paid: boolean("paid").notNull().default(false),

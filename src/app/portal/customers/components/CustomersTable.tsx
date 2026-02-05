@@ -64,6 +64,13 @@ export function CustomersTable({ rows, onSelect }: Props) {
   const [sourceFilter, setSourceFilter] = useState<Source | "all">("all");
   const [sortKey, setSortKey] = useState<keyof CustomerRow>("lastMessageAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const utils = trpc.useUtils();
+  const togglePause = trpc.customers.setBotPaused.useMutation({
+    onSuccess: () => {
+      utils.customers.list.invalidate();
+      utils.requests.list.invalidate();
+    },
+  });
 
   // Get source counts for filter dropdown
   const { data: sourceCounts } = trpc.customers.getSourceCounts.useQuery();
@@ -280,6 +287,19 @@ export function CustomersTable({ rows, onSelect }: Props) {
                   >
                     {row.botPaused ? "Paused" : "Active"}
                   </span>
+                  <button
+                    type="button"
+                    className="ml-2 text-xs underline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (togglePause.isPending) return;
+                      togglePause.mutate({ customerId: row.id, botPaused: !row.botPaused });
+                    }}
+                    disabled={togglePause.isPending}
+                    style={{ opacity: togglePause.isPending ? 0.6 : 1 }}
+                  >
+                    {row.botPaused ? "Unpause" : "Pause"}
+                  </button>
                 </td>
                 <td className="px-4 py-3">
                   <span className="font-medium">

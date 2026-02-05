@@ -11,7 +11,7 @@ type Props = {
 export function RequestDrawer({ request, onClose }: Props) {
   if (!request) return null;
 
-  const colors = statusColors(request.resolutionStatus);
+  const colors = statusColors(request.status ?? request.resolutionStatus);
 
   return (
     <div
@@ -50,7 +50,7 @@ export function RequestDrawer({ request, onClose }: Props) {
             <div style={{ textTransform: "capitalize" }}>{request.sentiment || "—"}</div>
           </div>
           <div className="glass" style={{ padding: 14 }}>
-            <div className="muted" style={{ fontSize: 12 }}>Resolution status</div>
+            <div className="muted" style={{ fontSize: 12 }}>Status</div>
             <span
               style={{
                 display: "inline-flex",
@@ -65,7 +65,7 @@ export function RequestDrawer({ request, onClose }: Props) {
             >
               <span style={{ width: 10, height: 10, borderRadius: 999, background: colors.text }} />
               <span style={{ textTransform: "capitalize", fontWeight: 600 }}>
-                {request.resolutionStatus || "Unknown"}
+                {request.status ?? request.resolutionStatus ?? "Unknown"}
               </span>
             </span>
           </div>

@@ -12,6 +12,8 @@ export type RequestRow = {
   customerNumber: string;
   sentiment: string | null;
   resolutionStatus: string | null;
+  status?: string | null;
+  type?: string | null;
   source?: string; // whatsapp | shopee | lazada | etc.
   price: number | null;
   paid: boolean;

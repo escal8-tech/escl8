@@ -96,6 +96,8 @@ export interface CustomerWithRequests extends CustomerRow {
     id: string;
     sentiment: string;
     resolutionStatus: string;
+    status?: string | null;
+    type?: string | null;
     source: Source;
     customerId: string | null;
     customerNumber: string | null;
