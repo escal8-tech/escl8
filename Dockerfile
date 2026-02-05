@@ -1,5 +1,6 @@
 FROM node:20-bullseye-slim AS base
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get -o Acquire::Retries=3 update \
+  && apt-get -o Acquire::Retries=3 install -y --no-install-recommends --fix-missing \
     python3 \
     make \
     g++ \
