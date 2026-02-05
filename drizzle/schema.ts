@@ -318,6 +318,7 @@ export const customers = pgTable(
     customersLeadScoreIdx: index("customers_lead_score_idx").on(t.leadScore),
     customersHighIntentIdx: index("customers_high_intent_idx").on(t.businessId, t.isHighIntent),
     customersTotalRevenueIdx: index("customers_total_revenue_idx").on(t.businessId, t.totalRevenue),
+    customersBotPausedIdx: index("customers_bot_paused_idx").on(t.businessId, t.botPaused),
     // Soft delete filter
     customersDeletedAtIdx: index("customers_deleted_at_idx").on(t.deletedAt),
 
@@ -522,9 +523,13 @@ export const requests = pgTable(
     requestsCustomerIdx: index("requests_customer_number_idx").on(t.customerNumber),
     requestsCustomerIdIdx: index("requests_customer_id_idx").on(t.customerId),
     requestsBusinessCustomerIdx: index("requests_business_customer_idx").on(t.businessId, t.customerNumber),
-    requestsStatusIdx: index("requests_resolution_status_idx").on(t.resolutionStatus),
+    requestsStatusIdx: index("requests_status_idx").on(t.status),
+    requestsBusinessStatusIdx: index("requests_business_status_idx").on(t.businessId, t.status),
     requestsSourceIdx: index("requests_source_idx").on(t.source),
     requestsBusinessSourceIdx: index("requests_business_source_idx").on(t.businessId, t.source),
+    requestsBusinessCustomerCreatedIdx: index("requests_business_customer_created_idx").on(t.businessId, t.customerId, t.createdAt),
+    requestsBusinessTypeIdx: index("requests_business_type_idx").on(t.businessId, t.type),
+    requestsBusinessBotVersionIdx: index("requests_business_bot_version_idx").on(t.businessId, t.botVersion),
     requestsCreatedAtIdx: index("requests_created_at_idx").on(t.createdAt),
     requestsDeletedAtIdx: index("requests_deleted_at_idx").on(t.deletedAt),
 
