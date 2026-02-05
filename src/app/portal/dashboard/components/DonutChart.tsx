@@ -11,8 +11,8 @@ type Props = {
 
 export function DonutChart({ title, data, centerLabel }: Props) {
   const total = data.reduce((acc, d) => acc + (d.value || 0), 0);
-  const r = 46;
-  const stroke = 12;
+  const r = 52;
+  const stroke = 14;
   const c = 2 * Math.PI * r;
 
   // Build segments as (offset, length)
@@ -26,11 +26,11 @@ export function DonutChart({ title, data, centerLabel }: Props) {
   });
 
   return (
-    <div className="glass" style={{ height: 320, display: "flex", flexDirection: "column" }}>
+    <div className="glass" style={{ height: 320, display: "flex", flexDirection: "column", padding: 18, gap: 10 }}>
       <div className="muted">{title}</div>
-      <div style={{ height: 260, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
-        <div style={{ width: 200, height: 200, margin: "0 auto", position: "relative" }}>
-          <svg viewBox="0 0 120 120" width="200" height="200" style={{ display: "block" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", padding: "6px 0" }}>
+        <div style={{ width: 220, height: 220, margin: "0 auto", position: "relative" }}>
+          <svg viewBox="0 0 120 120" width="220" height="220" style={{ display: "block" }}>
             {/* track */}
             <circle
               cx="60"

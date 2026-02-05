@@ -240,7 +240,7 @@ function ActivityAreaChart({ data }: { data: { date: string; count: number }[] }
   };
 
   return (
-    <div style={{ height: 260 }}>
+    <div style={{ height: "100%" }}>
       <ResponsiveContainer width="100%" height="100%">
         <ReAreaChart data={data} margin={{ top: 10, right: 12, left: -8, bottom: 8 }}>
           <defs>
@@ -639,23 +639,25 @@ export default function DashboardPage() {
       {/* Charts Row */}
       <div className="grid grid-cols-4 gap-6" style={{ marginBottom: "var(--space-8)" }}>
         {/* Activity Chart */}
-        <div className="chart-card" style={{ gridColumn: "span 2", minHeight: 360 }}>
-          <div className="chart-header">
+        <div className="chart-card" style={{ gridColumn: "span 2", minHeight: 360, display: "flex", flexDirection: "column" }}>
+          <div className="chart-header" style={{ marginBottom: "var(--space-2)" }}>
             <h3 className="chart-title">Request Activity</h3>
             <div className="badge badge-default">Last 30 days</div>
           </div>
-          <ActivityAreaChart data={timeSeries.slice(-30)} />
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <ActivityAreaChart data={timeSeries.slice(-30)} />
+          </div>
         </div>
 
         {/* Status Donut */}
-        <div className="chart-card" style={{ minHeight: 420 }}>
-          <div className="chart-header">
+        <div className="chart-card" style={{ minHeight: 420, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div className="chart-header" style={{ marginBottom: "var(--space-2)" }}>
             <h3 className="chart-title">Status Breakdown</h3>
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "var(--space-4)" }}>
-            <MiniDonutChart data={statusBreakdown} size={180} centerTop={`${successPct}%`} centerBottom="SUCCESS" />
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+            <MiniDonutChart data={statusBreakdown} size={220} centerTop={`${successPct}%`} centerBottom="SUCCESS" />
           </div>
-          <div className="chart-legend" style={{ justifyContent: "center", marginTop: "var(--space-4)" }}>
+          <div className="chart-legend" style={{ justifyContent: "center" }}>
             {statusBreakdown.map((s) => (
               <div key={s.name} className="chart-legend-item">
                 <div className="chart-legend-dot" style={{ background: s.color }} />
@@ -666,14 +668,14 @@ export default function DashboardPage() {
         </div>
 
         {/* Sentiment Donut */}
-        <div className="chart-card" style={{ minHeight: 420 }}>
-          <div className="chart-header">
+        <div className="chart-card" style={{ minHeight: 420, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div className="chart-header" style={{ marginBottom: "var(--space-2)" }}>
             <h3 className="chart-title">Sentiment Breakdown</h3>
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "var(--space-4)" }}>
-            <MiniDonutChart data={sentimentSeries} size={180} centerTop={`${positivePct}%`} centerBottom="POSITIVE" />
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+            <MiniDonutChart data={sentimentSeries} size={220} centerTop={`${positivePct}%`} centerBottom="POSITIVE" />
           </div>
-          <div className="chart-legend" style={{ justifyContent: "center", marginTop: "var(--space-4)" }}>
+          <div className="chart-legend" style={{ justifyContent: "center" }}>
             {sentimentSeries.map((s) => (
               <div key={s.name} className="chart-legend-item">
                 <div className="chart-legend-dot" style={{ background: s.color }} />
