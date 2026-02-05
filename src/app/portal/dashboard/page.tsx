@@ -4,6 +4,19 @@ import { useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import type { DonutDatum, RequestRow } from "./components/types";
+import {
+  Area,
+  AreaChart as ReAreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  Pie,
+  PieChart,
+  Label,
+  Cell,
+} from "recharts";
 
 // Icons
 const Icons = {
@@ -131,7 +144,17 @@ function StatCard({
 }
 
 // Mini Donut Chart Component
-function MiniDonutChart({ data, size = 120 }: { data: DonutDatum[]; size?: number }) {
+function MiniDonutChart({
+  data,
+  size = 180,
+  centerTop,
+  centerBottom,
+}: {
+  data: DonutDatum[];
+  size?: number;
+  centerTop?: string;
+  centerBottom?: string;
+}) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
   if (total === 0) {
     return (
@@ -151,42 +174,55 @@ function MiniDonutChart({ data, size = 120 }: { data: DonutDatum[]; size?: numbe
     );
   }
 
-  const strokeWidth = 12;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  let currentOffset = 0;
-
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {data.map((segment, i) => {
-        const percentage = segment.value / total;
-        const strokeDasharray = `${percentage * circumference} ${circumference}`;
-        const strokeDashoffset = -currentOffset;
-        currentOffset += percentage * circumference;
-
-        return (
-          <circle
-            key={i}
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            fill="none"
-            stroke={segment.color}
-            strokeWidth={strokeWidth}
-            strokeDasharray={strokeDasharray}
-            strokeDashoffset={strokeDashoffset}
-            strokeLinecap="round"
-            transform={`rotate(-90 ${size / 2} ${size / 2})`}
-            style={{ transition: "stroke-dasharray 0.5s ease, stroke-dashoffset 0.5s ease" }}
+    <div style={{ width: size, height: size, margin: "0 auto" }}>
+      <PieChart width={size} height={size}>
+        <Pie
+          data={data}
+          dataKey="value"
+          nameKey="name"
+          innerRadius={size * 0.36}
+          outerRadius={size * 0.48}
+          stroke="var(--card)"
+          strokeWidth={4}
+          startAngle={90}
+          endAngle={-270}
+          isAnimationActive={false}
+        >
+          {data.map((entry, idx) => (
+            <Cell key={`${entry.name}-${idx}`} fill={entry.color} />
+          ))}
+          <Label
+            content={({ viewBox }) => {
+              if (!viewBox || !("cx" in viewBox) || !("cy" in viewBox)) return null;
+              return (
+                <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                  {centerTop && (
+                    <tspan x={viewBox.cx} y={viewBox.cy} style={{ fill: "#fff", fontSize: 28, fontWeight: 700 }}>
+                      {centerTop}
+                    </tspan>
+                  )}
+                  {centerBottom && (
+                    <tspan
+                      x={viewBox.cx}
+                      y={(viewBox.cy || 0) + 24}
+                      style={{ fill: "rgba(255,255,255,0.7)", fontSize: 12, letterSpacing: "0.14em", fontWeight: 600 }}
+                    >
+                      {centerBottom}
+                    </tspan>
+                  )}
+                </text>
+              );
+            }}
           />
-        );
-      })}
-    </svg>
+        </Pie>
+      </PieChart>
+    </div>
   );
 }
 
 // Area Chart Component
-function AreaChart({ data }: { data: { date: string; count: number }[] }) {
+function ActivityAreaChart({ data }: { data: { date: string; count: number }[] }) {
   if (!data.length) {
     return (
       <div className="empty-state" style={{ padding: "var(--space-8)" }}>
@@ -195,50 +231,55 @@ function AreaChart({ data }: { data: { date: string; count: number }[] }) {
     );
   }
 
-  const maxCount = Math.max(...data.map((d) => d.count), 1);
-  const width = 120;
-  const height = 50;
-  const chartLeft = 12;
-  const chartRight = 4;
-  const chartTop = 4;
-  const chartBottom = 12;
-  const chartWidth = width - chartLeft - chartRight;
-  const chartHeight = height - chartTop - chartBottom;
-
-  const points = data.map((d, i) => {
-    const x = chartLeft + (chartWidth / (data.length - 1 || 1)) * i;
-    const y = chartTop + (1 - d.count / maxCount) * chartHeight;
-    return `${x},${y}`;
-  });
-
-  const areaPath = `M${chartLeft},${chartTop + chartHeight} L${points.join(" L")} L${chartLeft + chartWidth},${chartTop + chartHeight} Z`;
-  const linePath = `M${points.join(" L")}`;
-  const xLabelLeft = data[0]?.date ?? "";
-  const xLabelRight = data[data.length - 1]?.date ?? "";
+  const formatDateShort = (value?: string) => {
+    if (!value) return "";
+    const d = new Date(value);
+    return Number.isNaN(d.getTime())
+      ? value
+      : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: 220 }} preserveAspectRatio="none">
-      <g stroke="var(--border)" strokeWidth="0.4">
-        {Array.from({ length: 4 }).map((_, i) => {
-          const y = chartTop + (chartHeight / 3) * i;
-          return <line key={i} x1={chartLeft} y1={y} x2={chartLeft + chartWidth} y2={y} />;
-        })}
-      </g>
-      <defs>
-        <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.3" />
-          <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={areaPath} fill="url(#areaGradient)" />
-      <path d={linePath} fill="none" stroke="var(--primary)" strokeWidth="0.8" strokeLinecap="round" />
-      <g fill="var(--muted)" fontSize="3.2">
-        <text x={chartLeft - 1} y={chartTop + 2} textAnchor="end">{maxCount}</text>
-        <text x={chartLeft - 1} y={chartTop + chartHeight + 2} textAnchor="end">0</text>
-        <text x={chartLeft} y={height - 2} textAnchor="start">{xLabelLeft}</text>
-        <text x={chartLeft + chartWidth} y={height - 2} textAnchor="end">{xLabelRight}</text>
-      </g>
-    </svg>
+    <div style={{ height: 260 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <ReAreaChart data={data} margin={{ top: 10, right: 12, left: -8, bottom: 8 }}>
+          <defs>
+            <linearGradient id="fillRequests" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.55} />
+              <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.08} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid vertical={false} stroke="var(--border)" strokeOpacity={0.6} />
+          <XAxis
+            dataKey="date"
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            minTickGap={32}
+            tickFormatter={formatDateShort}
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            width={28}
+            allowDecimals={false}
+          />
+          <Tooltip
+            cursor={{ stroke: "var(--border)", strokeOpacity: 0.6 }}
+            formatter={(value: number) => [value, "Requests"]}
+            labelFormatter={(value: string) => formatDateShort(value)}
+          />
+          <Area
+            type="natural"
+            dataKey="count"
+            stroke="var(--primary)"
+            strokeWidth={2}
+            fill="url(#fillRequests)"
+            dot={false}
+          />
+        </ReAreaChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -585,26 +626,34 @@ export default function DashboardPage() {
     ] satisfies DonutDatum[];
   }, [statsQ.data]);
 
+  const statusTotal = statusBreakdown.reduce((sum, d) => sum + d.value, 0);
+  const successValue = statusBreakdown.find((d) => d.name === "SUCCESS")?.value ?? 0;
+  const successPct = statusTotal > 0 ? Math.round((successValue / statusTotal) * 100) : 0;
+
+  const sentimentTotal = sentimentSeries.reduce((sum, d) => sum + d.value, 0);
+  const positiveValue = sentimentSeries.find((d) => d.name === "positive")?.value ?? 0;
+  const positivePct = sentimentTotal > 0 ? Math.round((positiveValue / sentimentTotal) * 100) : 0;
+
   return (
     <div className="fade-in">
       {/* Charts Row */}
       <div className="grid grid-cols-4 gap-6" style={{ marginBottom: "var(--space-8)" }}>
         {/* Activity Chart */}
-        <div className="chart-card" style={{ gridColumn: "span 2" }}>
+        <div className="chart-card" style={{ gridColumn: "span 2", minHeight: 360 }}>
           <div className="chart-header">
             <h3 className="chart-title">Request Activity</h3>
             <div className="badge badge-default">Last 30 days</div>
           </div>
-          <AreaChart data={timeSeries.slice(-30)} />
+          <ActivityAreaChart data={timeSeries.slice(-30)} />
         </div>
 
         {/* Status Donut */}
-        <div className="chart-card">
+        <div className="chart-card" style={{ minHeight: 420 }}>
           <div className="chart-header">
             <h3 className="chart-title">Status Breakdown</h3>
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "var(--space-4)" }}>
-            <MiniDonutChart data={statusBreakdown} size={140} />
+            <MiniDonutChart data={statusBreakdown} size={180} centerTop={`${successPct}%`} centerBottom="SUCCESS" />
           </div>
           <div className="chart-legend" style={{ justifyContent: "center", marginTop: "var(--space-4)" }}>
             {statusBreakdown.map((s) => (
@@ -617,12 +666,12 @@ export default function DashboardPage() {
         </div>
 
         {/* Sentiment Donut */}
-        <div className="chart-card">
+        <div className="chart-card" style={{ minHeight: 420 }}>
           <div className="chart-header">
             <h3 className="chart-title">Sentiment Breakdown</h3>
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "var(--space-4)" }}>
-            <MiniDonutChart data={sentimentSeries} size={140} />
+            <MiniDonutChart data={sentimentSeries} size={180} centerTop={`${positivePct}%`} centerBottom="POSITIVE" />
           </div>
           <div className="chart-legend" style={{ justifyContent: "center", marginTop: "var(--space-4)" }}>
             {sentimentSeries.map((s) => (
