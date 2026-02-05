@@ -284,14 +284,17 @@ function ActivityAreaChart({ data }: { data: { date: string; count: number }[] }
 }
 
 // Request Row Component
-function RequestRowItem({ request, onSelect }: { request: RequestRow; onSelect: () => void }) {
-  const utils = trpc.useUtils();
-  const togglePause = trpc.customers.setBotPaused.useMutation({
-    onSuccess: () => {
-      utils.requests.list.invalidate();
-      utils.customers.list.invalidate();
-    },
-  });
+function RequestRowItem({
+  request,
+  onSelect,
+  onToggleBot,
+  pendingIds,
+}: {
+  request: RequestRow;
+  onSelect: () => void;
+  onToggleBot: (customerId: string, botPaused: boolean) => void;
+  pendingIds: Record<string, boolean>;
+}) {
   const statusColors: Record<string, string> = {
     ongoing: "badge-info",
     completed: "badge-success",
@@ -322,6 +325,7 @@ function RequestRowItem({ request, onSelect }: { request: RequestRow; onSelect: 
   const isCompleted = statusValue.toLowerCase() === "completed" || statusValue.toLowerCase() === "resolved";
   const canToggle = Boolean(request.customerId) && isToday && !isCompleted;
   const paused = Boolean(request.botPaused);
+  const isPending = request.customerId ? Boolean(pendingIds[request.customerId]) : false;
 
   return (
     <tr onClick={onSelect} style={{ cursor: "pointer" }}>
@@ -371,13 +375,10 @@ function RequestRowItem({ request, onSelect }: { request: RequestRow; onSelect: 
           className="btn btn-ghost btn-sm"
           onClick={(e) => {
             e.stopPropagation();
-            if (!canToggle || togglePause.isPending) return;
-            togglePause.mutate({
-              customerId: request.customerId as string,
-              botPaused: !paused,
-            });
+            if (!canToggle || isPending || !request.customerId) return;
+            onToggleBot(request.customerId, !paused);
           }}
-          disabled={!canToggle || togglePause.isPending}
+          disabled={!canToggle || isPending}
           title={
             !request.customerId
               ? "No customer linked"
@@ -389,7 +390,7 @@ function RequestRowItem({ request, onSelect }: { request: RequestRow; onSelect: 
               ? "Resume bot"
               : "Pause bot"
           }
-          style={{ opacity: !canToggle ? 0.5 : 1 }}
+          style={{ opacity: !canToggle || isPending ? 0.5 : 1, width: 112, justifyContent: "center" }}
         >
           <span style={{ width: 16, height: 16 }}>{paused ? Icons.play : Icons.pause}</span>
           {paused ? "Resume" : "Pause"}
@@ -558,15 +559,73 @@ function RequestDrawer({
 
 export default function DashboardPage() {
   const { selectedPhoneNumberId } = usePhoneFilter();
-  const listQ = trpc.requests.list.useQuery({
-    limit: 100,
-    ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
-  });
-  const statsQ = trpc.requests.stats.useQuery(
-    selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : undefined
+  const listInput = useMemo(
+    () => ({
+      limit: 100,
+      ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
+    }),
+    [selectedPhoneNumberId],
   );
+  const statsInput = useMemo(
+    () => (selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : undefined),
+    [selectedPhoneNumberId],
+  );
+  const customersInput = statsInput;
+
+  const listQ = trpc.requests.list.useQuery(listInput);
+  const statsQ = trpc.requests.stats.useQuery(statsInput);
   const customerStatsQ = trpc.customers.getStats.useQuery();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
+  const utils = trpc.useUtils();
+
+  const markPending = (customerId: string, pending: boolean) => {
+    setPendingIds((prev) => {
+      if (pending) return { ...prev, [customerId]: true };
+      if (!prev[customerId]) return prev;
+      const next = { ...prev };
+      delete next[customerId];
+      return next;
+    });
+  };
+
+  const togglePause = trpc.customers.setBotPaused.useMutation({
+    onMutate: async (vars) => {
+      markPending(vars.customerId, true);
+      await Promise.all([
+        utils.requests.list.cancel(listInput),
+        utils.customers.list.cancel(customersInput),
+      ]);
+
+      const prevList = utils.requests.list.getData(listInput);
+      const prevCustomers = utils.customers.list.getData(customersInput);
+
+      utils.requests.list.setData(listInput, (old) =>
+        old?.map((item) =>
+          item.customerId === vars.customerId ? { ...item, botPaused: vars.botPaused } : item,
+        ),
+      );
+      utils.customers.list.setData(customersInput, (old) =>
+        old?.map((item) =>
+          item.id === vars.customerId ? { ...item, botPaused: vars.botPaused } : item,
+        ),
+      );
+
+      return { prevList, prevCustomers };
+    },
+    onError: (_err, vars, ctx) => {
+      if (ctx?.prevList) utils.requests.list.setData(listInput, ctx.prevList);
+      if (ctx?.prevCustomers) utils.customers.list.setData(customersInput, ctx.prevCustomers);
+      markPending(vars.customerId, false);
+    },
+    onSettled: (_data, _err, vars) => {
+      if (vars?.customerId) markPending(vars.customerId, false);
+      utils.requests.list.invalidate(listInput);
+      utils.requests.stats.invalidate(statsInput);
+      utils.customers.list.invalidate(customersInput);
+      utils.customers.getStats.invalidate();
+    },
+  });
 
   const rows = useMemo(() => normalizeRequests(listQ.data || []), [listQ.data]);
 
@@ -711,13 +770,7 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {listQ.isLoading ? (
-                <tr>
-                  <td colSpan={6} style={{ textAlign: "center", padding: "var(--space-8)" }}>
-                    <div className="spinner" style={{ margin: "0 auto" }} />
-                  </td>
-                </tr>
-              ) : rows.length === 0 ? (
+              {rows.length === 0 ? (
                 <tr>
                   <td colSpan={6}>
                     <div className="empty-state" style={{ padding: "var(--space-8)" }}>
@@ -735,6 +788,8 @@ export default function DashboardPage() {
                     key={request.id}
                     request={request}
                     onSelect={() => setSelectedId(request.id)}
+                    onToggleBot={(customerId, botPaused) => togglePause.mutate({ customerId, botPaused })}
+                    pendingIds={pendingIds}
                   />
                 ))
               )}

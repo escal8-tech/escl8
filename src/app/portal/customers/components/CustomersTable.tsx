@@ -5,9 +5,24 @@ import { CustomerRow, Source, SOURCE_CONFIG } from "../types";
 import { SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { trpc } from "@/utils/trpc";
 
+const Icons = {
+  pause: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="6" y="4" width="4" height="16" rx="1" />
+      <rect x="14" y="4" width="4" height="16" rx="1" />
+    </svg>
+  ),
+  play: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="6 4 20 12 6 20 6 4" />
+    </svg>
+  ),
+};
+
 interface Props {
   rows: CustomerRow[];
   onSelect: (id: string) => void;
+  listInput?: { whatsappIdentityId?: string };
 }
 
 function SourceBadge({ source }: { source: Source }) {
@@ -59,16 +74,51 @@ function LeadScoreBar({ score }: { score: number }) {
   );
 }
 
-export function CustomersTable({ rows, onSelect }: Props) {
+export function CustomersTable({ rows, onSelect, listInput }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<Source | "all">("all");
   const [sortKey, setSortKey] = useState<keyof CustomerRow>("lastMessageAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
   const utils = trpc.useUtils();
   const togglePause = trpc.customers.setBotPaused.useMutation({
-    onSuccess: () => {
-      utils.customers.list.invalidate();
+    onMutate: async (vars) => {
+      setPendingIds((prev) => ({ ...prev, [vars.customerId]: true }));
+      await Promise.all([
+        utils.customers.list.cancel(listInput),
+        utils.requests.list.cancel(),
+      ]);
+
+      const prevCustomers = utils.customers.list.getData(listInput);
+      utils.customers.list.setData(listInput, (old) =>
+        old?.map((item) =>
+          item.id === vars.customerId ? { ...item, botPaused: vars.botPaused } : item,
+        ),
+      );
+
+      return { prevCustomers };
+    },
+    onError: (_err, vars, ctx) => {
+      if (ctx?.prevCustomers) utils.customers.list.setData(listInput, ctx.prevCustomers);
+      setPendingIds((prev) => {
+        if (!prev[vars.customerId]) return prev;
+        const next = { ...prev };
+        delete next[vars.customerId];
+        return next;
+      });
+    },
+    onSettled: (_data, _err, vars) => {
+      if (vars?.customerId) {
+        setPendingIds((prev) => {
+          if (!prev[vars.customerId]) return prev;
+          const next = { ...prev };
+          delete next[vars.customerId];
+          return next;
+        });
+      }
+      utils.customers.list.invalidate(listInput);
       utils.requests.list.invalidate();
+      utils.requests.stats.invalidate();
     },
   });
 
@@ -280,26 +330,25 @@ export function CustomersTable({ rows, onSelect }: Props) {
                   <span className="font-medium">{row.totalRequests}</span>
                 </td>
                 <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                      row.botPaused ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"
-                    }`}
-                  >
-                    {row.botPaused ? "Paused" : "Active"}
-                  </span>
+                  {(() => {
+                    const isPending = Boolean(pendingIds[row.id]);
+                    return (
                   <button
                     type="button"
-                    className="ml-2 text-xs underline"
+                    className="btn btn-ghost btn-sm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (togglePause.isPending) return;
+                      if (isPending) return;
                       togglePause.mutate({ customerId: row.id, botPaused: !row.botPaused });
                     }}
-                    disabled={togglePause.isPending}
-                    style={{ opacity: togglePause.isPending ? 0.6 : 1 }}
+                    disabled={isPending}
+                    style={{ opacity: isPending ? 0.6 : 1, width: 112, justifyContent: "center" }}
                   >
-                    {row.botPaused ? "Unpause" : "Pause"}
+                    <span style={{ width: 16, height: 16 }}>{row.botPaused ? Icons.play : Icons.pause}</span>
+                    {row.botPaused ? "Resume" : "Pause"}
                   </button>
+                    );
+                  })()}
                 </td>
                 <td className="px-4 py-3">
                   <span className="font-medium">

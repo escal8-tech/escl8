@@ -12,9 +12,8 @@ export default function CustomersPage() {
   // Store selected customer by ID
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   
-  const { data: customers, isLoading } = trpc.customers.list.useQuery(
-    selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : undefined
-  );
+  const listInput = selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : undefined;
+  const { data: customers } = trpc.customers.list.useQuery(listInput);
   
   // Cast the source field to Source type (it comes as string from the DB)
   const typedCustomers = customers?.map((c) => ({
@@ -26,11 +25,7 @@ export default function CustomersPage() {
 
   return (
     <main style={{ padding: 32 }}>
-      {isLoading ? (
-        <div style={{ textAlign: "center", padding: 60, color: "var(--muted)" }}>
-          Loading customers...
-        </div>
-      ) : !typedCustomers?.length ? (
+      {!typedCustomers?.length ? (
         <div
           className="glass"
           style={{
@@ -48,6 +43,7 @@ export default function CustomersPage() {
         <CustomersTable
           rows={typedCustomers}
           onSelect={(id) => setSelectedCustomerId(id)}
+          listInput={listInput}
         />
       )}
 
