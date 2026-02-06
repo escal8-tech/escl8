@@ -8,10 +8,29 @@ type MaybePhoneFilter = {
   whatsappIdentityId?: string | null;
 };
 
+type ThreadListInput = {
+  limit?: number;
+  whatsappIdentityId?: string;
+};
+
+type MessageRow = {
+  id: string;
+  threadId?: string;
+  direction: string;
+  messageType: string | null;
+  textBody: string | null;
+  meta: unknown;
+  createdAt: string | Date;
+};
+
 type LiveSyncOptions = {
   requestListInput?: { limit?: number; whatsappIdentityId?: string };
   requestStatsInput?: MaybePhoneFilter;
   customerListInput?: MaybePhoneFilter;
+  messagesThreadListInput?: ThreadListInput;
+  activeThreadId?: string | null;
+  activeThreadPageSize?: number;
+  onThreadMessage?: (message: MessageRow) => void;
 };
 
 type PortalEvent = {
@@ -39,6 +58,16 @@ function upsertById<T extends { id?: string }>(rows: T[] | undefined, next: T): 
   const id = next.id;
   if (!id) return current;
   const index = current.findIndex((row) => row.id === id);
+  if (index === -1) return [next, ...current];
+  const copy = current.slice();
+  copy[index] = { ...copy[index], ...next };
+  return copy;
+}
+
+function upsertByKey<T>(rows: T[] | undefined, next: T, key: keyof T): T[] {
+  const current = rows ?? [];
+  const id = next[key];
+  const index = current.findIndex((row) => row[key] === id);
   if (index === -1) return [next, ...current];
   const copy = current.slice();
   copy[index] = { ...copy[index], ...next };
@@ -122,6 +151,12 @@ function eventPhoneIdentity(payload: Record<string, unknown>): string | null {
     if (typeof value === "string" && value) return value;
   }
 
+  const thread = payload.thread as Record<string, unknown> | undefined;
+  if (thread) {
+    const value = thread.whatsappIdentityId ?? thread.whatsapp_identity_id;
+    if (typeof value === "string" && value) return value;
+  }
+
   const direct = payload.whatsappIdentityId ?? payload.whatsapp_identity_id;
   if (typeof direct === "string" && direct) return direct;
 
@@ -134,6 +169,8 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
   const customersStats = utils.customers.getStats as any;
   const requestsList = utils.requests.list as any;
   const requestsStats = utils.requests.stats as any;
+  const threadsList = utils.messages.listRecentThreads as any;
+  const messagesList = utils.messages.listMessages as any;
 
   useEffect(() => {
     let cancelled = false;
@@ -146,9 +183,11 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
 
       const customerFilter = options.customerListInput?.whatsappIdentityId;
       const requestFilter = options.requestListInput?.whatsappIdentityId;
+      const threadFilter = options.messagesThreadListInput?.whatsappIdentityId;
 
       const customerMatchesFilter = !customerFilter || customerFilter === phoneIdentityId;
       const requestMatchesFilter = !requestFilter || requestFilter === phoneIdentityId;
+      const threadMatchesFilter = !threadFilter || threadFilter === phoneIdentityId;
 
       const maybeCustomer = payload.customer as Record<string, unknown> | undefined;
       if (maybeCustomer && customerMatchesFilter) {
@@ -174,6 +213,56 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         });
 
         requestsStats.setData(options.requestStatsInput, computeRequestStats(nextRequests));
+      }
+
+      const maybeThread = payload.thread as Record<string, unknown> | undefined;
+      if (maybeThread && threadMatchesFilter && options.messagesThreadListInput) {
+        const threadInput = options.messagesThreadListInput;
+        const limit = threadInput.limit ?? 50;
+        threadsList.setData(threadInput, (old: Array<Record<string, unknown>> | undefined) => {
+          const upserted = upsertByKey(old, maybeThread, "threadId");
+          return upserted
+            .slice()
+            .sort((a, b) => {
+              const aTs = new Date(String(a.lastMessageAt ?? a.threadCreatedAt ?? 0)).getTime();
+              const bTs = new Date(String(b.lastMessageAt ?? b.threadCreatedAt ?? 0)).getTime();
+              return bTs - aTs;
+            })
+            .slice(0, limit);
+        });
+      }
+
+      const maybeMessage = payload.message as MessageRow | undefined;
+      if (maybeMessage && options.activeThreadId && maybeMessage.threadId === options.activeThreadId) {
+        const pageSize = options.activeThreadPageSize ?? 20;
+        const listInput = { threadId: options.activeThreadId, limit: pageSize };
+
+        messagesList.setData(
+          listInput,
+          (old:
+            | {
+                messages: MessageRow[];
+                nextCursor: string | null;
+                hasMore: boolean;
+              }
+            | undefined) => {
+            const current = old?.messages ?? [];
+            const found = current.some((m) => m.id === maybeMessage.id);
+            if (found) return old;
+
+            const next = [...current, maybeMessage].sort(
+              (a, b) => new Date(String(a.createdAt)).getTime() - new Date(String(b.createdAt)).getTime(),
+            );
+
+            return {
+              messages: next,
+              nextCursor: old?.nextCursor ?? null,
+              hasMore: old?.hasMore ?? false,
+            };
+          },
+        );
+
+        options.onThreadMessage?.(maybeMessage);
       }
     };
 
@@ -254,9 +343,15 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     options.customerListInput,
     options.requestListInput,
     options.requestStatsInput,
+    options.messagesThreadListInput,
+    options.activeThreadId,
+    options.activeThreadPageSize,
+    options.onThreadMessage,
     customersList,
     customersStats,
     requestsList,
     requestsStats,
+    threadsList,
+    messagesList,
   ]);
 }

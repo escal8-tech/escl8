@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
+import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 
 function formatTimestamp(d: Date | null | undefined) {
   if (!d) return "";
@@ -84,10 +85,14 @@ export default function MessagesPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
 
-  const recentThreadsQuery = trpc.messages.listRecentThreads.useQuery({
-    limit: 50,
-    ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
-  });
+  const threadListInput = useMemo(
+    () => ({
+      limit: 50,
+      ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
+    }),
+    [selectedPhoneNumberId],
+  );
+  const recentThreadsQuery = trpc.messages.listRecentThreads.useQuery(threadListInput);
 
   const filteredThreads = useMemo(() => {
     const threads = recentThreadsQuery.data ?? [];
@@ -107,6 +112,31 @@ export default function MessagesPage() {
     }
     return null;
   }, [selectedThreadId, filteredThreads]);
+
+  const handleLiveThreadMessage = useCallback((message: {
+    id: string;
+    threadId?: string;
+    direction: string;
+    messageType: string | null;
+    textBody: string | null;
+    meta: unknown;
+    createdAt: string | Date;
+  }) => {
+    if (!activeThreadId || message.threadId !== activeThreadId) return;
+    setAllMessages((prev) => {
+      if (prev.some((m) => m.id === message.id)) return prev;
+      const next = [...prev, { ...message, createdAt: new Date(message.createdAt) }];
+      next.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      return next;
+    });
+  }, [activeThreadId]);
+
+  useLivePortalEvents({
+    messagesThreadListInput: threadListInput,
+    activeThreadId,
+    activeThreadPageSize: 20,
+    onThreadMessage: handleLiveThreadMessage,
+  });
 
   // Initial messages query (newest messages first load)
   const messagesQuery = trpc.messages.listMessages.useQuery(
