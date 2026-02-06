@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
+import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import { CustomersTable } from "./components/CustomersTable";
 import { CustomerDrawer } from "./components/CustomerDrawer";
 import type { CustomerRow, Source } from "./types";
@@ -13,6 +14,7 @@ export default function CustomersPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   
   const listInput = selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : undefined;
+  useLivePortalEvents({ customerListInput: listInput });
   const { data: customers } = trpc.customers.list.useQuery(listInput);
   
   // Cast the source field to Source type (it comes as string from the DB)

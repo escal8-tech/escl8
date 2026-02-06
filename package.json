@@ -13,6 +13,7 @@
     "rag:worker": "tsx ./scripts/rag-worker.ts"
   },
   "dependencies": {
+    "@azure/service-bus": "^7.9.5",
     "@azure/storage-blob": "^12.29.1",
     "@azure/storage-queue": "^12.28.0",
     "@pinecone-database/pinecone": "^6.1.3",

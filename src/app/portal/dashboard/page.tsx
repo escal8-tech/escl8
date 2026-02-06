@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
+import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import type { DonutDatum, RequestRow } from "./components/types";
 import {
   Area,
@@ -571,6 +572,12 @@ export default function DashboardPage() {
     [selectedPhoneNumberId],
   );
   const customersInput = statsInput;
+
+  useLivePortalEvents({
+    requestListInput: listInput,
+    requestStatsInput: statsInput,
+    customerListInput: customersInput,
+  });
 
   const listQ = trpc.requests.list.useQuery(listInput);
   const statsQ = trpc.requests.stats.useQuery(statsInput);
