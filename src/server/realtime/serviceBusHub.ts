@@ -18,15 +18,25 @@ class ServiceBusHub {
   private running = false;
   private loopPromise: Promise<void> | null = null;
   private subscribers = 0;
+  private readonly debug = true;
+  private receivedCount = 0;
+  private emittedCount = 0;
+
+  private log(msg: string, ...args: unknown[]) {
+    if (!this.debug) return;
+    console.log(`[realtime:hub] ${msg}`, ...args);
+  }
 
   subscribe(handler: Handler) {
     this.emitter.on("event", handler);
     this.subscribers += 1;
+    this.log("subscriber added; total=%d", this.subscribers);
     this.ensureStarted();
 
     return () => {
       this.emitter.off("event", handler);
       this.subscribers = Math.max(0, this.subscribers - 1);
+      this.log("subscriber removed; total=%d", this.subscribers);
       if (this.subscribers === 0) {
         void this.stop();
       }
@@ -40,13 +50,17 @@ class ServiceBusHub {
     const topic = process.env.SERVICE_BUS_TOPIC_NAME || "portal-events";
     const subscription = process.env.SERVICE_BUS_SUBSCRIPTION_NAME || "portal-dashboard";
 
-    if (!conn) return;
+    if (!conn) {
+      this.log("SERVICE_BUS_CONN missing; hub disabled");
+      return;
+    }
 
     let ServiceBusClientCtor: any;
     try {
       const req = eval("require") as NodeRequire;
       ServiceBusClientCtor = req("@azure/service-bus").ServiceBusClient;
     } catch {
+      this.log("@azure/service-bus not installed; hub disabled");
       return;
     }
 
@@ -54,6 +68,7 @@ class ServiceBusHub {
     this.receiver = this.client.createReceiver(topic, subscription, {
       receiveMode: "peekLock",
     });
+    this.log("receiver started topic=%s subscription=%s", topic, subscription);
 
     this.running = true;
     this.loopPromise = this.runLoop();
@@ -87,6 +102,7 @@ class ServiceBusHub {
       }
       this.client = null;
     }
+    this.log("receiver stopped");
   }
 
   private async runLoop() {
@@ -102,6 +118,7 @@ class ServiceBusHub {
           await this.handleMessage(message);
         }
       } catch {
+        this.log("receive loop error; retrying");
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
@@ -120,14 +137,25 @@ class ServiceBusHub {
 
   private async handleMessage(message: any) {
     if (!this.receiver) return;
+    this.receivedCount += 1;
 
     const event = this.parseMessageBody(message);
     if (!event || !event.businessId) {
+      this.log("dropping invalid message; received=%d", this.receivedCount);
       await this.receiver.completeMessage(message);
       return;
     }
 
     this.emitter.emit("event", event);
+    this.emittedCount += 1;
+    this.log(
+      "event emitted businessId=%s entity=%s op=%s totals(received=%d,emitted=%d)",
+      event.businessId,
+      event.entity,
+      event.op,
+      this.receivedCount,
+      this.emittedCount,
+    );
     await this.receiver.completeMessage(message);
   }
 }

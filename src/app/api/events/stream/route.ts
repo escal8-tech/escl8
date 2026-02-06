@@ -6,6 +6,12 @@ import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 import { serviceBusHub, type PortalEvent } from "@/server/realtime/serviceBusHub";
 
 export const runtime = "nodejs";
+const DEBUG = true;
+
+function dlog(msg: string, ...args: unknown[]) {
+  if (!DEBUG) return;
+  console.log(`[realtime:sse] ${msg}`, ...args);
+}
 
 async function getAuthedBusinessId(req: Request): Promise<string | null> {
   const auth = req.headers.get("authorization") || "";
@@ -27,6 +33,7 @@ async function getAuthedBusinessId(req: Request): Promise<string | null> {
 export async function GET(req: Request) {
   const businessId = await getAuthedBusinessId(req);
   if (!businessId) {
+    dlog("unauthorized stream request");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -38,10 +45,12 @@ export async function GET(req: Request) {
     start: (controller) => {
       const push = (event: PortalEvent) => {
         if (event.businessId !== businessId) return;
+        dlog("push businessId=%s entity=%s op=%s", event.businessId, event.entity, event.op);
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
 
       controller.enqueue(encoder.encode(": connected\n\n"));
+      dlog("stream connected businessId=%s", businessId);
       cleanup = serviceBusHub.subscribe(push);
 
       keepalive = setInterval(() => {
@@ -49,6 +58,7 @@ export async function GET(req: Request) {
       }, 15000);
 
       req.signal.addEventListener("abort", () => {
+        dlog("stream aborted businessId=%s", businessId);
         if (keepalive) {
           clearInterval(keepalive);
           keepalive = null;
@@ -60,6 +70,7 @@ export async function GET(req: Request) {
       });
     },
     cancel: () => {
+      dlog("stream cancelled businessId=%s", businessId);
       if (keepalive) {
         clearInterval(keepalive);
         keepalive = null;
