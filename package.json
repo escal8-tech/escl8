@@ -10,7 +10,8 @@
     "db:init": "node ./scripts/db-init.mjs",
     "db:push": "drizzle-kit push --yes",
     "db:studio": "drizzle-kit studio",
-    "rag:worker": "tsx ./scripts/rag-worker.ts"
+    "rag:worker": "tsx ./scripts/rag-worker.ts",
+    "requests:rollover": "tsx ./scripts/request-status-rollover.ts"
   },
   "dependencies": {
     "@azure/web-pubsub": "^1.2.0",

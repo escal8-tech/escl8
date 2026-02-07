@@ -296,6 +296,14 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
           }
         }
       }
+      if (!maybeRequest && event.entity === "request" && options.requestListInput) {
+        // Bulk request events (like midnight rollover) should refresh request-derived widgets.
+        void requestsList.invalidate(options.requestListInput);
+        void requestsStats.invalidate(options.requestStatsInput);
+        if (options.requestActivityInput) {
+          void requestsActivity.invalidate(options.requestActivityInput);
+        }
+      }
 
       const maybeThread = thread;
       if (maybeThread && threadMatchesFilter && options.messagesThreadListInput) {
