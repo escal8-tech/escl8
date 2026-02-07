@@ -6,6 +6,7 @@ import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { onAuthStateChanged } from "firebase/auth";
 import { generateSlots } from "./components/slotUtils";
 import type { Booking, Slot } from "./components/types";
+import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ICONS
@@ -648,6 +649,11 @@ export default function BookingsPage() {
     { businessId: biz.data?.id ?? "" },
     { enabled: !!biz.data?.id }
   );
+  const bookingsLiveInput = useMemo(
+    () => (biz.data?.id ? { businessId: biz.data.id } : undefined),
+    [biz.data?.id],
+  );
+  useLivePortalEvents({ bookingsListInput: bookingsLiveInput });
 
   useEffect(() => {
     if (typeof window === "undefined") return;

@@ -32,9 +32,12 @@ type LiveSyncOptions = {
   requestActivityInput?: { days?: number; whatsappIdentityId?: string };
   customerListInput?: MaybePhoneFilter;
   messagesThreadListInput?: ThreadListInput;
+  bookingsListInput?: { businessId?: string };
   activeThreadId?: string | null;
   activeThreadPageSize?: number;
   onThreadMessage?: (message: MessageRow) => void;
+  onEvent?: (event: PortalEvent) => void;
+  onCatchup?: () => void | Promise<void>;
 };
 
 type PortalEvent = {
@@ -179,6 +182,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
   const requestsActivity = utils.requests.activitySeries as any;
   const threadsList = utils.messages.listRecentThreads as any;
   const messagesList = utils.messages.listMessages as any;
+  const bookingsList = utils.bookings.list as any;
 
   useEffect(() => {
     let cancelled = false;
@@ -202,6 +206,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       if (options.customerListInput !== undefined) jobs.push(customersList.invalidate(options.customerListInput));
       jobs.push(customersStats.invalidate(undefined));
       if (options.messagesThreadListInput) jobs.push(threadsList.invalidate(options.messagesThreadListInput));
+      if (options.bookingsListInput !== undefined) jobs.push(bookingsList.invalidate(options.bookingsListInput));
       if (options.activeThreadId) {
         jobs.push(
           messagesList.invalidate({
@@ -212,6 +217,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       }
 
       void Promise.allSettled(jobs);
+      void options.onCatchup?.();
     };
 
     const applyEvent = (event: PortalEvent) => {
@@ -220,6 +226,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       const customer = payload.customer as Record<string, unknown> | undefined;
       const thread = payload.thread as Record<string, unknown> | undefined;
       const message = payload.message as Record<string, unknown> | undefined;
+      const booking = payload.booking as Record<string, unknown> | undefined;
       const dedupeId =
         String(event.entityId ?? "") ||
         String(request?.id ?? customer?.id ?? thread?.threadId ?? message?.id ?? "");
@@ -257,6 +264,11 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         let nextCustomers: Array<Record<string, unknown>> = [];
         const customerInput = options.customerListInput;
         customersList.setData(customerInput, (old: Array<Record<string, unknown>> | undefined) => {
+          if (event.op === "deleted") {
+            const targetId = String(maybeCustomer.id ?? event.entityId ?? "");
+            nextCustomers = (old ?? []).filter((row) => String(row.id ?? "") !== targetId);
+            return nextCustomers;
+          }
           nextCustomers = upsertById(old, maybeCustomer);
           return nextCustomers;
         });
@@ -334,6 +346,20 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
 
         options.onThreadMessage?.(maybeMessage);
       }
+
+      const maybeBooking = booking;
+      if (maybeBooking && options.bookingsListInput !== undefined) {
+        const bookingInput = options.bookingsListInput;
+        bookingsList.setData(bookingInput, (old: Array<Record<string, unknown>> | undefined) => {
+          if (event.op === "deleted") {
+            const targetId = String(maybeBooking.id ?? event.entityId ?? "");
+            return (old ?? []).filter((row) => String(row.id ?? "") !== targetId);
+          }
+          return upsertById(old, maybeBooking);
+        });
+      }
+
+      options.onEvent?.(event);
     };
 
     const connect = async () => {
@@ -428,7 +454,9 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     options.customerListInput,
     options.requestListInput,
     options.requestStatsInput,
+    options.requestActivityInput,
     options.messagesThreadListInput,
+    options.bookingsListInput,
     options.activeThreadId,
     options.activeThreadPageSize,
     options.onThreadMessage,
@@ -439,5 +467,8 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     requestsActivity,
     threadsList,
     messagesList,
+    bookingsList,
+    options.onEvent,
+    options.onCatchup,
   ]);
 }

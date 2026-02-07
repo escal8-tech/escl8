@@ -3,6 +3,7 @@ import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { customers, requests, SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { eq, and, desc, sql, isNull, lt, or } from "drizzle-orm";
+import { publishPortalEvent } from "@/server/realtime/portalEvents";
 
 // Source validation
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
@@ -193,7 +194,7 @@ export const customersRouter = router({
       if (updates.phone !== undefined) updateData.phone = updates.phone;
       if (updates.isHighIntent !== undefined) updateData.isHighIntent = updates.isHighIntent;
 
-      await db
+      const [row] = await db
         .update(customers)
         .set(updateData)
         .where(
@@ -201,7 +202,19 @@ export const customersRouter = router({
             eq(customers.businessId, ctx.businessId),
             eq(customers.id, id)
           )
-        );
+        )
+        .returning();
+
+      if (row) {
+        await publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "customer",
+          op: "upsert",
+          entityId: row.id,
+          payload: { customer: row as any },
+          createdAt: row.updatedAt ?? new Date(),
+        });
+      }
 
       return { success: true };
     }),
@@ -214,7 +227,7 @@ export const customersRouter = router({
       id: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
-      await db
+      const [row] = await db
         .update(customers)
         .set({ deletedAt: new Date(), updatedAt: new Date() })
         .where(
@@ -222,7 +235,19 @@ export const customersRouter = router({
             eq(customers.businessId, ctx.businessId),
             eq(customers.id, input.id)
           )
-        );
+        )
+        .returning();
+
+      if (row) {
+        await publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "customer",
+          op: "deleted",
+          entityId: row.id,
+          payload: { customer: row as any },
+          createdAt: row.updatedAt ?? new Date(),
+        });
+      }
 
       return { success: true };
     }),
@@ -401,6 +426,16 @@ export const customersRouter = router({
           isNull(customers.deletedAt),
         ))
         .returning();
+      if (row) {
+        await publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "customer",
+          op: "upsert",
+          entityId: row.id,
+          payload: { customer: row as any },
+          createdAt: row.updatedAt ?? new Date(),
+        });
+      }
       return row ?? null;
     }),
 });

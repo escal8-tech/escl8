@@ -7,6 +7,7 @@ import { TRPCError } from "@trpc/server";
 import { generateAndSaveBotInstructions, areKeyDocsIndexed } from "../rag/generateBotInstructions";
 import { retrieve, getGroundedContext } from "../rag/retrieve";
 import { enqueueRagJobMessage } from "../rag/queue";
+import { publishPortalEvent, toPortalDocumentPayload } from "@/server/realtime/portalEvents";
 
 const docTypeSchema = z.enum(["considerations", "conversations", "inventory", "bank", "address"]);
 const chunkTypeSchema = z.enum(["pricing", "policy", "faq", "example_dialogue", "contact_info", "product_info", "product_index", "section_abstract", "section_full", "general"]);
@@ -45,10 +46,27 @@ export const ragRouter = router({
 
       console.log(`[rag] queued job=${job.id} businessId=${ctx.businessId} docType=${input.docType} trainingDocumentId=${doc.id}`);
 
-      await db
+      const [updatedDoc] = await db
         .update(trainingDocuments)
         .set({ indexingStatus: "queued", updatedAt: new Date(), lastError: null })
-        .where(eq(trainingDocuments.id, doc.id));
+        .where(eq(trainingDocuments.id, doc.id))
+        .returning();
+
+      if (updatedDoc) {
+        await publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "document",
+          op: "upsert",
+          entityId: updatedDoc.id,
+          payload: {
+            document: toPortalDocumentPayload({
+              ...updatedDoc,
+              originalFilename: updatedDoc.originalFilename,
+            }) as any,
+          },
+          createdAt: updatedDoc.updatedAt ?? new Date(),
+        });
+      }
 
       try {
         await enqueueRagJobMessage(job.id);

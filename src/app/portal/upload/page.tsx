@@ -6,6 +6,7 @@ import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/components/ToastProvider";
 import { DocSlot, DocType, ExistingMap, ExistingDoc } from "./types";
+import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ICONS
@@ -740,9 +741,28 @@ function UploadContent() {
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [retrainBusy, setRetrainBusy] = useState<DocType | null>(null);
   const toast = useToast();
+  const retrainToastRef = useRef(new Map<DocType, string>());
 
   const retrainMutation = trpc.rag.enqueueRetrain.useMutation();
-  const pollingRef = useState(() => new Map<DocType, number>())[0];
+
+  const fetchExisting = useCallback(async () => {
+    try {
+      setBusy(true);
+      const auth = getFirebaseAuth();
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`/api/upload/docs`, {
+        headers: token ? { authorization: `Bearer ${token}` } : undefined,
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load existing docs");
+      setExisting(json.files || {});
+      setBusinessId(json.businessId ?? null);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load existing docs");
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -750,33 +770,57 @@ function UploadContent() {
       const u = auth.currentUser;
       setUserEmail(u?.email ?? null);
     } catch {}
+  }, []);
 
-    const fetchExisting = async () => {
-      try {
-        setBusy(true);
-        const auth = getFirebaseAuth();
-        const token = await auth.currentUser?.getIdToken();
-        const res = await fetch(`/api/upload/docs`, {
-          headers: token ? { authorization: `Bearer ${token}` } : undefined,
+  useEffect(() => {
+    if (!userEmail) return;
+    void fetchExisting();
+  }, [userEmail, fetchExisting]);
+
+  useLivePortalEvents({
+    onCatchup: fetchExisting,
+    onEvent: (event) => {
+      if (event.entity !== "document") return;
+      const payload = (event.payload ?? {}) as Record<string, unknown>;
+      const doc = payload.document as Record<string, unknown> | undefined;
+      const docType = typeof doc?.docType === "string" ? (doc.docType as DocType) : null;
+      if (!docType) return;
+      setExisting((prev) => ({
+        ...prev,
+        [docType]: {
+          name: String(doc?.name ?? "latest"),
+          size: Number(doc?.size ?? 0),
+          indexingStatus: String(doc?.indexingStatus ?? "not_indexed"),
+          lastIndexedAt: doc?.lastIndexedAt ? String(doc.lastIndexedAt) : null,
+          lastError: doc?.lastError ? String(doc.lastError) : null,
+          uploadedAt: doc?.uploadedAt ? String(doc.uploadedAt) : null,
+        },
+      }));
+    },
+  });
+
+  useEffect(() => {
+    for (const [docType, toastId] of retrainToastRef.current.entries()) {
+      const status = String(existing?.[docType]?.indexingStatus ?? "").toLowerCase();
+      if (status === "indexed") {
+        toast.update(toastId, {
+          type: "success",
+          title: "Training complete",
+          message: `AI trained successfully on ${DOC_SLOTS.find((slot) => slot.key === docType)?.title || docType}`,
+          durationMs: 4000,
         });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || "Failed to load existing docs");
-        setExisting(json.files || {});
-        setBusinessId(json.businessId ?? null);
-      } catch (e: any) {
-        setError(e?.message || "Failed to load existing docs");
-      } finally {
-        setBusy(false);
+        retrainToastRef.current.delete(docType);
+      } else if (status === "failed") {
+        toast.update(toastId, {
+          type: "error",
+          title: "Training failed",
+          message: existing?.[docType]?.lastError || "Training failed. Please try again.",
+          durationMs: 7000,
+        });
+        retrainToastRef.current.delete(docType);
       }
-    };
-
-    fetchExisting();
-
-    return () => {
-      for (const id of pollingRef.values()) window.clearInterval(id);
-      pollingRef.clear();
-    };
-  }, [userEmail, pollingRef]);
+    }
+  }, [existing, toast]);
 
   const onUpload = useCallback(async (docType: DocType, file: File | null) => {
     if (!file) return;
@@ -819,12 +863,6 @@ function UploadContent() {
     setRetrainBusy(docType);
     setError(null);
 
-    const existingPoll = pollingRef.get(docType);
-    if (existingPoll) {
-      window.clearInterval(existingPoll);
-      pollingRef.delete(docType);
-    }
-
     setExisting((prev) => {
       const cur = prev[docType];
       if (!cur) return prev;
@@ -836,56 +874,16 @@ function UploadContent() {
       title: "Training started",
       message: `Training AI on ${DOC_SLOTS.find(s => s.key === docType)?.title || docType}...`,
     });
+    retrainToastRef.current.set(docType, toastId);
 
     try {
       if (!userEmail) throw new Error("Missing user email");
       await retrainMutation.mutateAsync({ email: userEmail, docType });
-
-      const pollId = window.setInterval(async () => {
-        try {
-          const auth = getFirebaseAuth();
-          const token = await auth.currentUser?.getIdToken();
-          const res = await fetch(`/api/upload/docs`, {
-            headers: token ? { authorization: `Bearer ${token}` } : undefined,
-          });
-          const body = await res.json();
-          if (!res.ok) return;
-
-          const next: ExistingMap = body.files || {};
-          setExisting(next);
-
-          const s = (next?.[docType]?.indexingStatus || "").toLowerCase();
-          if (s === "indexed") {
-            toast.update(toastId, {
-              type: "success",
-              title: "Training complete",
-              message: `AI trained successfully on ${DOC_SLOTS.find(slot => slot.key === docType)?.title || docType}`,
-              durationMs: 4000,
-            });
-            window.clearInterval(pollId);
-            pollingRef.delete(docType);
-          } else if (s === "failed") {
-            toast.update(toastId, {
-              type: "error",
-              title: "Training failed",
-              message: next?.[docType]?.lastError || "Training failed. Please try again.",
-              durationMs: 7000,
-            });
-            window.clearInterval(pollId);
-            pollingRef.delete(docType);
-          } else {
-            toast.update(toastId, {
-              type: "progress",
-              title: "Training in progress",
-              message: `Processing ${DOC_SLOTS.find(slot => slot.key === docType)?.title || docType}...`,
-            });
-          }
-        } catch {
-          // ignore transient polling errors
-        }
-      }, 1500);
-
-      pollingRef.set(docType, pollId);
+      toast.update(toastId, {
+        type: "progress",
+        title: "Training queued",
+        message: "Live updates enabled. Status will update automatically.",
+      });
     } catch (e: any) {
       setError(e?.message || "Retrain failed");
       toast.update(toastId, {
@@ -894,10 +892,11 @@ function UploadContent() {
         message: e?.message || "Retrain failed",
         durationMs: 7000,
       });
+      retrainToastRef.current.delete(docType);
     } finally {
       setRetrainBusy(null);
     }
-  }, [userEmail, retrainMutation, pollingRef, toast]);
+  }, [userEmail, retrainMutation, toast]);
 
   // Stats calculation
   const stats = {

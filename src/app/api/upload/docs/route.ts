@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { storeFile } from "@/lib/storage";
 import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 import { checkRateLimit } from "@/server/rateLimit";
+import { publishPortalEvent, toPortalDocumentPayload } from "@/server/realtime/portalEvents";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -161,7 +162,7 @@ export async function POST(request: Request) {
     const stored = await storeFile(businessId, docType, file.name, buffer, file.type || undefined);
 
     const now = new Date();
-    await db
+    const [savedDoc] = await db
       .insert(trainingDocuments)
       .values({
         businessId,
@@ -188,7 +189,19 @@ export async function POST(request: Request) {
           updatedAt: now,
           uploadedAt: now,
         },
+      })
+      .returning();
+
+    if (savedDoc) {
+      await publishPortalEvent({
+        businessId,
+        entity: "document",
+        op: "upsert",
+        entityId: savedDoc.id,
+        payload: { document: toPortalDocumentPayload(savedDoc as any) as any },
+        createdAt: savedDoc.updatedAt ?? now,
       });
+    }
 
     const latest = await listCurrent(businessId);
     return NextResponse.json(

@@ -5,6 +5,7 @@ import { db } from "../src/server/db/client";
 import { ragJobs, trainingDocuments } from "../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { ensureRagQueue } from "../src/server/rag/queue";
+import { publishPortalEvent, toPortalDocumentPayload } from "../src/server/realtime/portalEvents";
 
 type RagJobRow = typeof ragJobs.$inferSelect;
 
@@ -122,10 +123,22 @@ async function processJob(job: RagJobRow) {
     throw new Error(`Training document not found for businessId=${job.businessId} docType=${docType}`);
   }
 
-  await db
+  const [indexingDoc] = await db
     .update(trainingDocuments)
     .set({ indexingStatus: "indexing", updatedAt: new Date(), lastError: null })
-    .where(eq(trainingDocuments.id, doc.id));
+    .where(eq(trainingDocuments.id, doc.id))
+    .returning();
+
+  if (indexingDoc) {
+    await publishPortalEvent({
+      businessId: job.businessId,
+      entity: "document",
+      op: "upsert",
+      entityId: indexingDoc.id,
+      payload: { document: toPortalDocumentPayload(indexingDoc as any) as any },
+      createdAt: indexingDoc.updatedAt ?? new Date(),
+    });
+  }
 
   // Heavy libs (pdf parsing, embeddings) are ONLY loaded in the worker.
   const { indexSingleDocType } = await import("../src/server/rag/indexDocType");
@@ -138,7 +151,7 @@ async function processJob(job: RagJobRow) {
     contentType: doc.contentType ?? undefined,
   });
 
-  await db
+  const [indexedDoc] = await db
     .update(trainingDocuments)
     .set({
       indexingStatus: "indexed",
@@ -147,7 +160,19 @@ async function processJob(job: RagJobRow) {
       updatedAt: new Date(),
       lastError: null,
     })
-    .where(eq(trainingDocuments.id, doc.id));
+    .where(eq(trainingDocuments.id, doc.id))
+    .returning();
+
+  if (indexedDoc) {
+    await publishPortalEvent({
+      businessId: job.businessId,
+      entity: "document",
+      op: "upsert",
+      entityId: indexedDoc.id,
+      payload: { document: toPortalDocumentPayload(indexedDoc as any) as any },
+      createdAt: indexedDoc.updatedAt ?? new Date(),
+    });
+  }
 
   await db
     .update(ragJobs)
@@ -181,15 +206,39 @@ async function failJob(job: RagJobRow, err: unknown) {
     .where(eq(ragJobs.id, job.id));
 
   if (job.trainingDocumentId) {
-    await db
+    const [failedDoc] = await db
       .update(trainingDocuments)
       .set({ indexingStatus: "failed", updatedAt: new Date(), lastError: msg })
-      .where(eq(trainingDocuments.id, job.trainingDocumentId));
+      .where(eq(trainingDocuments.id, job.trainingDocumentId))
+      .returning();
+
+    if (failedDoc) {
+      await publishPortalEvent({
+        businessId: job.businessId,
+        entity: "document",
+        op: "upsert",
+        entityId: failedDoc.id,
+        payload: { document: toPortalDocumentPayload(failedDoc as any) as any },
+        createdAt: failedDoc.updatedAt ?? new Date(),
+      });
+    }
   } else if (job.businessId && job.docType) {
-    await db
+    const [failedDoc] = await db
       .update(trainingDocuments)
       .set({ indexingStatus: "failed", updatedAt: new Date(), lastError: msg })
-      .where(and(eq(trainingDocuments.businessId, job.businessId), eq(trainingDocuments.docType, job.docType)));
+      .where(and(eq(trainingDocuments.businessId, job.businessId), eq(trainingDocuments.docType, job.docType)))
+      .returning();
+
+    if (failedDoc) {
+      await publishPortalEvent({
+        businessId: job.businessId,
+        entity: "document",
+        op: "upsert",
+        entityId: failedDoc.id,
+        payload: { document: toPortalDocumentPayload(failedDoc as any) as any },
+        createdAt: failedDoc.updatedAt ?? new Date(),
+      });
+    }
   }
 
   console.error(`[rag-worker] Failed job=${job.id}: ${msg}`);

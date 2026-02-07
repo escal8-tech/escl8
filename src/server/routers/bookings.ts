@@ -4,6 +4,7 @@ import { db } from "../db/client";
 import { bookings } from "../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { publishPortalEvent } from "@/server/realtime/portalEvents";
 
 export const bookingsRouter = router({
   list: businessProcedure
@@ -35,6 +36,16 @@ export const bookingsRouter = router({
         phoneNumber: input.phoneNumber,
         notes: input.notes,
       }).returning();
+      if (row) {
+        await publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "booking",
+          op: "created",
+          entityId: row.id,
+          payload: { booking: row as any },
+          createdAt: row.updatedAt ?? row.createdAt ?? new Date(),
+        });
+      }
       return row;
     }),
 
@@ -45,6 +56,16 @@ export const bookingsRouter = router({
         .delete(bookings)
         .where(and(eq(bookings.id, input.id), eq(bookings.businessId, ctx.businessId)))
         .returning();
+      if (row) {
+        await publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "booking",
+          op: "deleted",
+          entityId: row.id,
+          payload: { booking: row as any },
+          createdAt: row.updatedAt ?? row.createdAt ?? new Date(),
+        });
+      }
       return row;
     }),
 });
