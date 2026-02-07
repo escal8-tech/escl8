@@ -571,16 +571,22 @@ export default function DashboardPage() {
     () => (selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : undefined),
     [selectedPhoneNumberId],
   );
+  const activityInput = useMemo(
+    () => ({ days: 30, ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}) }),
+    [selectedPhoneNumberId],
+  );
   const customersInput = statsInput;
 
   useLivePortalEvents({
     requestListInput: listInput,
     requestStatsInput: statsInput,
+    requestActivityInput: activityInput,
     customerListInput: customersInput,
   });
 
   const listQ = trpc.requests.list.useQuery(listInput);
   const statsQ = trpc.requests.stats.useQuery(statsInput);
+  const activityQ = trpc.requests.activitySeries.useQuery(activityInput);
   const customerStatsQ = trpc.customers.getStats.useQuery();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
@@ -642,6 +648,9 @@ export default function DashboardPage() {
   }, [rows, selectedId]);
 
   const timeSeries = useMemo(() => {
+    if (activityQ.data?.length) {
+      return activityQ.data.map((row) => ({ date: row.date, count: Number(row.count) }));
+    }
     if (!rows.length) return [] as { date: string; count: number }[];
     const map = new Map<string, number>();
     for (const r of rows) {
@@ -652,7 +661,7 @@ export default function DashboardPage() {
     return Array.from(map.entries())
       .sort((a, b) => (a[0] < b[0] ? -1 : 1))
       .map(([date, count]) => ({ date, count }));
-  }, [rows]);
+  }, [activityQ.data, rows]);
 
   const sentimentSeries = useMemo(() => {
     const by = statsQ.data?.bySentiment || {};

@@ -26,14 +26,17 @@ async function getAuthedIdentity(req: Request): Promise<{ businessId: string; us
 }
 
 export async function GET(req: Request) {
+  const startedAt = Date.now();
   const identity = await getAuthedIdentity(req);
   if (!identity) {
+    console.warn("[realtime:negotiate] unauthorized");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const conn = process.env.WEB_PUBSUB_CONNECTION_STRING || process.env.WEB_PUBSUB_CONN || "";
   const hub = process.env.WEB_PUBSUB_HUB || "portal";
   if (!conn) {
+    console.error("[realtime:negotiate] missing WEB_PUBSUB_CONNECTION_STRING");
     return NextResponse.json({ error: "WEB_PUBSUB_CONNECTION_STRING missing" }, { status: 503 });
   }
 
@@ -42,6 +45,7 @@ export async function GET(req: Request) {
     const reqFn = eval("require") as NodeRequire;
     WebPubSubServiceClientCtor = reqFn("@azure/web-pubsub").WebPubSubServiceClient;
   } catch {
+    console.error("[realtime:negotiate] @azure/web-pubsub not installed");
     return NextResponse.json({ error: "@azure/web-pubsub not installed" }, { status: 503 });
   }
 
@@ -51,6 +55,12 @@ export async function GET(req: Request) {
     userId: identity.userId,
     roles: [`webpubsub.joinLeaveGroup.${group}`],
   });
+  console.info(
+    "[realtime:negotiate] ok businessId=%s hub=%s durationMs=%d",
+    identity.businessId,
+    hub,
+    Date.now() - startedAt,
+  );
 
   return NextResponse.json({
     url: token.url,

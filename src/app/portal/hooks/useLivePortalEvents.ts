@@ -6,6 +6,9 @@ import { getFirebaseAuth } from "@/lib/firebaseClient";
 
 type MaybePhoneFilter = {
   whatsappIdentityId?: string | null;
+  limit?: number;
+  cursorUpdatedAt?: string;
+  cursorId?: string;
 };
 
 type ThreadListInput = {
@@ -26,6 +29,7 @@ type MessageRow = {
 type LiveSyncOptions = {
   requestListInput?: { limit?: number; whatsappIdentityId?: string };
   requestStatsInput?: MaybePhoneFilter;
+  requestActivityInput?: { days?: number; whatsappIdentityId?: string };
   customerListInput?: MaybePhoneFilter;
   messagesThreadListInput?: ThreadListInput;
   activeThreadId?: string | null;
@@ -34,6 +38,9 @@ type LiveSyncOptions = {
 };
 
 type PortalEvent = {
+  eventVersion?: number;
+  eventId?: string;
+  dedupeKey?: string;
   businessId: string;
   entity: string;
   op: string;
@@ -169,6 +176,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
   const customersStats = utils.customers.getStats as any;
   const requestsList = utils.requests.list as any;
   const requestsStats = utils.requests.stats as any;
+  const requestsActivity = utils.requests.activitySeries as any;
   const threadsList = utils.messages.listRecentThreads as any;
   const messagesList = utils.messages.listMessages as any;
 
@@ -178,6 +186,9 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     let ws: WebSocket | null = null;
     let ackId = 1;
     let lastCatchupAt = 0;
+    let lastActivityInvalidateAt = 0;
+    let hasConnectedOnce = false;
+    const recentEventKeys = new Map<string, number>();
 
     const runCatchup = () => {
       const now = Date.now();
@@ -187,6 +198,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       const jobs: Array<Promise<unknown>> = [];
       if (options.requestListInput) jobs.push(requestsList.invalidate(options.requestListInput));
       if (options.requestStatsInput !== undefined) jobs.push(requestsStats.invalidate(options.requestStatsInput));
+      if (options.requestActivityInput) jobs.push(requestsActivity.invalidate(options.requestActivityInput));
       if (options.customerListInput !== undefined) jobs.push(customersList.invalidate(options.customerListInput));
       jobs.push(customersStats.invalidate(undefined));
       if (options.messagesThreadListInput) jobs.push(threadsList.invalidate(options.messagesThreadListInput));
@@ -204,6 +216,32 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
 
     const applyEvent = (event: PortalEvent) => {
       const payload = (event.payload ?? {}) as Record<string, unknown>;
+      const request = payload.request as Record<string, unknown> | undefined;
+      const customer = payload.customer as Record<string, unknown> | undefined;
+      const thread = payload.thread as Record<string, unknown> | undefined;
+      const message = payload.message as Record<string, unknown> | undefined;
+      const dedupeId =
+        String(event.entityId ?? "") ||
+        String(request?.id ?? customer?.id ?? thread?.threadId ?? message?.id ?? "");
+      const dedupeStamp = String(
+        request?.updatedAt ??
+          customer?.updatedAt ??
+          thread?.lastMessageAt ??
+          message?.createdAt ??
+          event.createdAt ??
+          "",
+      );
+      const dedupeKey = event.dedupeKey || event.eventId || `${event.entity}:${event.op}:${dedupeId}:${dedupeStamp}`;
+      const now = Date.now();
+      const prev = recentEventKeys.get(dedupeKey);
+      if (prev && now - prev < 1500) return;
+      recentEventKeys.set(dedupeKey, now);
+      if (recentEventKeys.size > 300) {
+        for (const [k, ts] of recentEventKeys) {
+          if (now - ts > 30000) recentEventKeys.delete(k);
+        }
+      }
+
       const phoneIdentityId = eventPhoneIdentity(payload);
 
       const customerFilter = options.customerListInput?.whatsappIdentityId;
@@ -214,7 +252,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       const requestMatchesFilter = !requestFilter || requestFilter === phoneIdentityId;
       const threadMatchesFilter = !threadFilter || threadFilter === phoneIdentityId;
 
-      const maybeCustomer = payload.customer as Record<string, unknown> | undefined;
+      const maybeCustomer = customer;
       if (maybeCustomer && customerMatchesFilter) {
         let nextCustomers: Array<Record<string, unknown>> = [];
         const customerInput = options.customerListInput;
@@ -228,7 +266,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         }
       }
 
-      const maybeRequest = payload.request as Record<string, unknown> | undefined;
+      const maybeRequest = request;
       if (maybeRequest && requestMatchesFilter && options.requestListInput) {
         const limit = options.requestListInput.limit ?? 100;
         let nextRequests: Array<Record<string, unknown>> = [];
@@ -238,9 +276,16 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         });
 
         requestsStats.setData(options.requestStatsInput, computeRequestStats(nextRequests));
+        if (options.requestActivityInput) {
+          const now = Date.now();
+          if (now - lastActivityInvalidateAt > 1500) {
+            lastActivityInvalidateAt = now;
+            void requestsActivity.invalidate(options.requestActivityInput);
+          }
+        }
       }
 
-      const maybeThread = payload.thread as Record<string, unknown> | undefined;
+      const maybeThread = thread;
       if (maybeThread && threadMatchesFilter && options.messagesThreadListInput) {
         const threadInput = options.messagesThreadListInput;
         const limit = threadInput.limit ?? 50;
@@ -257,7 +302,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         });
       }
 
-      const maybeMessage = payload.message as MessageRow | undefined;
+      const maybeMessage = message as MessageRow | undefined;
       if (maybeMessage && options.activeThreadId && maybeMessage.threadId === options.activeThreadId) {
         const pageSize = options.activeThreadPageSize ?? 20;
         const listInput = { threadId: options.activeThreadId, limit: pageSize };
@@ -327,8 +372,9 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
           if (!ws || cancelled) return;
           // Join the tenant group once connected so we receive business-scoped broadcasts.
           ws.send(JSON.stringify({ type: "joinGroup", group, ackId: ackId++ }));
-          // After reconnect, force a lightweight catch-up so missed events are reconciled.
-          runCatchup();
+          // Only on reconnect (not first connect), force catch-up to reconcile missed events.
+          if (hasConnectedOnce) runCatchup();
+          hasConnectedOnce = true;
         };
 
         ws.onmessage = (evt) => {
@@ -390,6 +436,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     customersStats,
     requestsList,
     requestsStats,
+    requestsActivity,
     threadsList,
     messagesList,
   ]);

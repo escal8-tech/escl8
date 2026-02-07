@@ -66,6 +66,56 @@ export const requestsRouter = router({
       }));
     }),
 
+  activitySeries: businessProcedure
+    .input(
+      z
+        .object({
+          days: z.number().int().min(1).max(365).optional(),
+          source: sourceSchema.optional(),
+          whatsappIdentityId: z.string().nullish(),
+        })
+        .optional(),
+    )
+    .query(async ({ input, ctx }) => {
+      const days = input?.days ?? 30;
+      let customerIdsForPhone: string[] | null = null;
+      if (input?.whatsappIdentityId) {
+        const matchingCustomers = await db
+          .select({ id: customers.id })
+          .from(customers)
+          .where(
+            and(
+              eq(customers.businessId, ctx.businessId),
+              eq(customers.whatsappIdentityId, input.whatsappIdentityId),
+            ),
+          );
+        customerIdsForPhone = matchingCustomers.map((c) => c.id);
+      }
+
+      const conditions = [
+        eq(requests.businessId, ctx.businessId),
+        isNull(requests.deletedAt),
+        sql`${requests.createdAt} >= now() - (${days} || ' days')::interval`,
+      ];
+      if (input?.source) conditions.push(eq(requests.source, input.source));
+      if (customerIdsForPhone !== null) {
+        if (customerIdsForPhone.length === 0) return [];
+        conditions.push(inArray(requests.customerId, customerIdsForPhone));
+      }
+
+      const rows = await db
+        .select({
+          date: sql<string>`to_char(date_trunc('day', ${requests.createdAt}), 'YYYY-MM-DD')`,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(requests)
+        .where(and(...conditions))
+        .groupBy(sql`date_trunc('day', ${requests.createdAt})`)
+        .orderBy(sql`date_trunc('day', ${requests.createdAt}) asc`);
+
+      return rows;
+    }),
+
   stats: businessProcedure
     .input(
       z
@@ -112,51 +162,87 @@ export const requestsRouter = router({
         conditions.push(inArray(requests.customerId, customerIdsForPhone));
       }
 
-      const rows = await db
-        .select()
+      const baseWhere = and(...conditions);
+
+      const [totalsRow] = await db
+        .select({
+          count: sql<number>`count(*)::int`,
+          revenue: sql<number>`coalesce(sum(${requests.price}::numeric), 0)::float8`,
+          paidCount: sql<number>`count(*) filter (where ${requests.paid} = true)::int`,
+          completed: sql<number>`count(*) filter (where lower(coalesce(${requests.status}, '')) = 'completed')::int`,
+          failed: sql<number>`count(*) filter (where lower(coalesce(${requests.status}, '')) = 'failed')::int`,
+          needsFollowup: sql<number>`count(*) filter (where lower(coalesce(${requests.status}, '')) in ('assistance_required', 'assistance-required', 'needs_followup'))::int`,
+        })
         .from(requests)
-        .where(and(...conditions));
+        .where(baseWhere);
+
+      const sentimentRows = await db
+        .select({
+          key: sql<string>`lower(coalesce(${requests.sentiment}, 'unknown'))`,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(requests)
+        .where(baseWhere)
+        .groupBy(sql`lower(coalesce(${requests.sentiment}, 'unknown'))`);
+
+      const statusRows = await db
+        .select({
+          key: sql<string>`
+            case
+              when lower(coalesce(${requests.status}, '')) = 'failed' then 'FAILED'
+              when lower(coalesce(${requests.status}, '')) = 'completed' then 'COMPLETED'
+              when lower(coalesce(${requests.status}, '')) in ('assistance_required', 'assistance-required', 'needs_followup') then 'NEEDS_FOLLOWUP'
+              else 'ONGOING'
+            end
+          `,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(requests)
+        .where(baseWhere)
+        .groupBy(sql`
+          case
+            when lower(coalesce(${requests.status}, '')) = 'failed' then 'FAILED'
+            when lower(coalesce(${requests.status}, '')) = 'completed' then 'COMPLETED'
+            when lower(coalesce(${requests.status}, '')) in ('assistance_required', 'assistance-required', 'needs_followup') then 'NEEDS_FOLLOWUP'
+            else 'ONGOING'
+          end
+        `);
+
+      const sourceRows = await db
+        .select({
+          key: sql<string>`coalesce(${requests.source}, 'whatsapp')`,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(requests)
+        .where(baseWhere)
+        .groupBy(sql`coalesce(${requests.source}, 'whatsapp')`);
 
       const bySentiment: Record<string, number> = {};
+      for (const row of sentimentRows) {
+        bySentiment[row.key] = row.count;
+      }
+
       const byStatus: Record<string, number> = {
         ONGOING: 0,
         NEEDS_FOLLOWUP: 0,
         FAILED: 0,
         COMPLETED: 0,
       };
-      const bySource: Record<string, number> = {};
-      let revenue = 0;
-      let paidCount = 0;
-
-      const normalizeStatus = (raw: string | null | undefined): keyof typeof byStatus => {
-        const s = (raw ?? "").toLowerCase();
-        if (s === "ongoing") return "ONGOING";
-        if (s === "failed") return "FAILED";
-        if (s === "completed") return "COMPLETED";
-        if (s === "assistance_required" || s === "assistance-required") return "NEEDS_FOLLOWUP";
-        return "ONGOING";
-      };
-
-      for (const r of rows) {
-        const s = (r.sentiment || "unknown").toLowerCase();
-        bySentiment[s] = (bySentiment[s] ?? 0) + 1;
-
-        const st = normalizeStatus((r as typeof r & { status?: string | null }).status);
-        byStatus[st] = (byStatus[st] ?? 0) + 1;
-
-        // Track by source
-        const src = r.source ?? "whatsapp";
-        bySource[src] = (bySource[src] ?? 0) + 1;
-
-        if (r.paid) paidCount++;
-        const priceNum = Number(r.price as unknown as string);
-        if (!Number.isNaN(priceNum)) revenue += priceNum;
+      for (const row of statusRows) {
+        byStatus[row.key] = row.count;
       }
 
-      const total = rows.length;
-      const completed = byStatus.COMPLETED ?? 0;
-      const failed = byStatus.FAILED ?? 0;
-      const needsFollowup = byStatus.NEEDS_FOLLOWUP ?? 0;
+      const bySource: Record<string, number> = {};
+      for (const row of sourceRows) {
+        bySource[row.key] = row.count;
+      }
+
+      const total = Number(totalsRow?.count ?? 0);
+      const revenue = Number(totalsRow?.revenue ?? 0);
+      const paidCount = Number(totalsRow?.paidCount ?? 0);
+      const completed = Number(totalsRow?.completed ?? 0);
+      const failed = Number(totalsRow?.failed ?? 0);
+      const needsFollowup = Number(totalsRow?.needsFollowup ?? 0);
       const deflectionRate = completed + failed > 0 ? completed / (completed + failed) : 0;
       const followUpRate = total > 0 ? needsFollowup / total : 0;
 

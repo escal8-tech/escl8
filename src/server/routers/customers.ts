@@ -2,7 +2,7 @@ import { z } from "zod";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { customers, requests, SUPPORTED_SOURCES } from "@/../drizzle/schema";
-import { eq, and, desc, sql, isNull } from "drizzle-orm";
+import { eq, and, desc, sql, isNull, lt, or } from "drizzle-orm";
 
 // Source validation
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
@@ -19,6 +19,9 @@ export const customersRouter = router({
         source: sourceSchema.optional(),
         includeDeleted: z.boolean().optional(),
         whatsappIdentityId: z.string().nullish(), // null/undefined = all numbers
+        limit: z.number().int().min(1).max(2000).optional(),
+        cursorUpdatedAt: z.string().datetime().optional(),
+        cursorId: z.string().optional(),
       }).optional()
     )
     .query(async ({ ctx, input }) => {
@@ -38,11 +41,23 @@ export const customersRouter = router({
         conditions.push(eq(customers.whatsappIdentityId, input.whatsappIdentityId));
       }
 
+      if (input?.cursorUpdatedAt && input?.cursorId) {
+        const cursorTs = new Date(input.cursorUpdatedAt);
+        conditions.push(
+          or(
+            lt(customers.updatedAt, cursorTs),
+            and(eq(customers.updatedAt, cursorTs), lt(customers.id, input.cursorId)),
+          )!,
+        );
+      }
+
+      const limit = input?.limit ?? 2000;
       const rows = await db
         .select()
         .from(customers)
         .where(and(...conditions))
-        .orderBy(desc(customers.lastMessageAt));
+        .orderBy(desc(customers.updatedAt), desc(customers.id))
+        .limit(limit);
 
       return rows.map((row) => ({
         ...row,

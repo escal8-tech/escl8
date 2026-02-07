@@ -23,6 +23,9 @@ interface Props {
   rows: CustomerRow[];
   onSelect: (id: string) => void;
   listInput?: { whatsappIdentityId?: string };
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 function SourceBadge({ source }: { source: Source }) {
@@ -74,7 +77,7 @@ function LeadScoreBar({ score }: { score: number }) {
   );
 }
 
-export function CustomersTable({ rows, onSelect, listInput }: Props) {
+export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMore, onLoadMore }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<Source | "all">("all");
   const [sortKey, setSortKey] = useState<keyof CustomerRow>("lastMessageAt");
@@ -376,6 +379,19 @@ export function CustomersTable({ rows, onSelect, listInput }: Props) {
             {searchQuery || sourceFilter !== "all"
               ? "No customers match your filters"
               : "No customers found"}
+          </div>
+        )}
+
+        {hasMore && (
+          <div style={{ padding: "16px 20px", borderTop: "1px solid var(--border)", textAlign: "center" }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={onLoadMore}
+              disabled={isLoadingMore}
+            >
+              {isLoadingMore ? "Loading..." : "Load more"}
+            </button>
           </div>
         )}
       </div>
