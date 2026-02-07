@@ -547,6 +547,7 @@ export default function SettingsPage() {
   const [closeTime, setCloseTime] = useState<string>("18:00");
   const [bookingsEnabled, setBookingsEnabled] = useState(false);
   const [promotionsEnabled, setPromotionsEnabled] = useState(true);
+  const [timezone, setTimezone] = useState("UTC");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -563,6 +564,12 @@ export default function SettingsPage() {
       businessQuery.refetch();
     },
   });
+  const updateTimezone = trpc.business.updateTimezone.useMutation({
+    onSuccess: () => {
+      showToast("Timezone saved successfully!");
+      businessQuery.refetch();
+    },
+  });
 
   useEffect(() => {
     if (businessQuery.data) {
@@ -572,6 +579,8 @@ export default function SettingsPage() {
       setCloseTime(businessQuery.data.bookingCloseTime ?? "18:00");
       setBookingsEnabled(businessQuery.data.bookingsEnabled ?? false);
       setPromotionsEnabled(businessQuery.data.promotionsEnabled ?? true);
+      const tz = (businessQuery.data.settings as Record<string, unknown> | null | undefined)?.timezone;
+      setTimezone(typeof tz === "string" && tz ? tz : "UTC");
     }
   }, [businessQuery.data]);
 
@@ -594,6 +603,15 @@ export default function SettingsPage() {
       timeslotMinutes,
       openTime,
       closeTime,
+    });
+  };
+
+  const handleSaveTimezone = () => {
+    if (!email || !businessQuery.data?.id) return;
+    updateTimezone.mutate({
+      email,
+      businessId: businessQuery.data.id,
+      timezone,
     });
   };
 
@@ -664,7 +682,27 @@ export default function SettingsPage() {
                 readOnly
               />
             </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Business Timezone (IANA)</label>
+              <input
+                type="text"
+                style={styles.input}
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                placeholder="e.g. Asia/Kuala_Lumpur"
+              />
+            </div>
           </div>
+        </div>
+        <div style={styles.actions}>
+          <button
+            style={styles.btnPrimary}
+            onClick={handleSaveTimezone}
+            disabled={updateTimezone.isPending}
+          >
+            {Icons.save}
+            {updateTimezone.isPending ? "Saving..." : "Save Timezone"}
+          </button>
         </div>
       </div>
 

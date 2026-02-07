@@ -175,7 +175,32 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
   useEffect(() => {
     let cancelled = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let controller: AbortController | null = null;
+    let ws: WebSocket | null = null;
+    let ackId = 1;
+    let lastCatchupAt = 0;
+
+    const runCatchup = () => {
+      const now = Date.now();
+      if (now - lastCatchupAt < 3000) return;
+      lastCatchupAt = now;
+
+      const jobs: Array<Promise<unknown>> = [];
+      if (options.requestListInput) jobs.push(requestsList.invalidate(options.requestListInput));
+      if (options.requestStatsInput !== undefined) jobs.push(requestsStats.invalidate(options.requestStatsInput));
+      if (options.customerListInput !== undefined) jobs.push(customersList.invalidate(options.customerListInput));
+      jobs.push(customersStats.invalidate(undefined));
+      if (options.messagesThreadListInput) jobs.push(threadsList.invalidate(options.messagesThreadListInput));
+      if (options.activeThreadId) {
+        jobs.push(
+          messagesList.invalidate({
+            threadId: options.activeThreadId,
+            limit: options.activeThreadPageSize ?? 20,
+          }),
+        );
+      }
+
+      void Promise.allSettled(jobs);
+    };
 
     const applyEvent = (event: PortalEvent) => {
       const payload = (event.payload ?? {}) as Record<string, unknown>;
@@ -277,52 +302,66 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
           return;
         }
 
-        controller = new AbortController();
-        const response = await fetch("/api/events/stream", {
+        const response = await fetch("/api/events/negotiate", {
           headers: { authorization: `Bearer ${token}` },
-          signal: controller.signal,
           cache: "no-store",
         });
 
-        if (!response.ok || !response.body) {
+        if (!response.ok) {
           reconnectTimer = setTimeout(connect, 2000);
           return;
         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (!cancelled) {
-          const { value, done } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-
-          while (true) {
-            const splitIndex = buffer.indexOf("\n\n");
-            if (splitIndex === -1) break;
-
-            const chunk = buffer.slice(0, splitIndex);
-            buffer = buffer.slice(splitIndex + 2);
-
-            const dataLines = chunk
-              .split("\n")
-              .filter((line) => line.startsWith("data:"))
-              .map((line) => line.slice(5).trim());
-
-            if (!dataLines.length) continue;
-            const data = dataLines.join("\n");
-            if (!data || data === "[keepalive]") continue;
-
-            try {
-              const event = JSON.parse(data) as PortalEvent;
-              applyEvent(event);
-            } catch {
-              // ignore malformed event chunks
-            }
-          }
+        const body = (await response.json()) as { url?: string; group?: string; subprotocol?: string };
+        const url = body.url || "";
+        const group = body.group || "";
+        const subprotocol = body.subprotocol || "json.webpubsub.azure.v1";
+        if (!url || !group) {
+          reconnectTimer = setTimeout(connect, 2000);
+          return;
         }
+
+        ws = new WebSocket(url, subprotocol);
+
+        ws.onopen = () => {
+          if (!ws || cancelled) return;
+          // Join the tenant group once connected so we receive business-scoped broadcasts.
+          ws.send(JSON.stringify({ type: "joinGroup", group, ackId: ackId++ }));
+          // After reconnect, force a lightweight catch-up so missed events are reconciled.
+          runCatchup();
+        };
+
+        ws.onmessage = (evt) => {
+          if (cancelled) return;
+          try {
+            const parsed = JSON.parse(String(evt.data ?? ""));
+            if (!parsed || typeof parsed !== "object") return;
+
+            // Web PubSub "message" envelope.
+            if ((parsed as Record<string, unknown>).type === "message") {
+              const data = (parsed as Record<string, unknown>).data;
+              const event = typeof data === "string" ? (JSON.parse(data) as PortalEvent) : (data as PortalEvent);
+              if (event && typeof event === "object") applyEvent(event);
+              return;
+            }
+
+            // Allow direct payloads for future transport changes.
+            const direct = parsed as PortalEvent;
+            if (direct.businessId && direct.entity) applyEvent(direct);
+          } catch {
+            // ignore malformed chunks
+          }
+        };
+
+        ws.onclose = () => {
+          if (!cancelled) reconnectTimer = setTimeout(connect, 1500);
+        };
+
+        ws.onerror = () => {
+          // Let onclose handle reconnect.
+        };
+
+        return;
       } catch {
         // reconnect below
       }
@@ -337,7 +376,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     return () => {
       cancelled = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (controller) controller.abort();
+      if (ws) ws.close();
     };
   }, [
     options.customerListInput,

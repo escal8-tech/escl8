@@ -703,7 +703,6 @@ export default function BookingsPage() {
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
-        timeZone: "UTC",
       });
     for (const s of slots) {
       const label = fmt(s.start);

@@ -1,4 +1,5 @@
 import { EventEmitter } from "events";
+import { randomUUID } from "crypto";
 
 type PortalEvent = {
   businessId: string;
@@ -14,6 +15,7 @@ type Handler = (event: PortalEvent) => void;
 class ServiceBusHub {
   private emitter = new EventEmitter();
   private client: any = null;
+  private adminClient: any = null;
   private receiver: any = null;
   private running = false;
   private loopPromise: Promise<void> | null = null;
@@ -21,6 +23,7 @@ class ServiceBusHub {
   private readonly debug = true;
   private receivedCount = 0;
   private emittedCount = 0;
+  private subscriptionName = "";
 
   private log(msg: string, ...args: unknown[]) {
     if (!this.debug) return;
@@ -48,7 +51,8 @@ class ServiceBusHub {
 
     const conn = process.env.SERVICE_BUS_CONN || process.env.SERVICEBUS_CONNECTION_STRING || "";
     const topic = process.env.SERVICE_BUS_TOPIC_NAME || "portal-events";
-    const subscription = process.env.SERVICE_BUS_SUBSCRIPTION_NAME || "portal-dashboard";
+    const subscriptionBase = process.env.SERVICE_BUS_SUBSCRIPTION_NAME || "portal-dashboard";
+    const fanoutMode = (process.env.SERVICE_BUS_FANOUT_MODE || "replica").toLowerCase();
 
     if (!conn) {
       this.log("SERVICE_BUS_CONN missing; hub disabled");
@@ -56,18 +60,39 @@ class ServiceBusHub {
     }
 
     let ServiceBusClientCtor: any;
+    let ServiceBusAdministrationClientCtor: any;
     try {
       const req = eval("require") as NodeRequire;
       ServiceBusClientCtor = req("@azure/service-bus").ServiceBusClient;
+      ServiceBusAdministrationClientCtor = req("@azure/service-bus").ServiceBusAdministrationClient;
     } catch {
       this.log("@azure/service-bus not installed; hub disabled");
       return;
+    }
+
+    let subscription = subscriptionBase;
+    if (fanoutMode === "replica") {
+      const replicaRaw = process.env.CONTAINER_APP_REPLICA_NAME || process.env.HOSTNAME || randomUUID().slice(0, 8);
+      const replica = replicaRaw.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-24);
+      subscription = `${subscriptionBase}-${replica}`.slice(0, 50);
+      try {
+        this.adminClient = new ServiceBusAdministrationClientCtor(conn);
+        const exists = await this.adminClient.subscriptionExists(topic, subscription);
+        if (!exists) {
+          await this.adminClient.createSubscription(topic, subscription);
+          this.log("created replica subscription topic=%s subscription=%s", topic, subscription);
+        }
+      } catch {
+        this.log("failed to ensure replica subscription; falling back to shared subscription=%s", subscriptionBase);
+        subscription = subscriptionBase;
+      }
     }
 
     this.client = new ServiceBusClientCtor(conn);
     this.receiver = this.client.createReceiver(topic, subscription, {
       receiveMode: "peekLock",
     });
+    this.subscriptionName = subscription;
     this.log("receiver started topic=%s subscription=%s", topic, subscription);
 
     this.running = true;
@@ -102,6 +127,8 @@ class ServiceBusHub {
       }
       this.client = null;
     }
+    this.adminClient = null;
+    this.subscriptionName = "";
     this.log("receiver stopped");
   }
 

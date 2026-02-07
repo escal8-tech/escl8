@@ -85,4 +85,47 @@ export const businessRouter = router({
         .returning();
       return updated;
     }),
+
+  updateTimezone: businessProcedure
+    .input(
+      z.object({
+        email: z.string().email(),
+        businessId: z.string().min(1),
+        timezone: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.userEmail && input.email !== ctx.userEmail) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
+      }
+      if (input.businessId !== ctx.businessId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
+      }
+
+      const tz = input.timezone.trim();
+      try {
+        // Validate IANA time zone.
+        new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
+      } catch {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid IANA timezone" });
+      }
+
+      const [biz] = await db.select().from(businesses).where(eq(businesses.id, input.businessId));
+      if (!biz) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
+      }
+
+      const existingSettings = (biz.settings ?? {}) as Record<string, unknown>;
+      const nextSettings = { ...existingSettings, timezone: tz };
+
+      const [updated] = await db
+        .update(businesses)
+        .set({
+          settings: nextSettings,
+          updatedAt: new Date(),
+        })
+        .where(eq(businesses.id, input.businessId))
+        .returning();
+      return updated;
+    }),
 });

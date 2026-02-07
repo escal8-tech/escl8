@@ -14,7 +14,7 @@ type Props = {
 export function SlotsGrid({ slots, bookings, bookingUnitCapacity, bookingTimeslotMinutes }: Props) {
   const slotsByLabel = useMemo(() => {
     const m = new Map<string, Slot[]>();
-    const fmt = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+    const fmt = (d: Date) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
     for (const s of slots) {
       const label = fmt(s.start);
       const arr = m.get(label) || [];
