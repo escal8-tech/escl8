@@ -1,4 +1,4 @@
-name: Build and Push Container Image
+name: Build and Push Container Images
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
 
 env:
   IMAGE_NAME: escal8-agent
+  JOB_IMAGE_NAME: escal8-agent-job
 
 jobs:
   build-and-push:
@@ -45,3 +46,13 @@ jobs:
           tags: |
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Build and push job image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.job
+          push: true
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:latest
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:${{ github.sha }}

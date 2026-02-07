@@ -76,8 +76,11 @@ async function main() {
   console.log("[request-rollover] done businesses=%d totalUpdated=%d", rows.length, totalUpdated);
 }
 
-main().catch((err) => {
-  console.error("[request-rollover] failed", err);
-  process.exit(1);
-});
-
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error("[request-rollover] failed", err);
+    process.exit(1);
+  });
