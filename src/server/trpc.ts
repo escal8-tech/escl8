@@ -4,11 +4,12 @@ import superjson from "superjson";
 
 export type Context = {
   userEmail?: string | null;
+  firebaseUid?: string | null;
   userId?: string | null;
   businessId?: string | null;
 };
 
-type AuthedContext = Context & { userEmail: string };
+type AuthedContext = Context & { firebaseUid: string; userEmail: string };
 type BusinessContext = AuthedContext & { businessId: string };
 
 const t = initTRPC.context<Context>().create({
@@ -19,10 +20,10 @@ export const router = t.router;
 export const publicProcedure = t.procedure;
 
 const requireAuth = t.middleware(({ ctx, next }) => {
-  if (!ctx.userEmail) {
+  if (!ctx.firebaseUid || !ctx.userEmail) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
   }
-  return next({ ctx: { ...ctx, userEmail: ctx.userEmail } as AuthedContext });
+  return next({ ctx: { ...ctx, firebaseUid: ctx.firebaseUid, userEmail: ctx.userEmail } as AuthedContext });
 });
 
 const requireBusiness = t.middleware(({ ctx, next }) => {

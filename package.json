@@ -9,9 +9,11 @@
     "lint": "eslint",
     "db:init": "node ./scripts/db-init.mjs",
     "db:push": "drizzle-kit push --yes",
+    "db:push:control": "drizzle-kit push --yes --config=drizzle.control.config.ts",
     "db:studio": "drizzle-kit studio",
     "rag:worker": "tsx ./scripts/rag-worker.ts",
-    "requests:rollover": "tsx ./scripts/request-status-rollover.ts"
+    "requests:rollover": "tsx ./scripts/request-status-rollover.ts",
+    "suite:grant": "tsx ./scripts/suite-grant.ts"
   },
   "dependencies": {
     "@azure/service-bus": "^7.9.5",

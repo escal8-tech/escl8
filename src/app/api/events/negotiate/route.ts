@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/server/db/client";
 import { users } from "@/../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 
 export const runtime = "nodejs";
@@ -14,12 +14,25 @@ async function getAuthedIdentity(req: Request): Promise<{ businessId: string; us
   try {
     const decoded = await verifyFirebaseIdToken(m[1]);
     const userEmail = decoded.email || null;
-    if (!userEmail) return null;
+    const firebaseUid = decoded.uid || null;
+    if (!userEmail || !firebaseUid) return null;
 
-    const rows = await db.select().from(users).where(eq(users.email, userEmail));
-    const businessId = (rows[0]?.businessId as string) ?? "";
+    let user = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid)).then((r) => r[0] ?? null);
+    if (!user) {
+      user = await db.select().from(users).where(eq(users.email, userEmail)).then((r) => r[0] ?? null);
+      if (user && !user.firebaseUid) {
+        const repaired = await db
+          .update(users)
+          .set({ firebaseUid, updatedAt: new Date() })
+          .where(and(eq(users.id, user.id), eq(users.email, userEmail)))
+          .returning();
+        user = repaired[0] ?? user;
+      }
+    }
+
+    const businessId = (user?.businessId as string) ?? "";
     if (!businessId) return null;
-    return { businessId, userId: userEmail };
+    return { businessId, userId: firebaseUid };
   } catch {
     return null;
   }

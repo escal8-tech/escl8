@@ -37,7 +37,8 @@ export async function POST(req: Request) {
 
     const decoded = await verifyFirebaseIdToken(m[1]);
     const authedEmail = decoded.email;
-    if (!authedEmail) {
+    const firebaseUid = decoded.uid;
+    if (!authedEmail || !firebaseUid) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
@@ -55,11 +56,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Missing phoneNumberId, to, or text" }, { status: 400 });
     }
 
-    const user = await db
+    let user = await db
       .select()
       .from(users)
-      .where(eq(users.email, authedEmail))
+      .where(eq(users.firebaseUid, firebaseUid))
       .then((r) => r[0] ?? null);
+
+    if (!user) {
+      user = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, authedEmail))
+        .then((r) => r[0] ?? null);
+
+      if (user && !user.firebaseUid) {
+        const repaired = await db
+          .update(users)
+          .set({ firebaseUid, updatedAt: new Date() })
+          .where(and(eq(users.id, user.id), eq(users.email, authedEmail)))
+          .returning();
+        user = repaired[0] ?? user;
+      }
+    }
     if (!user) {
       return NextResponse.json({ ok: false, error: "User not found" }, { status: 404 });
     }

@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, integer, timestamp, jsonb, uniqueIndex, index, numeric, check } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, integer, timestamp, jsonb, uniqueIndex, index, numeric, check, primaryKey } from "drizzle-orm/pg-core";
 import crypto from "crypto";
 import { relations, sql } from "drizzle-orm";
 
@@ -16,6 +16,7 @@ export const businesses = pgTable(
   "businesses",
   {
     id: text("id").primaryKey().notNull(),
+    suiteTenantId: text("suite_tenant_id"),
     name: text("name"),
     isActive: boolean("is_active").notNull().default(true),
     instructions: text("instructions").notNull(),
@@ -61,6 +62,8 @@ export const users = pgTable(
       .$defaultFn(() => crypto.randomUUID()),
 
     email: text("email").notNull(), // unique index below
+    firebaseUid: text("firebase_uid").notNull(), // global Firebase user identity
+    suiteUserId: text("suite_user_id"),
 
     whatsappConnected: boolean("whatsapp_connected").notNull().default(false),
 
@@ -74,9 +77,12 @@ export const users = pgTable(
   },
   (t) => ({
     usersEmailUx: uniqueIndex("users_email_ux").on(t.email),
+    usersFirebaseUidUx: uniqueIndex("users_firebase_uid_ux").on(t.firebaseUid),
     usersBusinessIdIdx: index("users_business_id_idx").on(t.businessId),
+    usersSuiteUserIdIdx: index("users_suite_user_id_idx").on(t.suiteUserId),
     usersIdNonEmpty: check("users_id_nonempty", sql`length(btrim(${t.id})) > 0`),
     usersEmailNonEmpty: check("users_email_nonempty", sql`length(btrim(${t.email})) > 0`),
+    usersFirebaseUidNonEmpty: check("users_firebase_uid_nonempty", sql`length(btrim(${t.firebaseUid})) > 0`),
     usersBusinessIdNonEmpty: check("users_business_id_nonempty", sql`length(btrim(${t.businessId})) > 0`),
   }),
 );

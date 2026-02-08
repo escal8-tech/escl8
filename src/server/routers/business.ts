@@ -1,21 +1,11 @@
 import { z } from "zod";
-import { router, businessProcedure, protectedProcedure } from "../trpc";
+import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { businesses, users, whatsappIdentities } from "../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
-async function getBusinessByUserEmail(email: string) {
-  const [user] = await db.select().from(users).where(eq(users.email, email));
-  if (!user) return null;
-  const [biz] = await db.select().from(businesses).where(eq(businesses.id, user.businessId));
-  return biz ?? null;
-}
-
 export const businessRouter = router({
-  /**
-   * List all WhatsApp phone numbers for the current business.
-   */
   listPhoneNumbers: businessProcedure.query(async ({ ctx }) => {
     const rows = await db
       .select({
@@ -64,7 +54,7 @@ export const businessRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
       }
 
-      const user = await db.select().from(users).where(eq(users.email, input.email)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.firebaseUid, ctx.firebaseUid)).then(r => r[0]);
       if (!user) {
         throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
       }
@@ -104,7 +94,6 @@ export const businessRouter = router({
 
       const tz = input.timezone.trim();
       try {
-        // Validate IANA time zone.
         new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
       } catch {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid IANA timezone" });
