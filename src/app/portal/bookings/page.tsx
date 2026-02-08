@@ -657,22 +657,23 @@ export default function BookingsPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    try {
-      const auth = getFirebaseAuth();
-      const unsub = onAuthStateChanged(auth, (u) => {
-        const em = u?.email || window.localStorage.getItem("lastEmail") || null;
-        if (em) {
-          setEmail(em);
-          try {
-            window.localStorage.setItem("lastEmail", em);
-          } catch {}
-        }
-      });
-      return () => unsub();
-    } catch {
+    const auth = getFirebaseAuth();
+    if (!auth) {
       const em = window.localStorage.getItem("lastEmail");
       if (em) setEmail(em);
+      return;
     }
+
+    const unsub = onAuthStateChanged(auth, (u) => {
+      const em = u?.email || window.localStorage.getItem("lastEmail") || null;
+      if (em) {
+        setEmail(em);
+        try {
+          window.localStorage.setItem("lastEmail", em);
+        } catch {}
+      }
+    });
+    return () => unsub();
   }, []);
 
   const normalizeBookings = useCallback((bookings: any[]): Booking[] => {

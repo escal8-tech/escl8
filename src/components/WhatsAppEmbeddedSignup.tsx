@@ -121,7 +121,7 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
     sentRef.current = true;
     try {
       const auth = getFirebaseAuth();
-      const token = await auth.currentUser?.getIdToken();
+      const token = await auth?.currentUser?.getIdToken();
       const res = await fetch("/api/meta/whatsapp/sync", {
         method: "POST",
         headers: {

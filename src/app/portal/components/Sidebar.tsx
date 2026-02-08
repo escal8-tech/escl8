@@ -104,20 +104,19 @@ export default function Sidebar({
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const auth = getFirebaseAuth();
-      // Listen for auth state changes to get email
-      const unsub = onAuthStateChanged(auth, (user) => {
-        if (user?.email) {
-          setUserEmail(user.email);
-        }
-      });
-      // Also check current user immediately
-      if (auth.currentUser?.email) {
-        setUserEmail(auth.currentUser.email);
+    const auth = getFirebaseAuth();
+    if (!auth) return;
+    // Listen for auth state changes to get email
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user?.email) {
+        setUserEmail(user.email);
       }
-      return () => unsub();
-    } catch {}
+    });
+    // Also check current user immediately
+    if (auth.currentUser?.email) {
+      setUserEmail(auth.currentUser.email);
+    }
+    return () => unsub();
   }, []);
 
   const isActive = (href: string) => pathname === href || pathname?.startsWith(href + "/");

@@ -15,23 +15,22 @@ export default function PortalAuthProvider({ children }: Props) {
 
   useEffect(() => {
     let timeout: any;
-    try {
-      const auth = getFirebaseAuth();
-      const unsub = onAuthStateChanged(auth, (u) => {
-        clearTimeout(timeout);
-        setUser(u);
-      });
-      // Fallback: if SDK never responds in 5s, treat as unauthenticated
-      timeout = setTimeout(() => setUser(null), 5000);
-      return () => {
-        clearTimeout(timeout);
-        unsub();
-      };
-    } catch (e) {
-      // If Firebase init fails, fail closed and redirect
+    const auth = getFirebaseAuth();
+    if (!auth) {
       setUser(null);
       return () => {};
     }
+
+    const unsub = onAuthStateChanged(auth, (u) => {
+      clearTimeout(timeout);
+      setUser(u);
+    });
+    // Fallback: if SDK never responds in 5s, treat as unauthenticated
+    timeout = setTimeout(() => setUser(null), 5000);
+    return () => {
+      clearTimeout(timeout);
+      unsub();
+    };
   }, []);
 
   useEffect(() => {

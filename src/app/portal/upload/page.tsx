@@ -749,6 +749,7 @@ function UploadContent() {
     try {
       setBusy(true);
       const auth = getFirebaseAuth();
+      if (!auth) throw new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.");
       const token = await auth.currentUser?.getIdToken();
       const res = await fetch(`/api/upload/docs`, {
         headers: token ? { authorization: `Bearer ${token}` } : undefined,
@@ -765,11 +766,9 @@ function UploadContent() {
   }, []);
 
   useEffect(() => {
-    try {
-      const auth = getFirebaseAuth();
-      const u = auth.currentUser;
-      setUserEmail(u?.email ?? null);
-    } catch {}
+    const auth = getFirebaseAuth();
+    const u = auth?.currentUser;
+    setUserEmail(u?.email ?? null);
   }, []);
 
   useEffect(() => {
@@ -831,6 +830,7 @@ function UploadContent() {
       form.append("file", file);
       form.append("docType", docType);
       const auth = getFirebaseAuth();
+      if (!auth) throw new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.");
       const token = await auth.currentUser?.getIdToken();
       const res = await fetch("/api/upload/docs", {
         method: "POST",

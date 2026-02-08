@@ -12,9 +12,13 @@ export function PortalLogin() {
   const auth = getFirebaseAuth();
   const router = useRouter();
   const upsertUser = trpc.user.upsert.useMutation();
-  const [state, setState] = useState<LoginFormState>({ busy: false, error: null });
+  const [state, setState] = useState<LoginFormState>({
+    busy: false,
+    error: auth ? null : "Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.",
+  });
 
   useEffect(() => {
+    if (!auth) return;
     const unsub = onAuthStateChanged(auth, (u) => {
       if (u) router.replace("/portal/upload");
     });
@@ -24,6 +28,10 @@ export function PortalLogin() {
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setState((s) => ({ ...s, error: null, busy: true }));
+    if (!auth) {
+      setState({ busy: false, error: "Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars." });
+      return;
+    }
 
     const form = e.currentTarget;
     const data = Object.fromEntries(new FormData(form).entries());
@@ -53,6 +61,7 @@ export function PortalLogin() {
   const handleGoogle = async () => {
     try {
       setState((s) => ({ ...s, busy: true, error: null }));
+      if (!auth) throw new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.");
       const provider = new GoogleAuthProvider();
       const res = await signInWithPopup(auth, provider);
       const googleEmail = res.user.email;

@@ -13,9 +13,12 @@ export default function SignupPage() {
   const router = useRouter();
   const upsertUser = trpc.user.upsert.useMutation();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    auth ? null : "Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.",
+  );
 
   useEffect(() => {
+    if (!auth) return;
     const unsub = auth.onAuthStateChanged?.((u) => {
       // If a user is already logged in and we're not mid-signup,
       // redirect away from the signup page.
@@ -30,6 +33,7 @@ export default function SignupPage() {
     setError(null);
     setBusy(true);
     try {
+      if (!auth) throw new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.");
       await createUserWithEmailAndPassword(auth, email, password);
       await upsertUser.mutateAsync({ email, whatsappConnected: false });
       router.push("/portal/upload");

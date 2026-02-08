@@ -550,6 +550,7 @@ export default function SettingsPage() {
   const [timezone, setTimezone] = useState("UTC");
 
   useEffect(() => {
+    if (!auth) return;
     const unsub = onAuthStateChanged(auth, (user) => {
       setEmail(user?.email ?? null);
     });
@@ -590,6 +591,10 @@ export default function SettingsPage() {
   }, []);
 
   const handleLogout = async () => {
+    if (!auth) {
+      window.location.href = "/portal";
+      return;
+    }
     await signOut(auth);
     window.location.href = "/portal";
   };

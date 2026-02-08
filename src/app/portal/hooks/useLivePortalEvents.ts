@@ -375,6 +375,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
 
       try {
         const auth = getFirebaseAuth();
+        if (!auth) return;
         const token = await auth.currentUser?.getIdToken();
         if (!token) {
           reconnectTimer = setTimeout(connect, 2000);

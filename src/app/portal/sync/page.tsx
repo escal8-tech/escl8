@@ -272,12 +272,8 @@ export default function SyncPage() {
   const markSynced = (key: CardKey) => setSyncState((s) => ({ ...s, [key]: "synced" }));
 
   useEffect(() => {
-    try {
-      const auth = getFirebaseAuth();
-      setEmail(auth.currentUser?.email ?? null);
-    } catch {
-      setEmail(null);
-    }
+    const auth = getFirebaseAuth();
+    setEmail(auth?.currentUser?.email ?? null);
   }, []);
 
   const syncedCount = Object.values(syncState).filter((s) => s === "synced").length;

@@ -20,11 +20,9 @@ export function TRPCProvider({ children }: PropsWithChildren) {
           transformer: superjson,
           async headers() {
             const headers: Record<string, string> = {};
-            try {
-              const auth = getFirebaseAuth();
-              const token = await auth.currentUser?.getIdToken();
-              if (token) headers["authorization"] = `Bearer ${token}`;
-            } catch {}
+            const auth = getFirebaseAuth();
+            const token = await auth?.currentUser?.getIdToken();
+            if (token) headers["authorization"] = `Bearer ${token}`;
             return headers;
           },
         }),
