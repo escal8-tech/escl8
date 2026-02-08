@@ -49,6 +49,7 @@ export function PortalLogin() {
       }
 
       await signInWithEmailAndPassword(auth, email, password);
+      await auth.currentUser?.getIdToken(true);
       router.push("/portal/upload");
     } catch (err: any) {
       console.error(err);
@@ -66,6 +67,7 @@ export function PortalLogin() {
       const res = await signInWithPopup(auth, provider);
       const googleEmail = res.user.email;
       if (!googleEmail) throw new Error("Google account has no email attached.");
+      await auth.currentUser?.getIdToken(true);
       await upsertUser.mutateAsync({ email: googleEmail, whatsappConnected: false });
       router.push("/portal/upload");
     } catch (err: any) {

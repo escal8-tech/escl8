@@ -35,6 +35,7 @@ export default function SignupPage() {
     try {
       if (!auth) throw new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.");
       await createUserWithEmailAndPassword(auth, email, password);
+      await auth.currentUser?.getIdToken(true);
       await upsertUser.mutateAsync({ email, whatsappConnected: false });
       router.push("/portal/upload");
     } catch (err: any) {

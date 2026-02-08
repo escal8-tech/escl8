@@ -21,6 +21,9 @@ export function TRPCProvider({ children }: PropsWithChildren) {
           async headers() {
             const headers: Record<string, string> = {};
             const auth = getFirebaseAuth();
+            if (auth && typeof auth.authStateReady === "function") {
+              await auth.authStateReady();
+            }
             const token = await auth?.currentUser?.getIdToken();
             if (token) headers["authorization"] = `Bearer ${token}`;
             return headers;

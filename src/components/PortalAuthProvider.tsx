@@ -9,17 +9,16 @@ import { trpc } from "@/utils/trpc";
 type Props = { children: ReactNode };
 
 export default function PortalAuthProvider({ children }: Props) {
-  const [user, setUser] = useState<User | null | undefined>(undefined);
+  const auth = getFirebaseAuth();
+  const [user, setUser] = useState<User | null | undefined>(() => (auth ? undefined : null));
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const { mutateAsync: ensureUser } = trpc.user.ensure.useMutation();
 
   useEffect(() => {
-    let timeout: any;
-    const auth = getFirebaseAuth();
-    if (!auth) {
-      setUser(null);
-      return () => {};
-    }
+    if (!auth) return;
+    let timeout: ReturnType<typeof setTimeout>;
 
     const unsub = onAuthStateChanged(auth, (u) => {
       clearTimeout(timeout);
@@ -31,26 +30,38 @@ export default function PortalAuthProvider({ children }: Props) {
       clearTimeout(timeout);
       unsub();
     };
-  }, []);
+  }, [auth]);
 
   useEffect(() => {
+    setReady(false);
+    setError(null);
+
     if (user === null) {
       router.replace("/portal");
       return;
     }
     if (!user) return;
 
-    // Ensure there's a corresponding DB user row.
+    let cancelled = false;
+
+    // Ensure there's a corresponding DB user row before protected pages run queries.
     (async () => {
       try {
+        await user.getIdToken(true);
         const email = user.email;
-        if (email) {
-          await ensureUser({ email });
-        }
-      } catch {
-        // If the DB sync fails, do not block portal navigation; downstream pages can surface errors.
+        if (!email) throw new Error("Signed-in account is missing email.");
+        await ensureUser({ email });
+        if (!cancelled) setReady(true);
+      } catch (e: unknown) {
+        if (cancelled) return;
+        const message = e instanceof Error ? e.message : "Failed to initialize your account.";
+        setError(message);
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user, router, ensureUser]);
 
   if (user === undefined) {
@@ -62,6 +73,20 @@ export default function PortalAuthProvider({ children }: Props) {
   }
 
   if (!user) return null;
+  if (error) {
+    return (
+      <div className="container" style={{ padding: "60px 0 80px" }}>
+        <p style={{ color: "var(--danger)" }}>Account setup failed: {error}</p>
+      </div>
+    );
+  }
+  if (!ready) {
+    return (
+      <div className="container" style={{ padding: "60px 0 80px" }}>
+        <p className="muted">Preparing your workspace…</p>
+      </div>
+    );
+  }
 
   return <>{children}</>;
 }
