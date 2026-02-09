@@ -92,23 +92,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "WhatsApp identity not found for this business" }, { status: 404 });
     }
 
-    // Prefer a stored plaintext token for quick retrieval, fallback to encrypted token if present.
     const metaGraphApiVersion = process.env.META_GRAPH_API_VERSION ?? "v24.0";
-
-    const businessToken: string | null = (identity as any).businessToken ?? null;
+    const businessToken: string | null = process.env.META_SYSTEM_USER_TOKEN ?? null;
 
     if (!businessToken) {
       return NextResponse.json(
         {
           ok: false,
-          error: "No stored business token for this phoneNumberId. Complete Embedded Signup sync first.",
+          error: "Missing META_SYSTEM_USER_TOKEN.",
           code: "MISSING_BUSINESS_TOKEN",
         },
         { status: 409 },
       );
     }
 
-    const res = await graphJson<any>({
+    const res = await graphJson<unknown>({
       endpoint: graphEndpoint(metaGraphApiVersion, `/${phoneNumberId}/messages`),
       method: "POST",
       accessToken: businessToken,
@@ -124,7 +122,7 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ ok: true, result: res }, { headers: rl.headers });
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof MetaGraphError) {
       return NextResponse.json(
         {

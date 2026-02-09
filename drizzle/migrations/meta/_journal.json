@@ -36,6 +36,13 @@
       "when": 1768371263453,
       "tag": "0004_threads_messages_cleanup",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1769990400000,
+      "tag": "0005_drop_wa_business_token",
+      "breakpoints": true
     }
   ]
 }

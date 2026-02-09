@@ -23,6 +23,20 @@ function formatTime(d: Date | null | undefined) {
   });
 }
 
+function formatWindowRemaining(totalSeconds: number) {
+  const seconds = Math.max(0, totalSeconds);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m left`;
+  return `${minutes}m left`;
+}
+
+function isWhatsAppThread(thread: { customerSource?: string | null; whatsappIdentityId?: string | null } | null | undefined) {
+  if (!thread) return false;
+  const source = String(thread.customerSource || "").toLowerCase();
+  return source === "whatsapp" || Boolean(thread.whatsappIdentityId);
+}
+
 function ProfileIcon({ name, size = 40 }: { name?: string | null; size?: number }) {
   const initials = name
     ? name
@@ -69,6 +83,9 @@ export default function MessagesPage() {
   const { selectedPhoneNumberId } = usePhoneFilter();
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [draft, setDraft] = useState("");
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   // Message pagination state
   const [allMessages, setAllMessages] = useState<Array<{
@@ -93,6 +110,7 @@ export default function MessagesPage() {
     [selectedPhoneNumberId],
   );
   const recentThreadsQuery = trpc.messages.listRecentThreads.useQuery(threadListInput);
+  const sendTextMutation = trpc.messages.sendText.useMutation();
 
   const filteredThreads = useMemo(() => {
     const threads = recentThreadsQuery.data ?? [];
@@ -112,6 +130,16 @@ export default function MessagesPage() {
     }
     return null;
   }, [selectedThreadId, filteredThreads]);
+
+  const sessionWindowQuery = trpc.messages.getThreadSessionWindow.useQuery(
+    { threadId: activeThreadId ?? "" },
+    {
+      enabled: !!activeThreadId,
+      retry: false,
+      refetchOnWindowFocus: false,
+      staleTime: 60_000,
+    },
+  );
 
   const handleLiveThreadMessage = useCallback((message: {
     id: string;
@@ -162,6 +190,11 @@ export default function MessagesPage() {
   useEffect(() => {
     setSelectedThreadId(null);
   }, [selectedPhoneNumberId]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Handle initial load
   useEffect(() => {
@@ -216,6 +249,59 @@ export default function MessagesPage() {
     if (!activeThreadId) return null;
     return filteredThreads.find((t) => t.threadId === activeThreadId) ?? null;
   }, [activeThreadId, filteredThreads]);
+
+  const sessionWindow = useMemo(() => {
+    const data = sessionWindowQuery.data;
+    if (!data || data.channel !== "whatsapp" || !data.closesAt) {
+      return {
+        isOpen: false,
+        label: "24h unavailable",
+        helper: "24-hour free-form status unavailable.",
+      };
+    }
+    const closesAtMs = new Date(data.closesAt).getTime();
+    const remainingSeconds = Math.max(0, Math.floor((closesAtMs - nowMs) / 1000));
+    const isOpen = remainingSeconds > 0;
+    return {
+      isOpen,
+      label: isOpen ? "24h open" : "24h closed",
+      helper: isOpen
+        ? `Free-form messaging is open (${formatWindowRemaining(remainingSeconds)}).`
+        : "Free-form window expired. Use a WhatsApp template to re-open the conversation.",
+    };
+  }, [sessionWindowQuery.data, nowMs]);
+
+  const handleSend = useCallback(async () => {
+    if (!activeThreadId) return;
+    if (!isWhatsAppThread(selectedThread)) return;
+    if (!sessionWindow.isOpen) return;
+    const text = draft.trim();
+    if (!text) return;
+    setSendError(null);
+    try {
+      const saved = await sendTextMutation.mutateAsync({ threadId: activeThreadId, text });
+      setAllMessages((prev) => [
+        ...prev,
+        {
+          id: saved.id,
+          direction: saved.direction,
+          messageType: saved.messageType,
+          textBody: saved.textBody,
+          meta: saved.meta,
+          createdAt: new Date(saved.createdAt),
+        },
+      ]);
+      setDraft("");
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      }, 20);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to send message.";
+      setSendError(msg);
+    }
+  }, [activeThreadId, draft, sendTextMutation, selectedThread, sessionWindow.isOpen]);
 
   return (
     <main
@@ -443,6 +529,22 @@ export default function MessagesPage() {
                   </div>
                 )}
               </div>
+              {isWhatsAppThread(selectedThread) && (
+                <div
+                  title={sessionWindow.helper}
+                  style={{
+                    fontSize: 12,
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    border: `1px solid ${sessionWindow.isOpen ? "rgba(16,185,129,0.45)" : "rgba(239,68,68,0.45)"}`,
+                    color: sessionWindow.isOpen ? "#10b981" : "#ef4444",
+                    background: sessionWindow.isOpen ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {sessionWindow.label}
+                </div>
+              )}
             </div>
 
             {/* Messages area */}
@@ -535,6 +637,76 @@ export default function MessagesPage() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+
+            {/* Composer */}
+            <div
+              style={{
+                borderTop: "1px solid var(--border)",
+                padding: "10px 14px",
+                background: "rgba(255,255,255,0.02)",
+              }}
+            >
+              {isWhatsAppThread(selectedThread) ? (
+                <div style={{ marginBottom: 8, fontSize: 12, color: sessionWindow.isOpen ? "#10b981" : "#ef4444" }}>
+                  {sessionWindow.helper}
+                </div>
+              ) : (
+                <div style={{ marginBottom: 8, fontSize: 12, color: "var(--muted)" }}>
+                  Manual sending is currently supported only for WhatsApp threads.
+                </div>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                  placeholder={
+                    isWhatsAppThread(selectedThread) && !sessionWindow.isOpen
+                      ? "24-hour window is closed"
+                      : "Type a message"
+                  }
+                  disabled={
+                    !activeThreadId ||
+                    sendTextMutation.isPending ||
+                    !isWhatsAppThread(selectedThread) ||
+                    (isWhatsAppThread(selectedThread) && !sessionWindow.isOpen)
+                  }
+                  style={{
+                    flex: 1,
+                    height: 40,
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "rgba(255,255,255,0.03)",
+                    color: "var(--foreground)",
+                    padding: "0 12px",
+                    outline: "none",
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => void handleSend()}
+                  disabled={
+                    !draft.trim() ||
+                    sendTextMutation.isPending ||
+                    !isWhatsAppThread(selectedThread) ||
+                    (isWhatsAppThread(selectedThread) && !sessionWindow.isOpen)
+                  }
+                >
+                  {sendTextMutation.isPending ? "Sending…" : "Send"}
+                </button>
+              </div>
+              {sendError && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>
+                  {sendError}
                 </div>
               )}
             </div>

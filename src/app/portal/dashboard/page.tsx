@@ -19,6 +19,9 @@ import {
   Cell,
 } from "recharts";
 
+const RECENT_REQUESTS_PAGE_SIZE = 15;
+type RequestSortKey = "customer" | "status" | "type" | "sentiment" | "date" | "bot";
+
 // Icons
 const Icons = {
   users: (
@@ -217,6 +220,21 @@ function MiniDonutChart({
             }}
           />
         </Pie>
+        <Tooltip
+          formatter={(value: number, _name, item) => {
+            const totalValue = data.reduce((sum, d) => sum + d.value, 0);
+            const pct = totalValue > 0 ? Math.round((Number(value) / totalValue) * 100) : 0;
+            return [`${value} (${pct}%)`, (item?.payload as { name?: string })?.name ?? "Value"];
+          }}
+          contentStyle={{
+            background: "rgba(9, 15, 28, 0.95)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: 10,
+            color: "#fff",
+          }}
+          itemStyle={{ color: "#fff" }}
+          labelStyle={{ color: "#cbd5e1" }}
+        />
       </PieChart>
     </div>
   );
@@ -590,6 +608,10 @@ export default function DashboardPage() {
   const customerStatsQ = trpc.customers.getStats.useQuery();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sortKey, setSortKey] = useState<RequestSortKey>("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [page, setPage] = useState(0);
   const utils = trpc.useUtils();
 
   const markPending = (customerId: string, pending: boolean) => {
@@ -641,6 +663,56 @@ export default function DashboardPage() {
   });
 
   const rows = useMemo(() => normalizeRequests(listQ.data || []), [listQ.data]);
+  const statusOptions = useMemo(() => {
+    const unique = new Set(
+      rows
+        .map((r) => (r.status || "").trim())
+        .filter((value) => value.length > 0),
+    );
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  const filteredAndSortedRows = useMemo(() => {
+    const filtered =
+      statusFilter === "all"
+        ? rows
+        : rows.filter((request) => (request.status || "").toLowerCase() === statusFilter.toLowerCase());
+
+    const sorted = [...filtered].sort((a, b) => {
+      const direction = sortDir === "asc" ? 1 : -1;
+      if (sortKey === "date") {
+        return (
+          (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) *
+          direction
+        );
+      }
+      if (sortKey === "customer") {
+        return a.customerNumber.localeCompare(b.customerNumber) * direction;
+      }
+      if (sortKey === "status") {
+        return (a.status || "").localeCompare(b.status || "") * direction;
+      }
+      if (sortKey === "type") {
+        return (a.type || "").localeCompare(b.type || "") * direction;
+      }
+      if (sortKey === "sentiment") {
+        return (a.sentiment || "").localeCompare(b.sentiment || "") * direction;
+      }
+      const botA = a.botPaused ? 1 : 0;
+      const botB = b.botPaused ? 1 : 0;
+      return (botA - botB) * direction;
+    });
+
+    return sorted;
+  }, [rows, statusFilter, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredAndSortedRows.length / RECENT_REQUESTS_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+
+  const paginatedRows = useMemo(() => {
+    const start = safePage * RECENT_REQUESTS_PAGE_SIZE;
+    return filteredAndSortedRows.slice(start, start + RECENT_REQUESTS_PAGE_SIZE);
+  }, [filteredAndSortedRows, safePage]);
 
   const selectedRequest = useMemo(() => {
     if (!selectedId) return null;
@@ -768,25 +840,125 @@ export default function DashboardPage() {
             <h3 className="card-title">Recent Requests</h3>
             <p className="card-description">Your latest customer interactions</p>
           </div>
-          <button className="btn btn-secondary btn-sm">
-            <span style={{ width: 16, height: 16 }}>{Icons.eye}</span>
-            View All
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span className="text-muted" style={{ fontSize: 12 }}>Status:</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(0);
+              }}
+              style={{
+                height: 34,
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "var(--surface-secondary)",
+                color: "var(--foreground)",
+                padding: "0 10px",
+                fontSize: 13,
+              }}
+            >
+              <option value="all">All statuses</option>
+              {statusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {status.replace(/_/g, " ").toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="table-container" style={{ border: "none", borderRadius: 0 }}>
           <table className="table table-clickable">
             <thead>
               <tr>
-                <th>Customer</th>
-                <th>Status</th>
-                <th>Type</th>
-                <th>Sentiment</th>
-                <th>Date</th>
-                <th>Bot</th>
+                <th
+                  style={{ cursor: "pointer", userSelect: "none" }}
+                  onClick={() => {
+                    if (sortKey === "customer") {
+                      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                    } else {
+                      setSortKey("customer");
+                      setSortDir("asc");
+                    }
+                    setPage(0);
+                  }}
+                >
+                  Customer {sortKey === "customer" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                </th>
+                <th
+                  style={{ cursor: "pointer", userSelect: "none" }}
+                  onClick={() => {
+                    if (sortKey === "status") {
+                      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                    } else {
+                      setSortKey("status");
+                      setSortDir("asc");
+                    }
+                    setPage(0);
+                  }}
+                >
+                  Status {sortKey === "status" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                </th>
+                <th
+                  style={{ cursor: "pointer", userSelect: "none" }}
+                  onClick={() => {
+                    if (sortKey === "type") {
+                      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                    } else {
+                      setSortKey("type");
+                      setSortDir("asc");
+                    }
+                    setPage(0);
+                  }}
+                >
+                  Type {sortKey === "type" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                </th>
+                <th
+                  style={{ cursor: "pointer", userSelect: "none" }}
+                  onClick={() => {
+                    if (sortKey === "sentiment") {
+                      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                    } else {
+                      setSortKey("sentiment");
+                      setSortDir("asc");
+                    }
+                    setPage(0);
+                  }}
+                >
+                  Sentiment {sortKey === "sentiment" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                </th>
+                <th
+                  style={{ cursor: "pointer", userSelect: "none" }}
+                  onClick={() => {
+                    if (sortKey === "date") {
+                      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                    } else {
+                      setSortKey("date");
+                      setSortDir("desc");
+                    }
+                    setPage(0);
+                  }}
+                >
+                  Date {sortKey === "date" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                </th>
+                <th
+                  style={{ cursor: "pointer", userSelect: "none" }}
+                  onClick={() => {
+                    if (sortKey === "bot") {
+                      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                    } else {
+                      setSortKey("bot");
+                      setSortDir("asc");
+                    }
+                    setPage(0);
+                  }}
+                >
+                  Bot {sortKey === "bot" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                </th>
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {filteredAndSortedRows.length === 0 ? (
                 <tr>
                   <td colSpan={6}>
                     <div className="empty-state" style={{ padding: "var(--space-8)" }}>
@@ -799,7 +971,7 @@ export default function DashboardPage() {
                   </td>
                 </tr>
               ) : (
-                rows.slice(0, 10).map((request) => (
+                paginatedRows.map((request) => (
                   <RequestRowItem
                     key={request.id}
                     request={request}
@@ -811,6 +983,38 @@ export default function DashboardPage() {
               )}
             </tbody>
           </table>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "12px 18px",
+            borderTop: "1px solid var(--border)",
+          }}
+        >
+          <span className="text-muted" style={{ fontSize: 12 }}>
+            Showing {paginatedRows.length} of {filteredAndSortedRows.length}
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={safePage <= 0}
+            >
+              Prev
+            </button>
+            <span className="text-muted" style={{ minWidth: 88, textAlign: "center", fontSize: 12 }}>
+              Page {safePage + 1} / {totalPages}
+            </span>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={safePage >= totalPages - 1}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
 

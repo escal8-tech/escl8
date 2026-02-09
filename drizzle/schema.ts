@@ -123,10 +123,6 @@ export const whatsappIdentities = pgTable(
     wabaId: text("waba_id"),
     displayPhoneNumber: text("display_phone_number"),
 
-    // Customer-scoped business token (Business Integration System User token)
-    // Stored in plaintext on this column for simple retrieval. WARNING: less secure.
-    businessToken: text("business_token"),
-
     // Phone number two-step verification PIN used for /register (plaintext).
     twoStepPin: text("two_step_pin"),
 
