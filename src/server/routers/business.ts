@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
-import { businesses, users, whatsappIdentities } from "../../../drizzle/schema";
-import { and, eq } from "drizzle-orm";
+import { businesses, users, whatsappIdentities, messageThreads, threadMessages } from "../../../drizzle/schema";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
 export const businessRouter = router({
@@ -34,7 +34,29 @@ export const businessRouter = router({
       }
 
       const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId));
-      return biz ?? null;
+      if (!biz) return null;
+
+      const [usageRow] = await db
+        .select({
+          used: sql<number>`count(*)`,
+        })
+        .from(threadMessages)
+        .innerJoin(messageThreads, eq(threadMessages.threadId, messageThreads.id))
+        .where(
+          and(
+            eq(messageThreads.businessId, ctx.businessId),
+            eq(threadMessages.direction, "outbound"),
+            isNull(messageThreads.deletedAt),
+          ),
+        );
+
+      return {
+        ...biz,
+        responseUsage: {
+          used: Number(usageRow?.used ?? 0),
+          max: 50_000,
+        },
+      };
     }),
 
   updateBookingConfig: businessProcedure

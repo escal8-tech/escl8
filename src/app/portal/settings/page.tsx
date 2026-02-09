@@ -258,6 +258,52 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 6,
     width: "fit-content",
   },
+  usageCard: {
+    gridColumn: "1 / -1",
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    border: "1px solid var(--border)",
+    background: "var(--background)",
+  },
+  usageRow: {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  usageTitle: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "var(--foreground)",
+  },
+  usageValue: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: "var(--foreground)",
+    fontFamily: "monospace",
+  },
+  usageHint: {
+    margin: 0,
+    fontSize: 12,
+    color: "var(--muted)",
+  },
+  usageTrack: {
+    width: "100%",
+    height: 8,
+    borderRadius: 999,
+    background: "var(--card-muted)",
+    overflow: "hidden",
+  },
+  usageFill: {
+    height: "100%",
+    borderRadius: 999,
+    background: "linear-gradient(90deg, var(--accent), var(--primary))",
+    transition: "width 0.25s ease",
+  },
   formGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
@@ -625,6 +671,11 @@ export default function SettingsPage() {
     return email.substring(0, 2).toUpperCase();
   };
 
+  const responsesUsed = Number(businessQuery.data?.responseUsage?.used ?? 0);
+  const responsesMax = Number(businessQuery.data?.responseUsage?.max ?? 50_000);
+  const responsesPercent = Math.min(100, Math.max(0, (responsesUsed / Math.max(1, responsesMax)) * 100));
+  const fmtInt = (value: number) => value.toLocaleString("en-US");
+
   const renderProfileTab = () => (
     <div style={styles.section}>
       {/* Profile Card */}
@@ -696,6 +747,20 @@ export default function SettingsPage() {
                 onChange={(e) => setTimezone(e.target.value)}
                 placeholder="e.g. Asia/Kuala_Lumpur"
               />
+            </div>
+            <div style={styles.usageCard}>
+              <div style={styles.usageRow}>
+                <span style={styles.usageTitle}>AI Responses Used</span>
+                <span style={styles.usageValue}>
+                  {fmtInt(responsesUsed)} / {fmtInt(responsesMax)}
+                </span>
+              </div>
+              <div style={styles.usageTrack}>
+                <div style={{ ...styles.usageFill, width: `${responsesPercent}%` }} />
+              </div>
+              <p style={styles.usageHint}>
+                Display only for beta. The bot is not blocked if usage goes above {fmtInt(responsesMax)}.
+              </p>
             </div>
           </div>
         </div>
