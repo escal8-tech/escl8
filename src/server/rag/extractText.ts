@@ -4,6 +4,7 @@ export type ExtractedDoc = {
   text: string;
   pageCount?: number;
   pages?: string[];  // Individual page texts for page-wise chunking
+  rows?: string[];   // Row texts for spreadsheet row-wise chunking
 };
 
 // Page boundary marker used when preserving page structure
@@ -91,6 +92,41 @@ export async function extractTextFromBuffer(params: {
   if (lower.endsWith(".docx") || contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
     const res = await mammoth.extractRawText({ buffer });
     return { text: normalize(res.value || "") };
+  }
+
+  if (
+    lower.endsWith(".xlsx") ||
+    contentType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  ) {
+    const xlsx: any = await import("xlsx");
+    const workbook = xlsx.read(buffer, { type: "buffer" });
+    const rowTexts: string[] = [];
+
+    for (const sheetName of workbook.SheetNames || []) {
+      const sheet = workbook.Sheets?.[sheetName];
+      if (!sheet) continue;
+      const rows: unknown[][] = xlsx.utils.sheet_to_json(sheet, {
+        header: 1,
+        raw: false,
+        defval: "",
+      });
+
+      for (const row of rows) {
+        const rowText = row
+          .map((cell) => String(cell ?? "").trim())
+          .filter((cell) => cell.length > 0)
+          .join(" ");
+        if (rowText.length > 0) {
+          rowTexts.push(normalize(rowText));
+        }
+      }
+    }
+
+    return {
+      text: rowTexts.join("\n"),
+      pageCount: rowTexts.length || undefined,
+      rows: rowTexts,
+    };
   }
 
   // Basic plaintext/csv

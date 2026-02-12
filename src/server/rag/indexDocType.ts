@@ -194,6 +194,12 @@ function splitTextWithOverlap(text: string, maxTokens: number, overlapTokens: nu
   return chunks;
 }
 
+function getShortContext(rows: string[], idx: number): string {
+  const row = rows[idx] || "";
+  if (row.length <= 150) return row;
+  return `${row.slice(0, 147)}...`;
+}
+
 function buildFullChunksFromSections(
   sections: Section[],
   opts: { maxTokens: number; overlapTokens: number; questionFromTitle?: boolean },
@@ -220,6 +226,38 @@ function buildFullChunksFromSections(
       });
     }
   }
+  return chunks;
+}
+
+function buildInventoryRowChunks(rows: string[]): SmartChunk[] {
+  const chunks: SmartChunk[] = [];
+  let charOffset = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const rowText = rows[i].trim();
+    if (!rowText) continue;
+
+    const charStart = charOffset;
+    const charEnd = charStart + rowText.length;
+    charOffset = charEnd + 1;
+
+    chunks.push({
+      text: rowText,
+      chunkType: "product_info",
+      headingContext: `Row ${i + 1}`,
+      chunkIndex: chunks.length,
+      charStart,
+      charEnd,
+      tokenEstimate: estimateTokens(rowText),
+      products: [],
+      keywords: extractKeywordsLite(rowText),
+      prices: extractPricesLite(rowText),
+      question: null,
+      contextBefore: i > 0 ? getShortContext(rows, i - 1) : "",
+      contextAfter: i < rows.length - 1 ? getShortContext(rows, i + 1) : "",
+    });
+  }
+
   return chunks;
 }
 
@@ -346,7 +384,9 @@ export async function indexSingleDocType(params: {
     docType === "conversations"
       ? buildConversationHierarchicalChunks(text, extracted.pages)
       : docType === "inventory"
-        ? buildInventoryHierarchicalChunks(text, extracted.pages)
+        ? (extracted.rows && extracted.rows.length > 0
+            ? buildInventoryRowChunks(extracted.rows)
+            : buildInventoryHierarchicalChunks(text, extracted.pages))
         : smartChunkText(text, chunkOpts);
 
   // Use LLM for more accurate chunk type classification (skip for structured chunks)

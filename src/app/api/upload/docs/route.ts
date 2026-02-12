@@ -18,6 +18,8 @@ const ALLOWED_MIME = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "text/csv",
 ]);
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const ALLOWED_EXT = [".pdf", ".txt", ".doc", ".docx", ".csv"];
 
 const DEFAULT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25MB
 function maxUploadBytes() {
@@ -166,9 +168,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid docType" }, { status: 400 });
     }
 
-    const mime = file.type || "";
-    if (mime && !ALLOWED_MIME.has(mime)) {
-      return NextResponse.json({ error: `Unsupported file type: ${mime}` }, { status: 415 });
+    const mime = (file.type || "").toLowerCase();
+    const lowerName = file.name.toLowerCase();
+    const isXlsx = mime === XLSX_MIME || lowerName.endsWith(".xlsx");
+
+    if (isXlsx && docType !== "inventory") {
+      return NextResponse.json({ error: "XLSX uploads are only supported for inventory documents" }, { status: 415 });
+    }
+
+    if (!isXlsx) {
+      const extAllowed = ALLOWED_EXT.some((ext) => lowerName.endsWith(ext));
+      const mimeAllowed = !mime || ALLOWED_MIME.has(mime);
+      const shouldReject = mime ? (!mimeAllowed && !extAllowed) : !extAllowed;
+      if (shouldReject) {
+        const detail = mime || file.name || "unknown";
+        return NextResponse.json({ error: `Unsupported file type: ${detail}` }, { status: 415 });
+      }
     }
 
     const bytes = await file.arrayBuffer();
