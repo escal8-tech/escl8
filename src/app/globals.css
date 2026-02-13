@@ -1345,6 +1345,15 @@ tr:last-child td {
   margin: 0 auto;
 }
 
+.portal-content--flush {
+  padding: 0;
+  height: calc(100vh - 72px);
+}
+
+.portal-content--flush > * {
+  height: 100%;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    PORTAL SEARCH
    ═══════════════════════════════════════════════════════════════════════════ */

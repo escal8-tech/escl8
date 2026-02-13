@@ -97,14 +97,25 @@ export default function CustomersPage() {
   };
 
   return (
-    <main style={{ padding: 32 }}>
+    <main
+      style={{
+        height: "100%",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       {!typedCustomers?.length ? (
         <div
-          className="glass"
           style={{
+            flex: 1,
             textAlign: "center",
             padding: 60,
             color: "var(--muted)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
           <p style={{ fontSize: 18, marginBottom: 8 }}>No customers yet</p>

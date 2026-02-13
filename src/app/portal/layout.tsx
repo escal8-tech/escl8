@@ -7,6 +7,7 @@ import { PhoneFilterProvider } from "@/components/PhoneFilterContext";
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isAuthPage = pathname === "/portal" || pathname?.startsWith("/portal/signup");
+  const isFlushPage = pathname?.startsWith("/portal/customers");
 
   if (isAuthPage) {
     // Login/Signup should not be guarded and typically shouldn't show PortalNav
@@ -20,7 +21,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         <div className="portal-layout">
           <PortalNav />
           <main className="portal-main" style={{ paddingTop: 72 }}>
-            <div className="portal-content">
+            <div className={`portal-content${isFlushPage ? " portal-content--flush" : ""}`}>
               {children}
             </div>
           </main>

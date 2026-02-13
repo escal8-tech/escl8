@@ -192,63 +192,69 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
   };
 
   return (
-    <div className="glass" style={{ overflow: "hidden" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+      }}
+    >
       {/* Header */}
       <div
-        className="flex items-center justify-between gap-4 border-b"
+        className="flex items-center gap-3 border-b"
         style={{ borderColor: "var(--border)", padding: "24px 28px" }}
       >
-        <div>
-          <h2 className="text-xl font-semibold">Customers</h2>
-          <p className="text-sm text-gray-500">
+        {/* Search */}
+        <input
+          type="text"
+          placeholder="Search customers..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="px-3 py-2 rounded-lg border text-sm"
+          style={{
+            background: "var(--surface)",
+            borderColor: "var(--border)",
+            color: "var(--foreground)",
+            width: 520,
+            maxWidth: "60vw",
+          }}
+        />
+
+        {/* Source Filter */}
+        <select
+          value={sourceFilter}
+          onChange={(e) => setSourceFilter(e.target.value as Source | "all")}
+          className="px-3 py-2 rounded-lg border text-sm"
+          style={{
+            background: "var(--surface)",
+            borderColor: "var(--border)",
+            color: "var(--foreground)",
+            width: 180,
+            marginLeft: 12,
+          }}
+        >
+          <option value="all">All Sources ({rows.length})</option>
+          {SUPPORTED_SOURCES.map((src) => {
+            const count = sourceCounts?.[src] ?? 0;
+            if (count === 0) return null;
+            return (
+              <option key={src} value={src}>
+                {SOURCE_CONFIG[src].label} ({count})
+              </option>
+            );
+          })}
+        </select>
+
+        <div style={{ marginLeft: "auto" }}>
+          <p className="text-sm text-gray-500" style={{ whiteSpace: "nowrap" }}>
             {filteredRows.length} customer{filteredRows.length !== 1 ? "s" : ""}
             {sourceFilter !== "all" && ` from ${SOURCE_CONFIG[sourceFilter].label}`}
           </p>
         </div>
-
-        <div className="flex items-center gap-3">
-          {/* Source Filter */}
-          <select
-            value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value as Source | "all")}
-            className="px-3 py-2 rounded-lg border text-sm"
-            style={{
-              background: "var(--surface)",
-              borderColor: "var(--border)",
-              color: "var(--foreground)",
-            }}
-          >
-            <option value="all">All Sources ({rows.length})</option>
-            {SUPPORTED_SOURCES.map((src) => {
-              const count = sourceCounts?.[src] ?? 0;
-              if (count === 0) return null;
-              return (
-                <option key={src} value={src}>
-                  {SOURCE_CONFIG[src].icon} {SOURCE_CONFIG[src].label} ({count})
-                </option>
-              );
-            })}
-          </select>
-
-          {/* Search */}
-          <input
-            type="text"
-            placeholder="Search customers..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="px-3 py-2 rounded-lg border text-sm"
-            style={{
-              background: "var(--surface)",
-              borderColor: "var(--border)",
-              color: "var(--foreground)",
-              width: 220,
-            }}
-          />
-        </div>
       </div>
 
       {/* Table */}
-      <div style={{ overflowX: "auto" }}>
+      <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
         <table className="w-full text-sm">
           <thead>
             <tr
