@@ -35,8 +35,9 @@ function normalizeHeaderKey(raw: string): string {
   return String(raw || "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, "")
-    .replace(/[^a-z0-9]/g, "");
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 export async function extractTextFromBuffer(params: {
