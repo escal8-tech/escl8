@@ -5,6 +5,14 @@ export type ExtractedDoc = {
   pageCount?: number;
   pages?: string[];  // Individual page texts for page-wise chunking
   rows?: string[];   // Row texts for spreadsheet row-wise chunking
+  structuredRows?: SpreadsheetRow[]; // Row objects with normalized dynamic headers
+};
+
+export type SpreadsheetRow = {
+  sheetName: string;
+  rowNumber: number; // 1-based row number in source sheet
+  fields: Record<string, string>;
+  text: string; // Labeled row text for embedding
 };
 
 // Page boundary marker used when preserving page structure
@@ -21,6 +29,14 @@ function normalizeTextPreserveLines(t: string): string {
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function normalizeHeaderKey(raw: string): string {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9]/g, "");
 }
 
 export async function extractTextFromBuffer(params: {
@@ -101,6 +117,7 @@ export async function extractTextFromBuffer(params: {
     const xlsx: any = await import("xlsx");
     const workbook = xlsx.read(buffer, { type: "buffer" });
     const rowTexts: string[] = [];
+    const structuredRows: SpreadsheetRow[] = [];
 
     for (const sheetName of workbook.SheetNames || []) {
       const sheet = workbook.Sheets?.[sheetName];
@@ -111,14 +128,42 @@ export async function extractTextFromBuffer(params: {
         defval: "",
       });
 
-      for (const row of rows) {
-        const rowText = row
-          .map((cell) => String(cell ?? "").trim())
-          .filter((cell) => cell.length > 0)
-          .join(" ");
-        if (rowText.length > 0) {
-          rowTexts.push(normalize(rowText));
+      const headerRowIndex = rows.findIndex((row) =>
+        row.some((cell) => String(cell ?? "").trim().length > 0),
+      );
+      if (headerRowIndex < 0) continue;
+
+      const rawHeaders = rows[headerRowIndex].map((cell) => String(cell ?? "").trim());
+      const normalizedHeaders = rawHeaders.map((header, idx) => {
+        const key = normalizeHeaderKey(header);
+        return key || `col${idx + 1}`;
+      });
+
+      for (let i = headerRowIndex + 1; i < rows.length; i++) {
+        const row = rows[i];
+        const fields: Record<string, string> = {};
+
+        for (let j = 0; j < normalizedHeaders.length; j++) {
+          const key = normalizedHeaders[j];
+          const value = String(row?.[j] ?? "").trim();
+          if (!value) continue;
+          fields[key] = value;
         }
+
+        const entries = Object.entries(fields);
+        if (entries.length === 0) continue;
+
+        const labeledText = entries.map(([k, v]) => `${k}: ${v}`).join(" | ");
+        const finalText = normalize(labeledText);
+        if (!finalText) continue;
+
+        rowTexts.push(finalText);
+        structuredRows.push({
+          sheetName,
+          rowNumber: i + 1,
+          fields,
+          text: finalText,
+        });
       }
     }
 
@@ -126,6 +171,7 @@ export async function extractTextFromBuffer(params: {
       text: rowTexts.join("\n"),
       pageCount: rowTexts.length || undefined,
       rows: rowTexts,
+      structuredRows,
     };
   }
 

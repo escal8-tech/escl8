@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { downloadBlobToBuffer, uploadTextToBlob } from "./blob";
-import { extractTextFromBuffer, PAGE_BOUNDARY } from "./extractText";
+import { extractTextFromBuffer, PAGE_BOUNDARY, SpreadsheetRow } from "./extractText";
 import { smartChunkText, classifyChunksWithLLM, SmartChunk } from "./smartChunk";
 import { embedTexts } from "./embed";
 import { getPineconeIndex } from "./pinecone";
@@ -261,6 +261,40 @@ function buildInventoryRowChunks(rows: string[]): SmartChunk[] {
   return chunks;
 }
 
+function buildInventoryStructuredRowChunks(rows: SpreadsheetRow[]): SmartChunk[] {
+  const chunks: SmartChunk[] = [];
+  const rowTexts = rows.map((r) => r.text);
+  let charOffset = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const rowText = row.text.trim();
+    if (!rowText) continue;
+
+    const charStart = charOffset;
+    const charEnd = charStart + rowText.length;
+    charOffset = charEnd + 1;
+
+    chunks.push({
+      text: rowText,
+      chunkType: "product_info",
+      headingContext: `${row.sheetName} row ${row.rowNumber}`,
+      chunkIndex: chunks.length,
+      charStart,
+      charEnd,
+      tokenEstimate: estimateTokens(rowText),
+      products: [],
+      keywords: extractKeywordsLite(rowText),
+      prices: extractPricesLite(rowText),
+      question: null,
+      contextBefore: i > 0 ? getShortContext(rowTexts, i - 1) : "",
+      contextAfter: i < rows.length - 1 ? getShortContext(rowTexts, i + 1) : "",
+    });
+  }
+
+  return chunks;
+}
+
 function buildInventoryHierarchicalChunks(text: string, pages?: string[]): SmartChunk[] {
   const pageTexts = splitIntoPages(text, pages);
   const sections: Section[] = pageTexts.map((p, i) => ({
@@ -384,8 +418,10 @@ export async function indexSingleDocType(params: {
     docType === "conversations"
       ? buildConversationHierarchicalChunks(text, extracted.pages)
       : docType === "inventory"
-        ? (extracted.rows && extracted.rows.length > 0
-            ? buildInventoryRowChunks(extracted.rows)
+        ? (extracted.structuredRows && extracted.structuredRows.length > 0
+            ? buildInventoryStructuredRowChunks(extracted.structuredRows)
+            : extracted.rows && extracted.rows.length > 0
+              ? buildInventoryRowChunks(extracted.rows)
             : buildInventoryHierarchicalChunks(text, extracted.pages))
         : smartChunkText(text, chunkOpts);
 
