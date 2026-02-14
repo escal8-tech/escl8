@@ -639,6 +639,7 @@ export default function DashboardPage() {
     requestStatsInput: statsInput,
     requestActivityInput: activityInput,
     customerListInput: customersInput,
+    ticketListInputs: [{ limit: 500 }],
   });
 
   const listQ = trpc.requests.list.useQuery(listInput);
