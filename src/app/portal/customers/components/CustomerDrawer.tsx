@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { CustomerRow, Source } from "../types";
 import { SOURCE_CONFIG } from "../types";
 import { trpc } from "@/utils/trpc";
+import { PortalSelect } from "@/app/portal/components/PortalSelect";
 
 type Props = {
   customer: CustomerRow | null;
@@ -317,24 +318,18 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                 >
                   Status
                 </label>
-                <select
+                <PortalSelect
                   value={customer.status}
-                  onChange={(e) => handleStatusChange(e.target.value)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 6,
-                    border: "1px solid var(--border)",
-                    background: "var(--glass-bg)",
-                    color: "var(--foreground)",
-                    fontSize: 14,
-                    width: "100%",
-                  }}
-                >
-                  <option value="active">Active</option>
-                  <option value="vip">VIP</option>
-                  <option value="blocked">Blocked</option>
-                  <option value="archived">Archived</option>
-                </select>
+                  onValueChange={handleStatusChange}
+                  options={[
+                    { value: "active", label: "Active" },
+                    { value: "vip", label: "VIP" },
+                    { value: "blocked", label: "Blocked" },
+                    { value: "archived", label: "Archived" },
+                  ]}
+                  style={{ width: "100%" }}
+                  ariaLabel="Customer status"
+                />
               </div>
 
               {/* Stats Grid */}

@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo, type CSSProperties } from "react";
 import { CustomerRow, Source, SOURCE_CONFIG } from "../types";
 import { SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { trpc } from "@/utils/trpc";
+import { TableSelect } from "@/app/portal/components/TableToolbarControls";
+import { PortalDataTable } from "@/app/portal/components/PortalDataTable";
+import { TablePagination } from "@/app/portal/components/TablePagination";
 
 const Icons = {
   pause: (
@@ -27,12 +30,19 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
 }
+const PAGE_SIZE = 20;
 
 function SourceBadge({ source }: { source: Source }) {
   const config = SOURCE_CONFIG[source];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${config.bgColor}`}
+      className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
+      style={{
+        border: `1px solid ${config.color}55`,
+        background: `${config.color}1f`,
+        color: "#f1f5f9",
+        letterSpacing: "0.02em",
+      }}
     >
       {config.label}
     </span>
@@ -40,17 +50,30 @@ function SourceBadge({ source }: { source: Source }) {
 }
 
 function SentimentBadge({ sentiment }: { sentiment: string | null }) {
-  if (!sentiment) return <span className="text-gray-400">—</span>;
+  if (!sentiment) return <span style={{ color: "var(--muted)" }}>-</span>;
 
-  const colors: Record<string, string> = {
-    positive: "bg-green-100 text-green-800",
-    neutral: "bg-gray-100 text-gray-800",
-    negative: "bg-red-100 text-red-800",
+  const styles: Record<string, CSSProperties> = {
+    positive: {
+      background: "rgba(16, 185, 129, 0.18)",
+      border: "1px solid rgba(16, 185, 129, 0.35)",
+      color: "#86efac",
+    },
+    neutral: {
+      background: "rgba(148, 163, 184, 0.16)",
+      border: "1px solid rgba(148, 163, 184, 0.3)",
+      color: "#cbd5e1",
+    },
+    negative: {
+      background: "rgba(239, 68, 68, 0.16)",
+      border: "1px solid rgba(239, 68, 68, 0.32)",
+      color: "#fca5a5",
+    },
   };
 
   return (
     <span
-      className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${colors[sentiment] ?? colors.neutral}`}
+      className="inline-block rounded-full px-2 py-0.5 text-xs font-medium"
+      style={styles[sentiment] ?? styles.neutral}
     >
       {sentiment}
     </span>
@@ -64,15 +87,15 @@ function LeadScoreBar({ score }: { score: number }) {
   return (
     <div className="flex items-center gap-2">
       <div
-        className="h-2 rounded-full bg-gray-200"
-        style={{ width: 60 }}
+        className="h-2 rounded-full"
+        style={{ width: 60, background: "rgba(100, 116, 139, 0.28)" }}
       >
         <div
           className="h-2 rounded-full transition-all"
           style={{ width: `${score}%`, backgroundColor: color }}
         />
       </div>
-      <span className="text-xs text-gray-600">{score}</span>
+      <span style={{ fontSize: 12, color: "var(--muted)" }}>{score}</span>
     </div>
   );
 }
@@ -83,6 +106,8 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
   const [sortKey, setSortKey] = useState<keyof CustomerRow>("lastMessageAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
+  const [page, setPage] = useState(0);
+
   const utils = trpc.useUtils();
   const togglePause = trpc.customers.setBotPaused.useMutation({
     onMutate: async (vars) => {
@@ -125,18 +150,15 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
     },
   });
 
-  // Get source counts for filter dropdown
   const { data: sourceCounts } = trpc.customers.getSourceCounts.useQuery();
 
   const filteredRows = useMemo(() => {
     let result = [...rows];
 
-    // Filter by source
     if (sourceFilter !== "all") {
       result = result.filter((r) => r.source === sourceFilter);
     }
 
-    // Search filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
@@ -148,7 +170,6 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
       );
     }
 
-    // Sort
     result.sort((a, b) => {
       const aVal = a[sortKey];
       const bVal = b[sortKey];
@@ -176,6 +197,15 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
 
     return result;
   }, [rows, sourceFilter, searchQuery, sortKey, sortDir]);
+  useEffect(() => {
+    setPage(0);
+  }, [searchQuery, sourceFilter, sortKey, sortDir]);
+  const totalPagesLoaded = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPagesLoaded - 1);
+  const pageRows = useMemo(
+    () => filteredRows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
+    [filteredRows, safePage],
+  );
 
   const handleSort = (key: keyof CustomerRow) => {
     if (sortKey === key) {
@@ -188,52 +218,26 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
 
   const SortIcon = ({ column }: { column: keyof CustomerRow }) => {
     if (sortKey !== column) return null;
-    return <span className="ml-1">{sortDir === "asc" ? "↑" : "↓"}</span>;
+    return <span className="ml-1">{sortDir === "asc" ? "^" : "v"}</span>;
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
+    <PortalDataTable
+      toolbarNoWrap
+      search={{
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: "Search customers...",
+        style: { width: "min(520px, 52vw)", minWidth: 220, flex: "0 1 520px" },
       }}
-    >
-      {/* Header */}
-      <div
-        className="flex items-center gap-3 border-b"
-        style={{ borderColor: "var(--border)", padding: "24px 28px" }}
-      >
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Search customers..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="px-3 py-2 rounded-lg border text-sm"
-          style={{
-            background: "var(--surface)",
-            borderColor: "var(--border)",
-            color: "var(--foreground)",
-            width: 520,
-            maxWidth: "60vw",
-          }}
-        />
-
-        {/* Source Filter */}
-        <select
+      countText={`${filteredRows.length} customer${filteredRows.length !== 1 ? "s" : ""}${sourceFilter !== "all" ? ` from ${SOURCE_CONFIG[sourceFilter].label}` : ""}`}
+      endControls={(
+        <TableSelect
           value={sourceFilter}
           onChange={(e) => setSourceFilter(e.target.value as Source | "all")}
-          className="px-3 py-2 rounded-lg border text-sm"
-          style={{
-            background: "var(--surface)",
-            borderColor: "var(--border)",
-            color: "var(--foreground)",
-            width: 180,
-            marginLeft: 12,
-          }}
+          style={{ width: 132 }}
         >
-          <option value="all">All Sources ({rows.length})</option>
+          <option value="all">All sources ({rows.length})</option>
           {SUPPORTED_SOURCES.map((src) => {
             const count = sourceCounts?.[src] ?? 0;
             if (count === 0) return null;
@@ -243,164 +247,135 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
               </option>
             );
           })}
-        </select>
-
-        <div style={{ marginLeft: "auto" }}>
-          <p className="text-sm text-gray-500" style={{ whiteSpace: "nowrap" }}>
-            {filteredRows.length} customer{filteredRows.length !== 1 ? "s" : ""}
-            {sourceFilter !== "all" && ` from ${SOURCE_CONFIG[sourceFilter].label}`}
-          </p>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
-        <table className="w-full text-sm">
-          <thead>
-            <tr
-              className="border-b"
-              style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-            >
-              <th
-                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
-                onClick={() => handleSort("source")}
-              >
-                Source <SortIcon column="source" />
-              </th>
-              <th
-                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
-                onClick={() => handleSort("name")}
-              >
-                Customer <SortIcon column="name" />
-              </th>
-              <th
-                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
-                onClick={() => handleSort("totalRequests")}
-              >
-                Requests <SortIcon column="totalRequests" />
-              </th>
-              <th className="px-4 py-3 text-left font-medium">Bot</th>
-              <th
-                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
-                onClick={() => handleSort("totalRevenue")}
-              >
-                Revenue <SortIcon column="totalRevenue" />
-              </th>
-              <th
-                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
-                onClick={() => handleSort("leadScore")}
-              >
-                Lead Score <SortIcon column="leadScore" />
-              </th>
-              <th
-                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
-                onClick={() => handleSort("lastSentiment")}
-              >
-                Sentiment <SortIcon column="lastSentiment" />
-              </th>
-              <th
-                className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100/50"
-                onClick={() => handleSort("lastMessageAt")}
-              >
-                Last Active <SortIcon column="lastMessageAt" />
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredRows.map((row) => (
-              <tr
-                key={row.id}
-                onClick={() => onSelect(row.id)}
-                className="border-b cursor-pointer transition-colors hover:bg-gray-50/50"
-                style={{ borderColor: "var(--border)" }}
-              >
-                <td className="px-4 py-3">
-                  <SourceBadge source={row.source} />
-                </td>
-                <td className="px-4 py-3">
-                  <div>
-                    <div className="font-medium flex items-center gap-2">
-                      {row.name || row.externalId}
-                      {row.isHighIntent && (
-                        <span title="High Intent" className="text-yellow-500">
-                          ⭐
-                        </span>
-                      )}
-                    </div>
-                    {row.name && (
-                      <div className="text-xs text-gray-500">{row.externalId}</div>
-                    )}
-                    {row.email && (
-                      <div className="text-xs text-gray-400">{row.email}</div>
+        </TableSelect>
+      )}
+      footer={(
+        <TablePagination
+          page={safePage}
+          totalPages={totalPagesLoaded}
+          shownCount={pageRows.length}
+          totalCount={filteredRows.length}
+          canPrev={safePage > 0}
+          canNext={safePage < totalPagesLoaded - 1 || Boolean(hasMore)}
+          pageLabelSuffix={hasMore ? "+" : undefined}
+          onPrev={() => setPage((p) => Math.max(0, p - 1))}
+          onNext={() => {
+            if (safePage < totalPagesLoaded - 1) {
+              setPage((p) => p + 1);
+              return;
+            }
+            if (hasMore && onLoadMore && !isLoadingMore) {
+              onLoadMore();
+            }
+          }}
+        />
+      )}
+    >
+      <table className="table table-clickable portal-modern-table">
+        <thead>
+          <tr>
+            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("source")}>
+              Source <SortIcon column="source" />
+            </th>
+            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("name")}>
+              Customer <SortIcon column="name" />
+            </th>
+            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("totalRequests")}>
+              Requests <SortIcon column="totalRequests" />
+            </th>
+            <th>Bot</th>
+            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("totalRevenue")}>
+              Revenue <SortIcon column="totalRevenue" />
+            </th>
+            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("leadScore")}>
+              Lead score <SortIcon column="leadScore" />
+            </th>
+            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("lastSentiment")}>
+              Sentiment <SortIcon column="lastSentiment" />
+            </th>
+            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("lastMessageAt")}>
+              Last active <SortIcon column="lastMessageAt" />
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {pageRows.map((row) => (
+            <tr key={row.id} onClick={() => onSelect(row.id)}>
+              <td>
+                <SourceBadge source={row.source} />
+              </td>
+              <td>
+                <div>
+                  <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
+                    {row.name || row.externalId}
+                    {row.isHighIntent && (
+                      <span title="High Intent" style={{ color: "#f59e0b", fontSize: 13 }}>
+                        *
+                      </span>
                     )}
                   </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="font-medium">{row.totalRequests}</span>
-                </td>
-                <td className="px-4 py-3">
-                  {(() => {
-                    const isPending = Boolean(pendingIds[row.id]);
-                    return (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (isPending) return;
-                      togglePause.mutate({ customerId: row.id, botPaused: !row.botPaused });
-                    }}
-                    disabled={isPending}
-                    style={{ opacity: isPending ? 0.6 : 1, width: 112, justifyContent: "center" }}
-                  >
-                    <span style={{ width: 16, height: 16 }}>{row.botPaused ? Icons.play : Icons.pause}</span>
-                    {row.botPaused ? "Resume" : "Pause"}
-                  </button>
-                    );
-                  })()}
-                </td>
-                <td className="px-4 py-3">
-                  <span className="font-medium">
-                    ${parseFloat(row.totalRevenue || "0").toLocaleString()}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <LeadScoreBar score={row.leadScore} />
-                </td>
-                <td className="px-4 py-3">
-                  <SentimentBadge sentiment={row.lastSentiment} />
-                </td>
-                <td className="px-4 py-3 text-gray-500">
-                  {row.lastMessageAt
-                    ? new Date(row.lastMessageAt).toLocaleDateString()
-                    : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  {row.name && (
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>{row.externalId}</div>
+                  )}
+                  {row.email && (
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>{row.email}</div>
+                  )}
+                </div>
+              </td>
+              <td>
+                <span style={{ fontWeight: 600 }}>{row.totalRequests}</span>
+              </td>
+              <td>
+                {(() => {
+                  const isPending = Boolean(pendingIds[row.id]);
+                  return (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isPending) return;
+                        togglePause.mutate({ customerId: row.id, botPaused: !row.botPaused });
+                      }}
+                      disabled={isPending}
+                      style={{ opacity: isPending ? 0.6 : 1, width: 112, justifyContent: "center" }}
+                    >
+                      <span style={{ width: 16, height: 16 }}>{row.botPaused ? Icons.play : Icons.pause}</span>
+                      {row.botPaused ? "Resume" : "Pause"}
+                    </button>
+                  );
+                })()}
+              </td>
+              <td>
+                <span style={{ fontWeight: 600 }}>
+                  ${parseFloat(row.totalRevenue || "0").toLocaleString()}
+                </span>
+              </td>
+              <td>
+                <LeadScoreBar score={row.leadScore} />
+              </td>
+              <td>
+                <SentimentBadge sentiment={row.lastSentiment} />
+              </td>
+              <td style={{ color: "var(--muted)" }}>
+                {row.lastMessageAt
+                  ? new Date(row.lastMessageAt).toLocaleDateString()
+                  : "-"}
+              </td>
+            </tr>
+          ))}
 
-        {filteredRows.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            {searchQuery || sourceFilter !== "all"
-              ? "No customers match your filters"
-              : "No customers found"}
-          </div>
-        )}
-
-        {hasMore && (
-          <div style={{ padding: "16px 20px", borderTop: "1px solid var(--border)", textAlign: "center" }}>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={onLoadMore}
-              disabled={isLoadingMore}
-            >
-              {isLoadingMore ? "Loading..." : "Load more"}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+          {pageRows.length === 0 && (
+            <tr>
+              <td colSpan={8} style={{ textAlign: "center", color: "var(--muted)", padding: "24px 10px" }}>
+                {searchQuery || sourceFilter !== "all"
+                  ? "No customers match your filters"
+                  : "No customers found"}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </PortalDataTable>
   );
 }

@@ -306,7 +306,7 @@ export default function MessagesPage() {
   return (
     <main
       style={{
-        height: "calc(100vh - 72px - 48px)",
+        height: "100%",
         minHeight: 520,
         display: "flex",
         background: "var(--background)",
@@ -329,7 +329,8 @@ export default function MessagesPage() {
               display: "flex",
               alignItems: "center",
               gap: 10,
-              padding: "8px 12px",
+              minHeight: 44,
+              padding: "10px 12px",
               borderRadius: 8,
               background: "rgba(255,255,255,0.03)",
             }}
@@ -348,6 +349,7 @@ export default function MessagesPage() {
                 border: "none",
                 color: "var(--foreground)",
                 outline: "none",
+                boxShadow: "none",
                 fontSize: 14,
               }}
             />

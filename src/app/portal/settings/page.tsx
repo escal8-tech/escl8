@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { trpc } from "@/utils/trpc";
+import { PortalSelect } from "@/app/portal/components/PortalSelect";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ICONS (inline SVGs for clean dependency-free icons)
@@ -100,6 +101,12 @@ const Icons = {
     <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
       <rect x="1" y="5" width="22" height="14" rx="7" ry="7" />
       <circle cx="8" cy="12" r="3" />
+    </svg>
+  ),
+  ticket: (
+    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+      <path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V9z" />
+      <path d="M9 9v12" />
     </svg>
   ),
 };
@@ -568,14 +575,16 @@ function Toast({ message, show }: { message: string; show: boolean }) {
 /* ─────────────────────────────────────────────────────────────────────────────
    SETTINGS PAGE TABS
 ───────────────────────────────────────────────────────────────────────────── */
-type SettingsTab = "profile" | "booking" | "integrations" | "notifications";
+type SettingsTab = "profile" | "booking" | "tickets" | "integrations" | "notifications";
 
 const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "profile", label: "Profile", icon: Icons.user },
   { id: "booking", label: "Booking", icon: Icons.calendar },
+  { id: "tickets", label: "Tickets", icon: Icons.ticket },
   { id: "integrations", label: "Integrations", icon: Icons.whatsapp },
   { id: "notifications", label: "Notifications", icon: Icons.bell },
 ];
+
 
 /* ─────────────────────────────────────────────────────────────────────────────
    MAIN SETTINGS PAGE
@@ -605,10 +614,17 @@ export default function SettingsPage() {
 
   const userQuery = trpc.user.getMe.useQuery({ email: email ?? "" }, { enabled: !!email });
   const businessQuery = trpc.business.getMine.useQuery({ email: email ?? "" }, { enabled: !!email });
+  const ticketTypesQuery = trpc.tickets.listTypes.useQuery({ includeDisabled: true }, { enabled: !!email });
   const updateBooking = trpc.business.updateBookingConfig.useMutation({
     onSuccess: () => {
       showToast("Settings saved successfully!");
       businessQuery.refetch();
+    },
+  });
+  const upsertTicketType = trpc.tickets.upsertType.useMutation({
+    onSuccess: () => {
+      showToast("Ticket type saved");
+      ticketTypesQuery.refetch();
     },
   });
   const updateTimezone = trpc.business.updateTimezone.useMutation({
@@ -663,6 +679,21 @@ export default function SettingsPage() {
       email,
       businessId: businessQuery.data.id,
       timezone,
+    });
+  };
+
+  const normalizeTicketKey = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+  const saveTicketType = (row: {
+    id: string;
+    enabled?: boolean;
+    requiredFields?: string[] | null;
+  }) => {
+    if (!row.id) return;
+    upsertTicketType.mutate({
+      id: row.id,
+      enabled: row.enabled ?? true,
+      requiredFields: (row.requiredFields ?? []).map((x) => normalizeTicketKey(x)).filter(Boolean),
     });
   };
 
@@ -843,18 +874,20 @@ export default function SettingsPage() {
                 Timeslot Duration
                 <p style={styles.labelHint}>Length of each booking slot</p>
               </label>
-              <select
+              <PortalSelect
+                value={String(timeslotMinutes)}
+                onValueChange={(value) => setTimeslotMinutes(parseInt(value, 10))}
+                options={[
+                  { value: "15", label: "15 minutes" },
+                  { value: "30", label: "30 minutes" },
+                  { value: "45", label: "45 minutes" },
+                  { value: "60", label: "1 hour" },
+                  { value: "90", label: "1.5 hours" },
+                  { value: "120", label: "2 hours" },
+                ]}
                 style={styles.select}
-                value={timeslotMinutes}
-                onChange={(e) => setTimeslotMinutes(parseInt(e.target.value))}
-              >
-                <option value={15}>15 minutes</option>
-                <option value={30}>30 minutes</option>
-                <option value={45}>45 minutes</option>
-                <option value={60}>1 hour</option>
-                <option value={90}>1.5 hours</option>
-                <option value={120}>2 hours</option>
-              </select>
+                ariaLabel="Timeslot duration"
+              />
             </div>
           </div>
 
@@ -899,6 +932,82 @@ export default function SettingsPage() {
             {Icons.save}
             {updateBooking.isPending ? "Saving..." : "Save Changes"}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderTicketsTab = () => (
+    <div style={styles.section}>
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <div style={{ ...styles.cardIcon, ...styles.cardIconSecondary }}>{Icons.ticket}</div>
+          <div>
+            <h3 style={styles.cardTitle}>Ticket Fields</h3>
+            <p style={styles.cardDescription}>Fixed ticket types. Only required fields and enable toggle are editable.</p>
+          </div>
+        </div>
+        <div style={{ ...styles.cardBody, padding: 12 }}>
+          {!ticketTypesQuery.data?.length ? (
+            <p style={{ margin: 0, color: "var(--muted)" }}>No ticket types configured yet.</p>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {ticketTypesQuery.data.map((ticketType) => {
+                const initialFields = ((ticketType.requiredFields as string[]) ?? []).join(",");
+                return (
+                <form
+                  key={ticketType.id}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const form = new FormData(e.currentTarget);
+                    const enabled = form.get("enabled") === "on";
+                    const requiredFields = String(form.get("required_fields") || "")
+                      .split(",")
+                      .map((x) => normalizeTicketKey(x))
+                      .filter(Boolean);
+                    saveTicketType({
+                      id: ticketType.id,
+                      enabled,
+                      requiredFields,
+                    });
+                  }}
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    display: "grid",
+                    gridTemplateColumns: "180px minmax(260px, 1fr) auto auto",
+                    gap: 10,
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{ticketType.label}</div>
+                    <div style={{ color: "var(--muted)", fontSize: 11, fontFamily: "monospace" }}>{ticketType.key}</div>
+                  </div>
+                  <div>
+                    <input
+                      name="required_fields"
+                      type="text"
+                      style={{ ...styles.input, height: 36, fontSize: 13 }}
+                      defaultValue={initialFields}
+                      placeholder="orderid,phonenumber"
+                    />
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--muted)", fontSize: 12 }}>
+                    <input name="enabled" type="checkbox" defaultChecked={ticketType.enabled} />
+                    Enabled
+                  </label>
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <button type="submit" style={styles.btnPrimary} disabled={upsertTicketType.isPending}>
+                      Save
+                    </button>
+                  </div>
+                </form>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1057,6 +1166,8 @@ export default function SettingsPage() {
         return renderProfileTab();
       case "booking":
         return renderBookingTab();
+      case "tickets":
+        return renderTicketsTab();
       case "integrations":
         return renderIntegrationsTab();
       case "notifications":

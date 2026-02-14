@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import type { RequestRow, Source } from "./types";
 import { SOURCE_CONFIG } from "./types";
 import { formatMoney } from "./utils";
+import { PortalSelect } from "@/app/portal/components/PortalSelect";
 
 type Props = {
   rows: RequestRow[];
@@ -66,66 +67,55 @@ export function RequestsTable({ rows, onSelect }: Props) {
     setPage(0);
   };
 
-  const selectStyle: React.CSSProperties = {
-    padding: "6px 10px",
-    borderRadius: 6,
-    border: "1px solid var(--border)",
-    background: "var(--glass-bg)",
-    color: "var(--foreground)",
-    fontSize: 13,
-    minWidth: 120,
-  };
-
   return (
     <div className="glass" style={{ marginTop: 24 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 12 }}>
         <h2 style={{ fontSize: 18 }}>Customer requests</h2>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <select
+          <PortalSelect
             value={sentimentFilter}
-            onChange={(e) => handleFilterChange(setSentimentFilter)(e.target.value)}
-            style={selectStyle}
-            aria-label="Filter by sentiment"
-          >
-            <option value="all">All sentiments</option>
-            {sentiments.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-          <select
+            onValueChange={handleFilterChange(setSentimentFilter)}
+            options={[
+              { value: "all", label: "All sentiments" },
+              ...sentiments.map((s) => ({ value: s, label: s })),
+            ]}
+            style={{ minWidth: 132 }}
+            ariaLabel="Filter by sentiment"
+          />
+          <PortalSelect
             value={statusFilter}
-            onChange={(e) => handleFilterChange(setStatusFilter)(e.target.value)}
-            style={selectStyle}
-            aria-label="Filter by status"
-          >
-            <option value="all">All statuses</option>
-            {statuses.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-          <select
+            onValueChange={handleFilterChange(setStatusFilter)}
+            options={[
+              { value: "all", label: "All statuses" },
+              ...statuses.map((s) => ({ value: s, label: s })),
+            ]}
+            style={{ minWidth: 132 }}
+            ariaLabel="Filter by status"
+          />
+          <PortalSelect
             value={paidFilter}
-            onChange={(e) => handleFilterChange(setPaidFilter)(e.target.value)}
-            style={selectStyle}
-            aria-label="Filter by paid"
-          >
-            <option value="all">All paid</option>
-            <option value="yes">Paid</option>
-            <option value="no">Not paid</option>
-          </select>
-          <select
+            onValueChange={handleFilterChange(setPaidFilter)}
+            options={[
+              { value: "all", label: "All paid" },
+              { value: "yes", label: "Paid" },
+              { value: "no", label: "Not paid" },
+            ]}
+            style={{ minWidth: 120 }}
+            ariaLabel="Filter by paid"
+          />
+          <PortalSelect
             value={sourceFilter}
-            onChange={(e) => handleFilterChange(setSourceFilter)(e.target.value)}
-            style={selectStyle}
-            aria-label="Filter by source"
-          >
-            <option value="all">All channels</option>
-            {sources.map((s) => (
-              <option key={s} value={s}>
-                {SOURCE_CONFIG[s as Source]?.icon ?? "📱"} {SOURCE_CONFIG[s as Source]?.label ?? s}
-              </option>
-            ))}
-          </select>
+            onValueChange={handleFilterChange(setSourceFilter)}
+            options={[
+              { value: "all", label: "All channels" },
+              ...sources.map((s) => ({
+                value: s,
+                label: SOURCE_CONFIG[s as Source]?.label ?? s,
+              })),
+            ]}
+            style={{ minWidth: 140 }}
+            ariaLabel="Filter by source"
+          />
           <span className="muted" style={{ fontSize: 13 }}>{filteredRows.length} shown</span>
         </div>
       </div>
@@ -175,7 +165,7 @@ export function RequestsTable({ rows, onSelect }: Props) {
                         color: config?.color ?? "#94A3B8",
                       }}
                     >
-                      {config?.icon ?? "📱"} {config?.label ?? source}
+                      {config?.label ?? source}
                     </span>
                   </td>
                   <td style={{ padding: "12px 8px" }}>{r.customerNumber}</td>

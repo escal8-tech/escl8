@@ -194,6 +194,8 @@ export const businessesRelations = relations(businesses, ({ many }) => ({
   customers: many(customers),
   messageThreads: many(messageThreads),
   requests: many(requests),
+  supportTicketTypes: many(supportTicketTypes),
+  supportTickets: many(supportTickets),
 }));
 
 export const whatsappIdentitiesRelations = relations(whatsappIdentities, ({ one }) => ({
@@ -448,6 +450,7 @@ export const messageThreadsRelations = relations(messageThreads, ({ one, many })
     references: [whatsappIdentities.phoneNumberId],
   }),
   messages: many(threadMessages),
+  supportTickets: many(supportTickets),
 }));
 
 export const threadMessagesRelations = relations(threadMessages, ({ one }) => ({
@@ -472,10 +475,135 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
   }),
   threads: many(messageThreads),
   requests: many(requests),
+  supportTickets: many(supportTickets),
 }));
 
 export type CustomerRow = typeof customers.$inferSelect;
 export type NewCustomer = typeof customers.$inferInsert;
+
+// Tenant-defined ticket categories + required flow-state fields.
+export const supportTicketTypes = pgTable(
+  "support_ticket_types",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    description: text("description"),
+    enabled: boolean("enabled").notNull().default(true),
+    requiredFields: jsonb("required_fields").$type<string[]>().notNull().default([]),
+    triggerPhrases: jsonb("trigger_phrases").$type<string[]>().notNull().default([]),
+    confirmationTemplate: text("confirmation_template"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    supportTicketTypesBizIdx: index("support_ticket_types_business_id_idx").on(t.businessId),
+    supportTicketTypesEnabledIdx: index("support_ticket_types_enabled_idx").on(t.businessId, t.enabled),
+    supportTicketTypesBizKeyUx: uniqueIndex("support_ticket_types_business_key_ux").on(t.businessId, t.key),
+    supportTicketTypesKeyNonEmpty: check(
+      "support_ticket_types_key_nonempty",
+      sql`length(btrim(${t.key})) > 0`,
+    ),
+    supportTicketTypesLabelNonEmpty: check(
+      "support_ticket_types_label_nonempty",
+      sql`length(btrim(${t.label})) > 0`,
+    ),
+  }),
+);
+
+export const supportTickets = pgTable(
+  "support_tickets",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    ticketTypeId: text("ticket_type_id").references(() => supportTicketTypes.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    ticketTypeKey: text("ticket_type_key").notNull(),
+    status: text("status").notNull().default("open"), // open | in_progress | resolved | closed
+    priority: text("priority").notNull().default("normal"), // low | normal | high | urgent
+    source: text("source").notNull().default("whatsapp"),
+    customerId: text("customer_id").references(() => customers.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    threadId: text("thread_id").references(() => messageThreads.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    whatsappIdentityId: text("whatsapp_identity_id").references(() => whatsappIdentities.phoneNumberId, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    customerName: text("customer_name"),
+    customerPhone: text("customer_phone"),
+    title: text("title"),
+    summary: text("summary"),
+    fields: jsonb("fields").$type<Record<string, unknown>>().notNull().default({}),
+    notes: text("notes"),
+    createdBy: text("created_by").notNull().default("bot"), // bot | user | system
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    supportTicketsBizIdx: index("support_tickets_business_id_idx").on(t.businessId),
+    supportTicketsTypeIdx: index("support_tickets_type_idx").on(t.businessId, t.ticketTypeKey),
+    supportTicketsStatusIdx: index("support_tickets_status_idx").on(t.businessId, t.status),
+    supportTicketsCreatedIdx: index("support_tickets_created_at_idx").on(t.createdAt),
+    supportTicketsCustomerIdx: index("support_tickets_customer_id_idx").on(t.customerId),
+  }),
+);
+
+export const supportTicketTypesRelations = relations(supportTicketTypes, ({ one, many }) => ({
+  business: one(businesses, {
+    fields: [supportTicketTypes.businessId],
+    references: [businesses.id],
+  }),
+  tickets: many(supportTickets),
+}));
+
+export const supportTicketsRelations = relations(supportTickets, ({ one }) => ({
+  business: one(businesses, {
+    fields: [supportTickets.businessId],
+    references: [businesses.id],
+  }),
+  ticketType: one(supportTicketTypes, {
+    fields: [supportTickets.ticketTypeId],
+    references: [supportTicketTypes.id],
+  }),
+  customer: one(customers, {
+    fields: [supportTickets.customerId],
+    references: [customers.id],
+  }),
+  thread: one(messageThreads, {
+    fields: [supportTickets.threadId],
+    references: [messageThreads.id],
+  }),
+  whatsappIdentity: one(whatsappIdentities, {
+    fields: [supportTickets.whatsappIdentityId],
+    references: [whatsappIdentities.phoneNumberId],
+  }),
+}));
+
+export type SupportTicketTypeRow = typeof supportTicketTypes.$inferSelect;
+export type NewSupportTicketType = typeof supportTicketTypes.$inferInsert;
+export type SupportTicketRow = typeof supportTickets.$inferSelect;
+export type NewSupportTicket = typeof supportTickets.$inferInsert;
 
 // Customer requests (per business dashboard) - multi-source
 export const requests = pgTable(

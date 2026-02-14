@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
+import { PortalSelect } from "@/app/portal/components/PortalSelect";
 import type { DonutDatum, RequestRow } from "./components/types";
 import {
   Area,
@@ -15,12 +17,14 @@ import {
   YAxis,
   Pie,
   PieChart,
+  Bar,
+  BarChart as ReBarChart,
   Label,
   Cell,
 } from "recharts";
 
-const RECENT_REQUESTS_PAGE_SIZE = 15;
-type RequestSortKey = "customer" | "status" | "type" | "sentiment" | "date" | "bot";
+const RECENT_REQUESTS_PAGE_SIZE = 20;
+type RequestSortKey = "customer" | "status" | "type" | "bot";
 
 // Icons
 const Icons = {
@@ -240,6 +244,43 @@ function MiniDonutChart({
   );
 }
 
+function TicketCounterBarChart({
+  data,
+}: {
+  data: { label: string; count: number }[];
+}) {
+  if (!data.length) {
+    return <div className="text-muted">No ticket data.</div>;
+  }
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <ReBarChart data={data} layout="vertical" margin={{ top: 8, right: 14, left: 22, bottom: 8 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" horizontal={false} />
+        <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: "rgba(148,163,184,0.8)", fontSize: 11 }} />
+        <YAxis
+          type="category"
+          dataKey="label"
+          axisLine={false}
+          tickLine={false}
+          width={120}
+          tick={{ fill: "rgba(241,245,249,0.9)", fontSize: 11 }}
+        />
+        <Tooltip
+          cursor={{ fill: "rgba(148,163,184,0.08)" }}
+          contentStyle={{
+            borderRadius: 10,
+            border: "1px solid rgba(148,163,184,0.25)",
+            background: "rgba(15,23,42,0.95)",
+            color: "#f8fafc",
+          }}
+          formatter={(value: number) => [`${value}`, "Tickets"]}
+        />
+        <Bar dataKey="count" radius={[8, 8, 8, 8]} fill="#D4A84B" />
+      </ReBarChart>
+    </ResponsiveContainer>
+  );
+}
+
 // Area Chart Component
 function ActivityAreaChart({ data }: { data: { date: string; count: number }[] }) {
   if (!data.length) {
@@ -325,16 +366,9 @@ function RequestRowItem({
     in_progress: "badge-info",
   };
 
-  const sentimentColors: Record<string, string> = {
-    positive: "badge-success",
-    neutral: "badge-default",
-    negative: "badge-error",
-  };
-
   const displayPhone = request.customerNumber || "Unknown";
   const initials = displayPhone.slice(-2).toUpperCase();
   const statusValue = request.status ?? "ongoing";
-  const sentimentValue = request.sentiment || "neutral";
   const createdAt = new Date(request.createdAt);
   const today = new Date();
   const isToday =
@@ -356,7 +390,15 @@ function RequestRowItem({
           <div>
             <div style={{ fontWeight: 500 }}>{displayPhone}</div>
             <div className="text-muted" style={{ fontSize: "var(--text-xs)" }}>
-              {request.paid ? "Paid" : "Unpaid"}
+              {(() => {
+                const today = new Date();
+                const createdKey = createdAt.toISOString().slice(0, 10);
+                const todayKey = today.toISOString().slice(0, 10);
+                const yesterdayKey = new Date(today.getTime() - 86400000).toISOString().slice(0, 10);
+                if (createdKey === todayKey) return "Today";
+                if (createdKey === yesterdayKey) return "Yesterday";
+                return createdAt.toLocaleDateString();
+              })()}
             </div>
           </div>
         </div>
@@ -370,23 +412,6 @@ function RequestRowItem({
         <span className="badge badge-default">
           {(request.type ?? "BROWSING").replace(/_/g, " ").toUpperCase()}
         </span>
-      </td>
-      <td>
-        <span className={`badge ${sentimentColors[sentimentValue] || "badge-default"}`}>
-          {sentimentValue.toUpperCase()}
-        </span>
-      </td>
-      <td className="text-muted" style={{ fontSize: "var(--text-xs)" }}>
-        {(() => {
-          const created = new Date(request.createdAt);
-          const today = new Date();
-          const createdKey = created.toISOString().slice(0, 10);
-          const todayKey = today.toISOString().slice(0, 10);
-          const yesterdayKey = new Date(today.getTime() - 86400000).toISOString().slice(0, 10);
-          if (createdKey === todayKey) return "Today";
-          if (createdKey === yesterdayKey) return "Yesterday";
-          return created.toLocaleDateString();
-        })()}
       </td>
       <td>
         <button
@@ -454,7 +479,9 @@ function RequestDrawer({
                     </div>
                     <div>
                       <div style={{ fontWeight: 600 }}>{request.customerNumber || "Unknown"}</div>
-                      <div className="text-muted">{request.paid ? "Payment received" : "Pending payment"}</div>
+                      <div className="text-muted">
+                        Request created {new Date(request.createdAt).toLocaleDateString()}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -605,11 +632,13 @@ export default function DashboardPage() {
   const listQ = trpc.requests.list.useQuery(listInput);
   const statsQ = trpc.requests.stats.useQuery(statsInput);
   const activityQ = trpc.requests.activitySeries.useQuery(activityInput);
+  const ticketTypesQ = trpc.tickets.listTypes.useQuery({ includeDisabled: true });
+  const ticketsQ = trpc.tickets.listTickets.useQuery({ limit: 500 });
   const customerStatsQ = trpc.customers.getStats.useQuery();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [sortKey, setSortKey] = useState<RequestSortKey>("date");
+  const [sortKey, setSortKey] = useState<RequestSortKey>("status");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(0);
   const utils = trpc.useUtils();
@@ -680,12 +709,6 @@ export default function DashboardPage() {
 
     const sorted = [...filtered].sort((a, b) => {
       const direction = sortDir === "asc" ? 1 : -1;
-      if (sortKey === "date") {
-        return (
-          (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) *
-          direction
-        );
-      }
       if (sortKey === "customer") {
         return a.customerNumber.localeCompare(b.customerNumber) * direction;
       }
@@ -694,9 +717,6 @@ export default function DashboardPage() {
       }
       if (sortKey === "type") {
         return (a.type || "").localeCompare(b.type || "") * direction;
-      }
-      if (sortKey === "sentiment") {
-        return (a.sentiment || "").localeCompare(b.sentiment || "") * direction;
       }
       const botA = a.botPaused ? 1 : 0;
       const botB = b.botPaused ? 1 : 0;
@@ -780,6 +800,19 @@ export default function DashboardPage() {
   const sentimentTotal = sentimentSeries.reduce((sum, d) => sum + d.value, 0);
   const positiveValue = sentimentSeries.find((d) => d.name === "positive")?.value ?? 0;
   const positivePct = sentimentTotal > 0 ? Math.round((positiveValue / sentimentTotal) * 100) : 0;
+  const ticketTypeCounters = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const ticket of ticketsQ.data ?? []) {
+      const key = (ticket.ticketTypeKey || "").toLowerCase();
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return (ticketTypesQ.data ?? []).map((type) => ({
+      key: type.key,
+      label: type.label.length > 20 ? `${type.label.slice(0, 20)}...` : type.label,
+      enabled: type.enabled,
+      count: counts.get(type.key) ?? 0,
+    }));
+  }, [ticketTypesQ.data, ticketsQ.data]);
 
   return (
     <div className="fade-in">
@@ -833,8 +866,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Recent Requests Table */}
-      <div className="card">
+      {/* Recent Requests + Ticket Counters */}
+      <div className="grid grid-cols-4 gap-6">
+      <div className="card" style={{ gridColumn: "span 2", height: 520, display: "flex", flexDirection: "column" }}>
         <div className="card-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <h3 className="card-title">Recent Requests</h3>
@@ -842,32 +876,32 @@ export default function DashboardPage() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span className="text-muted" style={{ fontSize: 12 }}>Status:</span>
-            <select
+            <PortalSelect
               value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
+              onValueChange={(value) => {
+                setStatusFilter(value);
                 setPage(0);
               }}
-              style={{
-                height: 34,
-                borderRadius: 8,
-                border: "1px solid var(--border)",
-                background: "var(--surface-secondary)",
-                color: "var(--foreground)",
-                padding: "0 10px",
-                fontSize: 13,
-              }}
+              options={[
+                { value: "all", label: "All statuses" },
+                ...statusOptions.map((status) => ({
+                  value: status,
+                  label: status.replace(/_/g, " ").toUpperCase(),
+                })),
+              ]}
+              style={{ minWidth: 150 }}
+              ariaLabel="Filter recent requests by status"
+            />
+            <Link
+              href="/portal/requests"
+              className="btn btn-ghost btn-sm"
+              style={{ height: 34, display: "inline-flex", alignItems: "center" }}
             >
-              <option value="all">All statuses</option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {status.replace(/_/g, " ").toUpperCase()}
-                </option>
-              ))}
-            </select>
+              View all
+            </Link>
           </div>
         </div>
-        <div className="table-container" style={{ border: "none", borderRadius: 0 }}>
+        <div className="table-container" style={{ border: "none", borderRadius: 0, flex: 1, minHeight: 0, overflow: "auto" }}>
           <table className="table table-clickable">
             <thead>
               <tr>
@@ -916,34 +950,6 @@ export default function DashboardPage() {
                 <th
                   style={{ cursor: "pointer", userSelect: "none" }}
                   onClick={() => {
-                    if (sortKey === "sentiment") {
-                      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                    } else {
-                      setSortKey("sentiment");
-                      setSortDir("asc");
-                    }
-                    setPage(0);
-                  }}
-                >
-                  Sentiment {sortKey === "sentiment" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
-                </th>
-                <th
-                  style={{ cursor: "pointer", userSelect: "none" }}
-                  onClick={() => {
-                    if (sortKey === "date") {
-                      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                    } else {
-                      setSortKey("date");
-                      setSortDir("desc");
-                    }
-                    setPage(0);
-                  }}
-                >
-                  Date {sortKey === "date" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
-                </th>
-                <th
-                  style={{ cursor: "pointer", userSelect: "none" }}
-                  onClick={() => {
                     if (sortKey === "bot") {
                       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
                     } else {
@@ -960,7 +966,7 @@ export default function DashboardPage() {
             <tbody>
               {filteredAndSortedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={4}>
                     <div className="empty-state" style={{ padding: "var(--space-8)" }}>
                       <div className="empty-state-icon">{Icons.messageCircle}</div>
                       <div className="empty-state-title">No requests yet</div>
@@ -991,6 +997,7 @@ export default function DashboardPage() {
             justifyContent: "space-between",
             padding: "12px 18px",
             borderTop: "1px solid var(--border)",
+            marginTop: "auto",
           }}
         >
           <span className="text-muted" style={{ fontSize: 12 }}>
@@ -1017,6 +1024,22 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      <div className="card" style={{ gridColumn: "span 2", height: 520, display: "flex", flexDirection: "column" }}>
+        <div className="card-header">
+          <h3 className="card-title">Ticket Counters</h3>
+          <p className="card-description">All ticket types and their current counts</p>
+        </div>
+        <div className="card-body" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          {ticketTypeCounters.length === 0 ? (
+            <div className="text-muted">No ticket types available.</div>
+          ) : (
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <TicketCounterBarChart data={ticketTypeCounters.map((x) => ({ label: x.label, count: x.count }))} />
+            </div>
+          )}
+        </div>
+      </div>
+      </div>
 
       {/* Request Drawer */}
       <RequestDrawer request={selectedRequest} onClose={() => setSelectedId(null)} />
@@ -1031,3 +1054,4 @@ function normalizeRequests(requests: Record<string, unknown>[]): RequestRow[] {
     updatedAt: r.updatedAt instanceof Date ? (r.updatedAt as Date).toISOString() : (r.updatedAt as string),
   }));
 }
+

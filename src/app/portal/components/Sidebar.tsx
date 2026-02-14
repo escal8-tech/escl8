@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { onAuthStateChanged } from "firebase/auth";
@@ -23,6 +23,17 @@ const Icons = {
       <circle cx="9" cy="7" r="4" />
       <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
       <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  ),
+  messages: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  ),
+  requests: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 11l3 3L22 4" />
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
     </svg>
   ),
   upload: (
@@ -51,6 +62,12 @@ const Icons = {
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   ),
+  tickets: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V9z" />
+      <path d="M9 9v12" />
+    </svg>
+  ),
   home: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -67,11 +84,21 @@ const Icons = {
 // Nav items without settings (moved to footer)
 const navItems = [
   { href: "/portal/dashboard", label: "Dashboard", icon: "dashboard" },
+  { href: "/portal/requests", label: "Requests", icon: "requests" },
   { href: "/portal/customers", label: "Customers", icon: "customers" },
-  { href: "/portal/messages", label: "Messages", icon: "customers" },
+  { href: "/portal/messages", label: "Messages", icon: "messages" },
   { href: "/portal/upload", label: "Documents", icon: "upload" },
   { href: "/portal/bookings", label: "Bookings", icon: "calendar" },
-  { href: "/portal/sync", label: "WhatsApp Sync", icon: "sync" },
+  { href: "/portal/sync", label: "Sync", icon: "sync" },
+];
+const ticketNavItems = [
+  { href: "/portal/tickets?type=ordercreation", label: "Order Creation", icon: "tickets", typeKey: "ordercreation" },
+  { href: "/portal/tickets?type=orderstatus", label: "Order Status", icon: "tickets", typeKey: "orderstatus" },
+  { href: "/portal/tickets?type=complaint", label: "Complaint", icon: "tickets", typeKey: "complaint" },
+  { href: "/portal/tickets?type=refund", label: "Refund", icon: "tickets", typeKey: "refund" },
+  { href: "/portal/tickets?type=cancellation", label: "Cancellation", icon: "tickets", typeKey: "cancellation" },
+  { href: "/portal/tickets?type=warrantyclaim", label: "Warranty Claim", icon: "tickets", typeKey: "warrantyclaim" },
+  { href: "/portal/tickets?type=invoice", label: "Invoice", icon: "tickets", typeKey: "invoice" },
 ];
 
 interface SidebarProps {
@@ -101,6 +128,7 @@ export default function Sidebar({
   onMobileClose 
 }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -120,6 +148,7 @@ export default function Sidebar({
   }, []);
 
   const isActive = (href: string) => pathname === href || pathname?.startsWith(href + "/");
+  const activeTicketType = (searchParams?.get("type") || "").toLowerCase();
 
   const userInitials = userEmail?.slice(0, 2).toUpperCase() || "U";
   const displayName = getDisplayName(userEmail);
@@ -179,16 +208,22 @@ export default function Sidebar({
         </div>
 
         <div className="sidebar-nav-group">
-          {!collapsed && <div className="sidebar-nav-label">Quick Links</div>}
-          <Link
-            href="/"
-            className="sidebar-nav-item"
-            title={collapsed ? "Website" : undefined}
-          >
-            <span className="sidebar-nav-icon">{Icons.home}</span>
-            {!collapsed && <span>Website</span>}
-          </Link>
+          {!collapsed && <div className="sidebar-nav-label">Tickets</div>}
+          {ticketNavItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`sidebar-nav-item ${pathname === "/portal/tickets" && activeTicketType === item.typeKey ? "active" : ""}`}
+              title={collapsed ? item.label : undefined}
+              onClick={onMobileClose}
+              style={{ position: "relative" }}
+            >
+              <span className="sidebar-nav-icon">{Icons[item.icon as keyof typeof Icons]}</span>
+              {!collapsed && <span>{item.label}</span>}
+            </Link>
+          ))}
         </div>
+
       </nav>
 
       {/* Footer - User info with settings button */}

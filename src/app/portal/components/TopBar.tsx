@@ -3,6 +3,7 @@
 import Breadcrumbs from "@/app/portal/components/Breadcrumbs";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { trpc } from "@/utils/trpc";
+import { PortalSelect } from "./PortalSelect";
 
 interface TopBarProps {
   sidebarWidth: number;
@@ -36,12 +37,6 @@ function PhoneNumberFilter() {
 
   const phoneNumbers = phoneNumbersQuery.data ?? [];
   
-  // Find the currently selected phone's display info
-  const selectedPhone = phoneNumbers.find((p) => p.phoneNumberId === selectedPhoneNumberId);
-  const displayLabel = selectedPhone
-    ? selectedPhone.displayPhoneNumber || selectedPhone.phoneNumberId.slice(-6)
-    : "All Numbers";
-
   if (phoneNumbersQuery.isLoading) {
     return (
       <div style={{ fontSize: 12, color: "var(--muted)", padding: "8px 12px" }}>
@@ -56,42 +51,20 @@ function PhoneNumberFilter() {
   }
 
   return (
-    <div style={{ position: "relative" }}>
-      <select
-        value={selectedPhoneNumberId ?? ""}
-        onChange={(e) => setSelectedPhoneNumberId(e.target.value || null)}
-        style={{
-          appearance: "none",
-          background: "rgba(255,255,255,0.03)",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          padding: "8px 32px 8px 12px",
-          fontSize: 13,
-          color: "var(--foreground)",
-          cursor: "pointer",
-          outline: "none",
-          minWidth: 140,
-        }}
-      >
-        <option value="">All Numbers</option>
-        {phoneNumbers.map((phone) => (
-          <option key={phone.phoneNumberId} value={phone.phoneNumberId}>
-            {phone.displayPhoneNumber || phone.phoneNumberId.slice(-8)}
-          </option>
-        ))}
-      </select>
-      <div
-        style={{
-          position: "absolute",
-          right: 10,
-          top: "50%",
-          transform: "translateY(-50%)",
-          pointerEvents: "none",
-          color: "var(--muted)",
-        }}
-      >
-        {Icons.chevronDown}
-      </div>
+    <div>
+      <PortalSelect
+        value={selectedPhoneNumberId ?? "all"}
+        onValueChange={(value) => setSelectedPhoneNumberId(value === "all" ? null : value)}
+        options={[
+          { value: "all", label: "All Numbers" },
+          ...phoneNumbers.map((phone) => ({
+            value: phone.phoneNumberId,
+            label: phone.displayPhoneNumber || phone.phoneNumberId.slice(-8),
+          })),
+        ]}
+        style={{ minWidth: 168 }}
+        ariaLabel="Filter by phone number"
+      />
     </div>
   );
 }

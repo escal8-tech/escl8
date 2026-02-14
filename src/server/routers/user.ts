@@ -8,6 +8,7 @@ import { businesses, users } from "../../../drizzle/schema";
 import { controlDb } from "@/server/control/db";
 import { suiteEntitlements, suiteMemberships, suiteTenants, suiteUsers } from "@/server/control/schema";
 import { syncFirebaseSuiteClaims } from "@/server/firebaseAdmin";
+import { ensureDefaultTicketTypes } from "../services/ticketDefaults";
 
 function defaultBusinessInstructions() {
   return "You are a helpful AI sales and support assistant. Use the uploaded business documents as the source of truth. If information is missing, ask a clarifying question.";
@@ -160,6 +161,7 @@ export const userRouter = router({
         }
 
         if (existing) {
+          await ensureDefaultTicketTypes(existing.businessId);
           const business = existing.businessId
             ? await db.select().from(businesses).where(eq(businesses.id, existing.businessId)).then((r) => r[0] ?? null)
             : null;
@@ -220,10 +222,10 @@ export const userRouter = router({
             })
             .returning();
           void syncAgentClaims(firebaseUid, suiteTenant.id, suiteUser.id).catch(() => {});
-          return u;
+          return { user: u, businessId: bizId };
         });
-
-        return created;
+        await ensureDefaultTicketTypes(created.businessId);
+        return created.user;
       } catch (err: any) {
         const msg = String(err?.message || "Database error");
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: msg });
@@ -332,11 +334,12 @@ export const userRouter = router({
             })
             .where(eq(users.id, existing.id))
             .returning();
+          await ensureDefaultTicketTypes(finalBusinessId);
           return updated;
         }
 
         if (!requestedBusinessId) {
-          return await db.transaction(async (tx) => {
+          const created = await db.transaction(async (tx) => {
             const [suiteTenant] = await controlDb
               .insert(suiteTenants)
               .values({
@@ -386,8 +389,10 @@ export const userRouter = router({
               })
               .returning();
             void syncAgentClaims(ctx.firebaseUid, suiteTenant.id, suiteUser.id).catch(() => {});
-            return created;
+            return { user: created, businessId: bizId };
           });
+          await ensureDefaultTicketTypes(created.businessId);
+          return created.user;
         }
 
         const businessTenant = await ensureBusinessTenant(requestedBusinessId, businessNameFromEmail(input.email));
@@ -410,6 +415,7 @@ export const userRouter = router({
             updatedAt: now,
           })
           .returning();
+        await ensureDefaultTicketTypes(requestedBusinessId);
         return created;
       } catch (err: any) {
         const msg = String(err?.message || "Database error");
