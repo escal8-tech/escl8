@@ -15,7 +15,7 @@ const routeLabels: Record<string, string> = {
 };
 
 const ticketTypeLabels: Record<string, string> = {
-  ordercreation: "Order Creation",
+  ordercreation: "Orders",
   orderstatus: "Order Status",
   complaint: "Complaint",
   refund: "Refund",

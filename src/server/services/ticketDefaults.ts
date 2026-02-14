@@ -5,7 +5,7 @@ import { supportTicketTypes } from "../../../drizzle/schema";
 export const DEFAULT_TICKET_TYPES = [
   {
     key: "ordercreation",
-    label: "Order Creation",
+    label: "Orders",
     description: "Customer wants to place an order",
     requiredFields: ["name", "phonenumber", "items"],
     triggerPhrases: ["new order", "place order", "buy", "order now"],

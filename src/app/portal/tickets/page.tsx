@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { useSearchParams } from "next/navigation";
 import { TableSelect } from "@/app/portal/components/TableToolbarControls";
 import { PortalDataTable } from "@/app/portal/components/PortalDataTable";
 import { TablePagination } from "@/app/portal/components/TablePagination";
+import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 
-type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
+type TicketStatus = "open" | "in_progress" | "resolved";
 
-const STATUS_OPTIONS: TicketStatus[] = ["open", "in_progress", "resolved", "closed"];
+const STATUS_OPTIONS: TicketStatus[] = ["open", "in_progress", "resolved"];
 const PAGE_SIZE = 20;
 
 function formatDate(value: Date | string | null | undefined): string {
@@ -26,7 +27,13 @@ function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
 }
 
+function normalizeTicketTypeLabel(typeKey: string, label: string): string {
+  if (typeKey === "ordercreation") return "Orders";
+  return label;
+}
+
 export default function TicketsPage() {
+  const utils = trpc.useUtils();
   const [statusFilter, setStatusFilter] = useState<"all" | TicketStatus>("all");
   const [ticketIdQuery, setTicketIdQuery] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -42,6 +49,21 @@ export default function TicketsPage() {
       await ticketsQuery.refetch();
     },
     onSettled: () => setUpdatingId(null),
+  });
+  const invalidateTickets = useCallback(async () => {
+    await Promise.all([
+      utils.tickets.listTickets.invalidate(),
+      utils.tickets.listTypes.invalidate(),
+    ]);
+  }, [utils]);
+
+  useLivePortalEvents({
+    onEvent: (event) => {
+      if (event.entity === "ticket") {
+        void invalidateTickets();
+      }
+    },
+    onCatchup: invalidateTickets,
   });
 
   const groupedTickets = useMemo(() => {
@@ -63,7 +85,7 @@ export default function TicketsPage() {
     for (const type of ticketTypesQuery.data ?? []) {
       groups.push({
         typeKey: type.key,
-        label: type.label,
+        label: normalizeTicketTypeLabel(type.key, type.label),
         enabled: type.enabled,
         rows: ticketsByType.get(type.key) ?? [],
       });
@@ -139,7 +161,6 @@ export default function TicketsPage() {
           <option value="open">Open</option>
           <option value="in_progress">In Progress</option>
           <option value="resolved">Resolved</option>
-          <option value="closed">Closed</option>
         </TableSelect>
         </>
       )}
@@ -183,7 +204,7 @@ export default function TicketsPage() {
                   <td style={{ textAlign: "right" }}>
                     <TableSelect
                       style={{ width: 116 }}
-                      value={ticket.status as TicketStatus}
+                      value={(ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus}
                       disabled={updatingId === ticket.id}
                       onChange={(e) => {
                         const nextStatus = e.target.value as TicketStatus;
@@ -203,7 +224,39 @@ export default function TicketsPage() {
               {pageRows.length === 0 && (
                 <tr>
                   <td colSpan={5} style={{ color: "var(--muted)", textAlign: "center", padding: "20px 10px" }}>
-                    {ticketIdQuery ? "No ticket IDs match your search." : "No tickets in this type."}
+                    {ticketIdQuery ? (
+                      "No ticket IDs match your search."
+                    ) : (
+                      <div style={{ display: "grid", placeItems: "center", gap: 10, padding: "8px 0" }}>
+                        <div
+                          aria-hidden
+                          style={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: 12,
+                            display: "grid",
+                            placeItems: "center",
+                            color: "#D4A84B",
+                            border: "1px solid rgba(212, 168, 75, 0.45)",
+                            background: "linear-gradient(135deg, rgba(212,168,75,0.16), rgba(212,168,75,0.06))",
+                          }}
+                        >
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M8 21h8" />
+                            <path d="M12 17v4" />
+                            <path d="M7 4h10v6a5 5 0 0 1-10 0V4z" />
+                            <path d="M17 6h3a2 2 0 0 1-2 2h-1" />
+                            <path d="M7 6H4a2 2 0 0 0 2 2h1" />
+                          </svg>
+                        </div>
+                        <div style={{ color: "var(--foreground, #e2e8f0)", fontWeight: 600 }}>
+                          Congratulations!
+                        </div>
+                        <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                          Well done, no pending tickets in this type.
+                        </div>
+                      </div>
+                    )}
                   </td>
                 </tr>
               )}

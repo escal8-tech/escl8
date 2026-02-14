@@ -5,8 +5,9 @@ import { db } from "../db/client";
 import { supportTicketTypes, supportTickets } from "../../../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 import { DEFAULT_TICKET_TYPE_KEYS, ensureDefaultTicketTypes } from "../services/ticketDefaults";
+import { publishPortalEvent } from "@/server/realtime/portalEvents";
 
-const ticketStatusSchema = z.enum(["open", "in_progress", "resolved", "closed"]);
+const ticketStatusSchema = z.enum(["open", "in_progress", "resolved"]);
 const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 
 function normalizeKey(input: string): string {
@@ -149,6 +150,16 @@ export const ticketsRouter = router({
           createdBy: input.createdBy ?? "user",
         })
         .returning();
+      if (created) {
+        await publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "ticket",
+          op: "upsert",
+          entityId: created.id,
+          payload: { ticket: created as any },
+          createdAt: created.updatedAt ?? created.createdAt ?? new Date(),
+        });
+      }
       return created;
     }),
 
@@ -168,11 +179,21 @@ export const ticketsRouter = router({
           status: input.status,
           notes: input.notes?.trim() || null,
           resolvedAt: input.status === "resolved" ? now : null,
-          closedAt: input.status === "closed" ? now : null,
+          closedAt: null,
           updatedAt: now,
         })
         .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
         .returning();
+      if (updated) {
+        await publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "ticket",
+          op: "upsert",
+          entityId: updated.id,
+          payload: { ticket: updated as any },
+          createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
+        });
+      }
       return updated ?? null;
     }),
 });

@@ -85,9 +85,9 @@ const styles: Record<string, React.CSSProperties> = {
   page: {
     display: "flex",
     flexDirection: "column",
-    gap: 24,
+    gap: 16,
     width: "100%",
-    padding: "0 24px",
+    padding: 0,
   },
   header: {
     display: "flex",
@@ -180,7 +180,7 @@ const styles: Record<string, React.CSSProperties> = {
   stats: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: 16,
+    gap: 12,
   },
   statCard: {
     display: "flex",

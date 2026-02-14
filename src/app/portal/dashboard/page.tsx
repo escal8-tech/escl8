@@ -247,7 +247,7 @@ function MiniDonutChart({
 function TicketCounterBarChart({
   data,
 }: {
-  data: { label: string; count: number }[];
+  data: { label: string; openCount: number; inProgressCount: number; totalActive: number }[];
 }) {
   if (!data.length) {
     return <div className="text-muted">No ticket data.</div>;
@@ -256,7 +256,13 @@ function TicketCounterBarChart({
     <ResponsiveContainer width="100%" height="100%">
       <ReBarChart data={data} layout="vertical" margin={{ top: 8, right: 14, left: 22, bottom: 8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" horizontal={false} />
-        <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: "rgba(148,163,184,0.8)", fontSize: 11 }} />
+        <XAxis
+          type="number"
+          axisLine={false}
+          tickLine={false}
+          allowDecimals={false}
+          tick={{ fill: "rgba(148,163,184,0.8)", fontSize: 11 }}
+        />
         <YAxis
           type="category"
           dataKey="label"
@@ -273,9 +279,15 @@ function TicketCounterBarChart({
             background: "rgba(15,23,42,0.95)",
             color: "#f8fafc",
           }}
-          formatter={(value: number) => [`${value}`, "Tickets"]}
+          formatter={(value: number, name: string, item) => {
+            const key = String(item?.dataKey ?? "");
+            if (key === "inProgressCount") return [`${value}`, "In Progress"];
+            if (key === "openCount") return [`${value}`, "Open"];
+            return [`${value}`, name];
+          }}
         />
-        <Bar dataKey="count" radius={[8, 8, 8, 8]} fill="#D4A84B" />
+        <Bar dataKey="inProgressCount" stackId="active" fill="#D4A84B" radius={[0, 0, 6, 6]} />
+        <Bar dataKey="openCount" stackId="active" fill="#ef4444" radius={[6, 6, 0, 0]} />
       </ReBarChart>
     </ResponsiveContainer>
   );
@@ -801,23 +813,40 @@ export default function DashboardPage() {
   const positiveValue = sentimentSeries.find((d) => d.name === "positive")?.value ?? 0;
   const positivePct = sentimentTotal > 0 ? Math.round((positiveValue / sentimentTotal) * 100) : 0;
   const ticketTypeCounters = useMemo(() => {
-    const counts = new Map<string, number>();
+    const counts = new Map<string, { openCount: number; inProgressCount: number }>();
     for (const ticket of ticketsQ.data ?? []) {
       const key = (ticket.ticketTypeKey || "").toLowerCase();
-      counts.set(key, (counts.get(key) ?? 0) + 1);
+      const status = String(ticket.status || "").toLowerCase();
+      const current = counts.get(key) ?? { openCount: 0, inProgressCount: 0 };
+      if (status === "open") {
+        current.openCount += 1;
+      } else if (status === "in_progress" || status === "pending") {
+        current.inProgressCount += 1;
+      }
+      counts.set(key, current);
     }
-    return (ticketTypesQ.data ?? []).map((type) => ({
-      key: type.key,
-      label: type.label.length > 20 ? `${type.label.slice(0, 20)}...` : type.label,
-      enabled: type.enabled,
-      count: counts.get(type.key) ?? 0,
-    }));
+    return (ticketTypesQ.data ?? [])
+      .map((type) => {
+        const counter = counts.get(type.key) ?? { openCount: 0, inProgressCount: 0 };
+        const totalActive = counter.openCount + counter.inProgressCount;
+        return {
+          key: type.key,
+          label:
+            (type.key === "ordercreation" ? "Orders" : type.label).length > 20
+              ? `${(type.key === "ordercreation" ? "Orders" : type.label).slice(0, 20)}...`
+              : (type.key === "ordercreation" ? "Orders" : type.label),
+          enabled: type.enabled,
+          openCount: counter.openCount,
+          inProgressCount: counter.inProgressCount,
+          totalActive,
+        };
+      });
   }, [ticketTypesQ.data, ticketsQ.data]);
 
   return (
     <div className="fade-in">
       {/* Charts Row */}
-      <div className="grid grid-cols-4 gap-6" style={{ marginBottom: "var(--space-8)" }}>
+      <div className="grid grid-cols-4 gap-4" style={{ marginBottom: "var(--space-6)" }}>
         {/* Activity Chart */}
         <div className="chart-card" style={{ gridColumn: "span 2", minHeight: 360, display: "flex", flexDirection: "column" }}>
           <div className="chart-header" style={{ marginBottom: "var(--space-2)" }}>
@@ -867,7 +896,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Recent Requests + Ticket Counters */}
-      <div className="grid grid-cols-4 gap-6">
+      <div className="grid grid-cols-4 gap-4">
       <div className="card" style={{ gridColumn: "span 2", height: 520, display: "flex", flexDirection: "column" }}>
         <div className="card-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
@@ -1027,14 +1056,21 @@ export default function DashboardPage() {
       <div className="card" style={{ gridColumn: "span 2", height: 520, display: "flex", flexDirection: "column" }}>
         <div className="card-header">
           <h3 className="card-title">Ticket Counters</h3>
-          <p className="card-description">All ticket types and their current counts</p>
+          <p className="card-description">Open + in-progress tickets by type (resolved/closed excluded)</p>
         </div>
         <div className="card-body" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           {ticketTypeCounters.length === 0 ? (
             <div className="text-muted">No ticket types available.</div>
           ) : (
             <div style={{ flex: 1, minHeight: 0 }}>
-              <TicketCounterBarChart data={ticketTypeCounters.map((x) => ({ label: x.label, count: x.count }))} />
+              <TicketCounterBarChart
+                data={ticketTypeCounters.map((x) => ({
+                  label: x.label,
+                  openCount: x.openCount,
+                  inProgressCount: x.inProgressCount,
+                  totalActive: x.totalActive,
+                }))}
+              />
             </div>
           )}
         </div>
