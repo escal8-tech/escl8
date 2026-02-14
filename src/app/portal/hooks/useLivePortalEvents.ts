@@ -16,6 +16,12 @@ type ThreadListInput = {
   whatsappIdentityId?: string;
 };
 
+type TicketListInput = {
+  status?: "open" | "in_progress" | "resolved";
+  typeKey?: string;
+  limit?: number;
+};
+
 type MessageRow = {
   id: string;
   threadId?: string;
@@ -33,9 +39,11 @@ type LiveSyncOptions = {
   customerListInput?: MaybePhoneFilter;
   messagesThreadListInput?: ThreadListInput;
   bookingsListInput?: { businessId?: string };
+  ticketListInputs?: Array<TicketListInput | undefined>;
   activeThreadId?: string | null;
   activeThreadPageSize?: number;
   onThreadMessage?: (message: MessageRow) => void;
+  onTicket?: (ticket: Record<string, unknown>, event: PortalEvent) => void;
   onEvent?: (event: PortalEvent) => void;
   onCatchup?: () => void | Promise<void>;
 };
@@ -173,6 +181,33 @@ function eventPhoneIdentity(payload: Record<string, unknown>): string | null {
   return null;
 }
 
+function normalizeTicketStatus(raw: unknown): "open" | "in_progress" | "resolved" {
+  const value = String(raw ?? "").toLowerCase();
+  if (value === "in_progress") return "in_progress";
+  if (value === "resolved" || value === "closed") return "resolved";
+  return "open";
+}
+
+function normalizeTypeKey(raw: unknown): string {
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function ticketMatchesFilter(ticket: Record<string, unknown>, input?: TicketListInput): boolean {
+  if (!input) return true;
+  if (input.status) {
+    const status = normalizeTicketStatus(ticket.status);
+    if (status !== input.status) return false;
+  }
+  if (input.typeKey) {
+    const ticketKey = normalizeTypeKey(ticket.ticketTypeKey ?? ticket.ticket_type_key);
+    if (ticketKey !== normalizeTypeKey(input.typeKey)) return false;
+  }
+  return true;
+}
+
 export function useLivePortalEvents(options: LiveSyncOptions = {}) {
   const utils = trpc.useUtils();
   const customersList = utils.customers.list as any;
@@ -183,6 +218,8 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
   const threadsList = utils.messages.listRecentThreads as any;
   const messagesList = utils.messages.listMessages as any;
   const bookingsList = utils.bookings.list as any;
+  const ticketsList = utils.tickets.listTickets as any;
+  const ticketTypesList = utils.tickets.listTypes as any;
 
   useEffect(() => {
     let cancelled = false;
@@ -207,6 +244,10 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       jobs.push(customersStats.invalidate(undefined));
       if (options.messagesThreadListInput) jobs.push(threadsList.invalidate(options.messagesThreadListInput));
       if (options.bookingsListInput !== undefined) jobs.push(bookingsList.invalidate(options.bookingsListInput));
+      if (options.ticketListInputs && options.ticketListInputs.length > 0) {
+        for (const input of options.ticketListInputs) jobs.push(ticketsList.invalidate(input));
+      }
+      jobs.push(ticketTypesList.invalidate({ includeDisabled: true }));
       if (options.activeThreadId) {
         jobs.push(
           messagesList.invalidate({
@@ -227,6 +268,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       const thread = payload.thread as Record<string, unknown> | undefined;
       const message = payload.message as Record<string, unknown> | undefined;
       const booking = payload.booking as Record<string, unknown> | undefined;
+      const ticket = payload.ticket as Record<string, unknown> | undefined;
       const dedupeId =
         String(event.entityId ?? "") ||
         String(request?.id ?? customer?.id ?? thread?.threadId ?? message?.id ?? "");
@@ -367,6 +409,33 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         });
       }
 
+      const maybeTicket = ticket;
+      if (maybeTicket && options.ticketListInputs && options.ticketListInputs.length > 0) {
+        for (const listInput of options.ticketListInputs) {
+          const limit = listInput?.limit ?? 400;
+          ticketsList.setData(listInput, (old: Array<Record<string, unknown>> | undefined) => {
+            const current = old ?? [];
+            const nextList = current.filter((row) => String(row.id ?? "") !== String(maybeTicket.id ?? ""));
+            if (event.op === "deleted") return nextList.slice(0, limit);
+            if (!ticketMatchesFilter(maybeTicket, listInput)) return nextList.slice(0, limit);
+            const upserted = [{ ...maybeTicket }, ...nextList];
+            return upserted
+              .slice()
+              .sort((a, b) => {
+                const aTs = new Date(String(a.createdAt ?? a.updatedAt ?? 0)).getTime();
+                const bTs = new Date(String(b.createdAt ?? b.updatedAt ?? 0)).getTime();
+                return bTs - aTs;
+              })
+              .slice(0, limit);
+          });
+        }
+        options.onTicket?.(maybeTicket, event);
+      } else if (!maybeTicket && event.entity === "ticket" && options.ticketListInputs && options.ticketListInputs.length > 0) {
+        for (const listInput of options.ticketListInputs) {
+          void ticketsList.invalidate(listInput);
+        }
+      }
+
       options.onEvent?.(event);
     };
 
@@ -477,7 +546,11 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     threadsList,
     messagesList,
     bookingsList,
+    ticketsList,
+    ticketTypesList,
+    options.ticketListInputs,
     options.onEvent,
+    options.onTicket,
     options.onCatchup,
   ]);
 }

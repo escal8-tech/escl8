@@ -41,9 +41,11 @@ export default function TicketsPage() {
   const searchParams = useSearchParams();
 
   const ticketTypesQuery = trpc.tickets.listTypes.useQuery({ includeDisabled: true });
-  const ticketsQuery = trpc.tickets.listTickets.useQuery(
-    statusFilter === "all" ? undefined : { status: statusFilter, limit: 400 },
+  const ticketListInput = useMemo(
+    () => (statusFilter === "all" ? undefined : { status: statusFilter, limit: 400 }),
+    [statusFilter],
   );
+  const ticketsQuery = trpc.tickets.listTickets.useQuery(ticketListInput);
   const updateStatus = trpc.tickets.updateTicketStatus.useMutation({
     onSuccess: async () => {
       await ticketsQuery.refetch();
@@ -58,11 +60,7 @@ export default function TicketsPage() {
   }, [utils]);
 
   useLivePortalEvents({
-    onEvent: (event) => {
-      if (event.entity === "ticket") {
-        void invalidateTickets();
-      }
-    },
+    ticketListInputs: [ticketListInput],
     onCatchup: invalidateTickets,
   });
 

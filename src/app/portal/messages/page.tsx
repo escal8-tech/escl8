@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
+import Link from "next/link";
 
 function formatTimestamp(d: Date | null | undefined) {
   if (!d) return "";
@@ -35,6 +36,17 @@ function isWhatsAppThread(thread: { customerSource?: string | null; whatsappIden
   if (!thread) return false;
   const source = String(thread.customerSource || "").toLowerCase();
   return source === "whatsapp" || Boolean(thread.whatsappIdentityId);
+}
+
+function shortId(id: string): string {
+  return id.length > 8 ? id.slice(0, 8) : id;
+}
+
+function formatTicketStatus(status: string): string {
+  const low = status.toLowerCase();
+  if (low === "in_progress") return "In Progress";
+  if (low === "resolved" || low === "closed") return "Resolved";
+  return "Open";
 }
 
 function ProfileIcon({ name, size = 40 }: { name?: string | null; size?: number }) {
@@ -86,6 +98,12 @@ export default function MessagesPage() {
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [latestTicketNotice, setLatestTicketNotice] = useState<{
+    id: string;
+    typeKey: string;
+    status: string;
+    summary: string;
+  } | null>(null);
 
   // Message pagination state
   const [allMessages, setAllMessages] = useState<Array<{
@@ -130,6 +148,10 @@ export default function MessagesPage() {
     }
     return null;
   }, [selectedThreadId, filteredThreads]);
+  const selectedThread = useMemo(() => {
+    if (!activeThreadId) return null;
+    return filteredThreads.find((t) => t.threadId === activeThreadId) ?? null;
+  }, [activeThreadId, filteredThreads]);
 
   const sessionWindowQuery = trpc.messages.getThreadSessionWindow.useQuery(
     { threadId: activeThreadId ?? "" },
@@ -159,11 +181,35 @@ export default function MessagesPage() {
     });
   }, [activeThreadId]);
 
+  const handleTicketEvent = useCallback((event: {
+    entity?: string;
+    payload?: Record<string, unknown>;
+  }) => {
+    if (!activeThreadId) return;
+    if ((event.entity || "").toLowerCase() !== "ticket") return;
+    const payload = (event.payload ?? {}) as Record<string, unknown>;
+    const ticket = (payload.ticket ?? {}) as Record<string, unknown>;
+    const ticketThreadId = String(ticket.threadId ?? ticket.thread_id ?? "");
+    const ticketCustomerId = String(ticket.customerId ?? ticket.customer_id ?? "");
+    const selectedCustomerId = String(selectedThread?.customerId ?? "");
+    const matchesThread = ticketThreadId && ticketThreadId === activeThreadId;
+    const matchesCustomer = ticketCustomerId && selectedCustomerId && ticketCustomerId === selectedCustomerId;
+    if (!matchesThread && !matchesCustomer) return;
+
+    const id = String(ticket.id ?? "");
+    if (!id) return;
+    const typeKey = String(ticket.ticketTypeKey ?? ticket.ticket_type_key ?? "untyped");
+    const status = String(ticket.status ?? "open");
+    const summary = String(ticket.summary ?? ticket.title ?? "").trim();
+    setLatestTicketNotice({ id, typeKey, status, summary });
+  }, [activeThreadId, selectedThread]);
+
   useLivePortalEvents({
     messagesThreadListInput: threadListInput,
     activeThreadId,
     activeThreadPageSize: 20,
     onThreadMessage: handleLiveThreadMessage,
+    onEvent: handleTicketEvent,
   });
 
   // Initial messages query (newest messages first load)
@@ -184,6 +230,7 @@ export default function MessagesPage() {
     setCursor(null);
     setHasMore(false);
     setIsLoadingMore(false);
+    setLatestTicketNotice(null);
   }, [activeThreadId]);
 
   // Clear selected thread when phone filter changes
@@ -244,11 +291,6 @@ export default function MessagesPage() {
       setCursor(allMessages[0].id);
     }
   }, [isLoadingMore, hasMore, allMessages]);
-
-  const selectedThread = useMemo(() => {
-    if (!activeThreadId) return null;
-    return filteredThreads.find((t) => t.threadId === activeThreadId) ?? null;
-  }, [activeThreadId, filteredThreads]);
 
   const sessionWindow = useMemo(() => {
     const data = sessionWindowQuery.data;
@@ -548,6 +590,38 @@ export default function MessagesPage() {
                 </div>
               )}
             </div>
+            {latestTicketNotice ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: "10px 16px",
+                  borderBottom: "1px solid var(--border)",
+                  background: "rgba(201, 169, 98, 0.10)",
+                }}
+              >
+                <div style={{ fontSize: 12, color: "var(--foreground)", minWidth: 0 }}>
+                  <strong>Ticket #{shortId(latestTicketNotice.id)}</strong> created/updated for this conversation.
+                  {" "}
+                  {formatTicketStatus(latestTicketNotice.status)}.
+                  {latestTicketNotice.summary ? ` ${latestTicketNotice.summary}` : ""}
+                </div>
+                <Link
+                  href={`/portal/tickets?type=${encodeURIComponent(latestTicketNotice.typeKey)}`}
+                  style={{
+                    flexShrink: 0,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#D4A84B",
+                    textDecoration: "none",
+                  }}
+                >
+                  Open ticket list
+                </Link>
+              </div>
+            ) : null}
 
             {/* Messages area */}
             <div

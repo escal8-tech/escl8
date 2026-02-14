@@ -36,12 +36,17 @@ function SourceBadge({ source }: { source: Source }) {
   const config = SOURCE_CONFIG[source];
   return (
     <span
-      className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
+      className="inline-block"
       style={{
-        border: `1px solid ${config.color}55`,
-        background: `${config.color}1f`,
-        color: "#f1f5f9",
-        letterSpacing: "0.02em",
+        padding: "6px 12px",
+        borderRadius: 999,
+        background: `${config.color}24`,
+        color: "#e2e8f0",
+        fontSize: 12,
+        fontWeight: 600,
+        lineHeight: 1,
+        whiteSpace: "nowrap",
+        letterSpacing: "0.01em",
       }}
     >
       {config.label}
@@ -301,8 +306,10 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
         <tbody>
           {pageRows.map((row) => (
             <tr key={row.id} onClick={() => onSelect(row.id)}>
-              <td>
-                <SourceBadge source={row.source} />
+              <td style={{ paddingTop: 14, paddingBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  <SourceBadge source={row.source} />
+                </div>
               </td>
               <td>
                 <div>
