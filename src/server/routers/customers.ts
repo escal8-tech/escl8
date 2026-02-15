@@ -211,7 +211,7 @@ export const customersRouter = router({
           entity: "customer",
           op: "upsert",
           entityId: row.id,
-          payload: { customer: row },
+          payload: { customer: toPortalJson(row) as any },
           createdAt: row.updatedAt ?? new Date(),
         });
       }
@@ -244,7 +244,7 @@ export const customersRouter = router({
           entity: "customer",
           op: "deleted",
           entityId: row.id,
-          payload: { customer: row },
+          payload: { customer: toPortalJson(row) as any },
           createdAt: row.updatedAt ?? new Date(),
         });
       }
@@ -456,13 +456,17 @@ export const customersRouter = router({
           entity: "customer",
           op: "upsert",
           entityId: row.id,
-          payload: { customer: row },
+          payload: { customer: toPortalJson(row) as any },
           createdAt: row.updatedAt ?? new Date(),
         });
       }
       return row ?? null;
     }),
 });
+
+function toPortalJson<T>(value: T): unknown {
+  return JSON.parse(JSON.stringify(value));
+}
 
 function calculateLeadScore(data: {
   totalRequests: number;

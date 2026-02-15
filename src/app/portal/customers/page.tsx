@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
@@ -45,20 +45,22 @@ function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId
     [baseFilter, cursor],
   );
 
-  trpc.customers.list.useQuery(pageInput, {
+  const pagedCustomersQuery = trpc.customers.list.useQuery(pageInput, {
     enabled: Boolean(pageInput),
-    onSuccess: (data) => {
-      if (!isLoadingMore) return;
-      setExtraRows((prev) => {
-        const map = new Map<string, CustomerRow>();
-        for (const row of prev) map.set(row.id, row);
-        for (const row of data as CustomerRow[]) map.set(row.id, row);
-        return Array.from(map.values());
-      });
-      setLastPageHadMore(data.length === PAGE_SIZE);
-      setIsLoadingMore(false);
-    },
   });
+
+  useEffect(() => {
+    const data = pagedCustomersQuery.data as CustomerRow[] | undefined;
+    if (!isLoadingMore || !data) return;
+    setExtraRows((prev) => {
+      const map = new Map<string, CustomerRow>();
+      for (const row of prev) map.set(row.id, row);
+      for (const row of data) map.set(row.id, row);
+      return Array.from(map.values());
+    });
+    setLastPageHadMore(data.length === PAGE_SIZE);
+    setIsLoadingMore(false);
+  }, [isLoadingMore, pagedCustomersQuery.data]);
 
   const listRows = useMemo(() => {
     const first = (customers ?? []) as CustomerRow[];

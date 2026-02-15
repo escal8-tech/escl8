@@ -247,43 +247,47 @@ export default function MessagesPage() {
     { threadId: activeThreadId ?? "", limit: 20 },
     {
       enabled: !!activeThreadId,
-      onSuccess: (data) => {
-        if (cursor) return;
-        setAllMessages(data.messages);
-        setHasMore(data.hasMore);
-        setCursor(null);
-        setTimeout(() => {
-          if (messagesContainerRef.current) {
-            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-          }
-        }, 50);
-      },
     },
   );
 
   // Load older messages query
-  trpc.messages.listMessages.useQuery(
+  const olderMessagesQuery = trpc.messages.listMessages.useQuery(
     { threadId: activeThreadId ?? "", limit: 20, cursor: cursor ?? undefined },
     {
       enabled: !!activeThreadId && !!cursor && isLoadingMore,
-      onSuccess: (data) => {
-        if (!isLoadingMore) return;
-        const container = messagesContainerRef.current;
-        if (container) {
-          prevScrollHeightRef.current = container.scrollHeight;
-        }
-        setAllMessages((prev) => [...data.messages, ...prev]);
-        setHasMore(data.hasMore);
-        setIsLoadingMore(false);
-        setTimeout(() => {
-          if (container) {
-            const newScrollHeight = container.scrollHeight;
-            container.scrollTop = newScrollHeight - prevScrollHeightRef.current;
-          }
-        }, 10);
-      },
     },
   );
+
+  useEffect(() => {
+    const data = messagesQuery.data;
+    if (!data || cursor) return;
+    setAllMessages(data.messages);
+    setHasMore(data.hasMore);
+    setCursor(null);
+    setTimeout(() => {
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      }
+    }, 50);
+  }, [messagesQuery.data, cursor]);
+
+  useEffect(() => {
+    const data = olderMessagesQuery.data;
+    if (!isLoadingMore || !data) return;
+    const container = messagesContainerRef.current;
+    if (container) {
+      prevScrollHeightRef.current = container.scrollHeight;
+    }
+    setAllMessages((prev) => [...data.messages, ...prev]);
+    setHasMore(data.hasMore);
+    setIsLoadingMore(false);
+    setTimeout(() => {
+      if (container) {
+        const newScrollHeight = container.scrollHeight;
+        container.scrollTop = newScrollHeight - prevScrollHeightRef.current;
+      }
+    }, 10);
+  }, [olderMessagesQuery.data, isLoadingMore]);
 
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 30_000);
