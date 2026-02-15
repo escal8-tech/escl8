@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { trpc } from "@/utils/trpc";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { TableSelect } from "@/app/portal/components/TableToolbarControls";
 import { PortalDataTable } from "@/app/portal/components/PortalDataTable";
 import { TablePagination } from "@/app/portal/components/TablePagination";
@@ -131,6 +131,7 @@ function normalizeTicketTypeLabel(typeKey: string, label: string): string {
 
 export default function TicketsPage() {
   const utils = trpc.useUtils();
+  const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<"all" | TicketStatus>("all");
   const [ticketIdQuery, setTicketIdQuery] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -597,6 +598,7 @@ export default function TicketsPage() {
               setOpenMenuTicketId(null);
               setMenuAnchor(null);
             }}
+            onNavigate={(href) => router.push(href)}
           />
         </div>
       ) : null}
@@ -617,6 +619,7 @@ function TicketRowActionsMenu({
   threadHref,
   customerHref,
   onClose,
+  onNavigate,
 }: {
   containerRef: RefObject<HTMLDivElement | null>;
   isOpen: boolean;
@@ -625,6 +628,7 @@ function TicketRowActionsMenu({
   threadHref: string;
   customerHref: string | null;
   onClose: () => void;
+  onNavigate: (href: string) => void;
 }) {
   if (!isOpen) return null;
   return (
@@ -643,34 +647,48 @@ function TicketRowActionsMenu({
         zIndex: 3000,
       }}
     >
-      <a
-        href={threadHref}
-        onClick={onClose}
+      <button
+        type="button"
+        onClick={() => {
+          onClose();
+          onNavigate(threadHref);
+        }}
         style={{
+          width: "100%",
+          textAlign: "left",
           display: "block",
           padding: "10px 12px",
           fontSize: 14,
           color: "#f1f5f9",
-          textDecoration: "none",
           borderBottom: "1px solid rgba(255,255,255,0.08)",
+          background: "transparent",
+          border: 0,
+          cursor: "pointer",
         }}
       >
         Open Thread
-      </a>
+      </button>
       {customerHref ? (
-        <a
-          href={customerHref}
-          onClick={onClose}
+        <button
+          type="button"
+          onClick={() => {
+            onClose();
+            onNavigate(customerHref);
+          }}
           style={{
+            width: "100%",
+            textAlign: "left",
             display: "block",
             padding: "10px 12px",
             fontSize: 14,
             color: "#f1f5f9",
-            textDecoration: "none",
+            background: "transparent",
+            border: 0,
+            cursor: "pointer",
           }}
         >
           Open Customer Details
-        </a>
+        </button>
       ) : (
         <button
           type="button"
@@ -701,6 +719,7 @@ function TicketDetailsDrawer({
   onClose: () => void;
   threadHref: string;
 }) {
+  const router = useRouter();
   if (!ticket) return null;
   const fields = getTicketFields(ticket);
   const fieldRows = Object.entries(fields);
@@ -835,13 +854,28 @@ function TicketDetailsDrawer({
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <a href={threadHref} className="btn btn-primary" onClick={onClose}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  onClose();
+                  router.push(threadHref);
+                }}
+              >
                 Open Thread
-              </a>
+              </button>
               {customerHref ? (
-                <a href={customerHref} className="btn btn-ghost" onClick={onClose} style={{ marginLeft: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    onClose();
+                    router.push(customerHref);
+                  }}
+                  style={{ marginLeft: 10 }}
+                >
                   Open Customer Details
-                </a>
+                </button>
               ) : (
                 <button type="button" className="btn btn-ghost" disabled style={{ marginLeft: 10 }}>
                   Open Customer Details

@@ -7,6 +7,7 @@ import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import { TableSelect } from "@/app/portal/components/TableToolbarControls";
 import { PortalDataTable } from "@/app/portal/components/PortalDataTable";
 import { TablePagination } from "@/app/portal/components/TablePagination";
+import { useRouter } from "next/navigation";
 
 type RequestSortKey = "customer" | "status" | "type" | "sentiment" | "created" | "bot";
 const PAGE_SIZE = 20;
@@ -57,6 +58,7 @@ function normalizeRequests(requests: Record<string, unknown>[]): RequestRow[] {
 }
 
 export default function RequestsPage() {
+  const router = useRouter();
   const { selectedPhoneNumberId } = usePhoneFilter();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -439,40 +441,70 @@ export default function RequestsPage() {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <a
-            href={getThreadHref(openMenuRequest)}
+          <button
+            type="button"
             onClick={() => {
+              const href = getThreadHref(openMenuRequest);
               setOpenMenuRequestId(null);
               setMenuAnchor(null);
+              router.push(href);
             }}
             style={{
+              width: "100%",
+              textAlign: "left",
               display: "block",
               padding: "10px 12px",
               fontSize: 14,
               color: "#e8edf9",
-              textDecoration: "none",
               borderBottom: "1px solid rgba(212,168,75,0.2)",
               background: "linear-gradient(135deg, rgba(0,51,160,0.16), rgba(212,168,75,0.08))",
+              border: 0,
+              cursor: "pointer",
             }}
           >
             Open Thread
-          </a>
-          <a
-            href="/portal/messages"
-            onClick={() => {
-              setOpenMenuRequestId(null);
-              setMenuAnchor(null);
-            }}
-            style={{
-              display: "block",
-              padding: "10px 12px",
-              fontSize: 14,
-              color: "#e8edf9",
-              textDecoration: "none",
-            }}
-          >
-            Open Messages
-          </a>
+          </button>
+          {openMenuRequest.customerId ? (
+            <button
+              type="button"
+              onClick={() => {
+                const href = `/portal/customers?customerId=${encodeURIComponent(openMenuRequest.customerId!)}`;
+                setOpenMenuRequestId(null);
+                setMenuAnchor(null);
+                router.push(href);
+              }}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                display: "block",
+                padding: "10px 12px",
+                fontSize: 14,
+                color: "#e8edf9",
+                background: "transparent",
+                border: 0,
+                cursor: "pointer",
+              }}
+            >
+              Customer Details
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled
+              style={{
+                width: "100%",
+                textAlign: "left",
+                display: "block",
+                padding: "10px 12px",
+                fontSize: 14,
+                color: "rgba(232,237,249,0.45)",
+                background: "transparent",
+                border: 0,
+              }}
+            >
+              Customer Details
+            </button>
+          )}
         </div>
       )}
       <RequestDrawer request={selectedRequest} onClose={() => setSelectedId(null)} />
@@ -487,6 +519,7 @@ function RequestDrawer({
   request: RequestRow | null;
   onClose: () => void;
 }) {
+  const router = useRouter();
   if (!request) return null;
 
   const rawSummary = typeof request.summary === "string" ? request.summary : request.text || "";
@@ -562,13 +595,27 @@ function RequestDrawer({
               </div>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <a href={threadHref} className="btn btn-primary" onClick={onClose}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  onClose();
+                  router.push(threadHref);
+                }}
+              >
                 Open Thread
-              </a>
+              </button>
               {customerHref ? (
-                <a href={customerHref} className="btn btn-ghost" onClick={onClose}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    onClose();
+                    router.push(customerHref);
+                  }}
+                >
                   Open Customer Details
-                </a>
+                </button>
               ) : (
                 <button type="button" className="btn btn-ghost" disabled>
                   Open Customer Details

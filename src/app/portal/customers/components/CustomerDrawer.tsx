@@ -5,6 +5,7 @@ import type { CustomerRow, Source } from "../types";
 import { SOURCE_CONFIG } from "../types";
 import { trpc } from "@/utils/trpc";
 import { PortalSelect } from "@/app/portal/components/PortalSelect";
+import { useRouter } from "next/navigation";
 
 type Props = {
   customer: CustomerRow | null;
@@ -12,6 +13,7 @@ type Props = {
 };
 
 export function CustomerDrawer({ customer, onClose }: Props) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"overview" | "requests" | "notes">(
     "overview"
   );
@@ -264,9 +266,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
             </div>
           </div>
           <button
-            onClick={() => {
-              window.location.href = threadHref;
-            }}
+            onClick={() => router.push(threadHref)}
             className="btn btn-ghost btn-sm"
             style={{ marginRight: 6 }}
           >

@@ -7,6 +7,7 @@ import { trpc } from "@/utils/trpc";
 import { TableSelect } from "@/app/portal/components/TableToolbarControls";
 import { PortalDataTable } from "@/app/portal/components/PortalDataTable";
 import { TablePagination } from "@/app/portal/components/TablePagination";
+import { useRouter } from "next/navigation";
 
 const Icons = {
   pause: (
@@ -106,6 +107,7 @@ function LeadScoreBar({ score }: { score: number }) {
 }
 
 export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMore, onLoadMore }: Props) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<Source | "all">("all");
   const [sortKey, setSortKey] = useState<keyof CustomerRow>("lastMessageAt");
@@ -472,27 +474,30 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <a
-            href={(() => {
-              const row = rows.find((r) => r.id === openMenuCustomerId);
-              return row ? getThreadHref(row) : "/portal/messages";
-            })()}
+          <button
+            type="button"
             onClick={() => {
+              const row = rows.find((r) => r.id === openMenuCustomerId);
+              const href = row ? getThreadHref(row) : "/portal/messages";
               setOpenMenuCustomerId(null);
               setMenuAnchor(null);
+              router.push(href);
             }}
             style={{
+              width: "100%",
+              textAlign: "left",
               display: "block",
               padding: "10px 12px",
               fontSize: 14,
               color: "#e8edf9",
-              textDecoration: "none",
               borderBottom: "1px solid rgba(212,168,75,0.2)",
               background: "linear-gradient(135deg, rgba(0,51,160,0.16), rgba(212,168,75,0.08))",
+              border: 0,
+              cursor: "pointer",
             }}
           >
             Open Thread
-          </a>
+          </button>
         </div>
       )}
     </PortalDataTable>
