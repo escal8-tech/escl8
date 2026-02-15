@@ -25,13 +25,6 @@ type ToastContextValue = {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-function toastAccent(type: ToastType) {
-  if (type === "error") return "crimson";
-  if (type === "success") return "var(--brand)";
-  if (type === "progress") return "var(--brand-2)";
-  return "var(--muted)";
-}
-
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timers = useRef(new Map<string, number>());
@@ -84,9 +77,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         aria-relevant="additions removals"
         style={{
           position: "fixed",
-          top: 16,
+          top: 88,
           right: 16,
-          zIndex: 100,
+          zIndex: 5000,
           display: "grid",
           gap: 10,
           width: "min(420px, calc(100vw - 32px))",
@@ -96,44 +89,49 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className="glass"
             style={{
               padding: 12,
               borderRadius: 14,
               pointerEvents: "auto",
               display: "grid",
               gap: 6,
+              border: "1px solid rgba(255, 255, 255, 0.14)",
+              background: "rgba(10, 10, 10, 0.82)",
+              backdropFilter: "blur(12px)",
+              boxShadow: "0 12px 30px rgba(0, 0, 0, 0.35)",
             }}
           >
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
               <div style={{ display: "grid", gap: 2 }}>
                 {t.title ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 999,
-                        background: toastAccent(t.type),
-                        flex: "0 0 auto",
-                      }}
-                    />
-                    <div style={{ fontWeight: 650 }}>{t.title}</div>
-                  </div>
+                  <div style={{ fontWeight: 650, fontSize: 14, letterSpacing: "-0.01em" }}>{t.title}</div>
                 ) : null}
-                <div className="muted" style={{ fontSize: 13, lineHeight: 1.35 }}>
+                <div style={{ fontSize: 13, lineHeight: 1.35, color: "rgba(255, 255, 255, 0.72)" }}>
                   {t.message}
                 </div>
               </div>
 
               <button
                 type="button"
-                className="btn"
                 onClick={() => dismiss(t.id)}
-                style={{ padding: "6px 10px", borderRadius: 10 }}
+                aria-label="Close toast"
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 8,
+                  border: "1px solid rgba(255, 255, 255, 0.14)",
+                  background: "rgba(255, 255, 255, 0.03)",
+                  color: "rgba(255, 255, 255, 0.78)",
+                  display: "grid",
+                  placeItems: "center",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
               >
-                Close
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
               </button>
             </div>
           </div>
