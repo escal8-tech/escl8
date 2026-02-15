@@ -532,6 +532,9 @@ export const supportTickets = pgTable(
     ticketTypeKey: text("ticket_type_key").notNull(),
     status: text("status").notNull().default("open"), // open | in_progress | resolved | closed
     priority: text("priority").notNull().default("normal"), // low | normal | high | urgent
+    outcome: text("outcome").notNull().default("pending"), // pending | won | lost
+    lossReason: text("loss_reason"),
+    slaDueAt: timestamp("sla_due_at", { withTimezone: true }),
     source: text("source").notNull().default("whatsapp"),
     customerId: text("customer_id").references(() => customers.id, {
       onDelete: "set null",
@@ -561,8 +564,37 @@ export const supportTickets = pgTable(
     supportTicketsBizIdx: index("support_tickets_business_id_idx").on(t.businessId),
     supportTicketsTypeIdx: index("support_tickets_type_idx").on(t.businessId, t.ticketTypeKey),
     supportTicketsStatusIdx: index("support_tickets_status_idx").on(t.businessId, t.status),
+    supportTicketsOutcomeIdx: index("support_tickets_outcome_idx").on(t.businessId, t.outcome),
+    supportTicketsSlaDueIdx: index("support_tickets_sla_due_at_idx").on(t.slaDueAt),
     supportTicketsCreatedIdx: index("support_tickets_created_at_idx").on(t.createdAt),
     supportTicketsCustomerIdx: index("support_tickets_customer_id_idx").on(t.customerId),
+  }),
+);
+
+export const supportTicketEvents = pgTable(
+  "support_ticket_events",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    ticketId: text("ticket_id")
+      .notNull()
+      .references(() => supportTickets.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    eventType: text("event_type").notNull(), // created | status_changed | outcome_changed | sla_changed | note
+    actorType: text("actor_type").notNull().default("system"), // user | bot | system
+    actorId: text("actor_id"),
+    actorLabel: text("actor_label"),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    supportTicketEventsBizIdx: index("support_ticket_events_business_id_idx").on(t.businessId),
+    supportTicketEventsTicketIdx: index("support_ticket_events_ticket_id_idx").on(t.ticketId),
+    supportTicketEventsCreatedIdx: index("support_ticket_events_created_at_idx").on(t.createdAt),
   }),
 );
 
@@ -574,7 +606,7 @@ export const supportTicketTypesRelations = relations(supportTicketTypes, ({ one,
   tickets: many(supportTickets),
 }));
 
-export const supportTicketsRelations = relations(supportTickets, ({ one }) => ({
+export const supportTicketsRelations = relations(supportTickets, ({ one, many }) => ({
   business: one(businesses, {
     fields: [supportTickets.businessId],
     references: [businesses.id],
@@ -595,12 +627,26 @@ export const supportTicketsRelations = relations(supportTickets, ({ one }) => ({
     fields: [supportTickets.whatsappIdentityId],
     references: [whatsappIdentities.phoneNumberId],
   }),
+  events: many(supportTicketEvents),
+}));
+
+export const supportTicketEventsRelations = relations(supportTicketEvents, ({ one }) => ({
+  business: one(businesses, {
+    fields: [supportTicketEvents.businessId],
+    references: [businesses.id],
+  }),
+  ticket: one(supportTickets, {
+    fields: [supportTicketEvents.ticketId],
+    references: [supportTickets.id],
+  }),
 }));
 
 export type SupportTicketTypeRow = typeof supportTicketTypes.$inferSelect;
 export type NewSupportTicketType = typeof supportTicketTypes.$inferInsert;
 export type SupportTicketRow = typeof supportTickets.$inferSelect;
 export type NewSupportTicket = typeof supportTickets.$inferInsert;
+export type SupportTicketEventRow = typeof supportTicketEvents.$inferSelect;
+export type NewSupportTicketEvent = typeof supportTicketEvents.$inferInsert;
 
 // Customer requests (per business dashboard) - multi-source
 export const requests = pgTable(

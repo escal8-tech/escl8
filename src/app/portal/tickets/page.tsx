@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { trpc } from "@/utils/trpc";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TableSelect } from "@/app/portal/components/TableToolbarControls";
@@ -10,6 +10,15 @@ import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
 
 type TicketStatus = "open" | "in_progress" | "resolved";
+type TicketOutcome = "pending" | "won" | "lost";
+type TicketEventRow = {
+  id: string;
+  eventType: string;
+  actorType: string;
+  actorLabel?: string | null;
+  payload?: Record<string, unknown> | null;
+  createdAt?: Date | string | null;
+};
 type TicketRow = {
   [key: string]: unknown;
   id: string;
@@ -33,9 +42,21 @@ type TicketRow = {
   resolvedAt?: Date | string | null;
   closedAt?: Date | string | null;
   priority?: string | null;
+  outcome?: string | null;
+  lossReason?: string | null;
+  slaDueAt?: Date | string | null;
 };
 
 const STATUS_OPTIONS: TicketStatus[] = ["open", "in_progress", "resolved"];
+const OUTCOME_OPTIONS: TicketOutcome[] = ["pending", "won", "lost"];
+const LOSS_REASON_OPTIONS = [
+  "Price too high",
+  "No response",
+  "Competitor chosen",
+  "Out of stock",
+  "Not ready to buy",
+  "Other",
+];
 const PAGE_SIZE = 20;
 
 function formatDate(value: Date | string | null | undefined): string {
@@ -50,6 +71,37 @@ function formatDate(value: Date | string | null | undefined): string {
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
+}
+
+function toDateTimeLocalValue(value: Date | string | null | undefined): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const mins = pad(d.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${mins}`;
+}
+
+function formatSlaCountdown(
+  value: Date | string | null | undefined,
+  nowMs: number,
+): { label: string; tone: "ok" | "warn" | "danger" | "muted" } {
+  if (!value) return { label: "No SLA", tone: "muted" };
+  const due = new Date(value).getTime();
+  if (!Number.isFinite(due)) return { label: "No SLA", tone: "muted" };
+  const diffMs = due - nowMs;
+  const abs = Math.abs(diffMs);
+  const minutes = Math.floor(abs / 60000);
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  const compact = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  if (diffMs < 0) return { label: `Overdue by ${compact}`, tone: "danger" };
+  if (diffMs < 60 * 60 * 1000) return { label: `${compact} left`, tone: "warn" };
+  return { label: `${compact} left`, tone: "ok" };
 }
 
 function getTicketValue(ticket: TicketRow, camelKey: string, snakeKey?: string): unknown {
@@ -136,11 +188,17 @@ export default function TicketsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | TicketStatus>("all");
   const [ticketIdQuery, setTicketIdQuery] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [updatingOutcomeId, setUpdatingOutcomeId] = useState<string | null>(null);
   const [pendingBotCustomerIds, setPendingBotCustomerIds] = useState<Record<string, boolean>>({});
   const [botPausedOverrides, setBotPausedOverrides] = useState<Record<string, boolean>>({});
   const [page, setPage] = useState(0);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const searchParams = useSearchParams();
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const ticketTypesQuery = trpc.tickets.listTypes.useQuery({ includeDisabled: true });
   const ticketListInput = useMemo(
@@ -153,6 +211,12 @@ export default function TicketsPage() {
       await ticketsQuery.refetch();
     },
     onSettled: () => setUpdatingId(null),
+  });
+  const updateOutcome = trpc.tickets.updateTicketOutcome.useMutation({
+    onSuccess: async () => {
+      await Promise.all([ticketsQuery.refetch(), performanceQuery.refetch()]);
+    },
+    onSettled: () => setUpdatingOutcomeId(null),
   });
   const invalidateTickets = useCallback(async () => {
     await Promise.all([
@@ -242,6 +306,9 @@ export default function TicketsPage() {
     if (queryTypeKey && normalizedGroups.some((g) => g.typeKey === queryTypeKey)) return queryTypeKey;
     return normalizedGroups[0]?.typeKey ?? null;
   }, [normalizedGroups, queryTypeKey]);
+  const performanceQuery = trpc.tickets.getPerformance.useQuery(
+    effectiveTypeKey ? { typeKey: effectiveTypeKey, windowDays: 30 } : { windowDays: 30 },
+  );
 
   const activeGroup = useMemo(
     () => normalizedGroups.find((g) => g.typeKey === effectiveTypeKey) ?? null,
@@ -351,6 +418,47 @@ export default function TicketsPage() {
         />
       )}
     >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          gap: 10,
+          marginBottom: 12,
+        }}
+      >
+        <div className="card">
+          <div className="card-body" style={{ padding: "10px 12px" }}>
+            <div className="text-muted" style={{ fontSize: 11 }}>30d Conversion</div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{performanceQuery.data?.conversionRate ?? 0}%</div>
+            <div className="text-muted" style={{ fontSize: 11 }}>
+              Won {performanceQuery.data?.wonCount ?? 0} / Lost {performanceQuery.data?.lostCount ?? 0}
+            </div>
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-body" style={{ padding: "10px 12px" }}>
+            <div className="text-muted" style={{ fontSize: 11 }}>SLA On-Time</div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{performanceQuery.data?.slaOnTimeRate ?? 0}%</div>
+            <div className="text-muted" style={{ fontSize: 11 }}>
+              {performanceQuery.data?.resolvedOnTime ?? 0} on-time / {performanceQuery.data?.resolvedTotal ?? 0} resolved
+            </div>
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-body" style={{ padding: "10px 12px" }}>
+            <div className="text-muted" style={{ fontSize: 11 }}>Overdue Open</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: "#fca5a5" }}>{performanceQuery.data?.overdueOpen ?? 0}</div>
+            <div className="text-muted" style={{ fontSize: 11 }}>Needs attention now</div>
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-body" style={{ padding: "10px 12px" }}>
+            <div className="text-muted" style={{ fontSize: 11 }}>Tickets (30d)</div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{performanceQuery.data?.total ?? 0}</div>
+            <div className="text-muted" style={{ fontSize: 11 }}>{activeGroup?.label ?? "All types"}</div>
+          </div>
+        </div>
+      </div>
 
       {!normalizedGroups.length ? (
         <div className="empty-state" style={{ flex: 1 }}>
@@ -369,9 +477,11 @@ export default function TicketsPage() {
                   </th>
                 ))}
                 <th style={{ textAlign: "left", width: 100 }}>Priority</th>
+                <th style={{ textAlign: "left", width: 170 }}>SLA</th>
                 <th style={{ textAlign: "left", width: 150 }}>Updated</th>
                 <th style={{ textAlign: "center", width: 108 }}>Bot</th>
                 <th style={{ textAlign: "right", width: 132 }}>Status</th>
+                <th style={{ textAlign: "right", width: 130 }}>Outcome</th>
                 <th style={{ textAlign: "center", width: 64 }} />
               </tr>
             </thead>
@@ -444,6 +554,17 @@ export default function TicketsPage() {
                       {(getTicketString(ticket, "priority") || "normal")}
                     </span>
                   </td>
+                  <td>
+                    {(() => {
+                      const sla = formatSlaCountdown(
+                        getTicketValue(ticket, "slaDueAt", "sla_due_at") as Date | string | null | undefined,
+                        nowMs,
+                      );
+                      const toneColor =
+                        sla.tone === "danger" ? "#fca5a5" : sla.tone === "warn" ? "#fdba74" : sla.tone === "ok" ? "#86efac" : "var(--muted)";
+                      return <span style={{ fontSize: 12, color: toneColor }}>{sla.label}</span>;
+                    })()}
+                  </td>
                   <td style={{ color: "var(--muted)", fontSize: 12 }}>
                     {formatDate((getTicketValue(ticket, "updatedAt", "updated_at") as Date | string | null | undefined) ?? ticket.createdAt)}
                   </td>
@@ -492,6 +613,32 @@ export default function TicketsPage() {
                       ))}
                     </TableSelect>
                   </td>
+                  <td style={{ textAlign: "right" }}>
+                    <TableSelect
+                      style={{ width: 118 }}
+                      value={(getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome}
+                      disabled={updatingOutcomeId === ticket.id || ticket.status !== "resolved"}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        const nextOutcome = e.target.value as TicketOutcome;
+                        setUpdatingOutcomeId(ticket.id);
+                        updateOutcome.mutate({
+                          id: ticket.id,
+                          outcome: nextOutcome,
+                          lossReason:
+                            nextOutcome === "lost"
+                              ? getTicketString(ticket, "lossReason", "loss_reason") || "Other"
+                              : undefined,
+                        });
+                      }}
+                    >
+                      {OUTCOME_OPTIONS.map((outcome) => (
+                        <option key={outcome} value={outcome}>
+                          {outcome}
+                        </option>
+                      ))}
+                    </TableSelect>
+                  </td>
                   <td
                     style={{ textAlign: "center" }}
                     onClick={(e) => e.stopPropagation()}
@@ -518,7 +665,7 @@ export default function TicketsPage() {
               ))}
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={8 + fieldColumns.length} style={{ color: "var(--muted)", textAlign: "center", padding: "20px 10px" }}>
+                  <td colSpan={9 + fieldColumns.length} style={{ color: "var(--muted)", textAlign: "center", padding: "20px 10px" }}>
                     {ticketIdQuery ? (
                       "No ticket IDs match your search."
                     ) : (
@@ -560,9 +707,11 @@ export default function TicketsPage() {
         </div>
       ) : null}
       <TicketDetailsDrawer
+        key={selectedTicket?.id ?? "ticket-details"}
         ticket={selectedTicket}
         onClose={() => setSelectedTicketId(null)}
         threadHref={selectedTicket ? getThreadHref(selectedTicket) : "/portal/messages"}
+        nowMs={nowMs}
       />
     </PortalDataTable>
   );
@@ -572,16 +721,53 @@ function TicketDetailsDrawer({
   ticket,
   onClose,
   threadHref,
+  nowMs,
 }: {
   ticket: TicketRow | null;
   onClose: () => void;
   threadHref: string;
+  nowMs: number;
 }) {
   const router = useRouter();
+  const utils = trpc.useUtils();
+  const [updatingOutcome, setUpdatingOutcome] = useState(false);
+  const [updatingSla, setUpdatingSla] = useState(false);
+  const ticketId = ticket?.id ?? "";
+  const updateOutcome = trpc.tickets.updateTicketOutcome.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.tickets.listTickets.invalidate(),
+        utils.tickets.getPerformance.invalidate(),
+      ]);
+    },
+    onSettled: () => setUpdatingOutcome(false),
+  });
+  const updateSlaDueAt = trpc.tickets.updateTicketSlaDueAt.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.tickets.listTickets.invalidate(),
+        utils.tickets.listTicketEvents.invalidate(),
+        utils.tickets.getPerformance.invalidate(),
+      ]);
+    },
+    onSettled: () => setUpdatingSla(false),
+  });
+  const eventsQuery = trpc.tickets.listTicketEvents.useQuery(
+    { ticketId, limit: 80 },
+    { enabled: Boolean(ticketId) },
+  );
+  const slaDueAtRaw = ticket
+    ? (getTicketValue(ticket, "slaDueAt", "sla_due_at") as Date | string | null | undefined)
+    : null;
+  const [slaInput, setSlaInput] = useState(() => toDateTimeLocalValue(slaDueAtRaw));
   if (!ticket) return null;
   const fields = getTicketFields(ticket);
   const fieldRows = Object.entries(fields);
   const status = getTicketString(ticket, "status");
+  const outcome = (getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome;
+  const lossReason = getTicketString(ticket, "lossReason", "loss_reason");
+  const slaDueAt = slaDueAtRaw;
+  const slaCountdown = formatSlaCountdown(slaDueAt, nowMs);
   const priority = getTicketString(ticket, "priority");
   const source = getTicketString(ticket, "source");
   const typeKey = getTicketString(ticket, "ticketTypeKey", "ticket_type_key");
@@ -623,6 +809,18 @@ function TicketDetailsDrawer({
                     <div>{formatStatus(priority || "-")}</div>
                   </div>
                   <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Outcome</div>
+                    <div>{outcome}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>SLA Due</div>
+                    <div>{formatDate(slaDueAt)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>SLA Timer</div>
+                    <div>{slaCountdown.label}</div>
+                  </div>
+                  <div>
                     <div className="text-muted" style={{ fontSize: 12 }}>Type</div>
                     <div>{formatStatus(typeKey || "-")}</div>
                   </div>
@@ -656,6 +854,81 @@ function TicketDetailsDrawer({
 
             <div className="card">
               <div className="card-body" style={{ display: "grid", gap: 10 }}>
+                <div>
+                  <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>SLA due date</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input
+                      type="datetime-local"
+                      value={slaInput}
+                      onChange={(e) => setSlaInput(e.target.value)}
+                      style={{
+                        width: "100%",
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        background: "var(--card)",
+                        color: "var(--foreground)",
+                        padding: "8px 10px",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={updatingSla}
+                      onClick={() => {
+                        setUpdatingSla(true);
+                        updateSlaDueAt.mutate({
+                          id: ticket.id,
+                          slaDueAt: slaInput ? new Date(slaInput) : null,
+                        });
+                      }}
+                    >
+                      Save SLA
+                    </button>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Outcome</div>
+                    <TableSelect
+                      style={{ width: "100%" }}
+                      value={outcome}
+                      disabled={updatingOutcome || status !== "resolved"}
+                      onChange={(e) => {
+                        const nextOutcome = e.target.value as TicketOutcome;
+                        setUpdatingOutcome(true);
+                        updateOutcome.mutate({
+                          id: ticket.id,
+                          outcome: nextOutcome,
+                          lossReason: nextOutcome === "lost" ? lossReason || "Other" : undefined,
+                        });
+                      }}
+                    >
+                      {OUTCOME_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </TableSelect>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Loss reason</div>
+                    <TableSelect
+                      style={{ width: "100%" }}
+                      value={lossReason || "Other"}
+                      disabled={updatingOutcome || outcome !== "lost"}
+                      onChange={(e) => {
+                        setUpdatingOutcome(true);
+                        updateOutcome.mutate({
+                          id: ticket.id,
+                          outcome: "lost",
+                          lossReason: e.target.value,
+                        });
+                      }}
+                    >
+                      {LOSS_REASON_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </TableSelect>
+                  </div>
+                </div>
                 <div>
                   <div className="text-muted" style={{ fontSize: 12 }}>Customer</div>
                   <div style={{ fontWeight: 500 }}>{customerName || customerPhone || "-"}</div>
@@ -708,6 +981,58 @@ function TicketDetailsDrawer({
                     <p className="text-muted" style={{ margin: 0 }}>No structured fields provided.</p>
                   )}
                 </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-body" style={{ display: "grid", gap: 8 }}>
+                <div className="text-muted" style={{ fontSize: 12 }}>Ticket Timeline</div>
+                {!eventsQuery.data?.length ? (
+                  <div className="text-muted" style={{ fontSize: 13 }}>No change history yet.</div>
+                ) : (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {(eventsQuery.data as TicketEventRow[]).map((evt) => {
+                      const payload = evt.payload ?? {};
+                      const pretty = (() => {
+                        if (evt.eventType === "status_changed") {
+                          return `Status ${(payload.from as string) || "-"} -> ${(payload.to as string) || "-"}`;
+                        }
+                        if (evt.eventType === "outcome_changed") {
+                          return `Outcome ${(payload.from as string) || "-"} -> ${(payload.to as string) || "-"}`;
+                        }
+                        if (evt.eventType === "sla_changed") {
+                          return `SLA ${formatDate(payload.from as string | null | undefined)} -> ${formatDate(payload.to as string | null | undefined)}`;
+                        }
+                        if (evt.eventType === "created") {
+                          return "Ticket created";
+                        }
+                        return evt.eventType.replace(/_/g, " ");
+                      })();
+                      return (
+                        <div
+                          key={evt.id}
+                          style={{
+                            border: "1px solid var(--border)",
+                            borderRadius: 10,
+                            padding: "8px 10px",
+                            display: "grid",
+                            gap: 4,
+                          }}
+                        >
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{pretty}</div>
+                          {(payload.lossReason as string | undefined) ? (
+                            <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                              Loss reason: {String(payload.lossReason)}
+                            </div>
+                          ) : null}
+                          <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                            {formatDate(evt.createdAt)} by {evt.actorLabel || evt.actorType || "system"}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
