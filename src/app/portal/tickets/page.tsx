@@ -852,7 +852,7 @@ function TicketDetailsDrawer({
               </div>
             </div>
 
-            <div className="card">
+            <div className="card" style={{ order: -1 }}>
               <div className="card-body" style={{ display: "grid", gap: 10 }}>
                 <div>
                   <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>SLA due date</div>
