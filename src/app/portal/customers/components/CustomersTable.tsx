@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, type CSSProperties } from "react";
+import { useState, useMemo } from "react";
 import { CustomerRow, Source, SOURCE_CONFIG } from "../types";
 import { SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { trpc } from "@/utils/trpc";
@@ -53,57 +53,6 @@ function SourceBadge({ source }: { source: Source }) {
     >
       {config.label}
     </span>
-  );
-}
-
-function SentimentBadge({ sentiment }: { sentiment: string | null }) {
-  if (!sentiment) return <span style={{ color: "var(--muted)" }}>-</span>;
-
-  const styles: Record<string, CSSProperties> = {
-    positive: {
-      background: "rgba(16, 185, 129, 0.18)",
-      border: "1px solid rgba(16, 185, 129, 0.35)",
-      color: "#86efac",
-    },
-    neutral: {
-      background: "rgba(148, 163, 184, 0.16)",
-      border: "1px solid rgba(148, 163, 184, 0.3)",
-      color: "#cbd5e1",
-    },
-    negative: {
-      background: "rgba(239, 68, 68, 0.16)",
-      border: "1px solid rgba(239, 68, 68, 0.32)",
-      color: "#fca5a5",
-    },
-  };
-
-  return (
-    <span
-      className="inline-block rounded-full px-2 py-0.5 text-xs font-medium"
-      style={styles[sentiment] ?? styles.neutral}
-    >
-      {sentiment}
-    </span>
-  );
-}
-
-function LeadScoreBar({ score }: { score: number }) {
-  const color =
-    score >= 70 ? "#22c55e" : score >= 40 ? "#eab308" : "#ef4444";
-
-  return (
-    <div className="flex items-center gap-2">
-      <div
-        className="h-2 rounded-full"
-        style={{ width: 60, background: "rgba(100, 116, 139, 0.28)" }}
-      >
-        <div
-          className="h-2 rounded-full transition-all"
-          style={{ width: `${score}%`, backgroundColor: color }}
-        />
-      </div>
-      <span style={{ fontSize: 12, color: "var(--muted)" }}>{score}</span>
-    </div>
   );
 }
 
@@ -300,19 +249,7 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
             <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("name")}>
               Customer {sortIndicator("name")}
             </th>
-            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("totalRequests")}>
-              Requests {sortIndicator("totalRequests")}
-            </th>
             <th>Bot</th>
-            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("totalRevenue")}>
-              Revenue {sortIndicator("totalRevenue")}
-            </th>
-            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("leadScore")}>
-              Lead score {sortIndicator("leadScore")}
-            </th>
-            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("lastSentiment")}>
-              Sentiment {sortIndicator("lastSentiment")}
-            </th>
             <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("lastMessageAt")}>
               Last active {sortIndicator("lastMessageAt")}
             </th>
@@ -346,9 +283,6 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
                 </div>
               </td>
               <td>
-                <span style={{ fontWeight: 600 }}>{row.totalRequests}</span>
-              </td>
-              <td>
                 {(() => {
                   const isPending = Boolean(pendingIds[row.id]);
                   return (
@@ -368,17 +302,6 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
                     </button>
                   );
                 })()}
-              </td>
-              <td>
-                <span style={{ fontWeight: 600 }}>
-                  ${parseFloat(row.totalRevenue || "0").toLocaleString()}
-                </span>
-              </td>
-              <td>
-                <LeadScoreBar score={row.leadScore} />
-              </td>
-              <td>
-                <SentimentBadge sentiment={row.lastSentiment} />
               </td>
               <td style={{ color: "var(--muted)" }}>
                 {row.lastMessageAt
@@ -405,7 +328,7 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
 
           {pageRows.length === 0 && (
             <tr>
-              <td colSpan={9} style={{ textAlign: "center", color: "var(--muted)", padding: "24px 10px" }}>
+              <td colSpan={5} style={{ textAlign: "center", color: "var(--muted)", padding: "24px 10px" }}>
                 {searchQuery || sourceFilter !== "all"
                   ? "No customers match your filters"
                   : "No customers found"}

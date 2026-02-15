@@ -306,7 +306,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
             style={tabStyle(activeTab === "requests")}
             onClick={() => setActiveTab("requests")}
           >
-            Requests ({customer.totalRequests})
+            Requests ({requests?.length ?? 0})
           </button>
           <button
             style={tabStyle(activeTab === "notes")}
@@ -363,7 +363,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                 />
                 <StatCard
                   label="Total Requests"
-                  value={customer.totalRequests.toString()}
+                  value={(requests?.length ?? 0).toString()}
                 />
                 <StatCard
                   label="Successful"
