@@ -36,6 +36,13 @@ export function CustomerDrawer({ customer, onClose }: Props) {
   if (!customer) return null;
 
   const sourceConfig = SOURCE_CONFIG[customer.source as Source];
+  const threadHref = (() => {
+    const params = new URLSearchParams();
+    if (customer.id) params.set("customerId", customer.id);
+    else if (customer.phone) params.set("phone", customer.phone);
+    const query = params.toString();
+    return query ? `/portal/messages?${query}` : "/portal/messages";
+  })();
 
   const formatDate = (date: Date | null) => {
     if (!date) return "—";
@@ -256,6 +263,15 @@ export function CustomerDrawer({ customer, onClose }: Props) {
               </span>
             </div>
           </div>
+          <button
+            onClick={() => {
+              window.location.href = threadHref;
+            }}
+            className="btn btn-ghost btn-sm"
+            style={{ marginRight: 6 }}
+          >
+            Open Thread
+          </button>
           <button
             onClick={onClose}
             style={{

@@ -5,6 +5,7 @@ import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 function formatTimestamp(d: Date | null | undefined) {
   if (!d) return "";
@@ -93,6 +94,7 @@ function ProfileIcon({ name, size = 40 }: { name?: string | null; size?: number 
 
 export default function MessagesPage() {
   const { selectedPhoneNumberId } = usePhoneFilter();
+  const searchParams = useSearchParams();
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [draft, setDraft] = useState("");
@@ -142,12 +144,32 @@ export default function MessagesPage() {
     });
   }, [recentThreadsQuery.data, searchQuery]);
 
+  const deepLinkThreadId = useMemo(() => {
+    if (!filteredThreads.length) return null;
+    const requestedThreadId = String(searchParams?.get("threadId") || "").trim();
+    const requestedCustomerId = String(searchParams?.get("customerId") || "").trim();
+    const requestedPhone = String(searchParams?.get("phone") || "").replace(/[^\d]/g, "");
+    const match = filteredThreads.find((thread) => {
+      if (requestedThreadId && thread.threadId === requestedThreadId) return true;
+      if (requestedCustomerId && String(thread.customerId || "") === requestedCustomerId) return true;
+      if (requestedPhone) {
+        const threadPhone = String(thread.customerPhone || "").replace(/[^\d]/g, "");
+        return threadPhone === requestedPhone;
+      }
+      return false;
+    });
+    return match?.threadId ?? null;
+  }, [filteredThreads, searchParams]);
+
   const activeThreadId = useMemo(() => {
     if (selectedThreadId && filteredThreads.some((t) => t.threadId === selectedThreadId)) {
       return selectedThreadId;
     }
+    if (deepLinkThreadId && filteredThreads.some((t) => t.threadId === deepLinkThreadId)) {
+      return deepLinkThreadId;
+    }
     return null;
-  }, [selectedThreadId, filteredThreads]);
+  }, [selectedThreadId, deepLinkThreadId, filteredThreads]);
   const selectedThread = useMemo(() => {
     if (!activeThreadId) return null;
     return filteredThreads.find((t) => t.threadId === activeThreadId) ?? null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { trpc } from "@/utils/trpc";
 import { useSearchParams } from "next/navigation";
 import { TableSelect } from "@/app/portal/components/TableToolbarControls";
@@ -9,6 +9,30 @@ import { TablePagination } from "@/app/portal/components/TablePagination";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 
 type TicketStatus = "open" | "in_progress" | "resolved";
+type TicketRow = {
+  [key: string]: unknown;
+  id: string;
+  status: string;
+  title?: string | null;
+  summary?: string | null;
+  notes?: string | null;
+  createdAt?: Date | string | null;
+  updatedAt?: Date | string | null;
+  customerId?: string | null;
+  threadId?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  source?: string | null;
+  ticketTypeKey?: string | null;
+  ticketTypeId?: string | null;
+  businessId?: string | null;
+  whatsappIdentityId?: string | null;
+  fields?: Record<string, unknown> | null;
+  createdBy?: string | null;
+  resolvedAt?: Date | string | null;
+  closedAt?: Date | string | null;
+  priority?: string | null;
+};
 
 const STATUS_OPTIONS: TicketStatus[] = ["open", "in_progress", "resolved"];
 const PAGE_SIZE = 20;
@@ -27,6 +51,79 @@ function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
 }
 
+function getTicketValue(ticket: TicketRow, camelKey: string, snakeKey?: string): unknown {
+  if (ticket[camelKey] != null) return ticket[camelKey];
+  if (snakeKey && ticket[snakeKey] != null) return ticket[snakeKey];
+  return null;
+}
+
+function getTicketString(ticket: TicketRow, camelKey: string, snakeKey?: string): string {
+  const value = getTicketValue(ticket, camelKey, snakeKey);
+  if (value == null) return "";
+  return String(value);
+}
+
+function getTicketFields(ticket: TicketRow): Record<string, unknown> {
+  const value = getTicketValue(ticket, "fields");
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function formatStatus(status: string): string {
+  return status.replace(/_/g, " ");
+}
+
+function formatFieldValue(value: unknown): string {
+  if (value == null) return "-";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function priorityPillStyle(priorityRaw: string): CSSProperties {
+  const priority = priorityRaw.toLowerCase();
+  if (priority === "urgent") {
+    return {
+      background: "rgba(239, 68, 68, 0.16)",
+      color: "#fca5a5",
+      border: "1px solid rgba(239, 68, 68, 0.35)",
+    };
+  }
+  if (priority === "high") {
+    return {
+      background: "rgba(249, 115, 22, 0.14)",
+      color: "#fdba74",
+      border: "1px solid rgba(249, 115, 22, 0.3)",
+    };
+  }
+  if (priority === "normal") {
+    return {
+      background: "rgba(56, 189, 248, 0.12)",
+      color: "#7dd3fc",
+      border: "1px solid rgba(56, 189, 248, 0.28)",
+    };
+  }
+  return {
+    background: "rgba(148, 163, 184, 0.12)",
+    color: "#cbd5e1",
+    border: "1px solid rgba(148, 163, 184, 0.28)",
+  };
+}
+
 function normalizeTicketTypeLabel(typeKey: string, label: string): string {
   if (typeKey === "ordercreation") return "Orders";
   return label;
@@ -37,10 +134,16 @@ export default function TicketsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | TicketStatus>("all");
   const [ticketIdQuery, setTicketIdQuery] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [pendingBotCustomerIds, setPendingBotCustomerIds] = useState<Record<string, boolean>>({});
   const [page, setPage] = useState(0);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [openMenuTicketId, setOpenMenuTicketId] = useState<string | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
   const searchParams = useSearchParams();
+  const menuContainerRef = useRef<HTMLDivElement | null>(null);
 
   const ticketTypesQuery = trpc.tickets.listTypes.useQuery({ includeDisabled: true });
+  const customersQuery = trpc.customers.list.useQuery({ limit: 500 });
   const ticketListInput = useMemo(
     () => (statusFilter === "all" ? undefined : { status: statusFilter, limit: 400 }),
     [statusFilter],
@@ -63,10 +166,35 @@ export default function TicketsPage() {
     ticketListInputs: [ticketListInput],
     onCatchup: invalidateTickets,
   });
+  const toggleBot = trpc.customers.setBotPaused.useMutation({
+    onMutate: async (vars) => {
+      setPendingBotCustomerIds((prev) => ({ ...prev, [vars.customerId]: true }));
+      await customersQuery.refetch();
+    },
+    onSettled: async (_data, _error, vars) => {
+      if (vars?.customerId) {
+        setPendingBotCustomerIds((prev) => {
+          const next = { ...prev };
+          delete next[vars.customerId];
+          return next;
+        });
+      }
+      await customersQuery.refetch();
+    },
+  });
+  const ticketsData = useMemo(() => ticketsQuery.data ?? [], [ticketsQuery.data]);
+  const ticketTypesData = useMemo(() => ticketTypesQuery.data ?? [], [ticketTypesQuery.data]);
+  const customerBotPausedById = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const customer of customersQuery.data ?? []) {
+      map.set(customer.id, Boolean((customer as { botPaused?: boolean }).botPaused));
+    }
+    return map;
+  }, [customersQuery.data]);
 
   const groupedTickets = useMemo(() => {
-    const ticketsByType = new Map<string, NonNullable<typeof ticketsQuery.data>>();
-    for (const ticket of ticketsQuery.data ?? []) {
+    const ticketsByType = new Map<string, TicketRow[]>();
+    for (const ticket of ticketsData as TicketRow[]) {
       const key = ticket.ticketTypeKey || "untyped";
       const current = ticketsByType.get(key) ?? [];
       current.push(ticket);
@@ -77,10 +205,10 @@ export default function TicketsPage() {
       typeKey: string;
       label: string;
       enabled: boolean;
-      rows: NonNullable<typeof ticketsQuery.data>;
+      rows: TicketRow[];
     }> = [];
 
-    for (const type of ticketTypesQuery.data ?? []) {
+    for (const type of ticketTypesData) {
       groups.push({
         typeKey: type.key,
         label: normalizeTicketTypeLabel(type.key, type.label),
@@ -100,7 +228,7 @@ export default function TicketsPage() {
     }
 
     return groups;
-  }, [ticketTypesQuery.data, ticketsQuery.data]);
+  }, [ticketTypesData, ticketsData]);
 
   const normalizedGroups = useMemo(() => groupedTickets.sort((a, b) => a.label.localeCompare(b.label)), [groupedTickets]);
 
@@ -125,21 +253,76 @@ export default function TicketsPage() {
       return full.includes(q) || short.includes(q);
     });
   }, [activeGroup?.rows, ticketIdQuery]);
+  const fieldColumns = useMemo(() => {
+    const frequency = new Map<string, number>();
+    for (const row of filteredRows) {
+      const fields = getTicketFields(row as TicketRow);
+      for (const key of Object.keys(fields)) {
+        if (key.toLowerCase() === "contact") continue;
+        frequency.set(key, (frequency.get(key) ?? 0) + 1);
+      }
+    }
+    return Array.from(frequency.entries())
+      .sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0]);
+      })
+      .slice(0, 4)
+      .map(([key]) => key);
+  }, [filteredRows]);
   useEffect(() => {
-    setPage(0);
-  }, [ticketIdQuery, statusFilter, effectiveTypeKey]);
+    if (!openMenuTicketId) return;
+    const onDown = (event: MouseEvent) => {
+      if (!menuContainerRef.current?.contains(event.target as Node)) {
+        setOpenMenuTicketId(null);
+        setMenuAnchor(null);
+      }
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenMenuTicketId(null);
+        setMenuAnchor(null);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [openMenuTicketId]);
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
   const pageRows = useMemo(
     () => filteredRows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
     [filteredRows, safePage],
   );
+  const selectedTicket = useMemo(() => {
+    if (!selectedTicketId) return null;
+    return (ticketsData as TicketRow[]).find((t) => t.id === selectedTicketId) ?? null;
+  }, [selectedTicketId, ticketsData]);
+  const openMenuTicket = useMemo(() => {
+    if (!openMenuTicketId) return null;
+    return (ticketsData as TicketRow[]).find((t) => t.id === openMenuTicketId) ?? null;
+  }, [openMenuTicketId, ticketsData]);
+
+  const getThreadHref = useCallback((ticket: TicketRow) => {
+    const params = new URLSearchParams();
+    if (ticket.threadId) params.set("threadId", ticket.threadId);
+    else if (ticket.customerId) params.set("customerId", ticket.customerId);
+    else if (ticket.customerPhone) params.set("phone", ticket.customerPhone);
+    const query = params.toString();
+    return query ? `/portal/messages?${query}` : "/portal/messages";
+  }, []);
 
   return (
     <PortalDataTable
       search={{
         value: ticketIdQuery,
-        onChange: setTicketIdQuery,
+        onChange: (value) => {
+          setTicketIdQuery(value);
+          setPage(0);
+        },
         placeholder: "Search ticket ID...",
         style: { width: "min(520px, 52vw)", minWidth: 220, flex: "0 1 520px" },
       }}
@@ -153,7 +336,10 @@ export default function TicketsPage() {
           id="ticket-status-filter"
           style={{ width: 120 }}
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as "all" | TicketStatus)}
+          onChange={(e) => {
+            setStatusFilter(e.target.value as "all" | TicketStatus);
+            setPage(0);
+          }}
         >
           <option value="all">All</option>
           <option value="open">Open</option>
@@ -185,25 +371,124 @@ export default function TicketsPage() {
           <table className="table table-clickable portal-modern-table" style={{ width: "100%" }}>
             <thead>
               <tr>
-                <th style={{ textAlign: "left" }}>Ticket</th>
-                <th style={{ textAlign: "left" }}>Created</th>
-                <th style={{ textAlign: "left" }}>Customer</th>
-                <th style={{ textAlign: "left" }}>Summary</th>
-                <th style={{ textAlign: "right", width: 152 }}>Status</th>
+                <th style={{ textAlign: "left", width: 170 }}>Ticket</th>
+                <th style={{ textAlign: "left", width: 180 }}>Customer</th>
+                {fieldColumns.map((key) => (
+                  <th key={key} style={{ textAlign: "left", minWidth: 130, maxWidth: 180 }}>
+                    {key}
+                  </th>
+                ))}
+                <th style={{ textAlign: "left", width: 100 }}>Priority</th>
+                <th style={{ textAlign: "left", width: 150 }}>Updated</th>
+                <th style={{ textAlign: "center", width: 108 }}>Bot</th>
+                <th style={{ textAlign: "right", width: 132 }}>Status</th>
+                <th style={{ textAlign: "center", width: 64 }} />
               </tr>
             </thead>
             <tbody>
               {pageRows.map((ticket) => (
-                <tr key={ticket.id}>
-                  <td style={{ fontFamily: "monospace", fontSize: 12 }}>#{shortId(ticket.id)}</td>
-                  <td>{formatDate(ticket.createdAt)}</td>
-                  <td>{ticket.customerName || ticket.customerPhone || "-"}</td>
-                  <td style={{ maxWidth: 520 }}>{ticket.summary || ticket.title || "-"}</td>
+                <tr
+                  key={ticket.id}
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement | null;
+                    const interactive = target?.closest(
+                      "button, a, input, textarea, select, [role='button'], .portal-select-trigger, .portal-select-content, .portal-select-item",
+                    );
+                    if (interactive) return;
+                    setSelectedTicketId(ticket.id);
+                  }}
+                  style={{ cursor: "pointer" }}
+                >
+                  <td>
+                    <div style={{ display: "grid", gap: 3 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>
+                        {ticket.title || normalizeTicketTypeLabel(getTicketString(ticket, "ticketTypeKey", "ticket_type_key"), "Ticket")}
+                      </div>
+                      <div style={{ fontFamily: "monospace", fontSize: 11, color: "var(--muted)" }}>
+                        #{shortId(ticket.id)}
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ display: "grid", gap: 3 }}>
+                      <div>{getTicketString(ticket, "customerName", "customer_name") || getTicketString(ticket, "customerPhone", "customer_phone") || "-"}</div>
+                      <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                        {getTicketString(ticket, "customerPhone", "customer_phone") || "No phone"}
+                      </div>
+                    </div>
+                  </td>
+                  {fieldColumns.map((key) => {
+                    const fields = getTicketFields(ticket as TicketRow);
+                    return (
+                      <td key={`${ticket.id}-${key}`}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            maxWidth: 180,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            color: "var(--foreground)",
+                            fontSize: 13,
+                          }}
+                          title={formatFieldValue(fields[key])}
+                        >
+                          {formatFieldValue(fields[key])}
+                        </span>
+                      </td>
+                    );
+                  })}
+                  <td>
+                    <span
+                      style={{
+                        ...priorityPillStyle(getTicketString(ticket, "priority") || "normal"),
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        letterSpacing: "0.01em",
+                        textTransform: "uppercase",
+                        display: "inline-flex",
+                      }}
+                    >
+                      {(getTicketString(ticket, "priority") || "normal")}
+                    </span>
+                  </td>
+                  <td style={{ color: "var(--muted)", fontSize: 12 }}>
+                    {formatDate((getTicketValue(ticket, "updatedAt", "updated_at") as Date | string | null | undefined) ?? ticket.createdAt)}
+                  </td>
+                  <td style={{ textAlign: "center" }}>
+                    {getTicketString(ticket, "customerId", "customer_id") ? (
+                      (() => {
+                        const customerId = getTicketString(ticket, "customerId", "customer_id");
+                        const paused = customerBotPausedById.get(customerId) ?? false;
+                        const isPending = Boolean(pendingBotCustomerIds[customerId]);
+                        return (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isPending) return;
+                              toggleBot.mutate({ customerId, botPaused: !paused });
+                            }}
+                            disabled={isPending}
+                            style={{ width: 94, justifyContent: "center", opacity: isPending ? 0.6 : 1 }}
+                          >
+                            {paused ? "Resume" : "Pause"}
+                          </button>
+                        );
+                      })()
+                    ) : (
+                      <span className="text-muted" style={{ fontSize: 12 }}>-</span>
+                    )}
+                  </td>
                   <td style={{ textAlign: "right" }}>
                     <TableSelect
                       style={{ width: 116 }}
                       value={(ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus}
                       disabled={updatingId === ticket.id}
+                      onClick={(e) => e.stopPropagation()}
                       onChange={(e) => {
                         const nextStatus = e.target.value as TicketStatus;
                         setUpdatingId(ticket.id);
@@ -217,11 +502,45 @@ export default function TicketsPage() {
                       ))}
                     </TableSelect>
                   </td>
+                  <td
+                    style={{ textAlign: "center" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      aria-label="Row actions"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                        const nextTop = rect.bottom + 8;
+                        const nextLeft = Math.max(12, rect.right - 170);
+                        setMenuAnchor({ top: nextTop, left: nextLeft });
+                        setOpenMenuTicketId((prev) => (prev === ticket.id ? null : ticket.id));
+                      }}
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 8,
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "rgba(255,255,255,0.03)",
+                        color: "var(--muted)",
+                        cursor: "pointer",
+                        display: "grid",
+                        placeItems: "center",
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                        <circle cx="12" cy="5" r="1.8" />
+                        <circle cx="12" cy="12" r="1.8" />
+                        <circle cx="12" cy="19" r="1.8" />
+                      </svg>
+                    </button>
+                  </td>
                 </tr>
               ))}
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ color: "var(--muted)", textAlign: "center", padding: "20px 10px" }}>
+                  <td colSpan={8 + fieldColumns.length} style={{ color: "var(--muted)", textAlign: "center", padding: "20px 10px" }}>
                     {ticketIdQuery ? (
                       "No ticket IDs match your search."
                     ) : (
@@ -260,8 +579,278 @@ export default function TicketsPage() {
               )}
             </tbody>
           </table>
+          <TicketRowActionsMenu
+            containerRef={menuContainerRef}
+            isOpen={Boolean(openMenuTicketId && menuAnchor)}
+            top={menuAnchor?.top ?? 0}
+            left={menuAnchor?.left ?? 0}
+            threadHref={openMenuTicket ? getThreadHref(openMenuTicket) : "/portal/messages"}
+            customerHref={
+              openMenuTicket
+                ? (() => {
+                    const customerId = getTicketString(openMenuTicket, "customerId", "customer_id");
+                    return customerId ? `/portal/customers?customerId=${encodeURIComponent(customerId)}` : null;
+                  })()
+                : null
+            }
+            onClose={() => {
+              setOpenMenuTicketId(null);
+              setMenuAnchor(null);
+            }}
+          />
         </div>
       ) : null}
+      <TicketDetailsDrawer
+        ticket={selectedTicket}
+        onClose={() => setSelectedTicketId(null)}
+        threadHref={selectedTicket ? getThreadHref(selectedTicket) : "/portal/messages"}
+      />
     </PortalDataTable>
+  );
+}
+
+function TicketRowActionsMenu({
+  containerRef,
+  isOpen,
+  top,
+  left,
+  threadHref,
+  customerHref,
+  onClose,
+}: {
+  containerRef: RefObject<HTMLDivElement | null>;
+  isOpen: boolean;
+  top: number;
+  left: number;
+  threadHref: string;
+  customerHref: string | null;
+  onClose: () => void;
+}) {
+  if (!isOpen) return null;
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        position: "fixed",
+        top,
+        left,
+        width: 170,
+        background: "rgba(8, 9, 12, 0.98)",
+        border: "1px solid rgba(255,255,255,0.14)",
+        borderRadius: 10,
+        boxShadow: "0 20px 38px rgba(0,0,0,0.45)",
+        overflow: "hidden",
+        zIndex: 3000,
+      }}
+    >
+      <a
+        href={threadHref}
+        onClick={onClose}
+        style={{
+          display: "block",
+          padding: "10px 12px",
+          fontSize: 14,
+          color: "#f1f5f9",
+          textDecoration: "none",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        Open Thread
+      </a>
+      {customerHref ? (
+        <a
+          href={customerHref}
+          onClick={onClose}
+          style={{
+            display: "block",
+            padding: "10px 12px",
+            fontSize: 14,
+            color: "#f1f5f9",
+            textDecoration: "none",
+          }}
+        >
+          Open Customer Details
+        </a>
+      ) : (
+        <button
+          type="button"
+          disabled
+          style={{
+            width: "100%",
+            textAlign: "left",
+            padding: "10px 12px",
+            fontSize: 14,
+            color: "rgba(241,245,249,0.4)",
+            background: "transparent",
+            border: 0,
+          }}
+        >
+          Open Customer Details
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TicketDetailsDrawer({
+  ticket,
+  onClose,
+  threadHref,
+}: {
+  ticket: TicketRow | null;
+  onClose: () => void;
+  threadHref: string;
+}) {
+  if (!ticket) return null;
+  const fields = getTicketFields(ticket);
+  const fieldRows = Object.entries(fields);
+  const status = getTicketString(ticket, "status");
+  const priority = getTicketString(ticket, "priority");
+  const source = getTicketString(ticket, "source");
+  const typeKey = getTicketString(ticket, "ticketTypeKey", "ticket_type_key");
+  const createdBy = getTicketString(ticket, "createdBy", "created_by");
+  const customerName = getTicketString(ticket, "customerName", "customer_name");
+  const customerPhone = getTicketString(ticket, "customerPhone", "customer_phone");
+  const customerId = getTicketString(ticket, "customerId", "customer_id");
+  const customerHref = customerId ? `/portal/customers?customerId=${encodeURIComponent(customerId)}` : null;
+  const createdAt = getTicketValue(ticket, "createdAt", "created_at") as Date | string | null | undefined;
+  const updatedAt = getTicketValue(ticket, "updatedAt", "updated_at") as Date | string | null | undefined;
+  const resolvedAt = getTicketValue(ticket, "resolvedAt", "resolved_at") as Date | string | null | undefined;
+  const closedAt = getTicketValue(ticket, "closedAt", "closed_at") as Date | string | null | undefined;
+
+  return (
+    <>
+      <div className="drawer-backdrop open" onClick={onClose} />
+      <div className="drawer open">
+        <div className="drawer-header">
+          <h3 className="drawer-title">Ticket Details</h3>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close details">
+            x
+          </button>
+        </div>
+        <div className="drawer-body">
+          <div style={{ display: "grid", gap: "var(--space-4)" }}>
+            <div className="card">
+              <div className="card-body" style={{ display: "grid", gap: 12 }}>
+                <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--muted)" }}>
+                  #{shortId(ticket.id)} ({ticket.id})
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>{ticket.title || ticket.summary || "Untitled ticket"}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Status</div>
+                    <div>{formatStatus(status || "open")}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Priority</div>
+                    <div>{formatStatus(priority || "-")}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Type</div>
+                    <div>{formatStatus(typeKey || "-")}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Source</div>
+                    <div>{source || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Created</div>
+                    <div>{formatDate(createdAt)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Updated</div>
+                    <div>{formatDate(updatedAt)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Resolved</div>
+                    <div>{formatDate(resolvedAt)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Closed</div>
+                    <div>{formatDate(closedAt)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Created By</div>
+                    <div>{createdBy || "-"}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-body" style={{ display: "grid", gap: 10 }}>
+                <div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>Customer</div>
+                  <div style={{ fontWeight: 500 }}>{customerName || customerPhone || "-"}</div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Customer ID</div>
+                    <div style={{ fontFamily: "monospace", fontSize: 12 }}>{customerId || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Customer Phone</div>
+                    <div style={{ fontFamily: "monospace", fontSize: 12 }}>{customerPhone || "-"}</div>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>Summary</div>
+                  <p style={{ margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                    {ticket.summary || ticket.title || "No summary available."}
+                  </p>
+                </div>
+                {ticket.notes ? (
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Notes</div>
+                    <p style={{ margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{ticket.notes}</p>
+                  </div>
+                ) : null}
+                <div>
+                  <div className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>Fields</div>
+                  {fieldRows.length ? (
+                    <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+                      {fieldRows.map(([key, value]) => (
+                        <div
+                          key={key}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "140px minmax(0, 1fr)",
+                            gap: 10,
+                            padding: "8px 10px",
+                            borderBottom: "1px solid var(--border)",
+                          }}
+                        >
+                          <div style={{ color: "var(--muted)", fontSize: 12 }}>{key}</div>
+                          <div style={{ fontSize: 13, wordBreak: "break-word" }}>
+                            {typeof value === "string" ? value : JSON.stringify(value)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted" style={{ margin: 0 }}>No structured fields provided.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <a href={threadHref} className="btn btn-primary" onClick={onClose}>
+                Open Thread
+              </a>
+              {customerHref ? (
+                <a href={customerHref} className="btn btn-ghost" onClick={onClose} style={{ marginLeft: 10 }}>
+                  Open Customer Details
+                </a>
+              ) : (
+                <button type="button" className="btn btn-ghost" disabled style={{ marginLeft: 10 }}>
+                  Open Customer Details
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

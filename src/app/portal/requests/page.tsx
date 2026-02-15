@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
@@ -22,6 +22,12 @@ type RequestRow = {
   paid: boolean;
   botPaused?: boolean;
   createdAt: string;
+  updatedAt?: string | null;
+  summary?: unknown;
+  text?: string | null;
+  price?: number | null;
+  needsFollowup?: boolean;
+  paymentDetails?: string | null;
 };
 
 function normalizeRequests(requests: Record<string, unknown>[]): RequestRow[] {
@@ -36,6 +42,17 @@ function normalizeRequests(requests: Record<string, unknown>[]): RequestRow[] {
     paid: Boolean(r.paid),
     botPaused: Boolean(r.botPaused),
     createdAt: r.createdAt instanceof Date ? (r.createdAt as Date).toISOString() : String(r.createdAt || new Date().toISOString()),
+    updatedAt:
+      r.updatedAt instanceof Date
+        ? (r.updatedAt as Date).toISOString()
+        : r.updatedAt
+        ? String(r.updatedAt)
+        : null,
+    summary: r.summary,
+    text: typeof r.text === "string" ? r.text : null,
+    price: r.price == null ? null : Number(r.price),
+    needsFollowup: Boolean(r.needsFollowup),
+    paymentDetails: typeof r.paymentDetails === "string" ? r.paymentDetails : null,
   }));
 }
 
@@ -47,6 +64,10 @@ export default function RequestsPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(0);
   const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openMenuRequestId, setOpenMenuRequestId] = useState<string | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const utils = trpc.useUtils();
 
   const listInput = useMemo(
@@ -134,6 +155,44 @@ export default function RequestsPage() {
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
   const pageRows = useMemo(() => sorted.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE), [sorted, safePage]);
+  const selectedRequest = useMemo(() => {
+    if (!selectedId) return null;
+    return rows.find((r) => r.id === selectedId) ?? null;
+  }, [rows, selectedId]);
+  const openMenuRequest = useMemo(() => {
+    if (!openMenuRequestId) return null;
+    return rows.find((r) => r.id === openMenuRequestId) ?? null;
+  }, [rows, openMenuRequestId]);
+
+  const getThreadHref = (row: RequestRow) => {
+    const params = new URLSearchParams();
+    if (row.customerId) params.set("customerId", row.customerId);
+    else if (row.customerNumber) params.set("phone", row.customerNumber.replace(/[^\d]/g, ""));
+    const query = params.toString();
+    return query ? `/portal/messages?${query}` : "/portal/messages";
+  };
+
+  useEffect(() => {
+    if (!openMenuRequestId) return;
+    const onMouseDown = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpenMenuRequestId(null);
+        setMenuAnchor(null);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenMenuRequestId(null);
+        setMenuAnchor(null);
+      }
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [openMenuRequestId]);
 
   return (
     <PortalDataTable
@@ -250,18 +309,19 @@ export default function RequestsPage() {
             >
               Created
             </th>
+            <th style={{ width: 56 }} />
           </tr>
         </thead>
         <tbody>
           {pageRows.length === 0 ? (
             <tr>
-              <td colSpan={7} className="text-muted" style={{ padding: 18, textAlign: "center" }}>
+              <td colSpan={8} className="text-muted" style={{ padding: 18, textAlign: "center" }}>
                 No requests found.
               </td>
             </tr>
           ) : (
             pageRows.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id} onClick={() => setSelectedId(r.id)} style={{ cursor: "pointer" }}>
                 <td>
                   <div style={{ fontWeight: 500 }}>{r.customerNumber}</div>
                   <div className="text-muted" style={{ fontSize: 12 }}>
@@ -281,28 +341,243 @@ export default function RequestsPage() {
                 </td>
                 <td>{r.paid ? "Yes" : "No"}</td>
                 <td>
-                  {r.customerId ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      disabled={Boolean(pendingIds[r.customerId])}
-                      onClick={() => togglePause.mutate({ customerId: r.customerId!, botPaused: !Boolean(r.botPaused) })}
-                      style={{ width: 104, justifyContent: "center", opacity: pendingIds[r.customerId] ? 0.6 : 1 }}
-                    >
-                      {r.botPaused ? "Resume" : "Pause"}
-                    </button>
-                  ) : (
-                    <span className="text-muted" style={{ fontSize: 12 }}>-</span>
-                  )}
+                  {(() => {
+                    if (!r.customerId) return <span className="text-muted" style={{ fontSize: 12 }}>-</span>;
+                    const createdAt = new Date(r.createdAt);
+                    const today = new Date();
+                    const isToday =
+                      createdAt.getDate() === today.getDate() &&
+                      createdAt.getMonth() === today.getMonth() &&
+                      createdAt.getFullYear() === today.getFullYear();
+                    const status = String(r.status || "").toLowerCase();
+                    const isCompleted = status === "completed" || status === "resolved";
+                    const canToggle = isToday && !isCompleted;
+                    const isPending = Boolean(pendingIds[r.customerId]);
+
+                    return (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={!canToggle || isPending}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!canToggle || isPending) return;
+                          togglePause.mutate({ customerId: r.customerId!, botPaused: !Boolean(r.botPaused) });
+                        }}
+                        title={
+                          !isToday
+                            ? "Only today's conversation can be paused"
+                            : isCompleted
+                            ? "Completed conversations cannot be paused"
+                            : r.botPaused
+                            ? "Resume bot"
+                            : "Pause bot"
+                        }
+                        style={{ width: 104, justifyContent: "center", opacity: !canToggle || isPending ? 0.5 : 1 }}
+                      >
+                        {r.botPaused ? "Resume" : "Pause"}
+                      </button>
+                    );
+                  })()}
                 </td>
                 <td className="text-muted" style={{ fontSize: 12 }}>
                   {new Date(r.createdAt).toLocaleDateString()}
+                </td>
+                <td
+                  style={{ textAlign: "center" }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    aria-label="Row actions"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                      const nextTop = rect.bottom + 8;
+                      const nextLeft = Math.max(12, rect.right - 168);
+                      setMenuAnchor({ top: nextTop, left: nextLeft });
+                      setOpenMenuRequestId((prev) => (prev === r.id ? null : r.id));
+                    }}
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 8,
+                      border: "1px solid rgba(212,168,75,0.45)",
+                      background: "linear-gradient(135deg, rgba(0,51,160,0.28), rgba(212,168,75,0.16))",
+                      color: "#f8e7be",
+                      display: "grid",
+                      placeItems: "center",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                      <circle cx="12" cy="5" r="1.8" />
+                      <circle cx="12" cy="12" r="1.8" />
+                      <circle cx="12" cy="19" r="1.8" />
+                    </svg>
+                  </button>
                 </td>
               </tr>
             ))
           )}
         </tbody>
       </table>
+      {openMenuRequest && menuAnchor && (
+        <div
+          ref={menuRef}
+          style={{
+            position: "fixed",
+            top: menuAnchor.top,
+            left: menuAnchor.left,
+            width: 168,
+            background: "rgba(8, 10, 16, 0.98)",
+            border: "1px solid rgba(212,168,75,0.45)",
+            borderRadius: 10,
+            boxShadow: "0 20px 38px rgba(0,0,0,0.45)",
+            overflow: "hidden",
+            zIndex: 3000,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <a
+            href={getThreadHref(openMenuRequest)}
+            onClick={() => {
+              setOpenMenuRequestId(null);
+              setMenuAnchor(null);
+            }}
+            style={{
+              display: "block",
+              padding: "10px 12px",
+              fontSize: 14,
+              color: "#e8edf9",
+              textDecoration: "none",
+              borderBottom: "1px solid rgba(212,168,75,0.2)",
+              background: "linear-gradient(135deg, rgba(0,51,160,0.16), rgba(212,168,75,0.08))",
+            }}
+          >
+            Open Thread
+          </a>
+          <a
+            href="/portal/messages"
+            onClick={() => {
+              setOpenMenuRequestId(null);
+              setMenuAnchor(null);
+            }}
+            style={{
+              display: "block",
+              padding: "10px 12px",
+              fontSize: 14,
+              color: "#e8edf9",
+              textDecoration: "none",
+            }}
+          >
+            Open Messages
+          </a>
+        </div>
+      )}
+      <RequestDrawer request={selectedRequest} onClose={() => setSelectedId(null)} />
     </PortalDataTable>
+  );
+}
+
+function RequestDrawer({
+  request,
+  onClose,
+}: {
+  request: RequestRow | null;
+  onClose: () => void;
+}) {
+  if (!request) return null;
+
+  const rawSummary = typeof request.summary === "string" ? request.summary : request.text || "";
+  const threadHref = (() => {
+    const params = new URLSearchParams();
+    if (request.customerId) params.set("customerId", request.customerId);
+    else if (request.customerNumber) params.set("phone", request.customerNumber.replace(/[^\d]/g, ""));
+    const query = params.toString();
+    return query ? `/portal/messages?${query}` : "/portal/messages";
+  })();
+  const customerHref = request.customerId
+    ? `/portal/customers?customerId=${encodeURIComponent(request.customerId)}`
+    : null;
+
+  return (
+    <>
+      <div className="drawer-backdrop open" onClick={onClose} />
+      <div className="drawer open">
+        <div className="drawer-header">
+          <h3 className="drawer-title">Request Details</h3>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close details">
+            x
+          </button>
+        </div>
+        <div className="drawer-body">
+          <div style={{ display: "grid", gap: "var(--space-6)" }}>
+            <div className="card">
+              <div className="card-body" style={{ display: "grid", gap: "var(--space-3)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+                  <div className="avatar avatar-lg">{request.customerNumber?.slice(-2).toUpperCase() || "?"}</div>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{request.customerNumber || "Unknown"}</div>
+                    <div className="text-muted">#{request.id.slice(0, 8)}</div>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Status</div>
+                    <div>{(request.status || "ongoing").replace(/_/g, " ")}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Type</div>
+                    <div>{(request.type || "browsing").replace(/_/g, " ")}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Sentiment</div>
+                    <div>{request.sentiment || "neutral"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Paid</div>
+                    <div>{request.paid ? "Yes" : "No"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Created</div>
+                    <div>{new Date(request.createdAt).toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>Updated</div>
+                    <div>{request.updatedAt ? new Date(request.updatedAt).toLocaleString() : "-"}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-body">
+                <div className="text-muted" style={{ fontSize: 12, marginBottom: 8 }}>Summary</div>
+                {rawSummary ? (
+                  <p style={{ margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{rawSummary}</p>
+                ) : (
+                  <p className="text-muted" style={{ margin: 0 }}>No summary available.</p>
+                )}
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <a href={threadHref} className="btn btn-primary" onClick={onClose}>
+                Open Thread
+              </a>
+              {customerHref ? (
+                <a href={customerHref} className="btn btn-ghost" onClick={onClose}>
+                  Open Customer Details
+                </a>
+              ) : (
+                <button type="button" className="btn btn-ghost" disabled>
+                  Open Customer Details
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

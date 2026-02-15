@@ -4,12 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CustomersTable } from "./components/CustomersTable";
 import { CustomerDrawer } from "./components/CustomerDrawer";
 import type { CustomerRow, Source } from "./types";
 
 export default function CustomersPage() {
   const { selectedPhoneNumberId } = usePhoneFilter();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const PAGE_SIZE = 200;
   // Store selected customer by ID
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -84,8 +87,9 @@ export default function CustomersPage() {
     ...c,
     source: c.source as Source,
   })) as CustomerRow[];
-  
-  const customer = typedCustomers?.find((c) => c.id === selectedCustomerId);
+  const queryCustomerId = String(searchParams?.get("customerId") || "").trim();
+  const effectiveSelectedCustomerId = selectedCustomerId || queryCustomerId || null;
+  const customer = typedCustomers?.find((c) => c.id === effectiveSelectedCustomerId);
 
   const handleLoadMore = () => {
     if (isLoadingMore || !typedCustomers.length) return;
@@ -136,7 +140,12 @@ export default function CustomersPage() {
 
       <CustomerDrawer
         customer={customer ?? null}
-        onClose={() => setSelectedCustomerId(null)}
+        onClose={() => {
+          setSelectedCustomerId(null);
+          if (queryCustomerId) {
+            router.replace("/portal/customers");
+          }
+        }}
       />
     </main>
   );

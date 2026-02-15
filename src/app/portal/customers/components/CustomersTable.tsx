@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, type CSSProperties } from "react";
+import { useEffect, useState, useMemo, useRef, type CSSProperties } from "react";
 import { CustomerRow, Source, SOURCE_CONFIG } from "../types";
 import { SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { trpc } from "@/utils/trpc";
@@ -112,6 +112,9 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
   const [page, setPage] = useState(0);
+  const [openMenuCustomerId, setOpenMenuCustomerId] = useState<string | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const utils = trpc.useUtils();
   const togglePause = trpc.customers.setBotPaused.useMutation({
@@ -202,9 +205,6 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
 
     return result;
   }, [rows, sourceFilter, searchQuery, sortKey, sortDir]);
-  useEffect(() => {
-    setPage(0);
-  }, [searchQuery, sourceFilter, sortKey, sortDir]);
   const totalPagesLoaded = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPagesLoaded - 1);
   const pageRows = useMemo(
@@ -213,6 +213,7 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
   );
 
   const handleSort = (key: keyof CustomerRow) => {
+    setPage(0);
     if (sortKey === key) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
@@ -221,17 +222,50 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
     }
   };
 
-  const SortIcon = ({ column }: { column: keyof CustomerRow }) => {
+  const sortIndicator = (column: keyof CustomerRow) => {
     if (sortKey !== column) return null;
     return <span className="ml-1">{sortDir === "asc" ? "^" : "v"}</span>;
   };
+
+  const getThreadHref = (row: CustomerRow) => {
+    const params = new URLSearchParams();
+    if (row.id) params.set("customerId", row.id);
+    else if (row.phone) params.set("phone", row.phone);
+    const query = params.toString();
+    return query ? `/portal/messages?${query}` : "/portal/messages";
+  };
+
+  useEffect(() => {
+    if (!openMenuCustomerId) return;
+    const onMouseDown = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpenMenuCustomerId(null);
+        setMenuAnchor(null);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenMenuCustomerId(null);
+        setMenuAnchor(null);
+      }
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [openMenuCustomerId]);
 
   return (
     <PortalDataTable
       toolbarNoWrap
       search={{
         value: searchQuery,
-        onChange: setSearchQuery,
+        onChange: (value) => {
+          setSearchQuery(value);
+          setPage(0);
+        },
         placeholder: "Search customers...",
         style: { width: "min(520px, 52vw)", minWidth: 220, flex: "0 1 520px" },
       }}
@@ -239,7 +273,10 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
       endControls={(
         <TableSelect
           value={sourceFilter}
-          onChange={(e) => setSourceFilter(e.target.value as Source | "all")}
+          onChange={(e) => {
+            setSourceFilter(e.target.value as Source | "all");
+            setPage(0);
+          }}
           style={{ width: 132 }}
         >
           <option value="all">All sources ({rows.length})</option>
@@ -280,27 +317,28 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
         <thead>
           <tr>
             <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("source")}>
-              Source <SortIcon column="source" />
+              Source {sortIndicator("source")}
             </th>
             <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("name")}>
-              Customer <SortIcon column="name" />
+              Customer {sortIndicator("name")}
             </th>
             <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("totalRequests")}>
-              Requests <SortIcon column="totalRequests" />
+              Requests {sortIndicator("totalRequests")}
             </th>
             <th>Bot</th>
             <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("totalRevenue")}>
-              Revenue <SortIcon column="totalRevenue" />
+              Revenue {sortIndicator("totalRevenue")}
             </th>
             <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("leadScore")}>
-              Lead score <SortIcon column="leadScore" />
+              Lead score {sortIndicator("leadScore")}
             </th>
             <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("lastSentiment")}>
-              Sentiment <SortIcon column="lastSentiment" />
+              Sentiment {sortIndicator("lastSentiment")}
             </th>
             <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("lastMessageAt")}>
-              Last active <SortIcon column="lastMessageAt" />
+              Last active {sortIndicator("lastMessageAt")}
             </th>
+            <th style={{ width: 56 }} />
           </tr>
         </thead>
         <tbody>
@@ -369,12 +407,46 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
                   ? new Date(row.lastMessageAt).toLocaleDateString()
                   : "-"}
               </td>
+              <td
+                style={{ textAlign: "center" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  aria-label="Row actions"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                    const nextTop = rect.bottom + 8;
+                    const nextLeft = Math.max(12, rect.right - 168);
+                    setMenuAnchor({ top: nextTop, left: nextLeft });
+                    setOpenMenuCustomerId((prev) => (prev === row.id ? null : row.id));
+                  }}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 8,
+                    border: "1px solid rgba(212,168,75,0.45)",
+                    background: "linear-gradient(135deg, rgba(0,51,160,0.28), rgba(212,168,75,0.16))",
+                    color: "#f8e7be",
+                    display: "grid",
+                    placeItems: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                    <circle cx="12" cy="5" r="1.8" />
+                    <circle cx="12" cy="12" r="1.8" />
+                    <circle cx="12" cy="19" r="1.8" />
+                  </svg>
+                </button>
+              </td>
             </tr>
           ))}
 
           {pageRows.length === 0 && (
             <tr>
-              <td colSpan={8} style={{ textAlign: "center", color: "var(--muted)", padding: "24px 10px" }}>
+              <td colSpan={9} style={{ textAlign: "center", color: "var(--muted)", padding: "24px 10px" }}>
                 {searchQuery || sourceFilter !== "all"
                   ? "No customers match your filters"
                   : "No customers found"}
@@ -383,6 +455,46 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
           )}
         </tbody>
       </table>
+      {openMenuCustomerId && menuAnchor && (
+        <div
+          ref={menuRef}
+          style={{
+            position: "fixed",
+            top: menuAnchor.top,
+            left: menuAnchor.left,
+            width: 168,
+            background: "rgba(8, 10, 16, 0.98)",
+            border: "1px solid rgba(212,168,75,0.45)",
+            borderRadius: 10,
+            boxShadow: "0 20px 38px rgba(0,0,0,0.45)",
+            overflow: "hidden",
+            zIndex: 3000,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <a
+            href={(() => {
+              const row = rows.find((r) => r.id === openMenuCustomerId);
+              return row ? getThreadHref(row) : "/portal/messages";
+            })()}
+            onClick={() => {
+              setOpenMenuCustomerId(null);
+              setMenuAnchor(null);
+            }}
+            style={{
+              display: "block",
+              padding: "10px 12px",
+              fontSize: 14,
+              color: "#e8edf9",
+              textDecoration: "none",
+              borderBottom: "1px solid rgba(212,168,75,0.2)",
+              background: "linear-gradient(135deg, rgba(0,51,160,0.16), rgba(212,168,75,0.08))",
+            }}
+          >
+            Open Thread
+          </a>
+        </div>
+      )}
     </PortalDataTable>
   );
 }
