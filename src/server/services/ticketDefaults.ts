@@ -6,19 +6,19 @@ export const DEFAULT_TICKET_TYPES = [
   {
     key: "ordercreation",
     label: "Orders",
-    requiredFields: ["name", "phonenumber", "items"],
+    requiredFields: ["name", "items", "quantity"],
     sortOrder: 10,
   },
   {
     key: "orderstatus",
     label: "Order Status",
-    requiredFields: ["orderid", "phonenumber"],
+    requiredFields: ["orderid"],
     sortOrder: 20,
   },
   {
     key: "complaint",
     label: "Complaint",
-    requiredFields: ["name", "phonenumber", "details"],
+    requiredFields: ["details"],
     sortOrder: 30,
   },
   {
@@ -36,13 +36,13 @@ export const DEFAULT_TICKET_TYPES = [
   {
     key: "warrantyclaim",
     label: "Warranty Claim",
-    requiredFields: ["name", "phonenumber", "warrantynumber", "issue"],
+    requiredFields: ["warrantynumber", "issue"],
     sortOrder: 60,
   },
   {
     key: "invoice",
     label: "Invoice / Billing",
-    requiredFields: ["name", "phonenumber", "details"],
+    requiredFields: ["details"],
     sortOrder: 70,
   },
 ] as const;

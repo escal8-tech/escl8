@@ -1019,7 +1019,7 @@ export default function SettingsPage() {
                           [ticketType.id]: e.target.value,
                         }))
                       }
-                      placeholder="orderid,phonenumber"
+                      placeholder="orderid,details"
                     />
                   </div>
                   <div style={{ display: "flex", justifyContent: "flex-end" }}>
