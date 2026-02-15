@@ -575,14 +575,13 @@ function Toast({ message, show }: { message: string; show: boolean }) {
 /* ─────────────────────────────────────────────────────────────────────────────
    SETTINGS PAGE TABS
 ───────────────────────────────────────────────────────────────────────────── */
-type SettingsTab = "profile" | "booking" | "tickets" | "integrations" | "notifications";
+type SettingsTab = "profile" | "booking" | "tickets" | "integrations";
 
 const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "profile", label: "Profile", icon: Icons.user },
   { id: "booking", label: "Booking", icon: Icons.calendar },
   { id: "tickets", label: "Tickets", icon: Icons.ticket },
   { id: "integrations", label: "Integrations", icon: Icons.whatsapp },
-  { id: "notifications", label: "Notifications", icon: Icons.bell },
 ];
 
 
@@ -603,6 +602,9 @@ export default function SettingsPage() {
   const [bookingsEnabled, setBookingsEnabled] = useState(false);
   const [promotionsEnabled, setPromotionsEnabled] = useState(true);
   const [timezone, setTimezone] = useState("UTC");
+  const [ticketEnabledById, setTicketEnabledById] = useState<Record<string, boolean>>({});
+  const [ticketRequiredFieldsById, setTicketRequiredFieldsById] = useState<Record<string, string>>({});
+  const [savingAllTicketTypes, setSavingAllTicketTypes] = useState(false);
 
   useEffect(() => {
     if (!auth) return;
@@ -621,12 +623,7 @@ export default function SettingsPage() {
       businessQuery.refetch();
     },
   });
-  const upsertTicketType = trpc.tickets.upsertType.useMutation({
-    onSuccess: () => {
-      showToast("Ticket type saved");
-      ticketTypesQuery.refetch();
-    },
-  });
+  const upsertTicketType = trpc.tickets.upsertType.useMutation();
   const updateTimezone = trpc.business.updateTimezone.useMutation({
     onSuccess: () => {
       showToast("Timezone saved successfully!");
@@ -684,17 +681,56 @@ export default function SettingsPage() {
 
   const normalizeTicketKey = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
 
-  const saveTicketType = (row: {
+  const getRequiredFieldsForTicket = (ticketType: {
     id: string;
-    enabled?: boolean;
     requiredFields?: string[] | null;
   }) => {
-    if (!row.id) return;
-    upsertTicketType.mutate({
-      id: row.id,
-      enabled: row.enabled ?? true,
-      requiredFields: (row.requiredFields ?? []).map((x) => normalizeTicketKey(x)).filter(Boolean),
-    });
+    const rawValue = ticketRequiredFieldsById[ticketType.id] ?? ((ticketType.requiredFields as string[]) ?? []).join(",");
+    return String(rawValue)
+      .split(",")
+      .map((x) => normalizeTicketKey(x))
+      .filter(Boolean);
+  };
+
+  const handleToggleTicketEnabled = async (
+    ticketType: { id: string; enabled?: boolean; requiredFields?: string[] | null },
+    nextEnabled: boolean,
+  ) => {
+    const previousEnabled = ticketEnabledById[ticketType.id] ?? (ticketType.enabled ?? true);
+    setTicketEnabledById((prev) => ({ ...prev, [ticketType.id]: nextEnabled }));
+    try {
+      await upsertTicketType.mutateAsync({
+        id: ticketType.id,
+        enabled: nextEnabled,
+        requiredFields: getRequiredFieldsForTicket(ticketType),
+      });
+      showToast("Ticket type updated");
+      await ticketTypesQuery.refetch();
+    } catch {
+      setTicketEnabledById((prev) => ({ ...prev, [ticketType.id]: previousEnabled }));
+      showToast("Failed to update ticket type");
+    }
+  };
+
+  const handleSaveAllTicketTypes = async () => {
+    if (!ticketTypesQuery.data?.length) return;
+    setSavingAllTicketTypes(true);
+    try {
+      for (const ticketType of ticketTypesQuery.data) {
+        const enabled = ticketEnabledById[ticketType.id] ?? (ticketType.enabled ?? true);
+        await upsertTicketType.mutateAsync({
+          id: ticketType.id,
+          enabled,
+          requiredFields: getRequiredFieldsForTicket(ticketType),
+        });
+      }
+      showToast("All ticket fields saved");
+      await ticketTypesQuery.refetch();
+    } catch {
+      showToast("Failed to save all ticket fields");
+    } finally {
+      setSavingAllTicketTypes(false);
+    }
   };
 
   const getInitials = (email: string | null) => {
@@ -953,30 +989,17 @@ export default function SettingsPage() {
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
               {ticketTypesQuery.data.map((ticketType) => {
-                const initialFields = ((ticketType.requiredFields as string[]) ?? []).join(",");
+                const initialFields = ticketRequiredFieldsById[ticketType.id] ?? ((ticketType.requiredFields as string[]) ?? []).join(",");
+                const isEnabled = ticketEnabledById[ticketType.id] ?? (ticketType.enabled ?? true);
                 return (
-                <form
+                <div
                   key={ticketType.id}
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const form = new FormData(e.currentTarget);
-                    const enabled = form.get("enabled") === "on";
-                    const requiredFields = String(form.get("required_fields") || "")
-                      .split(",")
-                      .map((x) => normalizeTicketKey(x))
-                      .filter(Boolean);
-                    saveTicketType({
-                      id: ticketType.id,
-                      enabled,
-                      requiredFields,
-                    });
-                  }}
                   style={{
                     border: "1px solid var(--border)",
                     borderRadius: 10,
                     padding: "10px 12px",
                     display: "grid",
-                    gridTemplateColumns: "180px minmax(260px, 1fr) auto auto",
+                    gridTemplateColumns: "180px minmax(260px, 1fr) auto",
                     gap: 10,
                     alignItems: "center",
                   }}
@@ -987,28 +1010,42 @@ export default function SettingsPage() {
                   </div>
                   <div>
                     <input
-                      name="required_fields"
                       type="text"
                       style={{ ...styles.input, height: 36, fontSize: 13 }}
-                      defaultValue={initialFields}
+                      value={initialFields}
+                      onChange={(e) =>
+                        setTicketRequiredFieldsById((prev) => ({
+                          ...prev,
+                          [ticketType.id]: e.target.value,
+                        }))
+                      }
                       placeholder="orderid,phonenumber"
                     />
                   </div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--muted)", fontSize: 12 }}>
-                    <input name="enabled" type="checkbox" defaultChecked={ticketType.enabled} />
-                    Enabled
-                  </label>
                   <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                    <button type="submit" style={styles.btnPrimary} disabled={upsertTicketType.isPending}>
-                      Save
-                    </button>
+                    <Toggle
+                      checked={isEnabled}
+                      onChange={(next) => void handleToggleTicketEnabled(ticketType, next)}
+                    />
                   </div>
-                </form>
+                </div>
                 );
               })}
             </div>
           )}
         </div>
+        {!!ticketTypesQuery.data?.length && (
+          <div style={styles.actions}>
+            <button
+              style={styles.btnPrimary}
+              onClick={() => void handleSaveAllTicketTypes()}
+              disabled={savingAllTicketTypes}
+            >
+              {Icons.save}
+              {savingAllTicketTypes ? "Saving..." : "Save All"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1083,83 +1120,6 @@ export default function SettingsPage() {
     );
   };
 
-  const renderNotificationsTab = () => (
-    <div style={styles.section}>
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <div style={styles.cardIcon}>{Icons.bell}</div>
-          <div>
-            <h3 style={styles.cardTitle}>Notification Preferences</h3>
-            <p style={styles.cardDescription}>Manage how you receive notifications</p>
-          </div>
-        </div>
-        <div style={styles.cardBody}>
-          <div style={styles.toggleRow}>
-            <div style={styles.toggleInfo}>
-              <span style={styles.toggleLabel}>Email Notifications</span>
-              <span style={styles.toggleDescription}>Receive important updates via email</span>
-            </div>
-            <Toggle checked={true} onChange={() => {}} />
-          </div>
-          <div style={styles.toggleRow}>
-            <div style={styles.toggleInfo}>
-              <span style={styles.toggleLabel}>New Message Alerts</span>
-              <span style={styles.toggleDescription}>Get notified when customers send messages</span>
-            </div>
-            <Toggle checked={true} onChange={() => {}} />
-          </div>
-          <div style={styles.toggleRow}>
-            <div style={styles.toggleInfo}>
-              <span style={styles.toggleLabel}>Booking Confirmations</span>
-              <span style={styles.toggleDescription}>Notifications for new bookings</span>
-            </div>
-            <Toggle checked={true} onChange={() => {}} />
-          </div>
-          <div style={{ ...styles.toggleRow, ...styles.toggleRowLast }}>
-            <div style={styles.toggleInfo}>
-              <span style={styles.toggleLabel}>Weekly Summary</span>
-              <span style={styles.toggleDescription}>Receive a weekly report of your business activity</span>
-            </div>
-            <Toggle checked={false} onChange={() => {}} />
-          </div>
-        </div>
-        <div style={styles.actions}>
-          <button style={styles.btnPrimary}>
-            {Icons.save}
-            Save Preferences
-          </button>
-        </div>
-      </div>
-
-      {/* Security Card */}
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <div style={{ ...styles.cardIcon, ...styles.cardIconSecondary }}>{Icons.shield}</div>
-          <div>
-            <h3 style={styles.cardTitle}>Security</h3>
-            <p style={styles.cardDescription}>Manage your account security settings</p>
-          </div>
-        </div>
-        <div style={styles.cardBody}>
-          <div style={styles.statusCard}>
-            <div style={{ ...styles.statusIcon, ...styles.statusConnected }}>
-              {Icons.shield}
-            </div>
-            <div style={styles.statusInfo}>
-              <span style={styles.statusTitle}>Two-Factor Authentication</span>
-              <span style={styles.statusDescription}>
-                Your account is protected with Firebase Authentication
-              </span>
-            </div>
-            <div style={{ ...styles.profileBadge, background: "rgba(16, 185, 129, 0.1)", color: "var(--success)" }}>
-              Enabled
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
   const renderTabContent = () => {
     switch (activeTab) {
       case "profile":
@@ -1170,8 +1130,6 @@ export default function SettingsPage() {
         return renderTicketsTab();
       case "integrations":
         return renderIntegrationsTab();
-      case "notifications":
-        return renderNotificationsTab();
       default:
         return null;
     }
