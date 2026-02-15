@@ -66,7 +66,7 @@ export function LoginForm({ state, onSubmit, onGoogle }: {
         </button>
 
         <p style={{ textAlign: "center", fontSize: 13, color: "var(--muted)", marginTop: 8 }}>
-          Don't have an account? <a href="/portal/signup" style={{ color: "var(--gold-light)", fontWeight: 500 }}>Sign up</a>
+          Don&apos;t have an account? <a href="/portal/signup" style={{ color: "var(--gold-light)", fontWeight: 500 }}>Sign up</a>
         </p>
       </form>
     </div>

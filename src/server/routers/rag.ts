@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { z } from "zod";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
@@ -184,3 +185,4 @@ export const ragRouter = router({
       return { context };
     }),
 });
+

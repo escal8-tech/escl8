@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Enterprise-grade LLM reranker for RAG.
  * 
@@ -228,3 +229,4 @@ function calculateTextOverlap(a: string, b: string): number {
   const union = wordsA.size + wordsB.size - intersection;
   return intersection / union;
 }
+

@@ -747,7 +747,7 @@ export function smartChunkText(text: string, opts?: SmartChunkOptions): SmartChu
   console.log(`[rag:smartChunk] no pages array, using structure-based chunking`);
   
   // Step 1: Segment by structure
-  let segments = segmentByStructure(text);
+  const segments = segmentByStructure(text);
   
   console.log(`[rag:smartChunk] initial segments=${segments.length}`);
   

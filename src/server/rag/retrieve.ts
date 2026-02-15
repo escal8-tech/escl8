@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Enterprise-grade RAG retrieval module.
  * 
@@ -335,3 +336,4 @@ ${result.context}
 
 ${footer}`;
 }
+

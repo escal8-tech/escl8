@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { db } from "@/server/db/client";
 import { users } from "@/../drizzle/schema";

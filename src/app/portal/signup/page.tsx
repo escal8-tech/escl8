@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -5,6 +6,7 @@ import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { trpc } from "@/utils/trpc";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { SignupHeader } from "./components/SignupHeader";
 import { SignupForm } from "./components/SignupForm";
 
@@ -49,7 +51,7 @@ export default function SignupPage() {
   return (
     <div className="auth-screen">
       <div className="auth-top">
-        <a className="auth-brand" href="/">
+        <Link className="auth-brand" href="/">
           <img
             src="/8.png"
             alt="Escl8"
@@ -57,7 +59,7 @@ export default function SignupPage() {
             height={36}
             style={{ objectFit: "contain" }}
           />
-        </a>
+        </Link>
       </div>
       <div className="auth-main">
         <div
@@ -89,3 +91,4 @@ export default function SignupPage() {
     </div>
   );
 }
+

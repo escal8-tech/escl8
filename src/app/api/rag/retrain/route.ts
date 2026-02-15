@@ -74,7 +74,8 @@ export async function POST(request: Request) {
       },
       { status: 410, headers: rl.headers },
     );
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "Retrain failed" }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Retrain failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

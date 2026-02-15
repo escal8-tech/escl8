@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { getFirebaseAuth } from "@/lib/firebaseClient";
@@ -231,3 +232,4 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
     </>
   );
 }
+

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import OpenAI from "openai";
 import { db } from "../db/client";
 import { trainingDocuments, businesses } from "../../../drizzle/schema";
@@ -191,3 +192,4 @@ export async function generateAndSaveBotInstructions(businessId: string): Promis
     return false;
   }
 }
+

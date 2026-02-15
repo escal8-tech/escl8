@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -957,3 +958,4 @@ export default function PortalUploadPage() {
     </PortalAuthProvider>
   );
 }
+

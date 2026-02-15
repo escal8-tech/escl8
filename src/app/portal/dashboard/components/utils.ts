@@ -13,9 +13,14 @@ export function formatMoney(value: unknown) {
 }
 
 export function formatMaybeDate(value: unknown) {
-  if (!value) return "—";
-  const d = new Date(value as any);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
+  if (!value) return "-";
+  const d =
+    value instanceof Date
+      ? value
+      : typeof value === "string" || typeof value === "number"
+      ? new Date(value)
+      : new Date(NaN);
+  return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString();
 }
 
 export function statusColors(status: string | null | undefined) {
@@ -110,3 +115,4 @@ export function parseSummary(value: unknown): { kind: "list"; items: string[] } 
 
   return { kind: "text", text: String(value) };
 }
+

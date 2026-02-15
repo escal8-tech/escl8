@@ -162,11 +162,11 @@ export default function MessagesPage() {
   }, [filteredThreads, searchParams]);
 
   const activeThreadId = useMemo(() => {
-    if (selectedThreadId && filteredThreads.some((t) => t.threadId === selectedThreadId)) {
-      return selectedThreadId;
-    }
     if (deepLinkThreadId && filteredThreads.some((t) => t.threadId === deepLinkThreadId)) {
       return deepLinkThreadId;
+    }
+    if (selectedThreadId && filteredThreads.some((t) => t.threadId === selectedThreadId)) {
+      return selectedThreadId;
     }
     return null;
   }, [selectedThreadId, deepLinkThreadId, filteredThreads]);
@@ -234,73 +234,62 @@ export default function MessagesPage() {
     onEvent: handleTicketEvent,
   });
 
-  // Initial messages query (newest messages first load)
-  const messagesQuery = trpc.messages.listMessages.useQuery(
-    { threadId: activeThreadId ?? "", limit: 20 },
-    { enabled: !!activeThreadId },
-  );
-
-  // Load older messages query
-  const olderMessagesQuery = trpc.messages.listMessages.useQuery(
-    { threadId: activeThreadId ?? "", limit: 20, cursor: cursor ?? undefined },
-    { enabled: !!activeThreadId && !!cursor && isLoadingMore },
-  );
-
-  // Reset messages when thread changes
-  useEffect(() => {
+  const resetActiveThreadState = useCallback(() => {
     setAllMessages([]);
     setCursor(null);
     setHasMore(false);
     setIsLoadingMore(false);
     setLatestTicketNotice(null);
-  }, [activeThreadId]);
+  }, []);
 
-  // Clear selected thread when phone filter changes
-  useEffect(() => {
-    setSelectedThreadId(null);
-  }, [selectedPhoneNumberId]);
+  // Initial messages query (newest messages first load)
+  const messagesQuery = trpc.messages.listMessages.useQuery(
+    { threadId: activeThreadId ?? "", limit: 20 },
+    {
+      enabled: !!activeThreadId,
+      onSuccess: (data) => {
+        if (cursor) return;
+        setAllMessages(data.messages);
+        setHasMore(data.hasMore);
+        setCursor(null);
+        setTimeout(() => {
+          if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+          }
+        }, 50);
+      },
+    },
+  );
+
+  // Load older messages query
+  trpc.messages.listMessages.useQuery(
+    { threadId: activeThreadId ?? "", limit: 20, cursor: cursor ?? undefined },
+    {
+      enabled: !!activeThreadId && !!cursor && isLoadingMore,
+      onSuccess: (data) => {
+        if (!isLoadingMore) return;
+        const container = messagesContainerRef.current;
+        if (container) {
+          prevScrollHeightRef.current = container.scrollHeight;
+        }
+        setAllMessages((prev) => [...data.messages, ...prev]);
+        setHasMore(data.hasMore);
+        setIsLoadingMore(false);
+        setTimeout(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - prevScrollHeightRef.current;
+          }
+        }, 10);
+      },
+    },
+  );
 
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 30_000);
     return () => clearInterval(timer);
   }, []);
 
-  // Handle initial load
-  useEffect(() => {
-    if (messagesQuery.data && !cursor) {
-      setAllMessages(messagesQuery.data.messages);
-      setHasMore(messagesQuery.data.hasMore);
-      setCursor(null);
-      // Scroll to bottom on initial load
-      setTimeout(() => {
-        if (messagesContainerRef.current) {
-          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-        }
-      }, 50);
-    }
-  }, [messagesQuery.data, cursor]);
-
-  // Handle loading older messages
-  useEffect(() => {
-    if (olderMessagesQuery.data && isLoadingMore) {
-      const container = messagesContainerRef.current;
-      if (container) {
-        prevScrollHeightRef.current = container.scrollHeight;
-      }
-      
-      setAllMessages((prev) => [...olderMessagesQuery.data.messages, ...prev]);
-      setHasMore(olderMessagesQuery.data.hasMore);
-      setIsLoadingMore(false);
-      
-      // Maintain scroll position after prepending
-      setTimeout(() => {
-        if (container) {
-          const newScrollHeight = container.scrollHeight;
-          container.scrollTop = newScrollHeight - prevScrollHeightRef.current;
-        }
-      }, 10);
-    }
-  }, [olderMessagesQuery.data, isLoadingMore]);
 
   // Load more when scrolling near top (trigger ~3 messages before reaching oldest)
   const handleScroll = useCallback(() => {
@@ -438,7 +427,10 @@ export default function MessagesPage() {
               return (
                 <div
                   key={t.threadId}
-                  onClick={() => setSelectedThreadId(t.threadId)}
+                  onClick={() => {
+                    resetActiveThreadState();
+                    setSelectedThreadId(t.threadId);
+                  }}
                   style={{
                     display: "flex",
                     alignItems: "center",

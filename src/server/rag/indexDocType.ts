@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import crypto from "crypto";
 import { downloadBlobToBuffer, uploadTextToBlob } from "./blob";
 import { extractTextFromBuffer, PAGE_BOUNDARY, SpreadsheetRow } from "./extractText";
@@ -176,7 +177,7 @@ function splitTextWithOverlap(text: string, maxTokens: number, overlapTokens: nu
   for (const line of lines) {
     if (len + line.length + 1 > maxChars && buf.length > 0) {
       chunks.push(buf.join("\n"));
-      let overlap: string[] = [];
+      const overlap: string[] = [];
       let oLen = 0;
       for (let i = buf.length - 1; i >= 0; i--) {
         const l = buf[i];
@@ -398,7 +399,7 @@ export async function indexSingleDocType(params: {
     `[rag:index] extracted chars=${extracted.text.length} pages=${extracted.pageCount ?? "?"} pagesArray=${extracted.pages?.length ?? 0}`,
   );
 
-  let text = extracted.text;
+  const text = extracted.text;
   if (docType === "conversations" || docType === "inventory") {
     const rawBlobPath = `${businessId}/${docType}/raw.txt`;
     await uploadTextToBlob({ blobPath: rawBlobPath, text, contentType: "text/plain" });
@@ -507,3 +508,4 @@ export async function indexSingleDocType(params: {
   console.log(`[rag:index] done businessId=${businessId} docType=${docType} upserted=${upserted}`);
   return { chunkCount: upserted, sha256: hash };
 }
+

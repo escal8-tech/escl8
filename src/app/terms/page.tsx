@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — Escl8",
+  title: "Terms of Service - Escl8",
 };
 
 export default function TermsPage() {
@@ -13,8 +13,8 @@ export default function TermsPage() {
         <p>Last updated: {new Date().toLocaleDateString()}</p>
 
         <p>
-          These Terms of Service ("Terms") govern your access to and use of
-          <strong> Escl8</strong> (the "Service"). By using the Service, you
+          These Terms of Service (&quot;Terms&quot;) govern your access to and use of
+          <strong> Escl8</strong> (the &quot;Service&quot;). By using the Service, you
           agree to these Terms.
         </p>
 
@@ -22,7 +22,7 @@ export default function TermsPage() {
         <p>
           Escl8 enables you to create and operate customized AI agents that
           can be connected to WhatsApp and web channels. You can upload
-          materials ("Content") to tailor responses and define your brand tone.
+          materials (&quot;Content&quot;) to tailor responses and define your brand tone.
         </p>
 
         <h2>2. Your Account & Responsibilities</h2>
@@ -36,8 +36,8 @@ export default function TermsPage() {
         <h2>3. Acceptable Use</h2>
         <p>
           You may not use the Service to engage in unlawful, misleading, or
-          harmful activities; to infringe others’ rights; to distribute malware;
-          or to violate platform policies (including Meta’s terms for WhatsApp).
+          harmful activities; to infringe others&apos; rights; to distribute malware;
+          or to violate platform policies (including Meta&apos;s terms for WhatsApp).
         </p>
 
         <h2>4. Subscriptions & Billing</h2>
@@ -56,7 +56,7 @@ export default function TermsPage() {
 
         <h2>6. Disclaimers</h2>
         <p>
-          The Service is provided "as is" without warranties of any kind. AI
+          The Service is provided &quot;as is&quot; without warranties of any kind. AI
           outputs may be inaccurate or incomplete. You are responsible for
           reviewing outputs before relying on them.
         </p>
@@ -97,3 +97,4 @@ export default function TermsPage() {
     </div>
   );
 }
+

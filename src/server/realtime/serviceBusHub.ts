@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { EventEmitter } from "events";
 import { randomUUID } from "crypto";
 
@@ -189,3 +190,4 @@ class ServiceBusHub {
 
 export const serviceBusHub = new ServiceBusHub();
 export type { PortalEvent };
+

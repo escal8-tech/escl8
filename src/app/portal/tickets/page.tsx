@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 import { trpc } from "@/utils/trpc";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TableSelect } from "@/app/portal/components/TableToolbarControls";
 import { PortalDataTable } from "@/app/portal/components/PortalDataTable";
 import { TablePagination } from "@/app/portal/components/TablePagination";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
+import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
 
 type TicketStatus = "open" | "in_progress" | "resolved";
 type TicketRow = {
@@ -136,15 +137,12 @@ export default function TicketsPage() {
   const [ticketIdQuery, setTicketIdQuery] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [pendingBotCustomerIds, setPendingBotCustomerIds] = useState<Record<string, boolean>>({});
+  const [botPausedOverrides, setBotPausedOverrides] = useState<Record<string, boolean>>({});
   const [page, setPage] = useState(0);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
-  const [openMenuTicketId, setOpenMenuTicketId] = useState<string | null>(null);
-  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
   const searchParams = useSearchParams();
-  const menuContainerRef = useRef<HTMLDivElement | null>(null);
 
   const ticketTypesQuery = trpc.tickets.listTypes.useQuery({ includeDisabled: true });
-  const customersQuery = trpc.customers.list.useQuery({ limit: 500 });
   const ticketListInput = useMemo(
     () => (statusFilter === "all" ? undefined : { status: statusFilter, limit: 400 }),
     [statusFilter],
@@ -170,7 +168,14 @@ export default function TicketsPage() {
   const toggleBot = trpc.customers.setBotPaused.useMutation({
     onMutate: async (vars) => {
       setPendingBotCustomerIds((prev) => ({ ...prev, [vars.customerId]: true }));
-      await customersQuery.refetch();
+      setBotPausedOverrides((prev) => ({ ...prev, [vars.customerId]: vars.botPaused }));
+    },
+    onError: (_error, vars) => {
+      setBotPausedOverrides((prev) => {
+        const next = { ...prev };
+        delete next[vars.customerId];
+        return next;
+      });
     },
     onSettled: async (_data, _error, vars) => {
       if (vars?.customerId) {
@@ -179,19 +184,17 @@ export default function TicketsPage() {
           delete next[vars.customerId];
           return next;
         });
+        setBotPausedOverrides((prev) => {
+          const next = { ...prev };
+          delete next[vars.customerId];
+          return next;
+        });
       }
-      await customersQuery.refetch();
+      await utils.customers.getBotPausedByIds.invalidate();
     },
   });
   const ticketsData = useMemo(() => ticketsQuery.data ?? [], [ticketsQuery.data]);
   const ticketTypesData = useMemo(() => ticketTypesQuery.data ?? [], [ticketTypesQuery.data]);
-  const customerBotPausedById = useMemo(() => {
-    const map = new Map<string, boolean>();
-    for (const customer of customersQuery.data ?? []) {
-      map.set(customer.id, Boolean((customer as { botPaused?: boolean }).botPaused));
-    }
-    return map;
-  }, [customersQuery.data]);
 
   const groupedTickets = useMemo(() => {
     const ticketsByType = new Map<string, TicketRow[]>();
@@ -271,42 +274,28 @@ export default function TicketsPage() {
       .slice(0, 4)
       .map(([key]) => key);
   }, [filteredRows]);
-  useEffect(() => {
-    if (!openMenuTicketId) return;
-    const onDown = (event: MouseEvent) => {
-      if (!menuContainerRef.current?.contains(event.target as Node)) {
-        setOpenMenuTicketId(null);
-        setMenuAnchor(null);
-      }
-    };
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpenMenuTicketId(null);
-        setMenuAnchor(null);
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onEscape);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onEscape);
-    };
-  }, [openMenuTicketId]);
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
   const pageRows = useMemo(
     () => filteredRows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
     [filteredRows, safePage],
   );
+  const customerIdsOnPage = useMemo(() => {
+    const ids = new Set<string>();
+    for (const row of pageRows) {
+      const customerId = getTicketString(row as TicketRow, "customerId", "customer_id");
+      if (customerId) ids.add(customerId);
+    }
+    return Array.from(ids);
+  }, [pageRows]);
+  const customerBotPausedMapQuery = trpc.customers.getBotPausedByIds.useQuery(
+    { ids: customerIdsOnPage },
+    { enabled: customerIdsOnPage.length > 0 },
+  );
   const selectedTicket = useMemo(() => {
     if (!selectedTicketId) return null;
     return (ticketsData as TicketRow[]).find((t) => t.id === selectedTicketId) ?? null;
   }, [selectedTicketId, ticketsData]);
-  const openMenuTicket = useMemo(() => {
-    if (!openMenuTicketId) return null;
-    return (ticketsData as TicketRow[]).find((t) => t.id === openMenuTicketId) ?? null;
-  }, [openMenuTicketId, ticketsData]);
-
   const getThreadHref = useCallback((ticket: TicketRow) => {
     const params = new URLSearchParams();
     if (ticket.threadId) params.set("threadId", ticket.threadId);
@@ -462,7 +451,7 @@ export default function TicketsPage() {
                     {getTicketString(ticket, "customerId", "customer_id") ? (
                       (() => {
                         const customerId = getTicketString(ticket, "customerId", "customer_id");
-                        const paused = customerBotPausedById.get(customerId) ?? false;
+                        const paused = botPausedOverrides[customerId] ?? Boolean(customerBotPausedMapQuery.data?.[customerId]);
                         const isPending = Boolean(pendingBotCustomerIds[customerId]);
                         return (
                           <button
@@ -507,35 +496,23 @@ export default function TicketsPage() {
                     style={{ textAlign: "center" }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <button
-                      type="button"
-                      aria-label="Row actions"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                        const nextTop = rect.bottom + 8;
-                        const nextLeft = Math.max(12, rect.right - 170);
-                        setMenuAnchor({ top: nextTop, left: nextLeft });
-                        setOpenMenuTicketId((prev) => (prev === ticket.id ? null : ticket.id));
-                      }}
-                      style={{
-                        width: 30,
-                        height: 30,
-                        borderRadius: 8,
-                        border: "1px solid rgba(255,255,255,0.08)",
-                        background: "rgba(255,255,255,0.03)",
-                        color: "var(--muted)",
-                        cursor: "pointer",
-                        display: "grid",
-                        placeItems: "center",
-                      }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                        <circle cx="12" cy="5" r="1.8" />
-                        <circle cx="12" cy="12" r="1.8" />
-                        <circle cx="12" cy="19" r="1.8" />
-                      </svg>
-                    </button>
+                    <RowActionsMenu
+                      items={[
+                        {
+                          label: "Open Thread",
+                          onSelect: () => router.push(getThreadHref(ticket as TicketRow)),
+                        },
+                        {
+                          label: "Customer Details",
+                          disabled: !getTicketString(ticket as TicketRow, "customerId", "customer_id"),
+                          onSelect: () => {
+                            const customerId = getTicketString(ticket as TicketRow, "customerId", "customer_id");
+                            if (!customerId) return;
+                            router.push(`/portal/customers?customerId=${encodeURIComponent(customerId)}`);
+                          },
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}
@@ -580,26 +557,6 @@ export default function TicketsPage() {
               )}
             </tbody>
           </table>
-          <TicketRowActionsMenu
-            containerRef={menuContainerRef}
-            isOpen={Boolean(openMenuTicketId && menuAnchor)}
-            top={menuAnchor?.top ?? 0}
-            left={menuAnchor?.left ?? 0}
-            threadHref={openMenuTicket ? getThreadHref(openMenuTicket) : "/portal/messages"}
-            customerHref={
-              openMenuTicket
-                ? (() => {
-                    const customerId = getTicketString(openMenuTicket, "customerId", "customer_id");
-                    return customerId ? `/portal/customers?customerId=${encodeURIComponent(customerId)}` : null;
-                  })()
-                : null
-            }
-            onClose={() => {
-              setOpenMenuTicketId(null);
-              setMenuAnchor(null);
-            }}
-            onNavigate={(href) => router.push(href)}
-          />
         </div>
       ) : null}
       <TicketDetailsDrawer
@@ -608,105 +565,6 @@ export default function TicketsPage() {
         threadHref={selectedTicket ? getThreadHref(selectedTicket) : "/portal/messages"}
       />
     </PortalDataTable>
-  );
-}
-
-function TicketRowActionsMenu({
-  containerRef,
-  isOpen,
-  top,
-  left,
-  threadHref,
-  customerHref,
-  onClose,
-  onNavigate,
-}: {
-  containerRef: RefObject<HTMLDivElement | null>;
-  isOpen: boolean;
-  top: number;
-  left: number;
-  threadHref: string;
-  customerHref: string | null;
-  onClose: () => void;
-  onNavigate: (href: string) => void;
-}) {
-  if (!isOpen) return null;
-  return (
-    <div
-      ref={containerRef}
-      style={{
-        position: "fixed",
-        top,
-        left,
-        width: 170,
-        background: "rgba(8, 9, 12, 0.98)",
-        border: "1px solid rgba(255,255,255,0.14)",
-        borderRadius: 10,
-        boxShadow: "0 20px 38px rgba(0,0,0,0.45)",
-        overflow: "hidden",
-        zIndex: 3000,
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => {
-          onClose();
-          onNavigate(threadHref);
-        }}
-        style={{
-          width: "100%",
-          textAlign: "left",
-          display: "block",
-          padding: "10px 12px",
-          fontSize: 14,
-          color: "#f1f5f9",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
-          background: "transparent",
-          border: 0,
-          cursor: "pointer",
-        }}
-      >
-        Open Thread
-      </button>
-      {customerHref ? (
-        <button
-          type="button"
-          onClick={() => {
-            onClose();
-            onNavigate(customerHref);
-          }}
-          style={{
-            width: "100%",
-            textAlign: "left",
-            display: "block",
-            padding: "10px 12px",
-            fontSize: 14,
-            color: "#f1f5f9",
-            background: "transparent",
-            border: 0,
-            cursor: "pointer",
-          }}
-        >
-          Open Customer Details
-        </button>
-      ) : (
-        <button
-          type="button"
-          disabled
-          style={{
-            width: "100%",
-            textAlign: "left",
-            padding: "10px 12px",
-            fontSize: 14,
-            color: "rgba(241,245,249,0.4)",
-            background: "transparent",
-            border: 0,
-          }}
-        >
-          Open Customer Details
-        </button>
-      )}
-    </div>
   );
 }
 
@@ -874,11 +732,11 @@ function TicketDetailsDrawer({
                   }}
                   style={{ marginLeft: 10 }}
                 >
-                  Open Customer Details
+                  Customer Details
                 </button>
               ) : (
                 <button type="button" className="btn btn-ghost" disabled style={{ marginLeft: 10 }}>
-                  Open Customer Details
+                  Customer Details
                 </button>
               )}
             </div>
@@ -888,3 +746,4 @@ function TicketDetailsDrawer({
     </>
   );
 }
+

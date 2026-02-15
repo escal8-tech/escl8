@@ -24,7 +24,7 @@ export default function ContactForm() {
       <textarea required name="message" placeholder="Message" rows={5} className="contact-input" />
       <button className="btn btn-primary" style={{ alignSelf:'flex-start' }}>Send message</button>
       {status === "submitted" && (
-        <div style={{ fontSize:14, color:'var(--muted)' }}>Message sent. We'll be in touch.</div>
+        <div style={{ fontSize:14, color:'var(--muted)' }}>Message sent. We&apos;ll be in touch.</div>
       )}
     </form>
   );

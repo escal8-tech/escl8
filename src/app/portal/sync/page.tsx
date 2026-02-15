@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { trpc } from "@/utils/trpc";
@@ -257,7 +257,7 @@ const styles: Record<string, React.CSSProperties> = {
    MAIN PAGE
 ───────────────────────────────────────────────────────────────────────────── */
 export default function SyncPage() {
-  const [email, setEmail] = useState<string | null>(null);
+  const [email] = useState<string | null>(() => getFirebaseAuth()?.currentUser?.email ?? null);
   const [syncState, setSyncState] = useState<SyncState>({
     whatsapp: "idle",
     telegram: "idle",
@@ -270,11 +270,6 @@ export default function SyncPage() {
   const whatsappConnected = (phoneNumbersQuery.data?.length ?? 0) > 0;
 
   const markSynced = (key: CardKey) => setSyncState((s) => ({ ...s, [key]: "synced" }));
-
-  useEffect(() => {
-    const auth = getFirebaseAuth();
-    setEmail(auth?.currentUser?.email ?? null);
-  }, []);
 
   const syncedCount = Object.values(syncState).filter((s) => s === "synced").length;
   const availableCount = cards.filter((c) => c.canSync).length;

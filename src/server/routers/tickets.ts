@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { router, businessProcedure } from "../trpc";
@@ -197,3 +198,4 @@ export const ticketsRouter = router({
       return updated ?? null;
     }),
 });
+

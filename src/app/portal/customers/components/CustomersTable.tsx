@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef, type CSSProperties } from "react";
+import { useState, useMemo, type CSSProperties } from "react";
 import { CustomerRow, Source, SOURCE_CONFIG } from "../types";
 import { SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { trpc } from "@/utils/trpc";
@@ -8,6 +8,7 @@ import { TableSelect } from "@/app/portal/components/TableToolbarControls";
 import { PortalDataTable } from "@/app/portal/components/PortalDataTable";
 import { TablePagination } from "@/app/portal/components/TablePagination";
 import { useRouter } from "next/navigation";
+import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
 
 const Icons = {
   pause: (
@@ -114,9 +115,6 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
   const [page, setPage] = useState(0);
-  const [openMenuCustomerId, setOpenMenuCustomerId] = useState<string | null>(null);
-  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const utils = trpc.useUtils();
   const togglePause = trpc.customers.setBotPaused.useMutation({
@@ -236,28 +234,6 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
     const query = params.toString();
     return query ? `/portal/messages?${query}` : "/portal/messages";
   };
-
-  useEffect(() => {
-    if (!openMenuCustomerId) return;
-    const onMouseDown = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setOpenMenuCustomerId(null);
-        setMenuAnchor(null);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpenMenuCustomerId(null);
-        setMenuAnchor(null);
-      }
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [openMenuCustomerId]);
 
   return (
     <PortalDataTable
@@ -413,35 +389,16 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
                 style={{ textAlign: "center" }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <button
-                  type="button"
-                  aria-label="Row actions"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                    const nextTop = rect.bottom + 8;
-                    const nextLeft = Math.max(12, rect.right - 168);
-                    setMenuAnchor({ top: nextTop, left: nextLeft });
-                    setOpenMenuCustomerId((prev) => (prev === row.id ? null : row.id));
-                  }}
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: 8,
-                    border: "1px solid rgba(212,168,75,0.45)",
-                    background: "linear-gradient(135deg, rgba(0,51,160,0.28), rgba(212,168,75,0.16))",
-                    color: "#f8e7be",
-                    display: "grid",
-                    placeItems: "center",
-                    cursor: "pointer",
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                    <circle cx="12" cy="5" r="1.8" />
-                    <circle cx="12" cy="12" r="1.8" />
-                    <circle cx="12" cy="19" r="1.8" />
-                  </svg>
-                </button>
+                <RowActionsMenu
+                  items={[
+                    {
+                      label: "Open Thread",
+                      onSelect: () => {
+                        router.push(getThreadHref(row));
+                      },
+                    },
+                  ]}
+                />
               </td>
             </tr>
           ))}
@@ -457,49 +414,6 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
           )}
         </tbody>
       </table>
-      {openMenuCustomerId && menuAnchor && (
-        <div
-          ref={menuRef}
-          style={{
-            position: "fixed",
-            top: menuAnchor.top,
-            left: menuAnchor.left,
-            width: 168,
-            background: "rgba(8, 10, 16, 0.98)",
-            border: "1px solid rgba(212,168,75,0.45)",
-            borderRadius: 10,
-            boxShadow: "0 20px 38px rgba(0,0,0,0.45)",
-            overflow: "hidden",
-            zIndex: 3000,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              const row = rows.find((r) => r.id === openMenuCustomerId);
-              const href = row ? getThreadHref(row) : "/portal/messages";
-              setOpenMenuCustomerId(null);
-              setMenuAnchor(null);
-              router.push(href);
-            }}
-            style={{
-              width: "100%",
-              textAlign: "left",
-              display: "block",
-              padding: "10px 12px",
-              fontSize: 14,
-              color: "#e8edf9",
-              borderBottom: "1px solid rgba(212,168,75,0.2)",
-              background: "linear-gradient(135deg, rgba(0,51,160,0.16), rgba(212,168,75,0.08))",
-              border: 0,
-              cursor: "pointer",
-            }}
-          >
-            Open Thread
-          </button>
-        </div>
-      )}
     </PortalDataTable>
   );
 }

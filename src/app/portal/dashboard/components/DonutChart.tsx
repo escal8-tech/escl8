@@ -16,14 +16,14 @@ export function DonutChart({ title, data, centerLabel }: Props) {
   const c = 2 * Math.PI * r;
 
   // Build segments as (offset, length)
-  let acc = 0;
-  const segments = data.map((d) => {
+  const segments = data.reduce<Array<DonutDatum & { offset: number; len: number }>>((acc, d) => {
+    const previous = acc.length > 0 ? acc[acc.length - 1] : null;
+    const offset = previous ? previous.offset + previous.len : 0;
     const frac = total > 0 ? d.value / total : 0;
     const len = frac * c;
-    const out = { ...d, offset: acc, len };
-    acc += len;
-    return out;
-  });
+    acc.push({ ...d, offset, len });
+    return acc;
+  }, []);
 
   return (
     <div className="glass" style={{ height: 320, display: "flex", flexDirection: "column", padding: 18, gap: 10 }}>

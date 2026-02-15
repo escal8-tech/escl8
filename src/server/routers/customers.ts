@@ -2,7 +2,7 @@ import { z } from "zod";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { customers, requests, SUPPORTED_SOURCES } from "@/../drizzle/schema";
-import { eq, and, desc, sql, isNull, lt, or } from "drizzle-orm";
+import { eq, and, desc, sql, isNull, lt, or, inArray } from "drizzle-orm";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 
 // Source validation
@@ -211,7 +211,7 @@ export const customersRouter = router({
           entity: "customer",
           op: "upsert",
           entityId: row.id,
-          payload: { customer: row as any },
+          payload: { customer: row },
           createdAt: row.updatedAt ?? new Date(),
         });
       }
@@ -244,7 +244,7 @@ export const customersRouter = router({
           entity: "customer",
           op: "deleted",
           entityId: row.id,
-          payload: { customer: row as any },
+          payload: { customer: row },
           createdAt: row.updatedAt ?? new Date(),
         });
       }
@@ -411,6 +411,30 @@ export const customersRouter = router({
     return counts;
   }),
 
+  getBotPausedByIds: businessProcedure
+    .input(z.object({ ids: z.array(z.string()).max(500) }))
+    .query(async ({ ctx, input }) => {
+      if (!input.ids.length) return {} as Record<string, boolean>;
+      const rows = await db
+        .select({
+          id: customers.id,
+          botPaused: customers.botPaused,
+        })
+        .from(customers)
+        .where(
+          and(
+            eq(customers.businessId, ctx.businessId),
+            isNull(customers.deletedAt),
+            inArray(customers.id, input.ids),
+          ),
+        );
+      const result: Record<string, boolean> = {};
+      for (const row of rows) {
+        result[row.id] = Boolean(row.botPaused);
+      }
+      return result;
+    }),
+
   setBotPaused: businessProcedure
     .input(z.object({
       customerId: z.string(),
@@ -432,7 +456,7 @@ export const customersRouter = router({
           entity: "customer",
           op: "upsert",
           entityId: row.id,
-          payload: { customer: row as any },
+          payload: { customer: row },
           createdAt: row.updatedAt ?? new Date(),
         });
       }

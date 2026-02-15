@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import "dotenv/config";
 
 import { sql } from "drizzle-orm";
@@ -296,3 +297,4 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
+

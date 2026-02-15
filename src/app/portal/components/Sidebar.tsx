@@ -129,21 +129,18 @@ export default function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(() => {
+    const auth = getFirebaseAuth();
+    return auth?.currentUser?.email ?? null;
+  });
 
   useEffect(() => {
     const auth = getFirebaseAuth();
     if (!auth) return;
     // Listen for auth state changes to get email
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (user?.email) {
-        setUserEmail(user.email);
-      }
+      setUserEmail(user?.email ?? null);
     });
-    // Also check current user immediately
-    if (auth.currentUser?.email) {
-      setUserEmail(auth.currentUser.email);
-    }
     return () => unsub();
   }, []);
 
@@ -304,10 +301,10 @@ export default function Sidebar({
                   height: 36,
                   borderRadius: 10,
                   color: isActive("/portal/settings") ? "#D4A84B" : "#94a3b8",
-                  background: isActive("/portal/settings") 
+                  background: isActive("/portal/settings")
                     ? "linear-gradient(135deg, rgba(184, 134, 11, 0.2) 0%, rgba(0, 51, 160, 0.15) 100%)"
                     : "rgba(15, 23, 42, 0.6)",
-                  border: isActive("/portal/settings") 
+                  border: isActive("/portal/settings")
                     ? "1px solid rgba(184, 134, 11, 0.4)"
                     : "1px solid rgba(255, 255, 255, 0.1)",
                   transition: "all 0.2s ease",

@@ -18,14 +18,12 @@ export default function PortalAuthProvider({ children }: Props) {
 
   useEffect(() => {
     if (!auth) return;
-    let timeout: ReturnType<typeof setTimeout>;
+    const timeout = setTimeout(() => setUser(null), 5000);
 
     const unsub = onAuthStateChanged(auth, (u) => {
       clearTimeout(timeout);
       setUser(u);
     });
-    // Fallback: if SDK never responds in 5s, treat as unauthenticated
-    timeout = setTimeout(() => setUser(null), 5000);
     return () => {
       clearTimeout(timeout);
       unsub();

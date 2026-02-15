@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
@@ -9,17 +9,16 @@ import { CustomersTable } from "./components/CustomersTable";
 import { CustomerDrawer } from "./components/CustomerDrawer";
 import type { CustomerRow, Source } from "./types";
 
-export default function CustomersPage() {
-  const { selectedPhoneNumberId } = usePhoneFilter();
+const PAGE_SIZE = 200;
+
+function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId: string | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const PAGE_SIZE = 200;
-  // Store selected customer by ID
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<{ updatedAt: string; id: string } | null>(null);
   const [extraRows, setExtraRows] = useState<CustomerRow[]>([]);
-  const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [lastPageHadMore, setLastPageHadMore] = useState(true);
 
   const baseFilter = useMemo(
     () => (selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
@@ -45,33 +44,21 @@ export default function CustomersPage() {
         : undefined,
     [baseFilter, cursor],
   );
-  const pagedQuery = trpc.customers.list.useQuery(pageInput as any, {
+
+  trpc.customers.list.useQuery(pageInput, {
     enabled: Boolean(pageInput),
+    onSuccess: (data) => {
+      if (!isLoadingMore) return;
+      setExtraRows((prev) => {
+        const map = new Map<string, CustomerRow>();
+        for (const row of prev) map.set(row.id, row);
+        for (const row of data as CustomerRow[]) map.set(row.id, row);
+        return Array.from(map.values());
+      });
+      setLastPageHadMore(data.length === PAGE_SIZE);
+      setIsLoadingMore(false);
+    },
   });
-
-  useEffect(() => {
-    setCursor(null);
-    setExtraRows([]);
-    setHasMore(false);
-    setIsLoadingMore(false);
-  }, [selectedPhoneNumberId]);
-
-  useEffect(() => {
-    if (!customers) return;
-    setHasMore(customers.length === PAGE_SIZE);
-  }, [customers]);
-
-  useEffect(() => {
-    if (!isLoadingMore || !pagedQuery.data) return;
-    setExtraRows((prev) => {
-      const map = new Map<string, CustomerRow>();
-      for (const row of prev) map.set(row.id, row);
-      for (const row of pagedQuery.data as CustomerRow[]) map.set(row.id, row);
-      return Array.from(map.values());
-    });
-    setHasMore(pagedQuery.data.length === PAGE_SIZE);
-    setIsLoadingMore(false);
-  }, [isLoadingMore, pagedQuery.data]);
 
   const listRows = useMemo(() => {
     const first = (customers ?? []) as CustomerRow[];
@@ -81,15 +68,26 @@ export default function CustomersPage() {
     for (const row of extraRows) if (!map.has(row.id)) map.set(row.id, row);
     return Array.from(map.values());
   }, [customers, extraRows]);
-  
-  // Cast the source field to Source type (it comes as string from the DB)
-  const typedCustomers = listRows?.map((c) => ({
-    ...c,
-    source: c.source as Source,
-  })) as CustomerRow[];
+
+  const typedCustomers = useMemo(
+    () =>
+      listRows.map((c) => ({
+        ...c,
+        source: c.source as Source,
+      })) as CustomerRow[],
+    [listRows],
+  );
+
+  const hasMore = useMemo(() => {
+    const firstPageHasMore = (customers?.length ?? 0) === PAGE_SIZE;
+    if (!cursor) return firstPageHasMore;
+    if (isLoadingMore) return true;
+    return lastPageHadMore;
+  }, [customers, cursor, isLoadingMore, lastPageHadMore]);
+
   const queryCustomerId = String(searchParams?.get("customerId") || "").trim();
   const effectiveSelectedCustomerId = selectedCustomerId || queryCustomerId || null;
-  const customer = typedCustomers?.find((c) => c.id === effectiveSelectedCustomerId);
+  const customer = typedCustomers.find((c) => c.id === effectiveSelectedCustomerId);
 
   const handleLoadMore = () => {
     if (isLoadingMore || !typedCustomers.length) return;
@@ -109,7 +107,7 @@ export default function CustomersPage() {
         flexDirection: "column",
       }}
     >
-      {!typedCustomers?.length ? (
+      {!typedCustomers.length ? (
         <div
           style={{
             flex: 1,
@@ -148,5 +146,15 @@ export default function CustomersPage() {
         }}
       />
     </main>
+  );
+}
+
+export default function CustomersPage() {
+  const { selectedPhoneNumberId } = usePhoneFilter();
+  return (
+    <CustomersPageContent
+      key={selectedPhoneNumberId ?? "all"}
+      selectedPhoneNumberId={selectedPhoneNumberId}
+    />
   );
 }

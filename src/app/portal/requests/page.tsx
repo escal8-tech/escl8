@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
@@ -8,6 +8,7 @@ import { TableSelect } from "@/app/portal/components/TableToolbarControls";
 import { PortalDataTable } from "@/app/portal/components/PortalDataTable";
 import { TablePagination } from "@/app/portal/components/TablePagination";
 import { useRouter } from "next/navigation";
+import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
 
 type RequestSortKey = "customer" | "status" | "type" | "sentiment" | "created" | "bot";
 const PAGE_SIZE = 20;
@@ -67,9 +68,6 @@ export default function RequestsPage() {
   const [page, setPage] = useState(0);
   const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [openMenuRequestId, setOpenMenuRequestId] = useState<string | null>(null);
-  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
   const utils = trpc.useUtils();
 
   const listInput = useMemo(
@@ -161,11 +159,6 @@ export default function RequestsPage() {
     if (!selectedId) return null;
     return rows.find((r) => r.id === selectedId) ?? null;
   }, [rows, selectedId]);
-  const openMenuRequest = useMemo(() => {
-    if (!openMenuRequestId) return null;
-    return rows.find((r) => r.id === openMenuRequestId) ?? null;
-  }, [rows, openMenuRequestId]);
-
   const getThreadHref = (row: RequestRow) => {
     const params = new URLSearchParams();
     if (row.customerId) params.set("customerId", row.customerId);
@@ -173,28 +166,6 @@ export default function RequestsPage() {
     const query = params.toString();
     return query ? `/portal/messages?${query}` : "/portal/messages";
   };
-
-  useEffect(() => {
-    if (!openMenuRequestId) return;
-    const onMouseDown = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setOpenMenuRequestId(null);
-        setMenuAnchor(null);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpenMenuRequestId(null);
-        setMenuAnchor(null);
-      }
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [openMenuRequestId]);
 
   return (
     <PortalDataTable
@@ -327,7 +298,7 @@ export default function RequestsPage() {
                 <td>
                   <div style={{ fontWeight: 500 }}>{r.customerNumber}</div>
                   <div className="text-muted" style={{ fontSize: 12 }}>
-                    {(r.source || "whatsapp").toUpperCase()} • #{r.id.slice(0, 8)}
+                    {(r.source || "whatsapp").toUpperCase()} - #{r.id.slice(0, 8)}
                   </div>
                 </td>
                 <td>
@@ -389,124 +360,30 @@ export default function RequestsPage() {
                   style={{ textAlign: "center" }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <button
-                    type="button"
-                    aria-label="Row actions"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                      const nextTop = rect.bottom + 8;
-                      const nextLeft = Math.max(12, rect.right - 168);
-                      setMenuAnchor({ top: nextTop, left: nextLeft });
-                      setOpenMenuRequestId((prev) => (prev === r.id ? null : r.id));
-                    }}
-                    style={{
-                      width: 30,
-                      height: 30,
-                      borderRadius: 8,
-                      border: "1px solid rgba(212,168,75,0.45)",
-                      background: "linear-gradient(135deg, rgba(0,51,160,0.28), rgba(212,168,75,0.16))",
-                      color: "#f8e7be",
-                      display: "grid",
-                      placeItems: "center",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                      <circle cx="12" cy="5" r="1.8" />
-                      <circle cx="12" cy="12" r="1.8" />
-                      <circle cx="12" cy="19" r="1.8" />
-                    </svg>
-                  </button>
+                  <RowActionsMenu
+                    items={[
+                      {
+                        label: "Open Thread",
+                        onSelect: () => {
+                          router.push(getThreadHref(r));
+                        },
+                      },
+                      {
+                        label: "Customer Details",
+                        disabled: !r.customerId,
+                        onSelect: () => {
+                          if (!r.customerId) return;
+                          router.push(`/portal/customers?customerId=${encodeURIComponent(r.customerId)}`);
+                        },
+                      },
+                    ]}
+                  />
                 </td>
               </tr>
             ))
           )}
         </tbody>
       </table>
-      {openMenuRequest && menuAnchor && (
-        <div
-          ref={menuRef}
-          style={{
-            position: "fixed",
-            top: menuAnchor.top,
-            left: menuAnchor.left,
-            width: 168,
-            background: "rgba(8, 10, 16, 0.98)",
-            border: "1px solid rgba(212,168,75,0.45)",
-            borderRadius: 10,
-            boxShadow: "0 20px 38px rgba(0,0,0,0.45)",
-            overflow: "hidden",
-            zIndex: 3000,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              const href = getThreadHref(openMenuRequest);
-              setOpenMenuRequestId(null);
-              setMenuAnchor(null);
-              router.push(href);
-            }}
-            style={{
-              width: "100%",
-              textAlign: "left",
-              display: "block",
-              padding: "10px 12px",
-              fontSize: 14,
-              color: "#e8edf9",
-              borderBottom: "1px solid rgba(212,168,75,0.2)",
-              background: "linear-gradient(135deg, rgba(0,51,160,0.16), rgba(212,168,75,0.08))",
-              border: 0,
-              cursor: "pointer",
-            }}
-          >
-            Open Thread
-          </button>
-          {openMenuRequest.customerId ? (
-            <button
-              type="button"
-              onClick={() => {
-                const href = `/portal/customers?customerId=${encodeURIComponent(openMenuRequest.customerId!)}`;
-                setOpenMenuRequestId(null);
-                setMenuAnchor(null);
-                router.push(href);
-              }}
-              style={{
-                width: "100%",
-                textAlign: "left",
-                display: "block",
-                padding: "10px 12px",
-                fontSize: 14,
-                color: "#e8edf9",
-                background: "transparent",
-                border: 0,
-                cursor: "pointer",
-              }}
-            >
-              Customer Details
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled
-              style={{
-                width: "100%",
-                textAlign: "left",
-                display: "block",
-                padding: "10px 12px",
-                fontSize: 14,
-                color: "rgba(232,237,249,0.45)",
-                background: "transparent",
-                border: 0,
-              }}
-            >
-              Customer Details
-            </button>
-          )}
-        </div>
-      )}
       <RequestDrawer request={selectedRequest} onClose={() => setSelectedId(null)} />
     </PortalDataTable>
   );
@@ -614,11 +491,11 @@ function RequestDrawer({
                     router.push(customerHref);
                   }}
                 >
-                  Open Customer Details
+                  Customer Details
                 </button>
               ) : (
                 <button type="button" className="btn btn-ghost" disabled>
-                  Open Customer Details
+                  Customer Details
                 </button>
               )}
             </div>
@@ -628,3 +505,4 @@ function RequestDrawer({
     </>
   );
 }
+

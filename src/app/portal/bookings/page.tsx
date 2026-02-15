@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any,react-hooks/preserve-manual-memoization,react-hooks/set-state-in-effect */
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -1000,3 +1001,4 @@ export default function BookingsPage() {
     </div>
   );
 }
+

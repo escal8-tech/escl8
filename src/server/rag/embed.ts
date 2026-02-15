@@ -26,9 +26,10 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   try {
     const res = await c.embeddings.create({ model, input });
     return res.data.map((d) => d.embedding);
-  } catch (err: any) {
-    const status = err?.status || err?.response?.status;
-    const msg = err?.message || String(err);
+  } catch (err: unknown) {
+    const maybe = err as { status?: number; response?: { status?: number }; message?: string };
+    const status = maybe?.status || maybe?.response?.status;
+    const msg = maybe?.message || String(err);
     console.error(`[rag:embed] failed status=${status ?? "?"} message=${msg}`);
     throw err;
   }

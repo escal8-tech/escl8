@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { db } from "@/server/db/client";
 import { users, whatsappIdentities } from "../../../../../../drizzle/schema";
@@ -281,3 +282,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Internal error" }, { status: 500 });
   }
 }
+

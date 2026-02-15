@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import mammoth from "mammoth";
 
 export type ExtractedDoc = {
@@ -189,3 +190,4 @@ export async function extractTextFromBuffer(params: {
   // Legacy .doc (binary) is not supported here.
   throw new Error(`Unsupported document type for extraction: ${filename} (${contentType || "unknown"})`);
 }
+

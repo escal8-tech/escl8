@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export type GraphApiError = {
   message?: string;
   type?: string;
@@ -89,3 +90,4 @@ export function graphBaseUrl(apiVersion: string): string {
 export function graphEndpoint(apiVersion: string, path: string): string {
   return joinUrl(graphBaseUrl(apiVersion), path);
 }
+

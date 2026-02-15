@@ -505,7 +505,7 @@ export async function formatProductDocWithLLM(text: string): Promise<{ formatted
     const uniqueContext = Array.from(new Set(contextLines));
     const rawContext = uniqueContext.join("\n");
 
-    let extracted = await extractProductBlock({ product, raw: rawContext || normalized });
+    const extracted = await extractProductBlock({ product, raw: rawContext || normalized });
     let parsed: Record<string, string[]> = {};
     const match = extracted.match(/\{[\s\S]*\}/);
     if (match) {

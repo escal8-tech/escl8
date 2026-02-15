@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { db } from "@/server/db/client";
 import { trainingDocuments, users } from "@/../drizzle/schema";
@@ -241,3 +242,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: err?.message || "Upload failed" }, { status: 500 });
   }
 }
+

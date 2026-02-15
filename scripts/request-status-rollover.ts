@@ -60,7 +60,7 @@ async function main() {
           rollover: {
             updatedCount: updated,
             timezone,
-          } as any,
+          },
         },
       });
     }

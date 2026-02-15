@@ -20,8 +20,9 @@ export default function UploadInner() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Upload failed");
       setResult(json.files || []);
-    } catch (e: any) {
-      setError(e?.message || "Upload failed");
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Upload failed";
+      setError(message);
     } finally {
       setBusy(false);
     }
