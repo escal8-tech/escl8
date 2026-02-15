@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
@@ -25,6 +25,58 @@ import {
 
 const RECENT_REQUESTS_PAGE_SIZE = 20;
 type RequestSortKey = "customer" | "status" | "type" | "bot";
+
+const chartTooltipStyle: CSSProperties = {
+  borderRadius: 10,
+  border: "1px solid rgba(148,163,184,0.25)",
+  background: "rgba(15,23,42,0.95)",
+  color: "#f8fafc",
+  padding: "8px 10px",
+  minWidth: 150,
+};
+
+function SharedChartTooltip({
+  active,
+  label,
+  payload,
+  labelFormatter,
+  valueFormatter,
+}: {
+  active?: boolean;
+  label?: string | number;
+  payload?: Array<{ name?: string; value?: number | string; color?: string }>;
+  labelFormatter?: (label: string | number) => string;
+  valueFormatter?: (value: number | string, name: string) => string;
+}) {
+  if (!active || !payload?.length) return null;
+
+  return (
+    <div style={chartTooltipStyle}>
+      {label !== undefined && (
+        <div style={{ color: "#cbd5e1", fontSize: 12, marginBottom: 6 }}>
+          {labelFormatter ? labelFormatter(label) : String(label)}
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {payload.map((entry, idx) => {
+          const name = entry.name ?? "Value";
+          const value = entry.value ?? 0;
+          return (
+            <div key={`${name}-${idx}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 999, background: entry.color || "#94a3b8", flexShrink: 0 }} />
+                <span style={{ color: "#e2e8f0", fontSize: 12 }}>{name}</span>
+              </div>
+              <span style={{ color: "#fff", fontSize: 12, fontWeight: 600 }}>
+                {valueFormatter ? valueFormatter(value, name) : String(value)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 // Icons
 const Icons = {
@@ -225,19 +277,31 @@ function MiniDonutChart({
           />
         </Pie>
         <Tooltip
-          formatter={(value: number, _name, item) => {
+          content={({ active }) => {
+            if (!active) return null;
             const totalValue = data.reduce((sum, d) => sum + d.value, 0);
-            const pct = totalValue > 0 ? Math.round((Number(value) / totalValue) * 100) : 0;
-            return [`${value} (${pct}%)`, (item?.payload as { name?: string })?.name ?? "Value"];
+            return (
+              <div style={chartTooltipStyle}>
+                <div style={{ color: "#cbd5e1", fontSize: 12, marginBottom: 6 }}>Breakdown</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {data.map((entry, idx) => {
+                    const pct = totalValue > 0 ? Math.round((entry.value / totalValue) * 100) : 0;
+                    return (
+                      <div key={`${entry.name}-${idx}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 999, background: entry.color, flexShrink: 0 }} />
+                          <span style={{ color: "#e2e8f0", fontSize: 12 }}>{entry.name}</span>
+                        </div>
+                        <span style={{ color: "#fff", fontSize: 12, fontWeight: 600 }}>
+                          {entry.value} ({pct}%)
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
           }}
-          contentStyle={{
-            background: "rgba(9, 15, 28, 0.95)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: 10,
-            color: "#fff",
-          }}
-          itemStyle={{ color: "#fff" }}
-          labelStyle={{ color: "#cbd5e1" }}
         />
       </PieChart>
     </div>
@@ -273,21 +337,17 @@ function TicketCounterBarChart({
         />
         <Tooltip
           cursor={{ fill: "rgba(148,163,184,0.08)" }}
-          contentStyle={{
-            borderRadius: 10,
-            border: "1px solid rgba(148,163,184,0.25)",
-            background: "rgba(15,23,42,0.95)",
-            color: "#f8fafc",
-          }}
-          formatter={(value: number, name: string, item) => {
-            const key = String(item?.dataKey ?? "");
-            if (key === "inProgressCount") return [`${value}`, "In Progress"];
-            if (key === "openCount") return [`${value}`, "Open"];
-            return [`${value}`, name];
-          }}
+          content={({ active, label, payload }) => (
+            <SharedChartTooltip
+              active={active}
+              label={label}
+              payload={payload as Array<{ name?: string; value?: number | string; color?: string }>}
+              valueFormatter={(value) => String(value)}
+            />
+          )}
         />
-        <Bar dataKey="inProgressCount" stackId="active" fill="#D4A84B" radius={[0, 0, 6, 6]} />
-        <Bar dataKey="openCount" stackId="active" fill="#ef4444" radius={[6, 6, 0, 0]} />
+        <Bar dataKey="inProgressCount" name="In Progress" stackId="active" fill="#D4A84B" radius={[6, 0, 0, 6]} />
+        <Bar dataKey="openCount" name="Open" stackId="active" fill="#ef4444" radius={[0, 6, 6, 0]} />
       </ReBarChart>
     </ResponsiveContainer>
   );
@@ -338,8 +398,15 @@ function ActivityAreaChart({ data }: { data: { date: string; count: number }[] }
           />
           <Tooltip
             cursor={{ stroke: "var(--border)", strokeOpacity: 0.6 }}
-            formatter={(value: number) => [value, "Requests"]}
-            labelFormatter={(value: string) => formatDateShort(value)}
+            content={({ active, label, payload }) => (
+              <SharedChartTooltip
+                active={active}
+                label={label}
+                payload={payload as Array<{ name?: string; value?: number | string; color?: string }>}
+                labelFormatter={(value) => formatDateShort(String(value))}
+                valueFormatter={(value) => `${value}`}
+              />
+            )}
           />
           <Area
             type="natural"
