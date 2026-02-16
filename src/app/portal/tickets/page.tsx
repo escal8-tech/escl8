@@ -135,8 +135,57 @@ function formatStatus(status: string): string {
   return status.replace(/_/g, " ");
 }
 
-function formatFieldValue(value: unknown): string {
+function toStringList(value: unknown): string[] {
+  if (value == null) return [];
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v ?? "").trim()).filter(Boolean);
+  }
+  const txt = String(value).trim();
+  return txt ? [txt] : [];
+}
+
+function formatOrderLineItemsFromFields(fields: Record<string, unknown>): string | null {
+  const lineItemsRaw = fields["line_items"];
+  if (Array.isArray(lineItemsRaw)) {
+    const pairs = lineItemsRaw
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") return "";
+        const item = String((entry as Record<string, unknown>).item ?? "").trim();
+        const qty = String((entry as Record<string, unknown>).quantity ?? "").trim();
+        if (!item && !qty) return "";
+        if (!item) return `qty ${qty}`;
+        if (!qty) return item;
+        return `${item} (qty ${qty})`;
+      })
+      .filter(Boolean);
+    if (pairs.length) return pairs.join("; ");
+  }
+  const items = toStringList(fields["items"]);
+  const quantities = toStringList(fields["quantity"]);
+  if (!items.length) return null;
+  if (!quantities.length) return items.join("; ");
+  const max = Math.min(items.length, quantities.length);
+  if (max <= 0) return items.join("; ");
+  const pairs: string[] = [];
+  for (let i = 0; i < max; i++) {
+    pairs.push(`${items[i]} (qty ${quantities[i]})`);
+  }
+  if (items.length > max) {
+    for (let i = max; i < items.length; i++) pairs.push(items[i]);
+  }
+  return pairs.join("; ");
+}
+
+function formatFieldValue(value: unknown, key?: string, fields?: Record<string, unknown>): string {
   if (value == null) return "-";
+  if (fields && (key === "items" || key === "line_items")) {
+    const paired = formatOrderLineItemsFromFields(fields);
+    if (paired) return paired;
+  }
+  if (Array.isArray(value)) {
+    const parts = value.map((v) => String(v ?? "").trim()).filter(Boolean);
+    return parts.length ? parts.join(", ") : "-";
+  }
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
     return String(value);
   }
@@ -531,9 +580,9 @@ export default function TicketsPage() {
                             color: "var(--foreground)",
                             fontSize: 13,
                           }}
-                          title={formatFieldValue(fields[key])}
+                          title={formatFieldValue(fields[key], key, fields)}
                         >
-                          {formatFieldValue(fields[key])}
+                          {formatFieldValue(fields[key], key, fields)}
                         </span>
                       </td>
                     );
@@ -972,7 +1021,7 @@ function TicketDetailsDrawer({
                         >
                           <div style={{ color: "var(--muted)", fontSize: 12 }}>{key}</div>
                           <div style={{ fontSize: 13, wordBreak: "break-word" }}>
-                            {typeof value === "string" ? value : JSON.stringify(value)}
+                            {formatFieldValue(value, key, fields)}
                           </div>
                         </div>
                       ))}
