@@ -144,6 +144,145 @@ function toStringList(value: unknown): string[] {
   return txt ? [txt] : [];
 }
 
+function toLooseStringList(value: unknown): string[] {
+  if (value == null) return [];
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v ?? "").trim()).filter(Boolean);
+  }
+  const raw = String(value).trim();
+  if (!raw) return [];
+  if (raw.startsWith("[") && raw.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((v) => String(v ?? "").trim()).filter(Boolean);
+      }
+    } catch {
+      // Fall through to delimiter split.
+    }
+  }
+  const parts = raw.split(/\s*(?:,|;|\n)\s*/).map((p) => p.trim()).filter(Boolean);
+  return parts.length > 1 ? parts : [raw];
+}
+
+function parseQty(value: unknown): string {
+  const txt = String(value ?? "").trim();
+  if (!txt) return "1";
+  const m = txt.match(/\d+/);
+  if (!m) return "1";
+  const qty = Number(m[0]);
+  if (!Number.isFinite(qty) || qty <= 0) return "1";
+  return String(Math.floor(qty));
+}
+
+type OrderPair = { item: string; quantity: string };
+
+function dedupeOrderPairs(pairs: OrderPair[]): OrderPair[] {
+  if (!pairs.length) return [];
+  const out: OrderPair[] = [];
+  const byKey = new Map<string, number>();
+  for (const pair of pairs) {
+    const item = String(pair.item ?? "").trim();
+    if (!item) continue;
+    const key = item.toLowerCase().replace(/\s+/g, " ").trim();
+    const quantity = parseQty(pair.quantity);
+    const idx = byKey.get(key);
+    if (idx == null) {
+      byKey.set(key, out.length);
+      out.push({ item, quantity });
+      continue;
+    }
+    const prev = Number(parseQty(out[idx].quantity));
+    const next = Number(quantity);
+    out[idx] = { item: out[idx].item, quantity: String(Math.max(prev, next)) };
+  }
+  return out;
+}
+
+function buildOrderPairs(fields: Record<string, unknown>): OrderPair[] {
+  let fromLineItems: unknown = fields["line_items"];
+  if (typeof fromLineItems === "string") {
+    const raw = fromLineItems.trim();
+    if (raw.startsWith("[") && raw.endsWith("]")) {
+      try {
+        fromLineItems = JSON.parse(raw);
+      } catch {
+        fromLineItems = fields["line_items"];
+      }
+    }
+  }
+  if (Array.isArray(fromLineItems)) {
+    const pairs = fromLineItems
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") return null;
+        const item = String((entry as Record<string, unknown>).item ?? "").trim();
+        const quantity = parseQty((entry as Record<string, unknown>).quantity);
+        if (!item) return null;
+        return { item, quantity };
+      })
+      .filter((entry): entry is OrderPair => Boolean(entry));
+    if (pairs.length) return dedupeOrderPairs(pairs);
+  }
+  const items = toLooseStringList(fields["items"] ?? fields["product"]);
+  if (!items.length) return [];
+  const quantities = toLooseStringList(fields["quantity"]).map((q) => parseQty(q));
+  const pairs = items.map((item, idx) => ({
+    item,
+    quantity: quantities[idx] ?? quantities[quantities.length - 1] ?? "1",
+  }));
+  return dedupeOrderPairs(pairs);
+}
+
+function formatItemsCell(fields: Record<string, unknown>): string {
+  const pairs = buildOrderPairs(fields);
+  if (!pairs.length) return "-";
+  return pairs.map((pair) => `${pair.item} x ${pair.quantity}`).join(", ");
+}
+
+const INVALID_CUSTOMER_NAME_TOKENS = new Set([
+  "yes",
+  "yep",
+  "yeah",
+  "ok",
+  "okay",
+  "sure",
+  "confirm",
+  "confirmed",
+  "correct",
+  "right",
+  "done",
+  "ordercreation",
+  "order",
+  "orders",
+  "refund",
+  "cancellation",
+  "complaint",
+  "warrantyclaim",
+  "invoice",
+]);
+
+function isLikelyInvalidCustomerName(value: string): boolean {
+  const txt = value.trim();
+  if (!txt) return true;
+  const lowered = txt.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!lowered) return true;
+  if (/\d/.test(lowered)) return true;
+  if (INVALID_CUSTOMER_NAME_TOKENS.has(lowered)) return true;
+  return false;
+}
+
+function firstFieldText(fields: Record<string, unknown>, aliases: string[]): string {
+  const normalized = new Set(aliases.map((a) => a.toLowerCase().replace(/[^a-z0-9]/g, "")));
+  for (const [rawKey, rawValue] of Object.entries(fields)) {
+    const key = rawKey.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (!normalized.has(key)) continue;
+    const values = toLooseStringList(rawValue);
+    const first = values.find(Boolean);
+    if (first) return first;
+  }
+  return "";
+}
+
 function formatOrderLineItemsFromFields(fields: Record<string, unknown>): string | null {
   const lineItemsRaw = fields["line_items"];
   if (Array.isArray(lineItemsRaw)) {
@@ -373,23 +512,17 @@ export default function TicketsPage() {
       return full.includes(q) || short.includes(q);
     });
   }, [activeGroup?.rows, ticketIdQuery]);
-  const fieldColumns = useMemo(() => {
-    const frequency = new Map<string, number>();
-    for (const row of filteredRows) {
-      const fields = getTicketFields(row as TicketRow);
-      for (const key of Object.keys(fields)) {
-        if (key.toLowerCase() === "contact") continue;
-        frequency.set(key, (frequency.get(key) ?? 0) + 1);
-      }
+  const typeRequiresNameMap = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const type of ticketTypesData as Array<Record<string, unknown>>) {
+      const key = String(type.key ?? "").trim().toLowerCase();
+      if (!key) continue;
+      const required = toLooseStringList((type.requiredFields ?? type.required_fields) as unknown)
+        .map((field) => field.toLowerCase().replace(/[^a-z0-9]/g, ""));
+      map.set(key, required.includes("name") || required.includes("customername"));
     }
-    return Array.from(frequency.entries())
-      .sort((a, b) => {
-        if (b[1] !== a[1]) return b[1] - a[1];
-        return a[0].localeCompare(b[0]);
-      })
-      .slice(0, 4)
-      .map(([key]) => key);
-  }, [filteredRows]);
+    return map;
+  }, [ticketTypesData]);
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
   const pageRows = useMemo(
@@ -514,207 +647,215 @@ export default function TicketsPage() {
           <div className="empty-state-title">No tickets found</div>
         </div>
       ) : activeGroup ? (
-        <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
-          <table className="table table-clickable portal-modern-table" style={{ width: "100%" }}>
+        <div style={{ overflowX: "hidden", overflowY: "auto", flex: 1, minHeight: 0 }}>
+          <table className="table table-clickable portal-modern-table" style={{ width: "100%", tableLayout: "fixed" }}>
             <thead>
               <tr>
-                <th style={{ textAlign: "left", width: 170 }}>Ticket</th>
-                <th style={{ textAlign: "left", width: 180 }}>Customer</th>
-                {fieldColumns.map((key) => (
-                  <th key={key} style={{ textAlign: "left", minWidth: 130, maxWidth: 180 }}>
-                    {key}
-                  </th>
-                ))}
-                <th style={{ textAlign: "left", width: 100 }}>Priority</th>
-                <th style={{ textAlign: "left", width: 170 }}>SLA</th>
-                <th style={{ textAlign: "left", width: 150 }}>Updated</th>
-                <th style={{ textAlign: "center", width: 108 }}>Bot</th>
-                <th style={{ textAlign: "right", width: 132 }}>Status</th>
-                <th style={{ textAlign: "right", width: 130 }}>Outcome</th>
-                <th style={{ textAlign: "center", width: 64 }} />
+                <th style={{ textAlign: "left", width: "16%" }}>Ticket</th>
+                <th style={{ textAlign: "left", width: "20%" }}>Customer</th>
+                <th style={{ textAlign: "left", width: "24%" }}>Items</th>
+                <th style={{ textAlign: "left", width: "10%" }}>Priority</th>
+                <th style={{ textAlign: "left", width: "10%" }}>SLA</th>
+                <th style={{ textAlign: "center", width: "8%" }}>Bot</th>
+                <th style={{ textAlign: "right", width: "9%" }}>Status</th>
+                <th style={{ textAlign: "right", width: "9%" }}>Outcome</th>
+                <th style={{ textAlign: "center", width: "4%" }} />
               </tr>
             </thead>
             <tbody>
-              {pageRows.map((ticket) => (
-                <tr
-                  key={ticket.id}
-                  onClick={(e) => {
-                    const target = e.target as HTMLElement | null;
-                    const interactive = target?.closest(
-                      "button, a, input, textarea, select, [role='button'], .portal-select-trigger, .portal-select-content, .portal-select-item",
-                    );
-                    if (interactive) return;
-                    setSelectedTicketId(ticket.id);
-                  }}
-                  style={{ cursor: "pointer" }}
-                >
-                  <td>
-                    <div style={{ display: "grid", gap: 3 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>
-                        {ticket.title || normalizeTicketTypeLabel(getTicketString(ticket, "ticketTypeKey", "ticket_type_key"), "Ticket")}
-                      </div>
-                      <div style={{ fontFamily: "monospace", fontSize: 11, color: "var(--muted)" }}>
-                        #{shortId(ticket.id)}
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: "grid", gap: 3 }}>
-                      <div>{getTicketString(ticket, "customerName", "customer_name") || getTicketString(ticket, "customerPhone", "customer_phone") || "-"}</div>
-                      <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                        {getTicketString(ticket, "customerPhone", "customer_phone") || "No phone"}
-                      </div>
-                    </div>
-                  </td>
-                  {fieldColumns.map((key) => {
-                    const fields = getTicketFields(ticket as TicketRow);
-                    return (
-                      <td key={`${ticket.id}-${key}`}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            maxWidth: 180,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            color: "var(--foreground)",
-                            fontSize: 13,
-                          }}
-                          title={formatFieldValue(fields[key], key, fields)}
-                        >
-                          {formatFieldValue(fields[key], key, fields)}
-                        </span>
-                      </td>
-                    );
-                  })}
-                  <td>
-                    <span
-                      style={{
-                        ...priorityPillStyle(getTicketString(ticket, "priority") || "normal"),
-                        padding: "4px 10px",
-                        borderRadius: 999,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        letterSpacing: "0.01em",
-                        textTransform: "uppercase",
-                        display: "inline-flex",
-                      }}
-                    >
-                      {(getTicketString(ticket, "priority") || "normal")}
-                    </span>
-                  </td>
-                  <td>
-                    {(() => {
-                      const sla = formatSlaCountdown(
-                        getTicketValue(ticket, "slaDueAt", "sla_due_at") as Date | string | null | undefined,
-                        nowMs,
+              {pageRows.map((ticket) => {
+                const fields = getTicketFields(ticket as TicketRow);
+                const typeKey = getTicketString(ticket as TicketRow, "ticketTypeKey", "ticket_type_key").toLowerCase();
+                const requiresName = Boolean(typeRequiresNameMap.get(typeKey));
+                const phoneFromTicket = getTicketString(ticket as TicketRow, "customerPhone", "customer_phone").trim();
+                const phoneFromFields = firstFieldText(fields, ["contact", "phone", "phoneNumber", "mobile", "whatsapp", "customerPhone"]);
+                const customerPhone = phoneFromTicket || phoneFromFields;
+                const nameFromFields = firstFieldText(fields, ["name", "customerName", "customer_name"]);
+                const nameFromTicket = getTicketString(ticket as TicketRow, "customerName", "customer_name").trim();
+                const rawCustomerName = nameFromFields || nameFromTicket;
+                const customerName = rawCustomerName && !isLikelyInvalidCustomerName(rawCustomerName) ? rawCustomerName : "";
+                const customerPrimary = requiresName ? (customerName || customerPhone || "-") : (customerPhone || "-");
+                const customerSecondary = requiresName
+                  ? (customerPhone && customerPhone !== customerPrimary ? customerPhone : (!customerPhone ? "No phone" : ""))
+                  : (!customerPhone ? "No phone" : "");
+                const itemsLabel = formatItemsCell(fields);
+                const ticketDate = formatDate(
+                  (getTicketValue(ticket as TicketRow, "updatedAt", "updated_at") as Date | string | null | undefined) ?? ticket.createdAt,
+                );
+                return (
+                  <tr
+                    key={ticket.id}
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement | null;
+                      const interactive = target?.closest(
+                        "button, a, input, textarea, select, [role='button'], .portal-select-trigger, .portal-select-content, .portal-select-item",
                       );
-                      const toneColor =
-                        sla.tone === "danger" ? "#fca5a5" : sla.tone === "warn" ? "#fdba74" : sla.tone === "ok" ? "#86efac" : "var(--muted)";
-                      return <span style={{ fontSize: 12, color: toneColor }}>{sla.label}</span>;
-                    })()}
-                  </td>
-                  <td style={{ color: "var(--muted)", fontSize: 12 }}>
-                    {formatDate((getTicketValue(ticket, "updatedAt", "updated_at") as Date | string | null | undefined) ?? ticket.createdAt)}
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    {getTicketString(ticket, "customerId", "customer_id") ? (
-                      (() => {
-                        const customerId = getTicketString(ticket, "customerId", "customer_id");
-                        const paused = botPausedOverrides[customerId] ?? Boolean(customerBotPausedMapQuery.data?.[customerId]);
-                        const isPending = Boolean(pendingBotCustomerIds[customerId]);
-                        return (
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (isPending) return;
-                              toggleBot.mutate({ customerId, botPaused: !paused });
-                            }}
-                            disabled={isPending}
-                            style={{ width: 94, justifyContent: "center", opacity: isPending ? 0.6 : 1 }}
-                          >
-                            {paused ? "Resume" : "Pause"}
-                          </button>
-                        );
-                      })()
-                    ) : (
-                      <span className="text-muted" style={{ fontSize: 12 }}>-</span>
-                    )}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <TableSelect
-                      style={{ width: 116 }}
-                      value={(ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus}
-                      disabled={updatingId === ticket.id}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        const nextStatus = e.target.value as TicketStatus;
-                        setUpdatingId(ticket.id);
-                        updateStatus.mutate({ id: ticket.id, status: nextStatus });
-                      }}
-                    >
-                      {STATUS_OPTIONS.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </TableSelect>
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <TableSelect
-                      style={{ width: 118 }}
-                      value={(getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome}
-                      disabled={updatingOutcomeId === ticket.id || ticket.status !== "resolved"}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        const nextOutcome = e.target.value as TicketOutcome;
-                        setUpdatingOutcomeId(ticket.id);
-                        updateOutcome.mutate({
-                          id: ticket.id,
-                          outcome: nextOutcome,
-                          lossReason:
-                            nextOutcome === "lost"
-                              ? getTicketString(ticket, "lossReason", "loss_reason") || "Other"
-                              : undefined,
-                        });
-                      }}
-                    >
-                      {OUTCOME_OPTIONS.map((outcome) => (
-                        <option key={outcome} value={outcome}>
-                          {outcome}
-                        </option>
-                      ))}
-                    </TableSelect>
-                  </td>
-                  <td
-                    style={{ textAlign: "center" }}
-                    onClick={(e) => e.stopPropagation()}
+                      if (interactive) return;
+                      setSelectedTicketId(ticket.id);
+                    }}
+                    style={{ cursor: "pointer" }}
                   >
-                    <RowActionsMenu
-                      items={[
-                        {
-                          label: "Open Thread",
-                          onSelect: () => router.push(getThreadHref(ticket as TicketRow)),
-                        },
-                        {
-                          label: "Customer Details",
-                          disabled: !getTicketString(ticket as TicketRow, "customerId", "customer_id"),
-                          onSelect: () => {
-                            const customerId = getTicketString(ticket as TicketRow, "customerId", "customer_id");
-                            if (!customerId) return;
-                            router.push(`/portal/customers?customerId=${encodeURIComponent(customerId)}`);
+                    <td>
+                      <div style={{ display: "grid", gap: 3 }}>
+                        <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700 }} title={ticket.id}>
+                          #{shortId(ticket.id)}
+                        </div>
+                        <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                          {ticketDate}
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: "grid", gap: 3 }}>
+                        <div style={{ wordBreak: "break-word" }}>{customerPrimary}</div>
+                        {customerSecondary ? (
+                          <div style={{ color: "var(--muted)", fontSize: 12, wordBreak: "break-word" }}>
+                            {customerSecondary}
+                          </div>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>
+                      <span
+                        style={{
+                          display: "block",
+                          color: "var(--foreground)",
+                          fontSize: 13,
+                          lineHeight: 1.35,
+                          whiteSpace: "normal",
+                          wordBreak: "break-word",
+                        }}
+                        title={itemsLabel}
+                      >
+                        {itemsLabel}
+                      </span>
+                    </td>
+                    <td>
+                      <span
+                        style={{
+                          ...priorityPillStyle(getTicketString(ticket, "priority") || "normal"),
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          letterSpacing: "0.01em",
+                          textTransform: "uppercase",
+                          display: "inline-flex",
+                        }}
+                      >
+                        {(getTicketString(ticket, "priority") || "normal")}
+                      </span>
+                    </td>
+                    <td>
+                      {(() => {
+                        const sla = formatSlaCountdown(
+                          getTicketValue(ticket, "slaDueAt", "sla_due_at") as Date | string | null | undefined,
+                          nowMs,
+                        );
+                        const toneColor =
+                          sla.tone === "danger" ? "#fca5a5" : sla.tone === "warn" ? "#fdba74" : sla.tone === "ok" ? "#86efac" : "var(--muted)";
+                        return <span style={{ fontSize: 12, color: toneColor }}>{sla.label}</span>;
+                      })()}
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      {getTicketString(ticket, "customerId", "customer_id") ? (
+                        (() => {
+                          const customerId = getTicketString(ticket, "customerId", "customer_id");
+                          const paused = botPausedOverrides[customerId] ?? Boolean(customerBotPausedMapQuery.data?.[customerId]);
+                          const isPending = Boolean(pendingBotCustomerIds[customerId]);
+                          return (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (isPending) return;
+                                toggleBot.mutate({ customerId, botPaused: !paused });
+                              }}
+                              disabled={isPending}
+                              style={{ width: "100%", justifyContent: "center", opacity: isPending ? 0.6 : 1 }}
+                            >
+                              {paused ? "Resume" : "Pause"}
+                            </button>
+                          );
+                        })()
+                      ) : (
+                        <span className="text-muted" style={{ fontSize: 12 }}>-</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <TableSelect
+                        style={{ width: "100%" }}
+                        value={(ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus}
+                        disabled={updatingId === ticket.id}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          const nextStatus = e.target.value as TicketStatus;
+                          setUpdatingId(ticket.id);
+                          updateStatus.mutate({ id: ticket.id, status: nextStatus });
+                        }}
+                      >
+                        {STATUS_OPTIONS.map((status) => (
+                          <option key={status} value={status}>
+                            {status}
+                          </option>
+                        ))}
+                      </TableSelect>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <TableSelect
+                        style={{ width: "100%" }}
+                        value={(getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome}
+                        disabled={updatingOutcomeId === ticket.id || ticket.status !== "resolved"}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          const nextOutcome = e.target.value as TicketOutcome;
+                          setUpdatingOutcomeId(ticket.id);
+                          updateOutcome.mutate({
+                            id: ticket.id,
+                            outcome: nextOutcome,
+                            lossReason:
+                              nextOutcome === "lost"
+                                ? getTicketString(ticket, "lossReason", "loss_reason") || "Other"
+                                : undefined,
+                          });
+                        }}
+                      >
+                        {OUTCOME_OPTIONS.map((outcome) => (
+                          <option key={outcome} value={outcome}>
+                            {outcome}
+                          </option>
+                        ))}
+                      </TableSelect>
+                    </td>
+                    <td
+                      style={{ textAlign: "center" }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <RowActionsMenu
+                        items={[
+                          {
+                            label: "Open Thread",
+                            onSelect: () => router.push(getThreadHref(ticket as TicketRow)),
                           },
-                        },
-                      ]}
-                    />
-                  </td>
-                </tr>
-              ))}
+                          {
+                            label: "Customer Details",
+                            disabled: !getTicketString(ticket as TicketRow, "customerId", "customer_id"),
+                            onSelect: () => {
+                              const customerId = getTicketString(ticket as TicketRow, "customerId", "customer_id");
+                              if (!customerId) return;
+                              router.push(`/portal/customers?customerId=${encodeURIComponent(customerId)}`);
+                            },
+                          },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={9 + fieldColumns.length} style={{ color: "var(--muted)", textAlign: "center", padding: "20px 10px" }}>
+                  <td colSpan={9} style={{ color: "var(--muted)", textAlign: "center", padding: "20px 10px" }}>
                     {ticketIdQuery ? (
                       "No ticket IDs match your search."
                     ) : (
