@@ -115,15 +115,19 @@
   object-fit: cover;
 }
 
+.heroBackground {
+  filter: brightness(1.12) saturate(1.04);
+}
+
 .heroNoise {
-  opacity: 0.08;
+  opacity: 0.1;
   mix-blend-mode: screen;
 }
 
 .heroOverlay {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 20%, rgba(0, 22, 48, 0.05), rgba(0, 9, 23, 0.8));
+  background: radial-gradient(circle at 50% 20%, rgba(0, 22, 48, 0.02), rgba(0, 9, 23, 0.68));
 }
 
 .heroNav {
@@ -301,6 +305,41 @@
   z-index: 5;
 }
 
+.heroDashboardWrap::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -110px;
+  transform: translateX(-50%);
+  width: 76%;
+  height: 220px;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(186, 153, 79, 0.78) 0%,
+    rgba(186, 153, 79, 0.34) 38%,
+    rgba(186, 153, 79, 0) 72%
+  );
+  filter: blur(20px);
+  z-index: 4;
+}
+
+.heroDashboardWrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 20px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 225, 162, 0.22) 0%,
+    rgba(255, 225, 162, 0.1) 10%,
+    rgba(255, 225, 162, 0) 26%
+  );
+  mix-blend-mode: screen;
+  z-index: 6;
+}
+
 .heroDashboard {
   position: relative;
   width: 100%;
@@ -309,11 +348,12 @@
   overflow: hidden;
   box-shadow: 0 24px 70px rgba(2, 8, 18, 0.42);
   background: rgba(0, 0, 0, 0.45);
+  z-index: 5;
 }
 
 .heroDashboardShadow {
   object-fit: cover;
-  opacity: 0.58;
+  opacity: 0.68;
   mix-blend-mode: screen;
 }
 
@@ -528,7 +568,7 @@
 }
 
 .whyPanel {
-  background: #001630;
+  background: #062449;
   border-radius: 24px;
   padding: 88px 48px;
   display: grid;
@@ -543,7 +583,7 @@
   position: absolute;
   inset: 0;
   object-fit: cover;
-  opacity: 0.08;
+  opacity: 0.14;
   z-index: 0;
 }
 
@@ -553,13 +593,15 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  align-items: center;
+  text-align: center;
 }
 
 .whyIconBox {
   width: 44px;
   height: 44px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.34);
   backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
@@ -579,7 +621,8 @@
   font-size: 20px;
   line-height: 30px;
   letter-spacing: 0;
-  color: #fff;
+  color: #f8fcff;
+  text-align: center;
 }
 
 .whyItem p {
@@ -589,7 +632,8 @@
   font-size: 14px;
   line-height: 20px;
   letter-spacing: 0;
-  color: #fafbfc;
+  color: #fff;
+  text-align: center;
 }
 
 .statsGrid {
@@ -1006,7 +1050,7 @@
   border-radius: 24px;
   overflow: hidden;
   min-height: 484px;
-  background: #001630;
+  background: #000f27;
   color: #fff;
   padding: 120px 40px 72px;
 }
@@ -1028,6 +1072,8 @@
   width: 857px;
   height: auto;
   transform: rotate(42.36deg);
+  filter: brightness(0.8) saturate(0.95);
+  opacity: 0.9;
   max-width: none;
 }
 
@@ -1267,6 +1313,13 @@
     width: calc(100% - 24px);
   }
 
+  .heroDashboardWrap::before {
+    top: -82px;
+    width: 84%;
+    height: 170px;
+    filter: blur(16px);
+  }
+
   .section {
     padding-top: 72px;
   }
@@ -1363,6 +1416,13 @@
 
   .heroDashboardWrap {
     top: 530px;
+  }
+
+  .heroDashboardWrap::before {
+    top: -64px;
+    width: 90%;
+    height: 140px;
+    filter: blur(14px);
   }
 
   .heroActions {
