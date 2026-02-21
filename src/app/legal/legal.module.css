@@ -136,8 +136,14 @@
 }
 
 .flushList {
+  margin-left: 0;
   padding-left: 0;
   list-style: none;
+}
+
+.legalCard ul.flushList {
+  margin-left: 0;
+  padding-left: 0;
 }
 
 .legalCard a {
