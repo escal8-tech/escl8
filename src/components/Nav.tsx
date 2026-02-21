@@ -36,13 +36,20 @@ export default function Nav() {
         <div className="nav-pill">
           {/* Logo */}
           <Link href="/" className="nav-logo-link">
-            <span className="logo-text">Escalate</span>
             <Image 
-              src="/favikon.png" 
-              alt="" 
-              width={48} 
-              height={48} 
-              className="logo-image"
+              src="/landing/logo-main-wordmark.png" 
+              alt="Escalate" 
+              width={92} 
+              height={23} 
+              className="logo-wordmark"
+              priority
+            />
+            <Image
+              src="/landing/nav-infinity-crop.png"
+              alt=""
+              width={30}
+              height={13}
+              className="logo-infinity"
               priority
             />
           </Link>

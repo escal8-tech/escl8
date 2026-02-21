@@ -26,34 +26,6 @@ const stats = [
   { value: "20%", label: "Increase conversions from every chat." },
 ];
 
-const faqs = [
-  {
-    question: "How does ESCL8 use AI?",
-    answer:
-      "ESCL8 uses AI to automate replies, qualify leads, and route conversations across channels so your team can focus on high-value interactions.",
-  },
-  {
-    question: "How long does it take to get started?",
-    answer:
-      "Most teams are live in a few days. We connect your channels, train your assistant on your materials, then calibrate tone and workflows.",
-  },
-  {
-    question: "Can ESCL8 work with my existing CRM?",
-    answer:
-      "Yes. ESCL8 is designed to plug into existing systems so contacts, conversation context, and outcomes sync into your current workflow.",
-  },
-  {
-    question: "Is my customer data safe?",
-    answer:
-      "Security and privacy controls are built in, including access controls, data handling guardrails, and audit-friendly workflow design.",
-  },
-  {
-    question: "Do AI chatbots sound human?",
-    answer:
-      "With brand-specific training, guardrails, and continuous tuning, ESCL8 responses are designed to sound natural and consistent with your voice.",
-  },
-];
-
 const socialLinks = [
   { label: "Instagram", href: "#", icon: "/landing/contact-instagram.svg" },
   { label: "Facebook", href: "#", icon: "/landing/contact-facebook.svg" },
@@ -349,26 +321,6 @@ export default function Home() {
           </header>
 
           <TestimonialCarousel />
-        </div>
-      </section>
-
-      <section className={styles.section}>
-        <div className={styles.container}>
-          <header className={styles.sectionHeader}>
-            <p className={styles.eyebrow}>FAQ</p>
-            <h2>Got questions? We&apos;ve got answers</h2>
-            <p className={styles.sectionDescription}>
-              Everything teams ask before launching Escal8, pricing, setup, and data safety.
-            </p>
-          </header>
-          <div className={styles.faqList}>
-            {faqs.map((item, index) => (
-              <details key={item.question} className={styles.faqItem} open={index === 0}>
-                <summary>{item.question}</summary>
-                <p>{item.answer}</p>
-              </details>
-            ))}
-          </div>
         </div>
       </section>
 

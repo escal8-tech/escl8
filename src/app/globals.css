@@ -149,124 +149,120 @@
 
 .floating-nav {
   position: fixed;
-  top: 20px;
+  top: 24px;
   left: 0;
   right: 0;
-  z-index: 1000;
+  z-index: 1200;
   display: flex;
   justify-content: center;
-  padding: 0 24px;
-  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0 20px;
+  transition: top 0.25s ease, padding 0.25s ease;
 }
 
 .floating-nav.scrolled {
-  top: 0;
-  padding: 0;
+  top: 14px;
+  padding: 0 20px;
 }
 
 .nav-pill {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;
-  max-width: 1500px;
-  padding: 8px 32px;
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  width: min(807px, calc(100% - 40px));
+  height: 64px;
+  padding: 12px 16px 12px 24px;
+  background: linear-gradient(90deg, rgba(34, 52, 79, 0.74) 0%, rgba(17, 29, 46, 0.74) 100%);
+  backdrop-filter: blur(50px);
+  -webkit-backdrop-filter: blur(50px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 100px;
-  box-shadow: 
-    0 4px 30px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 10px 28px rgba(3, 10, 23, 0.16);
+  transition: background 0.25s ease, box-shadow 0.25s ease;
 }
 
 .floating-nav.scrolled .nav-pill {
-  max-width: 100%;
-  background: rgba(3, 7, 18, 0.98);
-  border-radius: 0;
-  border: none;
-  border-bottom: 1px solid rgba(184, 134, 11, 0.15);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  padding: 10px 64px;
+  background: linear-gradient(90deg, rgba(24, 38, 60, 0.86) 0%, rgba(14, 24, 40, 0.86) 100%);
+  box-shadow: 0 14px 32px rgba(2, 8, 18, 0.24);
 }
 
 /* Logo */
 .nav-logo-link {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   text-decoration: none;
   transition: opacity 0.2s ease;
+  flex-shrink: 0;
 }
 
 .nav-logo-link:hover {
   opacity: 0.8;
 }
 
-.logo-text {
-  font-family: var(--font-heading);
-  font-size: 1.4rem;
-  font-weight: 500;
-  color: var(--foreground);
-  letter-spacing: -0.02em;
+.logo-wordmark {
+  width: 92px;
+  height: auto;
 }
 
-.logo-image {
-  width: 48px;
-  height: 48px;
-  object-fit: contain;
+.logo-infinity {
+  width: 30px;
+  height: auto;
+  transform: translateY(1px);
 }
 
 /* Nav Links */
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 40px;
 }
 
 .nav-link {
-  padding: 6px 14px;
-  font-size: 0.875rem;
-  font-weight: 450;
-  color: var(--muted);
+  padding: 0;
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.72);
   text-decoration: none;
-  border-radius: 100px;
-  transition: color 0.2s ease;
-  letter-spacing: -0.01em;
+  border-radius: 0;
+  transition: color 0.2s ease, opacity 0.2s ease;
   background: transparent;
   border: none;
 }
 
 .nav-link:hover {
-  color: var(--foreground);
+  color: #fff;
   background: transparent;
 }
 
 .nav-link.active {
-  color: var(--gold-light);
+  color: #fff;
   font-weight: 500;
   background: transparent;
+  border: none;
 }
 
 /* CTA Button */
 .nav-cta {
-  padding: 8px 18px;
-  font-size: 0.875rem;
+  height: 40px;
+  padding: 0 20px;
+  font-family: "Inter Tight", sans-serif;
+  font-size: 16px;
   font-weight: 500;
-  color: var(--background);
-  background: var(--foreground);
+  line-height: 21px;
+  color: #0f1d33;
+  background: #fff;
   border-radius: 100px;
   text-decoration: none;
-  transition: all 0.2s ease;
-  letter-spacing: -0.01em;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .nav-cta:hover {
-  background: var(--gold-light);
+  background: #fff;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(184, 134, 11, 0.3);
+  box-shadow: 0 12px 24px rgba(5, 16, 30, 0.24);
 }
 
 /* Mobile Menu Button */
@@ -274,7 +270,7 @@
   display: none;
   background: none;
   border: none;
-  color: var(--muted);
+  color: #e5ebf2;
   cursor: pointer;
   padding: 4px;
   border-radius: 8px;
@@ -282,8 +278,8 @@
 }
 
 .mobile-menu-btn:hover {
-  color: var(--foreground);
-  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* Mobile Menu */
@@ -295,9 +291,9 @@
   transform: translateX(-50%) translateY(-10px);
   width: calc(100% - 48px);
   max-width: 400px;
-  background: rgba(15, 23, 42, 0.98);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(12, 23, 39, 0.96);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 20px;
   padding: 12px;
   opacity: 0;
@@ -321,8 +317,8 @@
 .mobile-link {
   padding: 14px 18px;
   font-size: 1rem;
-  font-weight: 450;
-  color: var(--muted);
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.78);
   text-decoration: none;
   border-radius: 12px;
   transition: all 0.2s ease;
@@ -331,12 +327,12 @@
 
 .mobile-link:hover,
 .mobile-link.active {
-  color: var(--foreground);
-  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .mobile-link.active {
-  color: var(--gold-light);
+  color: #fff;
 }
 
 .mobile-cta {
@@ -344,8 +340,8 @@
   padding: 14px 18px;
   font-size: 1rem;
   font-weight: 500;
-  color: var(--background);
-  background: var(--foreground);
+  color: #0f1d33;
+  background: #fff;
   border-radius: 12px;
   text-decoration: none;
   text-align: center;
@@ -353,28 +349,30 @@
 }
 
 .mobile-cta:hover {
-  background: var(--gold-light);
+  background: #fff;
 }
 
 /* Responsive */
 @media (max-width: 768px) {
   .floating-nav {
-    top: 16px;
+    top: 14px;
     padding: 0 16px;
   }
   
   .floating-nav.scrolled {
-    top: 0;
-    padding: 0;
+    top: 10px;
+    padding: 0 16px;
   }
   
   .nav-pill {
-    padding: 8px 16px;
-    max-width: 100%;
+    width: calc(100% - 24px);
+    max-width: none;
+    height: 56px;
+    padding: 8px 14px 8px 18px;
   }
   
   .floating-nav.scrolled .nav-pill {
-    padding: 10px 24px;
+    padding: 8px 14px 8px 18px;
   }
   
   .nav-links {
@@ -392,7 +390,7 @@
   .mobile-menu {
     display: block;
     width: calc(100% - 32px);
-    top: 70px;
+    top: 76px;
   }
 }
 
