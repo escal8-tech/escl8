@@ -11,6 +11,7 @@
   --content-max: 1279px;
   --hero-max: 1392px;
   --page-gutter: clamp(12px, 2.4vw, 24px);
+  --section-gap: 144px;
 
   background: var(--light-bg);
   color: var(--ink-900);
@@ -24,7 +25,11 @@
 }
 
 .section {
-  padding: 84px 0 0;
+  padding: var(--section-gap) 0 0;
+}
+
+.logoStrip + .section {
+  padding-top: 72px;
 }
 
 .sectionHeader {
@@ -100,7 +105,7 @@
   position: relative;
   max-width: var(--hero-max);
   margin: 0 auto;
-  padding-bottom: 266px;
+  padding-bottom: 350px;
 }
 
 .heroCard {
@@ -392,21 +397,123 @@
 }
 
 .logoStrip {
-  padding-top: 42px;
+  padding: 96px 0 28px;
+}
+
+.logoIntro {
+  margin: 0 0 20px;
+  text-align: center;
+  font-family: var(--landing-inter), "Inter", sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7d8591;
+}
+
+.logoCarousel {
+  position: relative;
+  overflow: hidden;
+  background: var(--light-bg);
+  padding: 22px 0;
+  min-height: 234px;
+  display: flex;
+  align-items: center;
+}
+
+.logoCarousel::before,
+.logoCarousel::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: clamp(28px, 9vw, 140px);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.logoCarousel::before {
+  left: 0;
+  background: linear-gradient(
+    90deg,
+    var(--light-bg) 0%,
+    rgba(244, 246, 248, 0.92) 36%,
+    rgba(244, 246, 248, 0) 100%
+  );
+}
+
+.logoCarousel::after {
+  right: 0;
+  background: linear-gradient(
+    270deg,
+    var(--light-bg) 0%,
+    rgba(244, 246, 248, 0.92) 36%,
+    rgba(244, 246, 248, 0) 100%
+  );
+}
+
+.logoTrack {
+  display: flex;
+  width: max-content;
+  align-items: center;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
 }
 
 .logoList {
   margin: 0;
-  padding: 0;
+  padding: 0 44px;
   list-style: none;
   display: flex;
+  align-items: center;
+  gap: 62px;
+  flex-shrink: 0;
+}
+
+.logoItem {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  gap: 44px;
-  color: #9aa3ad;
-  font-size: 12px;
-  line-height: 20px;
-  letter-spacing: 0.08em;
-  flex-wrap: wrap;
+}
+
+.logoItemDialog {
+  transform: translateY(-20px);
+}
+
+.logoItemMeta {
+  margin-inline: -14px;
+}
+
+.logoItemPickters {
+  margin-inline: -8px;
+}
+
+.logoImage {
+  width: auto;
+  height: 94px;
+  opacity: 0.88;
+  filter: grayscale(1);
+}
+
+.logoImageDialog {
+  height: 101px;
+}
+
+.logoImageMaxis {
+  height: 205px;
+}
+
+.logoImageMeta {
+  height: 96px;
+}
+
+.logoImagePickters {
+  height: 144px;
+}
+
+.logoImageTac {
+  height: 112px;
 }
 
 .featuresGrid {
@@ -915,18 +1022,21 @@
   display: grid;
   grid-template-columns: 415px minmax(0, 1fr);
   gap: 20px;
+  align-items: stretch;
 }
 
 .contactIntro {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  min-height: 614px;
+  justify-content: flex-start;
+  align-items: flex-start;
+  min-height: 0;
+  height: 100%;
 }
 
 .contactIntro h2 {
   font-size: 40px;
-  margin-top: 6px;
+  margin: 6px 0 14px;
   color: var(--ink-900);
 }
 
@@ -943,6 +1053,7 @@
 .socialRow {
   margin-top: auto;
   display: flex;
+  align-items: center;
   gap: 12px;
 }
 
@@ -957,11 +1068,14 @@
   align-items: center;
   justify-content: center;
   padding: 10px;
+  line-height: 0;
+  flex: 0 0 40px;
 }
 
 .socialIcon {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
 .contactForm {
@@ -973,6 +1087,7 @@
   display: flex;
   flex-direction: column;
   gap: 32px;
+  align-self: start;
 }
 
 .contactFields {
@@ -1068,7 +1183,7 @@
 }
 
 .footerCtaSection {
-  padding: 120px var(--page-gutter) 0;
+  padding: calc(var(--section-gap) + 24px) var(--page-gutter) 0;
 }
 
 .footerCta {
@@ -1226,7 +1341,7 @@
 
 @media (max-width: 1200px) {
   .heroStack {
-    padding-bottom: 244px;
+    padding-bottom: 300px;
   }
 
   .heroContent {
@@ -1286,7 +1401,12 @@
 
   .contactIntro {
     min-height: 0;
-    gap: 24px;
+    gap: 0;
+    height: auto;
+  }
+
+  .socialRow {
+    margin-top: 28px;
   }
 }
 
@@ -1296,7 +1416,7 @@
   }
 
   .heroStack {
-    padding-bottom: 194px;
+    padding-bottom: 230px;
   }
 
   .heroCard {
@@ -1359,7 +1479,7 @@
   }
 
   .section {
-    padding-top: 72px;
+    padding-top: 108px;
   }
 
   .sectionHeader {
@@ -1471,8 +1591,61 @@
     width: 100%;
   }
 
+  .logoStrip {
+    padding: 44px 0 18px;
+  }
+
+  .logoIntro {
+    margin-bottom: 14px;
+    font-size: 12px;
+    line-height: 18px;
+    letter-spacing: 0.07em;
+  }
+
+  .logoCarousel {
+    min-height: 126px;
+    padding: 12px 0;
+  }
+
   .logoList {
-    gap: 16px;
+    gap: 34px;
+    padding-inline: 16px;
+  }
+
+  .logoItemDialog {
+    transform: translateY(-10px);
+  }
+
+  .logoItemMeta {
+    margin-inline: -8px;
+  }
+
+  .logoItemPickters {
+    margin-inline: -4px;
+  }
+
+  .logoImage {
+    height: 58px;
+  }
+
+  .logoImageDialog {
+    height: 61px;
+  }
+
+  .logoImageMaxis {
+    height: 97px;
+  }
+
+  .logoImageMeta {
+    height: 60px;
+  }
+
+  .logoImagePickters {
+    height: 77px;
+  }
+
+  .logoImageTac {
+    height: 65px;
   }
 
   .featureText,
@@ -1533,4 +1706,5 @@
     font-size: 14px;
   }
 }
+
 

@@ -1,0 +1,6 @@
+﻿<svg width="320" height="60" viewBox="0 0 320 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="320" height="60" rx="10" fill="transparent"/>
+  <path d="M48 12C83 2 138 2 194 18" stroke="#A6AFB9" stroke-width="4" stroke-linecap="round"/>
+  <path d="M126 44C181 58 236 58 272 48" stroke="#8F99A4" stroke-width="4" stroke-linecap="round"/>
+  <text x="160" y="36" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="600" letter-spacing="0.06em" fill="#9AA3AD">TRANSASIA</text>
+</svg>

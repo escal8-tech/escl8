@@ -5,6 +5,7 @@ import { Fragment } from "react";
 import styles from "./page.module.css";
 import TestimonialCarousel from "./TestimonialCarousel";
 import HomeHeroNav from "./HomeHeroNav";
+import TrustedLogoCarousel, { type TrustedLogo } from "./TrustedLogoCarousel";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -18,7 +19,43 @@ const interTight = Inter_Tight({
   weight: ["500", "600"],
 });
 
-const logos = ["GENERAL DYNAMICS", "HUMAN", "META", "CITI", "MICROSOFT"];
+const trustedLogos: TrustedLogo[] = [
+  {
+    name: "Dialog",
+    src: "/logos/Dialog.png",
+    width: 320,
+    height: 120,
+    size: "dialog",
+  },
+  {
+    name: "Maxis",
+    src: "/logos/maxis.png",
+    width: 320,
+    height: 120,
+    size: "maxis",
+  },
+  {
+    name: "Meta",
+    src: "/logos/Meta.png",
+    width: 260,
+    height: 90,
+    size: "meta",
+  },
+  {
+    name: "Pickters",
+    src: "/logos/pickters.png",
+    width: 320,
+    height: 120,
+    size: "pickters",
+  },
+  {
+    name: "TAC",
+    src: "/logos/tac.png",
+    width: 300,
+    height: 120,
+    size: "tac",
+  },
+];
 
 const stats = [
   { value: "24/7", label: "Instant AI responses, never miss a lead." },
@@ -110,11 +147,8 @@ export default function Home() {
 
       <section className={styles.logoStrip}>
         <div className={styles.container}>
-          <ul className={styles.logoList}>
-            {logos.map((logo) => (
-              <li key={logo}>{logo}</li>
-            ))}
-          </ul>
+          <p className={styles.logoIntro}>Partnered with leading brands</p>
+          <TrustedLogoCarousel logos={trustedLogos} />
         </div>
       </section>
 
