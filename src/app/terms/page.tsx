@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import Image from "next/image";
+import LandingFooterLegal from "@/components/LandingFooterLegal";
+import styles from "../legal/legal.module.css";
 
 export const metadata: Metadata = {
   title: "Terms of Service - Escl8",
@@ -6,95 +9,139 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <div className="legal-page">
-      <div className="container">
-        <div className="frost-card">
-        <h1>Terms of Service</h1>
-        <p>Last updated: {new Date().toLocaleDateString()}</p>
-
-        <p>
-          These Terms of Service (&quot;Terms&quot;) govern your access to and use of
-          <strong> Escl8</strong> (the &quot;Service&quot;). By using the Service, you
-          agree to these Terms.
-        </p>
-
-        <h2>1. The Service</h2>
-        <p>
-          Escl8 enables you to create and operate customized AI agents that
-          can be connected to WhatsApp and web channels. You can upload
-          materials (&quot;Content&quot;) to tailor responses and define your brand tone.
-        </p>
-
-        <h2>2. Your Account & Responsibilities</h2>
-        <p>
-          You are responsible for your account, the Content you upload, and for
-          complying with applicable laws. You must obtain necessary rights and
-          permissions to process end-user data and to use third-party platforms
-          (e.g., Meta/WhatsApp).
-        </p>
-
-        <h2>3. Acceptable Use</h2>
-        <p>
-          You may not use the Service to engage in unlawful, misleading, or
-          harmful activities; to infringe others&apos; rights; to distribute malware;
-          or to violate platform policies (including Meta&apos;s terms for WhatsApp).
-        </p>
-
-        <h2>4. Subscriptions & Billing</h2>
-        <p>
-          Paid plans are billed in advance on a subscription basis and are
-          non-refundable except where required by law. We may change prices with
-          prior notice.
-        </p>
-
-        <h2>5. Intellectual Property</h2>
-        <p>
-          You retain ownership of your Content. We and our licensors retain all
-          rights to the Service. You grant us a limited license to process your
-          Content solely to provide the Service.
-        </p>
-
-        <h2>6. Disclaimers</h2>
-        <p>
-          The Service is provided &quot;as is&quot; without warranties of any kind. AI
-          outputs may be inaccurate or incomplete. You are responsible for
-          reviewing outputs before relying on them.
-        </p>
-
-        <h2>7. Limitation of Liability</h2>
-        <p>
-          To the maximum extent permitted by law, Escl8 will not be liable for
-          indirect, incidental, special, consequential, or punitive damages, or
-          loss of profits, data, or goodwill.
-        </p>
-
-        <h2>8. Termination</h2>
-        <p>
-          You may stop using the Service at any time. We may suspend or
-          terminate access if you breach these Terms. Upon termination, your
-          right to use the Service ceases immediately.
-        </p>
-
-        <h2>9. Changes</h2>
-        <p>
-          We may modify these Terms. Updates take effect upon posting. Your
-          continued use of the Service constitutes acceptance.
-        </p>
-
-        <h2>10. Governing Law</h2>
-        <p>
-          These Terms are governed by applicable laws of your place of
-          establishment or, if none, the laws of the jurisdiction where Escl8 is
-          organized, without regard to conflict of law principles.
-        </p>
-
-        <h2>Contact</h2>
-        <p>
-          For questions about these Terms, contact <a href="mailto:legal@escl8.com">legal@escl8.com</a>.
-        </p>
+    <div className={styles.page}>
+      <section className={styles.heroSection}>
+        <div className={styles.heroCard}>
+          <Image src="/landing/hero-bg.jpg" alt="" fill className={styles.heroBackground} />
+          <Image src="/landing/hero-noise.png" alt="" fill className={styles.heroNoise} />
+          <div className={styles.heroOverlay} aria-hidden />
+          <div className={styles.heroContent}>
+            <p className={styles.eyebrow}>Legal</p>
+            <h1>Terms of Service</h1>
+            <p>
+              The terms that govern your use of Escl8 when deploying AI-powered
+              customer conversations.
+            </p>
+          </div>
         </div>
-      </div>
+      </section>
+
+      <section className={styles.contentSection}>
+        <div className={styles.container}>
+          <article className={styles.legalCard}>
+            <p className={styles.updated}>Last updated: {new Date().toLocaleDateString()}</p>
+
+            <section className={styles.section}>
+              <p>
+                These Terms of Service (&quot;Terms&quot;) govern your access to and use of
+                <strong> Escl8</strong> (the &quot;Service&quot;). By using the Service, you
+                agree to these Terms.
+              </p>
+            </section>
+
+            <section className={styles.section}>
+              <h2>1. The Service</h2>
+              <p>
+                Escl8 enables you to create and operate customized AI agents that
+                can be connected to WhatsApp and web channels. You can upload
+                materials (&quot;Content&quot;) to tailor responses and define your brand tone.
+              </p>
+            </section>
+
+            <section className={styles.section}>
+              <h2>2. Your Account & Responsibilities</h2>
+              <p>
+                You are responsible for your account, the Content you upload, and
+                for complying with applicable laws. You must obtain necessary
+                rights and permissions to process end-user data and to use
+                third-party platforms (e.g., Meta/WhatsApp).
+              </p>
+            </section>
+
+            <section className={styles.section}>
+              <h2>3. Acceptable Use</h2>
+              <p>
+                You may not use the Service to engage in unlawful, misleading, or
+                harmful activities; to infringe others&apos; rights; to distribute
+                malware; or to violate platform policies (including Meta&apos;s terms
+                for WhatsApp).
+              </p>
+            </section>
+
+            <section className={styles.section}>
+              <h2>4. Subscriptions & Billing</h2>
+              <p>
+                Paid plans are billed in advance on a subscription basis and are
+                non-refundable except where required by law. We may change prices
+                with prior notice.
+              </p>
+            </section>
+
+            <section className={styles.section}>
+              <h2>5. Intellectual Property</h2>
+              <p>
+                You retain ownership of your Content. We and our licensors retain
+                all rights to the Service. You grant us a limited license to
+                process your Content solely to provide the Service.
+              </p>
+            </section>
+
+            <section className={styles.section}>
+              <h2>6. Disclaimers</h2>
+              <p>
+                The Service is provided &quot;as is&quot; without warranties of any kind.
+                AI outputs may be inaccurate or incomplete. You are responsible
+                for reviewing outputs before relying on them.
+              </p>
+            </section>
+
+            <section className={styles.section}>
+              <h2>7. Limitation of Liability</h2>
+              <p>
+                To the maximum extent permitted by law, Escl8 will not be liable
+                for indirect, incidental, special, consequential, or punitive
+                damages, or loss of profits, data, or goodwill.
+              </p>
+            </section>
+
+            <section className={styles.section}>
+              <h2>8. Termination</h2>
+              <p>
+                You may stop using the Service at any time. We may suspend or
+                terminate access if you breach these Terms. Upon termination, your
+                right to use the Service ceases immediately.
+              </p>
+            </section>
+
+            <section className={styles.section}>
+              <h2>9. Changes</h2>
+              <p>
+                We may modify these Terms. Updates take effect upon posting. Your
+                continued use of the Service constitutes acceptance.
+              </p>
+            </section>
+
+            <section className={styles.section}>
+              <h2>10. Governing Law</h2>
+              <p>
+                These Terms are governed by applicable laws of your place of
+                establishment or, if none, the laws of the jurisdiction where
+                Escl8 is organized, without regard to conflict of law principles.
+              </p>
+            </section>
+
+            <section className={styles.section}>
+              <h2>Contact</h2>
+              <p>
+                Questions about these terms can be sent to{" "}
+                <a href="mailto:legal@escl8.com">legal@escl8.com</a>.
+              </p>
+            </section>
+          </article>
+        </div>
+      </section>
+
+      <LandingFooterLegal />
     </div>
   );
 }
-

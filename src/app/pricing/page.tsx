@@ -44,7 +44,7 @@ const plans = [
     cadence: "/month",
     cta: "Start Growth Plan",
     featured: true,
-    notes: "14-day free trial - Cancel anytime",
+    notes: "",
     features: [
       "Everything in Starter",
       "Advanced analytics dashboard",
@@ -77,8 +77,8 @@ const plans = [
 
 const comparisonRows = [
   ["Document uploads", "Unlimited", "Unlimited", "Unlimited"],
-  ["AI conversations / month", "1,000", "10,000", "Unlimited"],
-  ["Brand voice customization", "Yes", "Yes", "Yes"],
+  ["AI conversations / month", "10,000", "50,000", "Unlimited"],
+  ["Brand voice customization", "No", "Yes", "Yes"],
   ["Analytics dashboard", "Basic", "Advanced", "Custom"],
   ["Booking calendar", "No", "Yes", "Yes"],
   ["CRM and lead scoring", "No", "Yes", "Yes"],
@@ -135,7 +135,7 @@ export default function PricingPage() {
                   <Link href={plan.name === "Scale" ? "/#contact" : "/portal"} className={styles.planButton}>
                     {plan.cta}
                   </Link>
-                  <p className={styles.planNote}>{plan.notes}</p>
+                  {plan.notes ? <p className={styles.planNote}>{plan.notes}</p> : null}
                 </div>
               </article>
             ))}
@@ -152,6 +152,12 @@ export default function PricingPage() {
 
           <div className={styles.tableWrap}>
             <table className={styles.table}>
+              <colgroup>
+                <col className={styles.featureCol} />
+                <col className={styles.planCol} />
+                <col className={styles.planCol} />
+                <col className={styles.planCol} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Features</th>

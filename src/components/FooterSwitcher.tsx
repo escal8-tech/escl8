@@ -10,7 +10,10 @@ export default function FooterSwitcher() {
     pathname === "/" ||
     pathname.startsWith("/portal") ||
     pathname === "/pricing" ||
-    pathname === "/faq"
+    pathname === "/faq" ||
+    pathname === "/privacy" ||
+    pathname === "/terms" ||
+    pathname === "/data-deletion"
   ) {
     return null;
   }

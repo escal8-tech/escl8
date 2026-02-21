@@ -1,0 +1,178 @@
+.page {
+  --ink-900: #001630;
+  --ink-700: #4a5159;
+  --line-100: #e4e8ee;
+  --brand-gold: #ba994f;
+  --light-bg: #f4f6f8;
+  --content-max: 1279px;
+  --hero-max: 1392px;
+  --page-gutter: clamp(12px, 2.4vw, 24px);
+
+  min-height: 100%;
+  background: var(--light-bg);
+  color: var(--ink-900);
+  font-family: "Inter", sans-serif;
+  padding: 120px 0 24px;
+}
+
+.container {
+  width: min(var(--content-max), calc(100% - (var(--page-gutter) * 2)));
+  margin: 0 auto;
+}
+
+.heroSection {
+  padding: 0 var(--page-gutter);
+}
+
+.heroCard {
+  position: relative;
+  max-width: var(--hero-max);
+  margin: 0 auto;
+  border-radius: 28px;
+  overflow: hidden;
+  min-height: 320px;
+}
+
+.heroBackground,
+.heroNoise {
+  object-fit: cover;
+}
+
+.heroBackground {
+  filter: brightness(0.9);
+}
+
+.heroNoise {
+  opacity: 0.08;
+  mix-blend-mode: screen;
+}
+
+.heroOverlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 15%, rgba(0, 22, 48, 0.1), rgba(0, 12, 29, 0.82));
+}
+
+.heroContent {
+  position: relative;
+  z-index: 1;
+  width: min(980px, calc(100% - (var(--page-gutter) * 2)));
+  margin: 0 auto;
+  padding: 88px 0 66px;
+  text-align: center;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--brand-gold);
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 20px;
+  text-transform: uppercase;
+}
+
+.heroContent h1 {
+  margin: 10px 0 0;
+  color: #f4f7fb;
+  font-weight: 400;
+  font-size: clamp(36px, 5vw, 56px);
+  line-height: 1.04;
+}
+
+.heroContent p {
+  margin: 18px auto 0;
+  max-width: 760px;
+  color: #e5ebf2;
+  font-size: 18px;
+  line-height: 28px;
+}
+
+.contentSection {
+  padding-top: 72px;
+}
+
+.legalCard {
+  background: #fff;
+  border: 1px solid var(--line-100);
+  border-radius: 20px;
+  box-shadow: 0 4px 6px rgba(218, 218, 218, 0.25);
+  padding: 40px;
+}
+
+.updated {
+  margin: 0 0 24px;
+  color: var(--ink-700);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.legalCard h2 {
+  margin: 0 0 12px;
+  color: var(--ink-900);
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 400;
+}
+
+.section + .section {
+  margin-top: 28px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line-100);
+}
+
+.legalCard p,
+.legalCard li {
+  margin: 0;
+  color: var(--ink-700);
+  font-size: 16px;
+  line-height: 26px;
+}
+
+.legalCard ul {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 10px;
+}
+
+.flushList {
+  padding-left: 0;
+  list-style: none;
+}
+
+.legalCard a {
+  color: var(--brand-gold);
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .page {
+    padding-top: 94px;
+  }
+
+  .heroSection {
+    padding: 0 12px;
+  }
+
+  .heroContent {
+    width: calc(100% - 24px);
+    padding: 80px 0 58px;
+  }
+
+  .heroContent p {
+    font-size: 16px;
+    line-height: 24px;
+  }
+
+  .contentSection {
+    padding-top: 52px;
+  }
+
+  .legalCard {
+    padding: 24px 20px;
+  }
+
+  .legalCard h2 {
+    font-size: 24px;
+  }
+}

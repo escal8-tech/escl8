@@ -95,6 +95,7 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
+  align-items: center;
 }
 
 .planCard {
@@ -112,6 +113,7 @@
 .planCardFeatured {
   border: 1px solid rgba(186, 153, 79, 0.5);
   box-shadow: 0 16px 36px rgba(186, 153, 79, 0.2);
+  min-height: calc(100% + 24px);
 }
 
 .featuredTag {
@@ -255,6 +257,7 @@
 .table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   min-width: 760px;
 }
 
@@ -277,8 +280,18 @@
 .table th {
   background: #f7f9fb;
   color: var(--ink-900);
-  text-align: center;
+  text-align: left;
   font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.featureCol {
+  width: 38%;
+}
+
+.planCol {
+  width: 20.666%;
 }
 
 .table tr:last-child td {
@@ -329,6 +342,11 @@
 @media (max-width: 1100px) {
   .planGrid {
     grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .planCardFeatured {
+    min-height: 0;
   }
 }
 
