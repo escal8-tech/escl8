@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
+import styles from "./Nav.module.css";
 
 const links = [
   { href: "/", label: "Home" },
@@ -32,16 +33,16 @@ export default function Nav() {
 
   return (
     <>
-      <header className={`floating-nav ${isScrolled ? "scrolled" : ""}`}>
-        <div className="nav-pill">
+      <header className={`${styles.floatingNav} ${isScrolled ? styles.scrolled : ""}`}>
+        <div className={styles.navPill}>
           {/* Logo */}
-          <Link href="/" className="nav-logo-link">
+          <Link href="/" className={styles.navLogoLink}>
             <Image 
               src="/landing/logo-main-wordmark.png" 
               alt="Escalate" 
               width={92} 
               height={23} 
-              className="logo-wordmark"
+              className={styles.logoWordmark}
               priority
             />
             <Image
@@ -49,18 +50,18 @@ export default function Nav() {
               alt=""
               width={30}
               height={13}
-              className="logo-infinity"
+              className={styles.logoInfinity}
               priority
             />
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="nav-links">
+          <nav className={styles.navLinks}>
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className={`nav-link ${pathname === link.href ? "active" : ""}`}
+                className={`${styles.navLink} ${pathname === link.href ? styles.active : ""}`}
               >
                 {link.label}
               </Link>
@@ -68,13 +69,13 @@ export default function Nav() {
           </nav>
 
           {/* CTA Button */}
-          <Link href="/portal" className="nav-cta">
+          <Link href="/portal" className={styles.navCta}>
             Sign Up
           </Link>
 
           {/* Mobile Menu Button */}
           <button
-            className="mobile-menu-btn"
+            className={styles.mobileMenuBtn}
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             aria-label="Toggle menu"
           >
@@ -97,18 +98,20 @@ export default function Nav() {
       </header>
 
       {/* Mobile Menu */}
-      <div className={`mobile-menu ${isMobileMenuOpen ? "open" : ""}`}>
-        <div className="mobile-menu-content">
+      <div className={`${styles.mobileMenu} ${isMobileMenuOpen ? styles.open : ""}`}>
+        <div className={styles.mobileMenuContent}>
           {links.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className={`mobile-link ${pathname === link.href ? "active" : ""}`}
+              className={`${styles.mobileLink} ${
+                pathname === link.href ? styles.mobileActive : ""
+              }`}
             >
               {link.label}
             </Link>
           ))}
-          <Link href="/portal" className="mobile-cta">
+          <Link href="/portal" className={styles.mobileCta}>
             Sign Up
           </Link>
         </div>

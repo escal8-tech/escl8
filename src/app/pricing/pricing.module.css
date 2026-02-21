@@ -5,16 +5,19 @@
   --line-200: #d3dbe6;
   --brand-gold: #ba994f;
   --light-bg: #f4f6f8;
+  --content-max: 1279px;
+  --hero-max: 1392px;
+  --page-gutter: clamp(12px, 2.4vw, 24px);
 
   min-height: 100%;
   background: var(--light-bg);
   color: var(--ink-900);
   font-family: var(--pricing-inter), "Inter", sans-serif;
-  padding: 120px 0 96px;
+  padding: 120px 0 24px;
 }
 
 .container {
-  width: min(1064px, calc(100% - 40px));
+  width: min(var(--content-max), calc(100% - (var(--page-gutter) * 2)));
   margin: 0 auto;
 }
 
@@ -23,12 +26,12 @@
 }
 
 .heroSection {
-  padding: 0 24px;
+  padding: 0 var(--page-gutter);
 }
 
 .heroCard {
   position: relative;
-  max-width: 1392px;
+  max-width: var(--hero-max);
   margin: 0 auto;
   border-radius: 28px;
   overflow: hidden;
@@ -58,7 +61,7 @@
 .heroContent {
   position: relative;
   z-index: 1;
-  width: min(900px, calc(100% - 48px));
+  width: min(980px, calc(100% - (var(--page-gutter) * 2)));
   margin: 0 auto;
   padding: 104px 0 88px;
   text-align: center;
@@ -322,6 +325,7 @@
   font-weight: 500;
 }
 
+
 @media (max-width: 1100px) {
   .planGrid {
     grid-template-columns: 1fr;
@@ -334,7 +338,7 @@
   }
 
   .heroSection {
-    padding: 0 12px;
+    padding: 0 var(--page-gutter);
   }
 
   .heroContent {

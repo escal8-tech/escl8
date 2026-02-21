@@ -5,7 +5,15 @@ import { usePathname } from "next/navigation";
 
 export default function FooterSwitcher() {
   const pathname = usePathname();
-  if (!pathname || pathname === "/" || pathname.startsWith("/portal")) return null;
+  if (
+    !pathname ||
+    pathname === "/" ||
+    pathname.startsWith("/portal") ||
+    pathname === "/pricing" ||
+    pathname === "/faq"
+  ) {
+    return null;
+  }
   return <Footer />;
 }
 

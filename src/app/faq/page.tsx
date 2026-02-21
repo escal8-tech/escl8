@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Inter, Inter_Tight } from "next/font/google";
 import styles from "./faq.module.css";
+import LandingFooterLegal from "@/components/LandingFooterLegal";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -129,6 +130,8 @@ export default function FAQPage() {
           </div>
         </div>
       </section>
+
+      <LandingFooterLegal />
     </div>
   );
 }
