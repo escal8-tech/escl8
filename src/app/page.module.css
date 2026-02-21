@@ -532,7 +532,7 @@
 
 .featureVisualOne,
 .featureVisualTwo {
-  height: 375px;
+  height: 452px;
   position: relative;
   background: linear-gradient(180deg, #fdf9f1 0%, #fff 75%);
 }
@@ -545,6 +545,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center center;
   display: block;
 }
 
@@ -1494,7 +1495,7 @@
 
   .featureVisualOne,
   .featureVisualTwo {
-    height: 312px;
+    height: 380px;
   }
 
   .chipTopLeft {
