@@ -166,13 +166,17 @@ export default function Home() {
           <div className={styles.featuresGrid}>
             <article className={styles.featureCard}>
               <div className={styles.featureVisualOne}>
-                <Image
-                  src="/landing/inbox.png"
-                  alt="Unified inbox channels visualization"
-                  width={522}
-                  height={375}
-                  className={styles.featureVisualImage}
-                />
+                <video
+                  className={styles.featureVisualVideoContain}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="auto"
+                  aria-label="Unified inbox channels visualization"
+                >
+                  <source src="/landing/loop2.mp4" type="video/mp4" />
+                </video>
               </div>
               <div className={styles.featureText}>
                 <h3>One inbox for all your channels</h3>
@@ -185,13 +189,17 @@ export default function Home() {
 
             <article className={styles.featureCard}>
               <div className={styles.featureVisualTwo}>
-                <Image
-                  src="/landing/conversation.png"
-                  alt="Multiple customers, one chatbot visualization"
-                  width={522}
-                  height={375}
+                <video
                   className={styles.featureVisualImage}
-                />
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="auto"
+                  aria-label="Multiple customers, one chatbot visualization"
+                >
+                  <source src="/landing/loop.mp4" type="video/mp4" />
+                </video>
               </div>
               <div className={styles.featureText}>
                 <h3>Handle conversations automatically</h3>
@@ -448,4 +456,3 @@ export default function Home() {
     </div>
   );
 }
-
