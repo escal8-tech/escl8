@@ -288,7 +288,32 @@ export async function POST(req: Request) {
         attributes: {
           endpoint: err.endpoint,
           error_message: err.message,
+          graph_error_code: err.graphError?.code,
+          graph_error_subcode: err.graphError?.error_subcode,
+          graph_error_type: err.graphError?.type,
+          graph_fbtrace_id: err.graphError?.fbtrace_id,
           status_code: err.status,
+        },
+      });
+      captureSentryException(err, {
+        action: "whatsapp-sync",
+        area: "whatsapp",
+        level: "error",
+        contexts: {
+          meta_graph: {
+            endpoint: err.endpoint,
+            fbtrace_id: err.graphError?.fbtrace_id ?? null,
+            message: err.message,
+            status: err.status,
+            type: err.graphError?.type ?? null,
+            code: err.graphError?.code ?? null,
+            subcode: err.graphError?.error_subcode ?? null,
+          },
+        },
+        tags: {
+          "whatsapp.route": "sync",
+          "whatsapp.graph_code": err.graphError?.code ?? null,
+          "whatsapp.meta_status": err.status,
         },
       });
       return NextResponse.json(

@@ -4,6 +4,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import PortalAuthProvider from "@/components/PortalAuthProvider";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
+import { fetchWithFirebaseAuth } from "@/lib/client-auth-ops";
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/components/ToastProvider";
 import { DocSlot, DocType, ExistingMap, ExistingDoc } from "./types";
@@ -749,11 +750,13 @@ function UploadContent() {
   const fetchExisting = useCallback(async () => {
     try {
       setBusy(true);
-      const auth = getFirebaseAuth();
-      if (!auth) throw new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.");
-      const token = await auth.currentUser?.getIdToken();
-      const res = await fetch(`/api/upload/docs`, {
-        headers: token ? { authorization: `Bearer ${token}` } : undefined,
+      const res = await fetchWithFirebaseAuth(`/api/upload/docs`, undefined, {
+        action: "portal.upload.fetchExisting",
+        area: "documents",
+        missingConfigEvent: "document.list_failed",
+        missingSessionEvent: "document.list_session_missing",
+        requestFailureEvent: "document.list_failed",
+        tokenFailureEvent: "document.list_failed",
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load existing docs");
@@ -830,13 +833,17 @@ function UploadContent() {
       const form = new FormData();
       form.append("file", file);
       form.append("docType", docType);
-      const auth = getFirebaseAuth();
-      if (!auth) throw new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.");
-      const token = await auth.currentUser?.getIdToken();
-      const res = await fetch("/api/upload/docs", {
+      const res = await fetchWithFirebaseAuth("/api/upload/docs", {
         method: "POST",
         body: form,
-        headers: token ? { authorization: `Bearer ${token}` } : undefined,
+      }, {
+        action: "portal.upload.submit",
+        area: "documents",
+        attributes: { doc_type: docType },
+        missingConfigEvent: "document.upload_failed",
+        missingSessionEvent: "document.upload_session_missing",
+        requestFailureEvent: "document.upload_failed",
+        tokenFailureEvent: "document.upload_failed",
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Upload failed");
@@ -899,13 +906,6 @@ function UploadContent() {
     }
   }, [userEmail, retrainMutation, toast]);
 
-  // Stats calculation
-  const stats = {
-    uploaded: Object.values(existing).filter(Boolean).length,
-    trained: Object.values(existing).filter((d) => d?.indexingStatus === "indexed").length,
-    total: DOC_SLOTS.length,
-  };
-
   return (
     <div style={styles.page}>
       {/* Tip Card */}
@@ -958,4 +958,3 @@ export default function PortalUploadPage() {
     </PortalAuthProvider>
   );
 }
-

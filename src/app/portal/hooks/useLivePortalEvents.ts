@@ -2,10 +2,11 @@
 "use client";
 
 import { useEffect } from "react";
+import { fetchWithFirebaseAuth } from "@/lib/client-auth-ops";
+import { isClientErrorReported } from "@/lib/client-business-monitoring";
 import { recordGrafanaLog } from "@/lib/grafana-monitoring";
 import { captureSentryException } from "@/lib/sentry-monitoring";
 import { trpc } from "@/utils/trpc";
-import { getFirebaseAuth } from "@/lib/firebaseClient";
 
 type MaybePhoneFilter = {
   whatsappIdentityId?: string | null;
@@ -486,17 +487,23 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
 
       try {
         let connectionFailureReported = false;
-        const auth = getFirebaseAuth();
-        if (!auth) return;
-        const token = await auth.currentUser?.getIdToken();
-        if (!token) {
-          reconnectTimer = setTimeout(connect, 2000);
-          return;
-        }
-
-        const response = await fetch("/api/events/negotiate", {
-          headers: { authorization: `Bearer ${token}` },
+        const response = await fetchWithFirebaseAuth("/api/events/negotiate", {
           cache: "no-store",
+        }, {
+          action: "realtime.connect",
+          area: "realtime",
+          attributes: { hub: "portal" },
+          missingConfigEvent: "realtime.auth_unconfigured",
+          missingSessionEvent: "realtime.session_missing",
+          onFailure: (_error, report) => {
+            reportRealtimeClientFailure(report.event, {
+              ...(report.attributes || {}),
+              hub: "portal",
+            }, report.captureInSentry);
+            connectionFailureReported = true;
+          },
+          requestFailureEvent: "realtime.negotiate_request_failed",
+          tokenFailureEvent: "realtime.auth_token_failed",
         });
 
         if (!response.ok) {
@@ -598,8 +605,9 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
 
         return;
       } catch (error) {
-        reportRealtimeClientFailure("realtime.connect_exception", { hub: "portal" }, true);
-        void error;
+        if (!isClientErrorReported(error)) {
+          reportRealtimeClientFailure("realtime.connect_exception", { hub: "portal" }, true);
+        }
       }
 
       if (!cancelled) {

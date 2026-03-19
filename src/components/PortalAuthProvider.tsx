@@ -2,6 +2,8 @@
 
 import { ReactNode, useEffect, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
+import { getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
+import { isClientErrorReported } from "@/lib/client-business-monitoring";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { usePathname, useRouter } from "next/navigation";
 import { trpc } from "@/utils/trpc";
@@ -61,7 +63,18 @@ export default function PortalAuthProvider({ children }: Props) {
     // Ensure there's a corresponding DB user row before protected pages run queries.
     (async () => {
       try {
-        await user.getIdToken(true);
+        await getFirebaseIdTokenOrThrow({
+          action: "portal.auth.ensureUser",
+          area: "auth",
+          attributes: {
+            firebase_uid: user.uid ?? undefined,
+          },
+          freshToken: true,
+          missingConfigEvent: "auth.user_bootstrap_failed",
+          missingSessionEvent: "auth.user_bootstrap_session_missing",
+          route: pathname ?? "/portal",
+          tokenFailureEvent: "auth.user_bootstrap_failed",
+        });
         const email = user.email;
         if (!email) throw new Error("Signed-in account is missing email.");
         await ensureUser({ email });
@@ -73,21 +86,23 @@ export default function PortalAuthProvider({ children }: Props) {
           area: "auth",
           route: pathname,
         });
-        captureSentryException(e, {
-          action: "portal-auth-ensure-user",
-          area: "auth",
-          contexts: {
-            auth: {
-              email: user.email ?? null,
-              firebaseUid: user.uid ?? null,
-              route: pathname ?? null,
+        if (!isClientErrorReported(e)) {
+          captureSentryException(e, {
+            action: "portal-auth-ensure-user",
+            area: "auth",
+            contexts: {
+              auth: {
+                email: user.email ?? null,
+                firebaseUid: user.uid ?? null,
+                route: pathname ?? null,
+              },
             },
-          },
-          level: "error",
-          tags: {
-            "auth.route": pathname ?? null,
-          },
-        });
+            level: "error",
+            tags: {
+              "auth.route": pathname ?? null,
+            },
+          });
+        }
         setError(message);
       }
     })();

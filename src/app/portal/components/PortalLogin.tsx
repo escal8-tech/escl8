@@ -2,13 +2,14 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
+import { isClientErrorReported, recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "firebase/auth";
 import { trpc } from "@/utils/trpc";
 import { useRouter } from "next/navigation";
 import { AuthLayout } from "./AuthLayout";
 import { LoginForm, LoginFormState } from "./LoginForm";
-import { recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
 
 export function PortalLogin() {
   const auth = getFirebaseAuth();
@@ -31,6 +32,19 @@ export function PortalLogin() {
     e.preventDefault();
     setState((s) => ({ ...s, error: null, busy: true }));
     if (!auth) {
+      recordClientBusinessEvent({
+        event: "auth.email_login_failed",
+        action: "portal-email-login",
+        area: "auth",
+        captureInSentry: true,
+        error: new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars."),
+        level: "error",
+        outcome: "config_missing",
+        route: "/portal",
+        attributes: {
+          auth_provider: "password",
+        },
+      });
       setState({ busy: false, error: "Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars." });
       return;
     }
@@ -51,7 +65,19 @@ export function PortalLogin() {
       }
 
       await signInWithEmailAndPassword(auth, email, password);
-      await auth.currentUser?.getIdToken(true);
+      await getFirebaseIdTokenOrThrow({
+        action: "portal-email-login",
+        area: "auth",
+        attributes: {
+          auth_provider: "password",
+          email_domain: email.split("@")[1] || null,
+        },
+        freshToken: true,
+        missingConfigEvent: "auth.email_login_failed",
+        missingSessionEvent: "auth.email_login_failed",
+        route: "/portal",
+        tokenFailureEvent: "auth.email_login_failed",
+      });
       recordClientBusinessEvent({
         event: "auth.email_login_succeeded",
         action: "portal-email-login",
@@ -66,21 +92,23 @@ export function PortalLogin() {
       router.push("/portal/upload");
     } catch (err: any) {
       console.error(err);
-      const captureInSentry = shouldCaptureUnexpectedClientError(err);
-      recordClientBusinessEvent({
-        event: "auth.email_login_failed",
-        action: "portal-email-login",
-        area: "auth",
-        captureInSentry,
-        error: err,
-        level: captureInSentry ? "error" : "warn",
-        outcome: captureInSentry ? "unexpected_failure" : "handled_failure",
-        route: "/portal",
-        attributes: {
-          auth_provider: "password",
-          email_domain: emailOrUsername.includes("@") ? emailOrUsername.split("@")[1] || null : null,
-        },
-      });
+      if (!isClientErrorReported(err)) {
+        const captureInSentry = shouldCaptureUnexpectedClientError(err);
+        recordClientBusinessEvent({
+          event: "auth.email_login_failed",
+          action: "portal-email-login",
+          area: "auth",
+          captureInSentry,
+          error: err,
+          level: captureInSentry ? "error" : "warn",
+          outcome: captureInSentry ? "unexpected_failure" : "handled_failure",
+          route: "/portal",
+          attributes: {
+            auth_provider: "password",
+            email_domain: emailOrUsername.includes("@") ? emailOrUsername.split("@")[1] || null : null,
+          },
+        });
+      }
       setState({ busy: false, error: err?.message || "Unable to sign in." });
     } finally {
       setState((s) => ({ ...s, busy: false }));
@@ -90,12 +118,40 @@ export function PortalLogin() {
   const handleGoogle = async () => {
     try {
       setState((s) => ({ ...s, busy: true, error: null }));
-      if (!auth) throw new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.");
+      if (!auth) {
+        const error = new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.");
+        recordClientBusinessEvent({
+          event: "auth.google_login_failed",
+          action: "portal-google-login",
+          area: "auth",
+          captureInSentry: true,
+          error,
+          level: "error",
+          outcome: "config_missing",
+          route: "/portal",
+          attributes: {
+            auth_provider: "google",
+          },
+        });
+        throw error;
+      }
       const provider = new GoogleAuthProvider();
       const res = await signInWithPopup(auth, provider);
       const googleEmail = res.user.email;
       if (!googleEmail) throw new Error("Google account has no email attached.");
-      await auth.currentUser?.getIdToken(true);
+      await getFirebaseIdTokenOrThrow({
+        action: "portal-google-login",
+        area: "auth",
+        attributes: {
+          auth_provider: "google",
+          email_domain: googleEmail.split("@")[1] || null,
+        },
+        freshToken: true,
+        missingConfigEvent: "auth.google_login_failed",
+        missingSessionEvent: "auth.google_login_failed",
+        route: "/portal",
+        tokenFailureEvent: "auth.google_login_failed",
+      });
       await upsertUser.mutateAsync({ email: googleEmail, whatsappConnected: false });
       recordClientBusinessEvent({
         event: "auth.google_login_succeeded",
@@ -111,20 +167,22 @@ export function PortalLogin() {
       router.push("/portal/upload");
     } catch (err: any) {
       console.error(err);
-      const captureInSentry = shouldCaptureUnexpectedClientError(err);
-      recordClientBusinessEvent({
-        event: "auth.google_login_failed",
-        action: "portal-google-login",
-        area: "auth",
-        captureInSentry,
-        error: err,
-        level: captureInSentry ? "error" : "warn",
-        outcome: captureInSentry ? "unexpected_failure" : "handled_failure",
-        route: "/portal",
-        attributes: {
-          auth_provider: "google",
-        },
-      });
+      if (!isClientErrorReported(err)) {
+        const captureInSentry = shouldCaptureUnexpectedClientError(err);
+        recordClientBusinessEvent({
+          event: "auth.google_login_failed",
+          action: "portal-google-login",
+          area: "auth",
+          captureInSentry,
+          error: err,
+          level: captureInSentry ? "error" : "warn",
+          outcome: captureInSentry ? "unexpected_failure" : "handled_failure",
+          route: "/portal",
+          attributes: {
+            auth_provider: "google",
+          },
+        });
+      }
       setState((s) => ({ ...s, error: err?.message || "Google sign-in failed." }));
     } finally {
       setState((s) => ({ ...s, busy: false }));

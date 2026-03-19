@@ -3,6 +3,21 @@ import { captureSentryException } from "@/lib/sentry-monitoring";
 
 type MonitoringPrimitive = string | number | boolean | null | undefined;
 type MonitoringAttributes = Record<string, MonitoringPrimitive>;
+const CLIENT_ERROR_REPORTED_FLAG = Symbol.for("escal8.client-error-reported");
+const HANDLED_CLIENT_AUTH_ERROR_CODES = new Set([
+  "auth/account-exists-with-different-credential",
+  "auth/cancelled-popup-request",
+  "auth/email-already-in-use",
+  "auth/invalid-credential",
+  "auth/invalid-email",
+  "auth/popup-closed-by-user",
+  "auth/requires-recent-login",
+  "auth/too-many-requests",
+  "auth/user-mismatch",
+  "auth/user-not-found",
+  "auth/weak-password",
+  "auth/wrong-password",
+]);
 
 function getErrorCode(error: unknown): string {
   if (!error || typeof error !== "object") return "";
@@ -10,9 +25,33 @@ function getErrorCode(error: unknown): string {
   return typeof code === "string" ? code.trim().toLowerCase() : "";
 }
 
+export function isClientErrorReported(error: unknown): boolean {
+  if (!error || (typeof error !== "object" && typeof error !== "function")) return false;
+  return Boolean((error as Record<PropertyKey, unknown>)[CLIENT_ERROR_REPORTED_FLAG]);
+}
+
+export function markClientErrorReported<T>(error: T): T {
+  if (!error || (typeof error !== "object" && typeof error !== "function")) return error;
+
+  try {
+    Object.defineProperty(error, CLIENT_ERROR_REPORTED_FLAG, {
+      configurable: true,
+      enumerable: false,
+      value: true,
+      writable: true,
+    });
+  } catch {
+    (error as Record<PropertyKey, unknown>)[CLIENT_ERROR_REPORTED_FLAG] = true;
+  }
+
+  return error;
+}
+
 export function shouldCaptureUnexpectedClientError(error: unknown): boolean {
   const code = getErrorCode(error);
-  return !(code.startsWith("auth/") || code.startsWith("permission/"));
+  if (code.startsWith("permission/")) return false;
+  if (!code.startsWith("auth/")) return true;
+  return !HANDLED_CLIENT_AUTH_ERROR_CODES.has(code);
 }
 
 export function recordClientBusinessEvent(input: {
