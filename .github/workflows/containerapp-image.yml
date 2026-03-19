@@ -2,7 +2,7 @@ name: Build and Push Container Images
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "staging", "main" ]
   workflow_dispatch:
 
 env:
@@ -30,21 +30,100 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
+      - name: Set deployment channel
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "staging" ]; then
+            echo "CHANNEL_TAG=staging" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_API_KEY=${{ secrets.STAGING_NEXT_PUBLIC_FIREBASE_API_KEY }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ secrets.STAGING_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ secrets.STAGING_NEXT_PUBLIC_FIREBASE_PROJECT_ID }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ secrets.STAGING_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.STAGING_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_APP_ID=${{ secrets.STAGING_NEXT_PUBLIC_FIREBASE_APP_ID }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${{ secrets.STAGING_NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_SENTRY_DSN=${{ secrets.STAGING_NEXT_PUBLIC_SENTRY_DSN }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_SENTRY_ENVIRONMENT=staging" >> "$GITHUB_ENV"
+            echo "SENTRY_AUTH_TOKEN=${{ secrets.STAGING_SENTRY_AUTH_TOKEN }}" >> "$GITHUB_ENV"
+            echo "SENTRY_ORG=${{ secrets.STAGING_SENTRY_ORG }}" >> "$GITHUB_ENV"
+            echo "SENTRY_PROJECT=${{ secrets.STAGING_SENTRY_PROJECT }}" >> "$GITHUB_ENV"
+          else
+            echo "CHANNEL_TAG=latest" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_API_KEY=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_API_KEY }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_PROJECT_ID }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_APP_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_APP_ID }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_SENTRY_DSN=${{ secrets.PRODUCTION_NEXT_PUBLIC_SENTRY_DSN }}" >> "$GITHUB_ENV"
+            echo "NEXT_PUBLIC_SENTRY_ENVIRONMENT=production" >> "$GITHUB_ENV"
+            echo "SENTRY_AUTH_TOKEN=${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}" >> "$GITHUB_ENV"
+            echo "SENTRY_ORG=${{ secrets.PRODUCTION_SENTRY_ORG }}" >> "$GITHUB_ENV"
+            echo "SENTRY_PROJECT=${{ secrets.PRODUCTION_SENTRY_PROJECT }}" >> "$GITHUB_ENV"
+          fi
+          echo "NEXT_PUBLIC_SENTRY_ENABLE_LOGS=true" >> "$GITHUB_ENV"
+          echo "NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE=1" >> "$GITHUB_ENV"
+          echo "NEXT_PUBLIC_SENTRY_RELEASE=${GITHUB_SHA}" >> "$GITHUB_ENV"
+          echo "NEXT_PUBLIC_GRAFANA_BROWSER_LOGS_ENABLED=false" >> "$GITHUB_ENV"
+
+      - name: Validate build secrets
+        env:
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ env.NEXT_PUBLIC_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ env.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ env.NEXT_PUBLIC_FIREBASE_APP_ID }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ env.NEXT_PUBLIC_SENTRY_DSN }}
+        run: |
+          required=(
+            ACR_LOGIN_SERVER
+            ACR_USERNAME
+            ACR_PASSWORD
+            NEXT_PUBLIC_FIREBASE_API_KEY
+            NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+            NEXT_PUBLIC_FIREBASE_PROJECT_ID
+            NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+            NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+            NEXT_PUBLIC_FIREBASE_APP_ID
+            NEXT_PUBLIC_SENTRY_DSN
+          )
+
+          for name in "${required[@]}"; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required value: ${name}"
+              exit 1
+            fi
+          done
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           build-args: |
-            NEXT_PUBLIC_FIREBASE_API_KEY=${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
-            NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
-            NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
-            NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
-            NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
-            NEXT_PUBLIC_FIREBASE_APP_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
-            NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}
+            NEXT_PUBLIC_FIREBASE_API_KEY=${{ env.NEXT_PUBLIC_FIREBASE_API_KEY }}
+            NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+            NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ env.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+            NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+            NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+            NEXT_PUBLIC_FIREBASE_APP_ID=${{ env.NEXT_PUBLIC_FIREBASE_APP_ID }}
+            NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${{ env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}
+            NEXT_PUBLIC_SENTRY_DSN=${{ env.NEXT_PUBLIC_SENTRY_DSN }}
+            NEXT_PUBLIC_SENTRY_ENABLE_LOGS=${{ env.NEXT_PUBLIC_SENTRY_ENABLE_LOGS }}
+            NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE=${{ env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE }}
+            NEXT_PUBLIC_SENTRY_ENVIRONMENT=${{ env.NEXT_PUBLIC_SENTRY_ENVIRONMENT }}
+            NEXT_PUBLIC_SENTRY_RELEASE=${{ env.NEXT_PUBLIC_SENTRY_RELEASE }}
+            NEXT_PUBLIC_GRAFANA_BROWSER_LOGS_ENABLED=${{ env.NEXT_PUBLIC_GRAFANA_BROWSER_LOGS_ENABLED }}
+            SENTRY_AUTH_TOKEN=${{ env.SENTRY_AUTH_TOKEN }}
+            SENTRY_ORG=${{ env.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ env.SENTRY_PROJECT }}
+            SENTRY_RELEASE=${{ github.sha }}
           tags: |
-            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.CHANNEL_TAG }}
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
       - name: Build and push job image
@@ -54,5 +133,5 @@ jobs:
           file: ./Dockerfile.job
           push: true
           tags: |
-            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:latest
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:${{ env.CHANNEL_TAG }}
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:${{ github.sha }}

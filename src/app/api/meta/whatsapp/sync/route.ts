@@ -7,6 +7,8 @@ import { generateSixDigitPin } from "@/server/meta/crypto";
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
 import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 import { checkRateLimit } from "@/server/rateLimit";
+import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { captureSentryException } from "@/lib/sentry-monitoring";
 
 export const runtime = "nodejs";
 
@@ -245,6 +247,23 @@ export async function POST(req: Request) {
       registered,
     });
 
+    recordBusinessEvent({
+      event: "whatsapp.identity_connected",
+      action: "sync",
+      area: "whatsapp",
+      businessId: user.businessId,
+      entity: "whatsapp_identity",
+      entityId: phoneNumberId,
+      source: "api.meta.whatsapp.sync",
+      outcome: "success",
+      status: "connected",
+      attributes: {
+        subscribed_success: Boolean(subscribed?.success ?? true),
+        registered_success: Boolean(registered?.success ?? true),
+        waba_id: wabaId,
+      },
+    });
+
     return NextResponse.json(
       {
       ok: true,
@@ -257,11 +276,20 @@ export async function POST(req: Request) {
     );
   } catch (err: any) {
     if (err instanceof MetaGraphError) {
-      console.error("[WhatsApp Sync] Meta Graph error:", {
-        status: err.status,
-        endpoint: err.endpoint,
-        message: err.message,
-        graphError: err.graphError,
+      recordBusinessEvent({
+        event: "whatsapp.identity_connect_failed",
+        level: "warn",
+        action: "sync",
+        area: "whatsapp",
+        entity: "whatsapp_identity",
+        source: "api.meta.whatsapp.sync",
+        outcome: "handled_failure",
+        status: "meta_graph_error",
+        attributes: {
+          endpoint: err.endpoint,
+          error_message: err.message,
+          status_code: err.status,
+        },
       });
       return NextResponse.json(
         {
@@ -278,8 +306,14 @@ export async function POST(req: Request) {
       );
     }
 
-    console.error("[WhatsApp Sync] Error:", err);
+    captureSentryException(err, {
+      action: "whatsapp-sync",
+      area: "whatsapp",
+      level: "error",
+      tags: {
+        "whatsapp.route": "sync",
+      },
+    });
     return NextResponse.json({ ok: false, error: "Internal error" }, { status: 500 });
   }
 }
-

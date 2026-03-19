@@ -11,6 +11,7 @@
  * - FAQ question extraction for HyDE matching
  */
 
+import * as Sentry from "@sentry/nextjs";
 import OpenAI from "openai";
 
 export type ChunkType = 
@@ -822,7 +823,10 @@ function getOpenAI(): OpenAI {
   if (openaiClient) return openaiClient;
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("Missing OPENAI_API_KEY");
-  openaiClient = new OpenAI({ apiKey: key });
+  openaiClient = Sentry.instrumentOpenAiClient(new OpenAI({ apiKey: key }), {
+    recordInputs: process.env.SENTRY_ENABLE_AI_PAYLOADS !== "false",
+    recordOutputs: process.env.SENTRY_ENABLE_AI_PAYLOADS !== "false",
+  });
   return openaiClient;
 }
 

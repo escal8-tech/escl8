@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 
+import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { captureSentryException } from "@/lib/sentry-monitoring";
+
 type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
 
 export type PortalEvent = {
@@ -43,7 +46,26 @@ function getWebPubSubClient(): WebPubSubClient | null {
     cachedClient = new WebPubSubServiceClient(conn, hub);
     return cachedClient;
   } catch (err) {
-    console.error("[portal_events] failed to initialize Web PubSub client", err);
+    recordBusinessEvent({
+      event: "realtime.portal_client_init_failed",
+      level: "error",
+      area: "realtime",
+      source: "realtime",
+      outcome: "failed",
+      entity: "portal_event",
+      attributes: {
+        error_message: err instanceof Error ? err.message : String(err),
+        hub,
+      },
+    });
+    captureSentryException(err, {
+      action: "portal-events-init",
+      area: "realtime",
+      level: "error",
+      tags: {
+        "realtime.hub": hub,
+      },
+    });
     return null;
   }
 }
@@ -82,14 +104,39 @@ export async function publishPortalEvent(input: PublishPortalEventInput): Promis
     });
     return true;
   } catch (err) {
-    console.error(
-      "[portal_events] publish failed businessId=%s entity=%s op=%s entityId=%s",
-      input.businessId,
-      input.entity,
-      input.op,
-      input.entityId ?? "",
-      err,
-    );
+    recordBusinessEvent({
+      event: "realtime.portal_publish_failed",
+      level: "error",
+      action: input.op,
+      area: "realtime",
+      businessId: input.businessId,
+      entity: input.entity,
+      entityId: input.entityId,
+      source: "realtime",
+      outcome: "failed",
+      status: "publish_failed",
+      attributes: {
+        error_message: err instanceof Error ? err.message : String(err),
+      },
+    });
+    captureSentryException(err, {
+      action: "portal-events-publish",
+      area: "realtime",
+      level: "error",
+      tags: {
+        "escal8.business_id": input.businessId,
+        "realtime.entity": input.entity,
+        "realtime.op": input.op,
+      },
+      contexts: {
+        realtime: {
+          businessId: input.businessId,
+          entity: input.entity,
+          entityId: input.entityId,
+          op: input.op,
+        },
+      },
+    });
     return false;
   }
 }

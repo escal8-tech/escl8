@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Montserrat, Catamaran } from "next/font/google";
 import TopNavSwitcher from "../components/TopNavSwitcher";
 import FooterSwitcher from "@/components/FooterSwitcher";
+import SentryTestButton from "@/components/SentryTestButton";
 import { TRPCProvider } from "@/utils/trpc";
 import { ToastProvider } from "@/components/ToastProvider";
 import "./globals.css";
@@ -43,6 +44,7 @@ export default function RootLayout({
             <TopNavSwitcher />
             <main className="site-main">{children}</main>
             <FooterSwitcher />
+            <SentryTestButton />
           </ToastProvider>
         </TRPCProvider>
       </body>

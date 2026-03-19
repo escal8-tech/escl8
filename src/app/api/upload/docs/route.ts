@@ -7,6 +7,8 @@ import { storeFile } from "@/lib/storage";
 import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 import { checkRateLimit } from "@/server/rateLimit";
 import { publishPortalEvent, toPortalDocumentPayload } from "@/server/realtime/portalEvents";
+import { captureSentryException, recordSentryLog, recordSentryMetric } from "@/lib/sentry-monitoring";
+import { recordBusinessEvent } from "@/lib/business-monitoring";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -126,6 +128,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  let businessId: string | null = null;
+  let docType: DocType | null = null;
   try {
     // Upload endpoint: stricter.
     const rl = checkRateLimit(request, {
@@ -148,8 +152,8 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const file = formData.get("file");
-    const docType = (formData.get("docType") as string) as DocType;
-    const businessId = await getAuthedBusinessId(request);
+    docType = (formData.get("docType") as string) as DocType;
+    businessId = await getAuthedBusinessId(request);
     if (!businessId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -234,12 +238,73 @@ export async function POST(request: Request) {
     }
 
     const latest = await listCurrent(businessId);
+    recordSentryMetric("count", "escl8.upload.docs.success", 1, {
+      area: "upload",
+      business_id: businessId,
+      doc_type: docType,
+    });
+    recordSentryLog("info", "portal document uploaded", {
+      area: "upload",
+      business_id: businessId,
+      doc_type: docType,
+      file_name: file.name,
+      file_size: stored.size,
+    });
+    recordBusinessEvent({
+      event: "upload.document_uploaded",
+      action: "upload",
+      area: "upload",
+      businessId,
+      entity: "training_document",
+      entityId: savedDoc?.id,
+      source: "api.upload.docs",
+      outcome: "success",
+      status: "uploaded",
+      attributes: {
+        doc_type: docType,
+        file_name: file.name,
+        file_size: stored.size,
+      },
+    });
     return NextResponse.json(
       { ok: true, file: latest[docType] ?? { name: file.name, size: stored.size } },
       { headers: rl.headers },
     );
   } catch (err: any) {
+    recordSentryMetric("count", "escl8.upload.docs.errors", 1, {
+      area: "upload",
+      business_id: businessId,
+      doc_type: docType,
+    });
+    recordBusinessEvent({
+      event: "upload.document_upload_failed",
+      level: "error",
+      action: "upload",
+      area: "upload",
+      businessId,
+      entity: "training_document",
+      source: "api.upload.docs",
+      outcome: "failed",
+      status: "error",
+      attributes: {
+        doc_type: docType,
+      },
+    });
+    captureSentryException(err, {
+      action: "upload-docs-post",
+      area: "upload",
+      contexts: {
+        upload: {
+          businessId,
+          docType,
+        },
+      },
+      level: "error",
+      tags: {
+        "escal8.business_id": businessId,
+        "upload.doc_type": docType,
+      },
+    });
     return NextResponse.json({ error: err?.message || "Upload failed" }, { status: 500 });
   }
 }
-

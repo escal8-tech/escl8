@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import OpenAI from "openai";
 
 let client: OpenAI | null = null;
@@ -8,7 +9,10 @@ function getClient(): OpenAI {
   if (!key) {
     throw new Error("Missing OPENAI_API_KEY");
   }
-  client = new OpenAI({ apiKey: key });
+  client = Sentry.instrumentOpenAiClient(new OpenAI({ apiKey: key }), {
+    recordInputs: process.env.SENTRY_ENABLE_AI_PAYLOADS !== "false",
+    recordOutputs: process.env.SENTRY_ENABLE_AI_PAYLOADS !== "false",
+  });
   return client;
 }
 

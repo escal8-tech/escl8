@@ -6,6 +6,8 @@ import { and, eq } from "drizzle-orm";
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
 import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 import { checkRateLimit } from "@/server/rateLimit";
+import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { captureSentryException } from "@/lib/sentry-monitoring";
 
 export const runtime = "nodejs";
 
@@ -121,9 +123,40 @@ export async function POST(req: Request) {
       },
     });
 
+    recordBusinessEvent({
+      event: "whatsapp.message_sent",
+      action: "send",
+      area: "whatsapp",
+      businessId: user.businessId,
+      entity: "whatsapp_message",
+      entityId: phoneNumberId,
+      source: "api.meta.whatsapp.send",
+      outcome: "success",
+      status: "sent",
+      attributes: {
+        recipient: to,
+        text_length: text.length,
+      },
+    });
+
     return NextResponse.json({ ok: true, result: res }, { headers: rl.headers });
   } catch (err: unknown) {
     if (err instanceof MetaGraphError) {
+      recordBusinessEvent({
+        event: "whatsapp.message_send_failed",
+        level: "warn",
+        action: "send",
+        area: "whatsapp",
+        entity: "whatsapp_message",
+        source: "api.meta.whatsapp.send",
+        outcome: "handled_failure",
+        status: "meta_graph_error",
+        attributes: {
+          endpoint: err.endpoint,
+          error_message: err.message,
+          status_code: err.status,
+        },
+      });
       return NextResponse.json(
         {
           ok: false,
@@ -139,7 +172,14 @@ export async function POST(req: Request) {
       );
     }
 
-    console.error("[WhatsApp Send] Error:", err);
+    captureSentryException(err, {
+      action: "whatsapp-send",
+      area: "whatsapp",
+      level: "error",
+      tags: {
+        "whatsapp.route": "send",
+      },
+    });
     return NextResponse.json({ ok: false, error: "Internal error" }, { status: 500 });
   }
 }

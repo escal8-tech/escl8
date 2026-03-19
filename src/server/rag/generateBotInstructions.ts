@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import * as Sentry from "@sentry/nextjs";
 import OpenAI from "openai";
 import { db } from "../db/client";
 import { trainingDocuments, businesses } from "../../../drizzle/schema";
@@ -14,7 +15,10 @@ function getClient(): OpenAI {
   if (!key) {
     throw new Error("Missing OPENAI_API_KEY");
   }
-  client = new OpenAI({ apiKey: key });
+  client = Sentry.instrumentOpenAiClient(new OpenAI({ apiKey: key }), {
+    recordInputs: process.env.SENTRY_ENABLE_AI_PAYLOADS !== "false",
+    recordOutputs: process.env.SENTRY_ENABLE_AI_PAYLOADS !== "false",
+  });
   return client;
 }
 
@@ -192,4 +196,3 @@ export async function generateAndSaveBotInstructions(businessId: string): Promis
     return false;
   }
 }
-

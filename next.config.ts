@@ -1,6 +1,12 @@
+import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
 const isProd = process.env.NODE_ENV === "production";
+const sentrySourceMapsEnabled = Boolean(
+  process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
+);
+const sentryReleaseName =
+  process.env.SENTRY_RELEASE || process.env.NEXT_PUBLIC_SENTRY_RELEASE || process.env.NEXT_PUBLIC_APP_RELEASE;
 
 const nextConfig: NextConfig = {
   // Produce a standalone build so we can deploy minimal artifacts
@@ -32,10 +38,31 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/:path*",
-        headers: securityHeaders,
+        headers: [
+          ...securityHeaders,
+          {
+            key: "Document-Policy",
+            value: "js-profiling",
+          },
+        ],
       },
     ];
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  silent: true,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  release: sentryReleaseName ? { name: sentryReleaseName } : undefined,
+  sourcemaps: {
+    deleteSourcemapsAfterUpload: sentrySourceMapsEnabled,
+    disable: !sentrySourceMapsEnabled,
+  },
+  webpack: {
+    treeshake: {
+      removeDebugLogging: process.env.NODE_ENV === "production",
+    },
+  },
+});
