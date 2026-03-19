@@ -6,6 +6,7 @@ import { bookings } from "../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
+import { recordBusinessEvent } from "@/lib/business-monitoring";
 
 export const bookingsRouter = router({
   list: businessProcedure
@@ -46,6 +47,23 @@ export const bookingsRouter = router({
           payload: { booking: row as any },
           createdAt: row.updatedAt ?? row.createdAt ?? new Date(),
         });
+        recordBusinessEvent({
+          event: "booking.created",
+          action: "create",
+          area: "booking",
+          businessId: ctx.businessId,
+          entity: "booking",
+          entityId: row.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          attributes: {
+            duration_minutes: row.durationMinutes,
+            start_time: row.startTime instanceof Date ? row.startTime.toISOString() : String(row.startTime),
+            units_booked: row.unitsBooked,
+          },
+        });
       }
       return row;
     }),
@@ -66,10 +84,26 @@ export const bookingsRouter = router({
           payload: { booking: row as any },
           createdAt: row.updatedAt ?? row.createdAt ?? new Date(),
         });
+        recordBusinessEvent({
+          event: "booking.deleted",
+          action: "delete",
+          area: "booking",
+          businessId: ctx.businessId,
+          entity: "booking",
+          entityId: row.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          attributes: {
+            duration_minutes: row.durationMinutes,
+            start_time: row.startTime instanceof Date ? row.startTime.toISOString() : String(row.startTime),
+            units_booked: row.unitsBooked,
+          },
+        });
       }
       return row;
     }),
 });
 
 export type BookingsRouter = typeof bookingsRouter;
-

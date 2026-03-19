@@ -1,5 +1,7 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
+
 export default function SentryTestButton() {
   if (process.env.NODE_ENV === "production" || !process.env.NEXT_PUBLIC_SENTRY_DSN) {
     return null;
@@ -7,8 +9,19 @@ export default function SentryTestButton() {
 
   return (
     <button
-      onClick={() => {
-        throw new Error("This is your first error!");
+      onClick={async () => {
+        const error = new Error("Agent Dashboard Test Frontend Error");
+        const eventId = Sentry.captureException(error, {
+          tags: {
+            "escal8.test_event": "true",
+            "escal8.test_surface": "frontend",
+          },
+        });
+        await Sentry.flush(2000);
+        console.info("SENTRY_TEST_FRONTEND_EVENT_ID", eventId);
+        setTimeout(() => {
+          throw error;
+        }, 0);
       }}
       style={{
         background: "#101828",

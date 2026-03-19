@@ -338,8 +338,8 @@ function scheduleBrowserFlush(): void {
   }, DEFAULT_FLUSH_INTERVAL_MS);
 }
 
-function enqueueBrowserLog(entry: BrowserLogEnvelope): void {
-  if (!isGrafanaBrowserLoggingEnabled()) return;
+function enqueueBrowserLog(entry: BrowserLogEnvelope, force = false): void {
+  if (!force && !isGrafanaBrowserLoggingEnabled()) return;
 
   browserQueue.push(entry);
 
@@ -356,6 +356,7 @@ export function recordGrafanaLog(
   message: string,
   attributes: MonitoringAttributes = {},
   options: {
+    forceClientDelivery?: boolean;
     runtime?: GrafanaRuntime;
     source?: string;
   } = {},
@@ -374,12 +375,15 @@ export function recordGrafanaLog(
     return;
   }
 
-  enqueueBrowserLog({
-    attributes,
-    level,
-    message: entry.message,
-    source: options.source,
-  });
+  enqueueBrowserLog(
+    {
+      attributes,
+      level,
+      message: entry.message,
+      source: options.source,
+    },
+    Boolean(options.forceClientDelivery),
+  );
 }
 
 export function installServerConsoleBridge(): void {

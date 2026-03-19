@@ -4,6 +4,7 @@ import { db } from "../db/client";
 import { businesses, users, whatsappIdentities, messageThreads, threadMessages } from "../../../drizzle/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { recordBusinessEvent } from "@/lib/business-monitoring";
 
 export const businessRouter = router({
   listPhoneNumbers: businessProcedure.query(async ({ ctx }) => {
@@ -95,6 +96,26 @@ export const businessRouter = router({
         })
         .where(eq(businesses.id, input.businessId))
         .returning();
+      if (updated) {
+        recordBusinessEvent({
+          event: "business.booking_config_updated",
+          action: "updateBookingConfig",
+          area: "business",
+          businessId: ctx.businessId,
+          entity: "business",
+          entityId: updated.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          attributes: {
+            booking_close_time: input.closeTime,
+            booking_open_time: input.openTime,
+            timeslot_minutes: input.timeslotMinutes,
+            unit_capacity: input.unitCapacity,
+          },
+        });
+      }
       return updated;
     }),
 
@@ -137,6 +158,23 @@ export const businessRouter = router({
         })
         .where(eq(businesses.id, input.businessId))
         .returning();
+      if (updated) {
+        recordBusinessEvent({
+          event: "business.timezone_updated",
+          action: "updateTimezone",
+          area: "business",
+          businessId: ctx.businessId,
+          entity: "business",
+          entityId: updated.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          attributes: {
+            timezone: tz,
+          },
+        });
+      }
       return updated;
     }),
 });
