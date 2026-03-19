@@ -2,6 +2,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
+import { isClientErrorReported, recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { trpc } from "@/utils/trpc";
@@ -9,7 +11,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SignupHeader } from "./components/SignupHeader";
 import { SignupForm } from "./components/SignupForm";
-import { recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
 
 export default function SignupPage() {
   const auth = getFirebaseAuth();
@@ -36,9 +37,37 @@ export default function SignupPage() {
     setError(null);
     setBusy(true);
     try {
-      if (!auth) throw new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.");
+      if (!auth) {
+        const error = new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.");
+        recordClientBusinessEvent({
+          event: "auth.signup_failed",
+          action: "portal-signup",
+          area: "auth",
+          captureInSentry: true,
+          error,
+          level: "error",
+          outcome: "config_missing",
+          route: "/portal/signup",
+          attributes: {
+            auth_provider: "password",
+          },
+        });
+        throw error;
+      }
       await createUserWithEmailAndPassword(auth, email, password);
-      await auth.currentUser?.getIdToken(true);
+      await getFirebaseIdTokenOrThrow({
+        action: "portal-signup",
+        area: "auth",
+        attributes: {
+          auth_provider: "password",
+          email_domain: email.split("@")[1] || null,
+        },
+        freshToken: true,
+        missingConfigEvent: "auth.signup_failed",
+        missingSessionEvent: "auth.signup_failed",
+        route: "/portal/signup",
+        tokenFailureEvent: "auth.signup_failed",
+      });
       await upsertUser.mutateAsync({ email, whatsappConnected: false });
       recordClientBusinessEvent({
         event: "auth.signup_succeeded",
@@ -54,20 +83,22 @@ export default function SignupPage() {
       router.push("/portal/upload");
     } catch (err: any) {
       console.error(err);
-      const captureInSentry = shouldCaptureUnexpectedClientError(err);
-      recordClientBusinessEvent({
-        event: "auth.signup_failed",
-        action: "portal-signup",
-        area: "auth",
-        captureInSentry,
-        error: err,
-        level: captureInSentry ? "error" : "warn",
-        outcome: captureInSentry ? "unexpected_failure" : "handled_failure",
-        route: "/portal/signup",
-        attributes: {
-          auth_provider: "password",
-        },
-      });
+      if (!isClientErrorReported(err)) {
+        const captureInSentry = shouldCaptureUnexpectedClientError(err);
+        recordClientBusinessEvent({
+          event: "auth.signup_failed",
+          action: "portal-signup",
+          area: "auth",
+          captureInSentry,
+          error: err,
+          level: captureInSentry ? "error" : "warn",
+          outcome: captureInSentry ? "unexpected_failure" : "handled_failure",
+          route: "/portal/signup",
+          attributes: {
+            auth_provider: "password",
+          },
+        });
+      }
       setError(err?.message || "Sign up failed");
     } finally {
       setBusy(false);

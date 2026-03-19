@@ -652,6 +652,16 @@ export default function SettingsPage() {
 
   const handleLogout = async () => {
     if (!auth) {
+      recordClientBusinessEvent({
+        event: "auth.logout_failed",
+        action: "portal-logout",
+        area: "auth",
+        captureInSentry: true,
+        error: new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars."),
+        level: "error",
+        outcome: "config_missing",
+        route: "/portal/settings",
+      });
       window.location.href = "/portal";
       return;
     }

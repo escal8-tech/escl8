@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run verify:client-auth && next build",
     "start": "node .next/standalone/server.js",
     "lint": "eslint",
     "db:init": "node ./scripts/db-init.mjs",
@@ -13,7 +13,8 @@
     "db:studio": "drizzle-kit studio",
     "rag:worker": "tsx ./scripts/rag-worker.ts",
     "requests:rollover": "tsx ./scripts/request-status-rollover.ts",
-    "suite:grant": "tsx ./scripts/suite-grant.ts"
+    "suite:grant": "tsx ./scripts/suite-grant.ts",
+    "verify:client-auth": "node ./scripts/verify-client-auth-usage.mjs"
   },
   "dependencies": {
     "@azure/service-bus": "^7.9.5",

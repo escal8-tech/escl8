@@ -24,6 +24,7 @@ export function TRPCProvider({ children }: PropsWithChildren) {
             if (auth && typeof auth.authStateReady === "function") {
               await auth.authStateReady();
             }
+            // Allowed raw token access: this is the single central tRPC auth header injection path.
             const token = await auth?.currentUser?.getIdToken();
             if (token) headers["authorization"] = `Bearer ${token}`;
             return headers;
