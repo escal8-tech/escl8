@@ -5,6 +5,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { trpc } from "@/utils/trpc";
 import { PortalSelect } from "@/app/portal/components/PortalSelect";
+import { recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ICONS (inline SVGs for clean dependency-free icons)
@@ -654,8 +655,30 @@ export default function SettingsPage() {
       window.location.href = "/portal";
       return;
     }
-    await signOut(auth);
-    window.location.href = "/portal";
+    try {
+      await signOut(auth);
+      recordClientBusinessEvent({
+        event: "auth.logout",
+        action: "portal-logout",
+        area: "auth",
+        outcome: "success",
+        route: "/portal/settings",
+      });
+      window.location.href = "/portal";
+    } catch (err: unknown) {
+      const captureInSentry = shouldCaptureUnexpectedClientError(err);
+      recordClientBusinessEvent({
+        event: "auth.logout_failed",
+        action: "portal-logout",
+        area: "auth",
+        captureInSentry,
+        error: err,
+        level: captureInSentry ? "error" : "warn",
+        outcome: captureInSentry ? "unexpected_failure" : "handled_failure",
+        route: "/portal/settings",
+      });
+      throw err;
+    }
   };
 
   const handleSaveBookingSettings = () => {

@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SignupHeader } from "./components/SignupHeader";
 import { SignupForm } from "./components/SignupForm";
+import { recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
 
 export default function SignupPage() {
   const auth = getFirebaseAuth();
@@ -39,9 +40,34 @@ export default function SignupPage() {
       await createUserWithEmailAndPassword(auth, email, password);
       await auth.currentUser?.getIdToken(true);
       await upsertUser.mutateAsync({ email, whatsappConnected: false });
+      recordClientBusinessEvent({
+        event: "auth.signup_succeeded",
+        action: "portal-signup",
+        area: "auth",
+        outcome: "success",
+        route: "/portal/signup",
+        attributes: {
+          auth_provider: "password",
+          email_domain: email.split("@")[1] || null,
+        },
+      });
       router.push("/portal/upload");
     } catch (err: any) {
       console.error(err);
+      const captureInSentry = shouldCaptureUnexpectedClientError(err);
+      recordClientBusinessEvent({
+        event: "auth.signup_failed",
+        action: "portal-signup",
+        area: "auth",
+        captureInSentry,
+        error: err,
+        level: captureInSentry ? "error" : "warn",
+        outcome: captureInSentry ? "unexpected_failure" : "handled_failure",
+        route: "/portal/signup",
+        attributes: {
+          auth_provider: "password",
+        },
+      });
       setError(err?.message || "Sign up failed");
     } finally {
       setBusy(false);
@@ -91,4 +117,3 @@ export default function SignupPage() {
     </div>
   );
 }
-

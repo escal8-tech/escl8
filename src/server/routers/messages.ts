@@ -5,6 +5,7 @@ import { db } from "../db/client";
 import { customers, messageThreads, threadMessages, whatsappIdentities, SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { and, desc, eq, ilike, isNull, lt, or, sql } from "drizzle-orm";
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
+import { recordBusinessEvent } from "@/lib/business-monitoring";
 
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
 
@@ -417,6 +418,27 @@ export const messagesRouter = router({
           updatedAt: now,
         })
         .where(eq(messageThreads.id, input.threadId));
+
+      if (saved) {
+        recordBusinessEvent({
+          event: "message.manual_send_succeeded",
+          action: "sendText",
+          area: "message",
+          businessId: ctx.businessId,
+          entity: "thread_message",
+          entityId: saved.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          attributes: {
+            message_type: saved.messageType,
+            text_length: input.text.length,
+            thread_id: input.threadId,
+            whatsapp_identity_id: thread.whatsappIdentityId,
+          },
+        });
+      }
 
       return saved;
     }),

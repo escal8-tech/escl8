@@ -10,6 +10,7 @@ import { controlDb } from "@/server/control/db";
 import { suiteEntitlements, suiteMemberships, suiteTenants, suiteUsers } from "@/server/control/schema";
 import { syncFirebaseSuiteClaims } from "@/server/firebaseAdmin";
 import { ensureDefaultTicketTypes } from "../services/ticketDefaults";
+import { recordBusinessEvent } from "@/lib/business-monitoring";
 
 function defaultBusinessInstructions() {
   return "You are a helpful AI sales and support assistant. Use the uploaded business documents as the source of truth. If information is missing, ask a clarifying question.";
@@ -226,6 +227,22 @@ export const userRouter = router({
           return { user: u, businessId: bizId };
         });
         await ensureDefaultTicketTypes(created.businessId);
+        recordBusinessEvent({
+          event: "auth.user_bootstrapped",
+          action: "ensure",
+          area: "auth",
+          businessId: created.businessId,
+          entity: "user",
+          entityId: created.user.id,
+          userId: created.user.id,
+          actorId: firebaseUid,
+          actorType: "user",
+          outcome: "success",
+          attributes: {
+            email_domain: input.email.split("@")[1] || null,
+            seeded_business: true,
+          },
+        });
         return created.user;
       } catch (err: any) {
         const msg = String(err?.message || "Database error");
@@ -336,6 +353,25 @@ export const userRouter = router({
             .where(eq(users.id, existing.id))
             .returning();
           await ensureDefaultTicketTypes(finalBusinessId);
+          if (updated) {
+            recordBusinessEvent({
+              event: "auth.user_upserted",
+              action: "upsert",
+              area: "auth",
+              businessId: finalBusinessId,
+              entity: "user",
+              entityId: updated.id,
+              userId: updated.id,
+              actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+              actorType: "user",
+              outcome: "success",
+              attributes: {
+                created: false,
+                requested_business_id: requestedBusinessId ?? null,
+                whatsapp_connected: whatsappConnected,
+              },
+            });
+          }
           return updated;
         }
 
@@ -393,6 +429,24 @@ export const userRouter = router({
             return { user: created, businessId: bizId };
           });
           await ensureDefaultTicketTypes(created.businessId);
+          recordBusinessEvent({
+            event: "auth.user_upserted",
+            action: "upsert",
+            area: "auth",
+            businessId: created.businessId,
+            entity: "user",
+            entityId: created.user.id,
+            userId: created.user.id,
+            actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+            actorType: "user",
+            outcome: "success",
+            attributes: {
+              business_created: true,
+              created: true,
+              requested_business_id: null,
+              whatsapp_connected: whatsappConnected,
+            },
+          });
           return created.user;
         }
 
@@ -417,6 +471,24 @@ export const userRouter = router({
           })
           .returning();
         await ensureDefaultTicketTypes(requestedBusinessId);
+        recordBusinessEvent({
+          event: "auth.user_upserted",
+          action: "upsert",
+          area: "auth",
+          businessId: requestedBusinessId,
+          entity: "user",
+          entityId: created.id,
+          userId: created.id,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          attributes: {
+            business_created: false,
+            created: true,
+            requested_business_id: requestedBusinessId,
+            whatsapp_connected: whatsappConnected,
+          },
+        });
         return created;
       } catch (err: any) {
         const msg = String(err?.message || "Database error");
@@ -430,4 +502,3 @@ export const userRouter = router({
       }
     }),
 });
-

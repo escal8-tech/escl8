@@ -7,6 +7,7 @@ import { supportTicketEvents, supportTicketTypes, supportTickets } from "../../.
 import { TRPCError } from "@trpc/server";
 import { DEFAULT_TICKET_TYPE_KEYS, ensureDefaultTicketTypes } from "../services/ticketDefaults";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
+import { recordBusinessEvent } from "@/lib/business-monitoring";
 
 const ticketStatusSchema = z.enum(["open", "in_progress", "resolved"]);
 const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
@@ -97,6 +98,25 @@ export const ticketsRouter = router({
         })
         .where(and(eq(supportTicketTypes.id, input.id), eq(supportTicketTypes.businessId, ctx.businessId)))
         .returning();
+      if (updated) {
+        recordBusinessEvent({
+          event: "ticket.type_updated",
+          action: "upsertType",
+          area: "ticket",
+          businessId: ctx.businessId,
+          entity: "ticket_type",
+          entityId: updated.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          status: updated.enabled ? "enabled" : "disabled",
+          attributes: {
+            key: updated.key,
+            required_fields_count: Array.isArray(updated.requiredFields) ? updated.requiredFields.length : 0,
+          },
+        });
+      }
       return updated ?? null;
     }),
 
@@ -209,6 +229,25 @@ export const ticketsRouter = router({
           payload: { ticket: created as any },
           createdAt: created.updatedAt ?? created.createdAt ?? new Date(),
         });
+        recordBusinessEvent({
+          event: "ticket.created",
+          action: "createTicket",
+          area: "ticket",
+          businessId: ctx.businessId,
+          entity: "ticket",
+          entityId: created.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: input.createdBy === "bot" ? "bot" : "user",
+          outcome: "success",
+          status: created.status,
+          attributes: {
+            outcome: created.outcome,
+            priority: created.priority,
+            source: created.source,
+            ticket_type_key: created.ticketTypeKey,
+          },
+        });
       }
       return created;
     }),
@@ -274,6 +313,25 @@ export const ticketsRouter = router({
           payload: { ticket: updated as any },
           createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
         });
+        if (existing.status !== updated.status) {
+          recordBusinessEvent({
+            event: "ticket.status_updated",
+            action: "updateTicketStatus",
+            area: "ticket",
+            businessId: ctx.businessId,
+            entity: "ticket",
+            entityId: updated.id,
+            userId: ctx.userId,
+            actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+            actorType: "user",
+            outcome: "success",
+            status: updated.status,
+            attributes: {
+              from_status: existing.status,
+              to_status: updated.status,
+            },
+          });
+        }
       }
       return updated ?? null;
     }),
@@ -344,6 +402,26 @@ export const ticketsRouter = router({
           payload: { ticket: updated as any },
           createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
         });
+        if (existing.outcome !== updated.outcome || (existing.lossReason ?? "") !== (updated.lossReason ?? "")) {
+          recordBusinessEvent({
+            event: "ticket.outcome_updated",
+            action: "updateTicketOutcome",
+            area: "ticket",
+            businessId: ctx.businessId,
+            entity: "ticket",
+            entityId: updated.id,
+            userId: ctx.userId,
+            actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+            actorType: "user",
+            outcome: "success",
+            status: updated.outcome,
+            attributes: {
+              from_outcome: existing.outcome,
+              loss_reason: updated.lossReason,
+              to_outcome: updated.outcome,
+            },
+          });
+        }
       }
       return updated ?? null;
     }),
@@ -399,6 +477,24 @@ export const ticketsRouter = router({
           payload: { ticket: updated as any },
           createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
         });
+        if (fromIso !== toIso) {
+          recordBusinessEvent({
+            event: "ticket.sla_updated",
+            action: "updateTicketSlaDueAt",
+            area: "ticket",
+            businessId: ctx.businessId,
+            entity: "ticket",
+            entityId: updated.id,
+            userId: ctx.userId,
+            actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+            actorType: "user",
+            outcome: "success",
+            attributes: {
+              from_sla_due_at: fromIso,
+              to_sla_due_at: toIso,
+            },
+          });
+        }
       }
       return updated ?? null;
     }),
@@ -501,4 +597,3 @@ export const ticketsRouter = router({
       };
     }),
 });
-

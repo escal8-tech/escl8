@@ -4,6 +4,9 @@ import { db } from "../db/client";
 import { customers, requests, SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { eq, and, desc, sql, isNull, lt, or, inArray } from "drizzle-orm";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
+import { recordBusinessEvent } from "@/lib/business-monitoring";
+
+type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
 
 // Source validation
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
@@ -211,8 +214,26 @@ export const customersRouter = router({
           entity: "customer",
           op: "upsert",
           entityId: row.id,
-          payload: { customer: toPortalJson(row) as any },
+          payload: { customer: toPortalJson(row) },
           createdAt: row.updatedAt ?? new Date(),
+        });
+        recordBusinessEvent({
+          event: "customer.updated",
+          action: "update",
+          area: "customer",
+          businessId: ctx.businessId,
+          entity: "customer",
+          entityId: row.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          status: row.status,
+          attributes: {
+            high_intent: row.isHighIntent ?? false,
+            source: row.source,
+            tag_count: Array.isArray(row.tags) ? row.tags.length : 0,
+          },
         });
       }
 
@@ -244,8 +265,24 @@ export const customersRouter = router({
           entity: "customer",
           op: "deleted",
           entityId: row.id,
-          payload: { customer: toPortalJson(row) as any },
+          payload: { customer: toPortalJson(row) },
           createdAt: row.updatedAt ?? new Date(),
+        });
+        recordBusinessEvent({
+          event: "customer.deleted",
+          action: "delete",
+          area: "customer",
+          businessId: ctx.businessId,
+          entity: "customer",
+          entityId: row.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          status: row.status,
+          attributes: {
+            source: row.source,
+          },
         });
       }
 
@@ -364,6 +401,26 @@ export const customersRouter = router({
           tags: [],
         }).returning({ id: customers.id });
 
+        recordBusinessEvent({
+          event: "customer.created_from_request",
+          action: "upsertFromRequest",
+          area: "customer",
+          businessId: ctx.businessId,
+          entity: "customer",
+          entityId: newCustomer.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "system",
+          outcome: "success",
+          status: "active",
+          attributes: {
+            lead_score: leadScore,
+            paid: Boolean(input.paid),
+            request_status: input.status,
+            source: input.source,
+          },
+        });
+
         return { customerId: newCustomer.id, created: true };
       }
     }),
@@ -441,6 +498,19 @@ export const customersRouter = router({
       botPaused: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
+      const [existing] = await db
+        .select({
+          botPaused: customers.botPaused,
+          source: customers.source,
+          status: customers.status,
+        })
+        .from(customers)
+        .where(and(
+          eq(customers.businessId, ctx.businessId),
+          eq(customers.id, input.customerId),
+          isNull(customers.deletedAt),
+        ))
+        .limit(1);
       const [row] = await db
         .update(customers)
         .set({ botPaused: input.botPaused, updatedAt: new Date() })
@@ -456,16 +526,35 @@ export const customersRouter = router({
           entity: "customer",
           op: "upsert",
           entityId: row.id,
-          payload: { customer: toPortalJson(row) as any },
+          payload: { customer: toPortalJson(row) },
           createdAt: row.updatedAt ?? new Date(),
         });
+        if (!existing || Boolean(existing.botPaused) !== Boolean(row.botPaused)) {
+          recordBusinessEvent({
+            event: row.botPaused ? "customer.bot_paused" : "customer.bot_resumed",
+            action: "setBotPaused",
+            area: "customer",
+            businessId: ctx.businessId,
+            entity: "customer",
+            entityId: row.id,
+            userId: ctx.userId,
+            actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+            actorType: "user",
+            outcome: "success",
+            status: row.status,
+            attributes: {
+              previous_bot_paused: existing?.botPaused ?? null,
+              source: existing?.source ?? row.source,
+            },
+          });
+        }
       }
       return row ?? null;
     }),
 });
 
-function toPortalJson<T>(value: T): unknown {
-  return JSON.parse(JSON.stringify(value));
+function toPortalJson<T>(value: T): JsonValue {
+  return JSON.parse(JSON.stringify(value)) as JsonValue;
 }
 
 function calculateLeadScore(data: {

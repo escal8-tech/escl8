@@ -9,6 +9,7 @@ import { generateAndSaveBotInstructions, areKeyDocsIndexed } from "../rag/genera
 import { retrieve, getGroundedContext } from "../rag/retrieve";
 import { enqueueRagJobMessage } from "../rag/queue";
 import { publishPortalEvent, toPortalDocumentPayload } from "@/server/realtime/portalEvents";
+import { recordBusinessEvent } from "@/lib/business-monitoring";
 
 const docTypeSchema = z.enum(["considerations", "conversations", "inventory", "bank", "address"]);
 const chunkTypeSchema = z.enum(["pricing", "policy", "faq", "example_dialogue", "contact_info", "product_info", "product_index", "section_abstract", "section_full", "general"]);
@@ -76,6 +77,24 @@ export const ragRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to enqueue training job" });
       }
 
+      recordBusinessEvent({
+        event: "rag.retrain_enqueued",
+        action: "enqueueRetrain",
+        area: "rag",
+        businessId: ctx.businessId,
+        entity: "rag_job",
+        entityId: job.id,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: "success",
+        status: job.status,
+        attributes: {
+          doc_type: input.docType,
+          training_document_id: doc.id,
+        },
+      });
+
       return { ok: true, jobId: job.id, mode: "queued" };
     }),
 
@@ -102,6 +121,21 @@ export const ragRouter = router({
 
       // Return the new instructions
       const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId));
+      recordBusinessEvent({
+        event: "rag.instructions_regenerated",
+        action: "regenerateInstructions",
+        area: "rag",
+        businessId: ctx.businessId,
+        entity: "business",
+        entityId: ctx.businessId,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: "success",
+        attributes: {
+          all_key_docs_indexed: true,
+        },
+      });
       return { ok: true, instructions: biz?.instructions ?? null };
     }),
 
@@ -185,4 +219,3 @@ export const ragRouter = router({
       return { context };
     }),
 });
-

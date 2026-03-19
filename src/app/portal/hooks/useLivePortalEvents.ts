@@ -2,6 +2,8 @@
 "use client";
 
 import { useEffect } from "react";
+import { recordGrafanaLog } from "@/lib/grafana-monitoring";
+import { captureSentryException } from "@/lib/sentry-monitoring";
 import { trpc } from "@/utils/trpc";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 
@@ -60,6 +62,8 @@ type PortalEvent = {
   payload?: Record<string, unknown>;
   createdAt?: string;
 };
+
+const REALTIME_CLIENT_FAILURE_LOG_COOLDOWN_MS = 30_000;
 
 function normalizeStatus(raw: unknown): "ONGOING" | "NEEDS_FOLLOWUP" | "FAILED" | "COMPLETED" {
   const value = String(raw ?? "").toLowerCase();
@@ -230,7 +234,44 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     let lastCatchupAt = 0;
     let lastActivityInvalidateAt = 0;
     let hasConnectedOnce = false;
+    let lastRealtimeClientFailureAt = 0;
     const recentEventKeys = new Map<string, number>();
+
+    const reportRealtimeClientFailure = (
+      message: string,
+      attributes: Record<string, string | number | boolean | undefined> = {},
+      captureInSentry = true,
+    ) => {
+      const now = Date.now();
+      if (now - lastRealtimeClientFailureAt < REALTIME_CLIENT_FAILURE_LOG_COOLDOWN_MS) return;
+      lastRealtimeClientFailureAt = now;
+
+      const payload = {
+        route: window.location.pathname,
+        ...attributes,
+      };
+
+      recordGrafanaLog("error", message, payload, {
+        runtime: "client",
+        source: "realtime",
+        forceClientDelivery: true,
+      });
+
+      if (!captureInSentry) return;
+
+      captureSentryException(new Error(message), {
+        action: "realtime-client-failure",
+        area: "realtime",
+        level: "error",
+        tags: {
+          realtime_source: "client",
+          realtime_hub: typeof attributes.hub === "string" ? attributes.hub : undefined,
+        },
+        contexts: {
+          realtime: payload,
+        },
+      });
+    };
 
     const runCatchup = () => {
       const now = Date.now();
@@ -444,6 +485,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       if (cancelled) return;
 
       try {
+        let connectionFailureReported = false;
         const auth = getFirebaseAuth();
         if (!auth) return;
         const token = await auth.currentUser?.getIdToken();
@@ -458,15 +500,33 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         });
 
         if (!response.ok) {
+          reportRealtimeClientFailure(
+            "realtime.negotiate_failed",
+            {
+              hub: "portal",
+              http_status: response.status,
+            },
+            response.status >= 500,
+          );
           reconnectTimer = setTimeout(connect, 2000);
           return;
         }
 
-        const body = (await response.json()) as { url?: string; group?: string; subprotocol?: string };
+        const body = (await response.json()) as { group?: string; hub?: string; subprotocol?: string; url?: string };
         const url = body.url || "";
         const group = body.group || "";
+        const hub = body.hub || "portal";
         const subprotocol = body.subprotocol || "json.webpubsub.azure.v1";
         if (!url || !group) {
+          reportRealtimeClientFailure(
+            "realtime.negotiate_payload_invalid",
+            {
+              group_present: Boolean(group),
+              hub,
+              url_present: Boolean(url),
+            },
+            false,
+          );
           reconnectTimer = setTimeout(connect, 2000);
           return;
         }
@@ -504,17 +564,42 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
           }
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
+          if (!cancelled && !connectionFailureReported) {
+            reportRealtimeClientFailure(
+              "realtime.websocket_closed",
+              {
+                close_code: event.code,
+                close_clean: event.wasClean,
+                close_reason: event.reason || undefined,
+                group,
+                hub,
+              },
+              true,
+            );
+            connectionFailureReported = true;
+          }
           if (!cancelled) reconnectTimer = setTimeout(connect, 1500);
         };
 
         ws.onerror = () => {
-          // Let onclose handle reconnect.
+          if (!connectionFailureReported) {
+            reportRealtimeClientFailure(
+              "realtime.websocket_error",
+              {
+                group,
+                hub,
+              },
+              true,
+            );
+            connectionFailureReported = true;
+          }
         };
 
         return;
-      } catch {
-        // reconnect below
+      } catch (error) {
+        reportRealtimeClientFailure("realtime.connect_exception", { hub: "portal" }, true);
+        void error;
       }
 
       if (!cancelled) {
@@ -555,4 +640,3 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     options.onCatchup,
   ]);
 }
-
