@@ -64,46 +64,52 @@ function asStringList(value: unknown): string[] {
   return raw.split(/\s*(?:,|;|\n)\s*/).map((entry) => entry.trim()).filter(Boolean);
 }
 
-export function normalizeOrderLineItems(fields: Record<string, unknown>): NormalizedOrderLineItem[] {
-  const pricedRaw = fields.priced_line_items;
-  if (Array.isArray(pricedRaw)) {
-    const items = pricedRaw
-      .map((entry) => {
-        const row = asRecord(entry);
-        const item = String(row.item ?? "").trim();
-        const quantity = String(row.quantity ?? "").trim() || "1";
-        if (!item) return null;
-        const unitPrice = parseMoneyValue(row.unit_price);
-        const lineTotal = parseMoneyValue(row.line_total);
-        return {
-          item,
-          quantity,
-          ...(unitPrice ? { unitPrice } : {}),
-          ...(lineTotal ? { lineTotal } : {}),
-        };
-      })
-      .filter((entry): entry is NormalizedOrderLineItem => Boolean(entry));
-    if (items.length) return items;
-  }
+function normalizeOrderLineItemRow(value: unknown): NormalizedOrderLineItem | null {
+  const row = asRecord(value);
+  const item = String(row.item ?? "").trim();
+  const quantity = String(row.quantity ?? "").trim() || "1";
+  if (!item) return null;
+  const unitPrice = parseMoneyValue(row.unit_price);
+  const lineTotal = parseMoneyValue(row.line_total);
+  return {
+    item,
+    quantity,
+    ...(unitPrice ? { unitPrice } : {}),
+    ...(lineTotal ? { lineTotal } : {}),
+  };
+}
 
-  const lineItemsRaw = fields.line_items;
-  if (Array.isArray(lineItemsRaw)) {
-    const items = lineItemsRaw
-      .map((entry) => {
-        const row = asRecord(entry);
-        const item = String(row.item ?? "").trim();
-        const quantity = String(row.quantity ?? "").trim() || "1";
-        if (!item) return null;
-        const unitPrice = parseMoneyValue(row.unit_price);
-        return {
-          item,
-          quantity,
-          ...(unitPrice ? { unitPrice } : {}),
-        };
-      })
-      .filter((entry): entry is NormalizedOrderLineItem => Boolean(entry));
-    if (items.length) return items;
+function normalizeOrderLineItemKey(value: string): string {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function normalizeOrderLineItems(fields: Record<string, unknown>): NormalizedOrderLineItem[] {
+  const lineItems = Array.isArray(fields.line_items)
+    ? fields.line_items.map(normalizeOrderLineItemRow).filter((entry): entry is NormalizedOrderLineItem => Boolean(entry))
+    : [];
+  const pricedLineItems = Array.isArray(fields.priced_line_items)
+    ? fields.priced_line_items.map(normalizeOrderLineItemRow).filter((entry): entry is NormalizedOrderLineItem => Boolean(entry))
+    : [];
+
+  if (lineItems.length) {
+    if (!pricedLineItems.length) return lineItems;
+    const pricedByKey = new Map(pricedLineItems.map((entry) => [normalizeOrderLineItemKey(entry.item), entry]));
+    const merged = lineItems.map((entry) => {
+      const priced = pricedByKey.get(normalizeOrderLineItemKey(entry.item));
+      if (!priced) return entry;
+      return {
+        ...entry,
+        ...(priced.unitPrice ? { unitPrice: priced.unitPrice } : {}),
+        ...(priced.lineTotal ? { lineTotal: priced.lineTotal } : {}),
+      };
+    });
+    for (const priced of pricedLineItems) {
+      const exists = merged.some((entry) => normalizeOrderLineItemKey(entry.item) === normalizeOrderLineItemKey(priced.item));
+      if (!exists) merged.push(priced);
+    }
+    return merged;
   }
+  if (pricedLineItems.length) return pricedLineItems;
 
   const items = asStringList(fields.items ?? fields.product);
   const quantities = asStringList(fields.quantity);
@@ -120,15 +126,12 @@ export function computeOrderExpectedAmount(fields: Record<string, unknown>): str
   const items = normalizeOrderLineItems(fields);
   if (!items.length) return null;
   let total = 0;
-  let pricedCount = 0;
   for (const item of items) {
     const quantity = Number(String(item.quantity || "1").replace(/[^\d]/g, "") || "1");
     const unitPrice = parseMoneyValue(item.unitPrice);
-    if (!unitPrice) continue;
+    if (!unitPrice) return null;
     total += Number(unitPrice) * Math.max(1, quantity || 1);
-    pricedCount += 1;
   }
-  if (!pricedCount) return null;
   return total.toFixed(2);
 }
 
