@@ -12,6 +12,21 @@ import { captureSentryException } from "@/lib/sentry-monitoring";
 
 export const runtime = "nodejs";
 
+type MetaPhoneNumberLookup = {
+  id?: string;
+  display_phone_number?: string;
+  verified_name?: string;
+  waba_id?: string | { id?: string | null } | null;
+};
+
+function normalizeWabaId(value: MetaPhoneNumberLookup["waba_id"] | string | undefined): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (value && typeof value === "object" && typeof value.id === "string" && value.id.trim()) {
+    return value.id.trim();
+  }
+  return null;
+}
+
 // This endpoint receives the authorization code from Facebook Embedded Signup
 // along with the WhatsApp Business Account (WABA) ID and Phone Number ID.
 // TODO: Exchange the code for a System User access token on the server, then
@@ -151,14 +166,20 @@ export async function POST(req: Request) {
       );
     }
 
-    // Step 2: Subscribe to webhooks on the customer's WABA.
-    const subscribed = await graphJson<{ success?: boolean } | { success: true }>({
-      endpoint: graphEndpoint(metaGraphApiVersion, `/${wabaId}/subscribed_apps`),
-      method: "POST",
+    // Resolve the authoritative WABA from the phone number before subscribing.
+    // Embedded signup should already provide it, but we trust the server-side lookup
+    // because subscribed_apps must be posted against the WABA object, not the phone.
+    const phoneNumber = await graphJson<MetaPhoneNumberLookup>({
+      endpoint: graphEndpoint(metaGraphApiVersion, `/${phoneNumberId}`),
+      method: "GET",
       accessToken: businessToken,
+      query: {
+        fields: "id,display_phone_number,verified_name,waba_id",
+      },
     });
+    const resolvedWabaId = normalizeWabaId(phoneNumber.waba_id) ?? wabaId;
 
-    // Step 3 (Solution Partner): Share your credit line with the customer.
+    // Step 2 (Solution Partner): Share your credit line with the customer.
     let creditShareRes: { allocation_config_id?: string; waba_id?: string } | null = null;
     const currency = (wabaCurrency ?? process.env.META_DEFAULT_WABA_CURRENCY ?? "USD").toUpperCase();
     if (metaExtendedCreditLineId) {
@@ -168,14 +189,15 @@ export async function POST(req: Request) {
         accessToken: metaSystemUserToken,
         query: {
           waba_currency: currency,
-          waba_id: wabaId,
+          waba_id: resolvedWabaId,
         },
       });
     } else {
       console.log("[WhatsApp Sync] Skipping credit line sharing (no META_EXTENDED_CREDIT_LINE_ID)");
     }
 
-    // Step 4: Register the customer's phone number.
+    // Step 3: Register the customer's phone number and require success before
+    // subscribing the app to the customer's WABA.
     const desiredPin = generateSixDigitPin();
     const registered = await graphJson<{ success?: boolean } | { success: true }>({
       endpoint: graphEndpoint(metaGraphApiVersion, `/${phoneNumberId}/register`),
@@ -185,6 +207,13 @@ export async function POST(req: Request) {
         messaging_product: "whatsapp",
         pin: desiredPin,
       },
+    });
+
+    // Step 4: Subscribe to webhooks on the customer's WABA.
+    const subscribed = await graphJson<{ success?: boolean } | { success: true }>({
+      endpoint: graphEndpoint(metaGraphApiVersion, `/${resolvedWabaId}/subscribed_apps`),
+      method: "POST",
+      accessToken: businessToken,
     });
 
     const now = new Date();
@@ -197,7 +226,8 @@ export async function POST(req: Request) {
         phoneNumberId,
         businessId: user.businessId,
         connectedByUserId: user.id,
-        wabaId,
+        wabaId: resolvedWabaId,
+        displayPhoneNumber: phoneNumber.display_phone_number?.trim() || null,
         twoStepPin: desiredPin,
 
         webhookSubscribedAt: now,
@@ -215,7 +245,8 @@ export async function POST(req: Request) {
         set: {
           businessId: user.businessId,
           connectedByUserId: user.id,
-          wabaId,
+          wabaId: resolvedWabaId,
+          displayPhoneNumber: phoneNumber.display_phone_number?.trim() || null,
 
           twoStepPin: desiredPin,
 
@@ -239,8 +270,10 @@ export async function POST(req: Request) {
 
     console.log("[WhatsApp Sync] Linked identity:", {
       businessId: user.businessId,
-      wabaId,
+      wabaId: resolvedWabaId,
+      requestedWabaId: wabaId,
       phoneNumberId,
+      displayPhoneNumber: phoneNumber.display_phone_number ?? null,
       code: code.slice(0, 6) + "…",
       subscribed,
       creditShareRes,
@@ -260,7 +293,9 @@ export async function POST(req: Request) {
       attributes: {
         subscribed_success: Boolean(subscribed?.success ?? true),
         registered_success: Boolean(registered?.success ?? true),
-        waba_id: wabaId,
+        waba_id: resolvedWabaId,
+        requested_waba_id: wabaId,
+        display_phone_number: phoneNumber.display_phone_number ?? null,
       },
     });
 

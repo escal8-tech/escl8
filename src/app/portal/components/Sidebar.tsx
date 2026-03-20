@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { onAuthStateChanged } from "firebase/auth";
+import { trpc } from "@/utils/trpc";
 
 // SVG Icons as components
 const Icons = {
@@ -92,7 +93,7 @@ const navItems = [
   { href: "/portal/sync", label: "Sync", icon: "sync" },
 ];
 const ticketNavItems = [
-  { href: "/portal/tickets?type=ordercreation", label: "Orders", icon: "tickets", typeKey: "ordercreation" },
+  { href: "/portal/tickets?type=ordercreation", label: "Order Tickets", icon: "tickets", typeKey: "ordercreation" },
   { href: "/portal/tickets?type=orderstatus", label: "Order Status", icon: "tickets", typeKey: "orderstatus" },
   { href: "/portal/tickets?type=complaint", label: "Complaint", icon: "tickets", typeKey: "complaint" },
   { href: "/portal/tickets?type=refund", label: "Refund", icon: "tickets", typeKey: "refund" },
@@ -133,6 +134,10 @@ export default function Sidebar({
     const auth = getFirebaseAuth();
     return auth?.currentUser?.email ?? null;
   });
+  const businessQuery = trpc.business.getMine.useQuery(
+    { email: userEmail ?? "" },
+    { enabled: Boolean(userEmail) },
+  );
 
   useEffect(() => {
     const auth = getFirebaseAuth();
@@ -150,6 +155,12 @@ export default function Sidebar({
   const userInitials = userEmail?.slice(0, 2).toUpperCase() || "U";
   const displayName = getDisplayName(userEmail);
   const sidebarWidth = collapsed ? 72 : 260;
+  const mainNavItems = [
+    ...navItems,
+    ...(businessQuery.data?.orderSettings?.ticketToOrderEnabled
+      ? [{ href: "/portal/orders", label: "Orders", icon: "tickets" as const }]
+      : []),
+  ];
 
   return (
     <aside
@@ -189,7 +200,7 @@ export default function Sidebar({
       <nav className="sidebar-nav">
         <div className="sidebar-nav-group">
           {!collapsed && <div className="sidebar-nav-label">Menu</div>}
-          {navItems.map((item) => (
+          {mainNavItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}

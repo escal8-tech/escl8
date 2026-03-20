@@ -4,8 +4,8 @@ import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { customers, messageThreads, threadMessages, whatsappIdentities, SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { and, desc, eq, ilike, isNull, lt, or, sql } from "drizzle-orm";
-import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { sendWhatsAppMessagesViaBot } from "../services/botApi";
 
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
 
@@ -339,66 +339,32 @@ export const messagesRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
       }
 
-      const businessToken = process.env.META_SYSTEM_USER_TOKEN || null;
-      if (!businessToken) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Missing META_SYSTEM_USER_TOKEN.",
-        });
-      }
-
       const toRaw = String(thread.customerExternalId || thread.customerPhone || "").trim();
       const to = toRaw.replace(/[^\d]/g, "");
       if (!to) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Customer WhatsApp ID is missing." });
       }
 
-      const metaGraphApiVersion = process.env.META_GRAPH_API_VERSION ?? "v24.0";
-      let providerResponse: unknown;
-      try {
-        providerResponse = await graphJson<unknown>({
-          endpoint: graphEndpoint(metaGraphApiVersion, `/${thread.whatsappIdentityId}/messages`),
-          method: "POST",
-          accessToken: businessToken,
-          json: {
-            messaging_product: "whatsapp",
-            recipient_type: "individual",
-            to,
-            type: "text",
-            text: {
-              body: input.text,
-            },
-          },
-        });
-      } catch (error: unknown) {
-        if (error instanceof MetaGraphError) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: error.message || "WhatsApp send failed.",
-          });
-        }
-        throw error;
-      }
-
-      const externalMessageId =
-        typeof providerResponse === "object" &&
-        providerResponse !== null &&
-        Array.isArray((providerResponse as { messages?: Array<{ id?: string }> }).messages)
-          ? (providerResponse as { messages: Array<{ id?: string }> }).messages[0]?.id
-          : undefined;
+      const [botResult] = await sendWhatsAppMessagesViaBot({
+        businessId: ctx.businessId,
+        phoneNumberId: identity.phoneNumberId,
+        to,
+        messages: [{ type: "text", text: input.text }],
+      });
 
       const now = new Date();
       const [saved] = await db
         .insert(threadMessages)
         .values({
           threadId: input.threadId,
-          externalMessageId: externalMessageId || null,
+          externalMessageId: botResult?.messageId || null,
           direction: "outbound",
           messageType: "text",
           textBody: input.text,
           meta: {
             source: "portal_manual_send",
             whatsappIdentityId: thread.whatsappIdentityId,
+            providerResponse: botResult?.providerResponse ?? null,
           },
           createdAt: now,
         })

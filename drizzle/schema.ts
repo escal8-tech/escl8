@@ -196,6 +196,9 @@ export const businessesRelations = relations(businesses, ({ many }) => ({
   requests: many(requests),
   supportTicketTypes: many(supportTicketTypes),
   supportTickets: many(supportTickets),
+  orders: many(orders),
+  orderPayments: many(orderPayments),
+  orderEvents: many(orderEvents),
 }));
 
 export const whatsappIdentitiesRelations = relations(whatsappIdentities, ({ one }) => ({
@@ -451,6 +454,8 @@ export const messageThreadsRelations = relations(messageThreads, ({ one, many })
   }),
   messages: many(threadMessages),
   supportTickets: many(supportTickets),
+  orders: many(orders),
+  orderPayments: many(orderPayments),
 }));
 
 export const threadMessagesRelations = relations(threadMessages, ({ one }) => ({
@@ -476,6 +481,8 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
   threads: many(messageThreads),
   requests: many(requests),
   supportTickets: many(supportTickets),
+  orders: many(orders),
+  orderPayments: many(orderPayments),
 }));
 
 export type CustomerRow = typeof customers.$inferSelect;
@@ -571,6 +578,132 @@ export const supportTickets = pgTable(
   }),
 );
 
+export const orders = pgTable(
+  "orders",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    supportTicketId: text("support_ticket_id").references(() => supportTickets.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    source: text("source").notNull().default("whatsapp"),
+    customerId: text("customer_id").references(() => customers.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    threadId: text("thread_id").references(() => messageThreads.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    whatsappIdentityId: text("whatsapp_identity_id").references(() => whatsappIdentities.phoneNumberId, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    customerName: text("customer_name"),
+    customerPhone: text("customer_phone"),
+    status: text("status").notNull().default("approved"),
+    paymentMethod: text("payment_method").notNull().default("manual"),
+    currency: text("currency").notNull().default("LKR"),
+    expectedAmount: numeric("expected_amount", { precision: 12, scale: 2 }),
+    paidAmount: numeric("paid_amount", { precision: 12, scale: 2 }),
+    paymentReference: text("payment_reference"),
+    ticketSnapshot: jsonb("ticket_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    paymentConfigSnapshot: jsonb("payment_config_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    notes: text("notes"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    paymentApprovedAt: timestamp("payment_approved_at", { withTimezone: true }),
+    paymentRejectedAt: timestamp("payment_rejected_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    ordersBusinessIdx: index("orders_business_id_idx").on(t.businessId),
+    ordersStatusIdx: index("orders_status_idx").on(t.businessId, t.status),
+    ordersCustomerIdx: index("orders_customer_id_idx").on(t.customerId),
+    ordersTicketUx: uniqueIndex("orders_support_ticket_id_ux").on(t.supportTicketId).where(sql`${t.supportTicketId} is not null`),
+  }),
+);
+
+export const orderPayments = pgTable(
+  "order_payments",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    customerId: text("customer_id").references(() => customers.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    threadId: text("thread_id").references(() => messageThreads.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    whatsappIdentityId: text("whatsapp_identity_id").references(() => whatsappIdentities.phoneNumberId, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    paymentMethod: text("payment_method").notNull().default("bank_qr"),
+    status: text("status").notNull().default("submitted"),
+    currency: text("currency").notNull().default("LKR"),
+    expectedAmount: numeric("expected_amount", { precision: 12, scale: 2 }),
+    paidAmount: numeric("paid_amount", { precision: 12, scale: 2 }),
+    paidDate: text("paid_date"),
+    referenceCode: text("reference_code"),
+    proofUrl: text("proof_url"),
+    aiCheckStatus: text("ai_check_status"),
+    aiCheckNotes: text("ai_check_notes"),
+    details: jsonb("details").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orderPaymentsBusinessIdx: index("order_payments_business_id_idx").on(t.businessId),
+    orderPaymentsOrderIdx: index("order_payments_order_id_idx").on(t.orderId),
+    orderPaymentsStatusIdx: index("order_payments_status_idx").on(t.businessId, t.status),
+    orderPaymentsCreatedIdx: index("order_payments_created_at_idx").on(t.createdAt),
+  }),
+);
+
+export const orderEvents = pgTable(
+  "order_events",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    eventType: text("event_type").notNull(),
+    actorType: text("actor_type").notNull().default("system"),
+    actorId: text("actor_id"),
+    actorLabel: text("actor_label"),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orderEventsBusinessIdx: index("order_events_business_id_idx").on(t.businessId),
+    orderEventsOrderIdx: index("order_events_order_id_idx").on(t.orderId),
+    orderEventsCreatedIdx: index("order_events_created_at_idx").on(t.createdAt),
+  }),
+);
+
 export const supportTicketEvents = pgTable(
   "support_ticket_events",
   {
@@ -628,6 +761,7 @@ export const supportTicketsRelations = relations(supportTickets, ({ one, many })
     references: [whatsappIdentities.phoneNumberId],
   }),
   events: many(supportTicketEvents),
+  orders: many(orders),
 }));
 
 export const supportTicketEventsRelations = relations(supportTicketEvents, ({ one }) => ({
@@ -641,12 +775,77 @@ export const supportTicketEventsRelations = relations(supportTicketEvents, ({ on
   }),
 }));
 
+export const ordersRelations = relations(orders, ({ one, many }) => ({
+  business: one(businesses, {
+    fields: [orders.businessId],
+    references: [businesses.id],
+  }),
+  supportTicket: one(supportTickets, {
+    fields: [orders.supportTicketId],
+    references: [supportTickets.id],
+  }),
+  customer: one(customers, {
+    fields: [orders.customerId],
+    references: [customers.id],
+  }),
+  thread: one(messageThreads, {
+    fields: [orders.threadId],
+    references: [messageThreads.id],
+  }),
+  whatsappIdentity: one(whatsappIdentities, {
+    fields: [orders.whatsappIdentityId],
+    references: [whatsappIdentities.phoneNumberId],
+  }),
+  payments: many(orderPayments),
+  events: many(orderEvents),
+}));
+
+export const orderPaymentsRelations = relations(orderPayments, ({ one }) => ({
+  business: one(businesses, {
+    fields: [orderPayments.businessId],
+    references: [businesses.id],
+  }),
+  order: one(orders, {
+    fields: [orderPayments.orderId],
+    references: [orders.id],
+  }),
+  customer: one(customers, {
+    fields: [orderPayments.customerId],
+    references: [customers.id],
+  }),
+  thread: one(messageThreads, {
+    fields: [orderPayments.threadId],
+    references: [messageThreads.id],
+  }),
+  whatsappIdentity: one(whatsappIdentities, {
+    fields: [orderPayments.whatsappIdentityId],
+    references: [whatsappIdentities.phoneNumberId],
+  }),
+}));
+
+export const orderEventsRelations = relations(orderEvents, ({ one }) => ({
+  business: one(businesses, {
+    fields: [orderEvents.businessId],
+    references: [businesses.id],
+  }),
+  order: one(orders, {
+    fields: [orderEvents.orderId],
+    references: [orders.id],
+  }),
+}));
+
 export type SupportTicketTypeRow = typeof supportTicketTypes.$inferSelect;
 export type NewSupportTicketType = typeof supportTicketTypes.$inferInsert;
 export type SupportTicketRow = typeof supportTickets.$inferSelect;
 export type NewSupportTicket = typeof supportTickets.$inferInsert;
 export type SupportTicketEventRow = typeof supportTicketEvents.$inferSelect;
 export type NewSupportTicketEvent = typeof supportTicketEvents.$inferInsert;
+export type OrderRow = typeof orders.$inferSelect;
+export type NewOrder = typeof orders.$inferInsert;
+export type OrderPaymentRow = typeof orderPayments.$inferSelect;
+export type NewOrderPayment = typeof orderPayments.$inferInsert;
+export type OrderEventRow = typeof orderEvents.$inferSelect;
+export type NewOrderEvent = typeof orderEvents.$inferInsert;
 
 // Customer requests (per business dashboard) - multi-source
 export const requests = pgTable(

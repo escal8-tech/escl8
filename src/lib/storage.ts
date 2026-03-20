@@ -1,4 +1,9 @@
-import { BlobServiceClient } from "@azure/storage-blob";
+import {
+  BlobSASPermissions,
+  BlobServiceClient,
+  StorageSharedKeyCredential,
+  generateBlobSASQueryParameters,
+} from "@azure/storage-blob";
 import type { DocType } from "@/lib/rag-documents";
 
 const AZURE_CONN = process.env.AZURE_BLOB_CONNECTION_STRING || "";
@@ -14,6 +19,32 @@ export type StoredFile = {
 
 function safeName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function parseConnectionString(connectionString: string): { accountName: string; accountKey: string } | null {
+  const accountNameMatch = connectionString.match(/AccountName=([^;]+)/);
+  const accountKeyMatch = connectionString.match(/AccountKey=([^;]+)/);
+  if (!accountNameMatch || !accountKeyMatch) return null;
+  return {
+    accountName: accountNameMatch[1],
+    accountKey: accountKeyMatch[1],
+  };
+}
+
+function buildReadUrl(blobUrl: string, blobPath: string, expiresOn: Date): string {
+  const creds = parseConnectionString(AZURE_CONN);
+  if (!creds) return blobUrl;
+  const sharedKey = new StorageSharedKeyCredential(creds.accountName, creds.accountKey);
+  const sas = generateBlobSASQueryParameters(
+    {
+      containerName: AZURE_CONTAINER,
+      blobName: blobPath,
+      permissions: BlobSASPermissions.parse("r"),
+      expiresOn,
+    },
+    sharedKey,
+  ).toString();
+  return `${blobUrl}?${sas}`;
 }
 
 export async function storeFile(
@@ -50,5 +81,39 @@ export async function storeFile(
     url: blockBlob.url,
     blobPath,
     contentType: contentType || props.contentType || undefined,
+  };
+}
+
+export async function storePrivateFileAtPath(params: {
+  blobPath: string;
+  buffer: Buffer;
+  fileName: string;
+  contentType?: string;
+  readTtlHours?: number;
+}): Promise<StoredFile> {
+  if (!AZURE_CONN) {
+    throw new Error("Missing AZURE_BLOB_CONNECTION_STRING (blob storage is required)");
+  }
+
+  const service = BlobServiceClient.fromConnectionString(AZURE_CONN);
+  const container = service.getContainerClient(AZURE_CONTAINER);
+  await container.createIfNotExists();
+  const blockBlob = container.getBlockBlobClient(params.blobPath);
+  await blockBlob.uploadData(params.buffer, {
+    blobHTTPHeaders: { blobContentType: params.contentType || undefined },
+  });
+  const props = await blockBlob.getProperties();
+  const readUrl = buildReadUrl(
+    blockBlob.url,
+    params.blobPath,
+    new Date(Date.now() + Math.max(1, Number(params.readTtlHours ?? 72)) * 60 * 60 * 1000),
+  );
+
+  return {
+    name: safeName(params.fileName),
+    size: Number(props.contentLength || params.buffer.byteLength),
+    url: readUrl,
+    blobPath: params.blobPath,
+    contentType: params.contentType || props.contentType || undefined,
   };
 }
