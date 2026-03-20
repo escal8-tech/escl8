@@ -6,6 +6,7 @@ import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { trpc } from "@/utils/trpc";
 import { PortalSelect } from "@/app/portal/components/PortalSelect";
 import { recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
+import type { OrderPaymentMethod } from "@/lib/order-settings";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ICONS (inline SVGs for clean dependency-free icons)
@@ -606,6 +607,17 @@ export default function SettingsPage() {
   const [ticketEnabledById, setTicketEnabledById] = useState<Record<string, boolean>>({});
   const [ticketRequiredFieldsById, setTicketRequiredFieldsById] = useState<Record<string, string>>({});
   const [savingAllTicketTypes, setSavingAllTicketTypes] = useState(false);
+  const [ticketToOrderEnabled, setTicketToOrderEnabled] = useState(false);
+  const [orderPaymentMethod, setOrderPaymentMethod] = useState<OrderPaymentMethod>("manual");
+  const [orderCurrency, setOrderCurrency] = useState("LKR");
+  const [bankQrEnabled, setBankQrEnabled] = useState(false);
+  const [bankQrShowQr, setBankQrShowQr] = useState(true);
+  const [bankQrShowBankDetails, setBankQrShowBankDetails] = useState(true);
+  const [bankQrImageUrl, setBankQrImageUrl] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [accountName, setAccountName] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [accountInstructions, setAccountInstructions] = useState("");
 
   useEffect(() => {
     if (!auth) return;
@@ -631,6 +643,12 @@ export default function SettingsPage() {
       businessQuery.refetch();
     },
   });
+  const updateOrderSettings = trpc.business.updateOrderSettings.useMutation({
+    onSuccess: () => {
+      showToast("Order settings saved successfully!");
+      businessQuery.refetch();
+    },
+  });
 
   useEffect(() => {
     if (businessQuery.data) {
@@ -642,6 +660,18 @@ export default function SettingsPage() {
       setPromotionsEnabled(businessQuery.data.promotionsEnabled ?? true);
       const tz = (businessQuery.data.settings as Record<string, unknown> | null | undefined)?.timezone;
       setTimezone(typeof tz === "string" && tz ? tz : "UTC");
+      const orderSettings = businessQuery.data.orderSettings;
+      setTicketToOrderEnabled(Boolean(orderSettings?.ticketToOrderEnabled));
+      setOrderPaymentMethod((orderSettings?.paymentMethod as OrderPaymentMethod | undefined) ?? "manual");
+      setOrderCurrency(orderSettings?.currency ?? "LKR");
+      setBankQrEnabled(Boolean(orderSettings?.bankQr?.enabled));
+      setBankQrShowQr(Boolean(orderSettings?.bankQr?.showQr));
+      setBankQrShowBankDetails(Boolean(orderSettings?.bankQr?.showBankDetails));
+      setBankQrImageUrl(orderSettings?.bankQr?.qrImageUrl ?? "");
+      setBankName(orderSettings?.bankQr?.bankName ?? "");
+      setAccountName(orderSettings?.bankQr?.accountName ?? "");
+      setAccountNumber(orderSettings?.bankQr?.accountNumber ?? "");
+      setAccountInstructions(orderSettings?.bankQr?.accountInstructions ?? "");
     }
   }, [businessQuery.data]);
 
@@ -764,6 +794,27 @@ export default function SettingsPage() {
     } finally {
       setSavingAllTicketTypes(false);
     }
+  };
+
+  const handleSaveOrderSettings = () => {
+    if (!email || !businessQuery.data?.id) return;
+    updateOrderSettings.mutate({
+      email,
+      businessId: businessQuery.data.id,
+      ticketToOrderEnabled,
+      paymentMethod: orderPaymentMethod,
+      currency: orderCurrency.trim() || "LKR",
+      bankQr: {
+        enabled: bankQrEnabled,
+        showQr: bankQrShowQr,
+        showBankDetails: bankQrShowBankDetails,
+        qrImageUrl: bankQrImageUrl.trim(),
+        bankName: bankName.trim(),
+        accountName: accountName.trim(),
+        accountNumber: accountNumber.trim(),
+        accountInstructions: accountInstructions.trim(),
+      },
+    });
   };
 
   const getInitials = (email: string | null) => {
@@ -1079,6 +1130,140 @@ export default function SettingsPage() {
             </button>
           </div>
         )}
+      </div>
+
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <div style={styles.cardIcon}>{Icons.ticket}</div>
+          <div>
+            <h3 style={styles.cardTitle}>Order Flow</h3>
+            <p style={styles.cardDescription}>Turn order creation tickets into payment-tracked orders.</p>
+          </div>
+        </div>
+        <div style={styles.cardBody}>
+          <div style={styles.toggleRow}>
+            <div style={styles.toggleInfo}>
+              <span style={styles.toggleLabel}>Enable Ticket To Order</span>
+              <span style={styles.toggleDescription}>Show approval, denial, and payment tracking for order creation tickets.</span>
+            </div>
+            <Toggle checked={ticketToOrderEnabled} onChange={setTicketToOrderEnabled} />
+          </div>
+
+          <div style={styles.formGrid}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Payment Method</label>
+              <PortalSelect
+                value={orderPaymentMethod}
+                onValueChange={(value) => setOrderPaymentMethod(value as OrderPaymentMethod)}
+                options={[
+                  { value: "manual", label: "Manual" },
+                  { value: "cod", label: "Cash on Delivery" },
+                  { value: "bank_qr", label: "Bank / QR" },
+                ]}
+                style={styles.select}
+                ariaLabel="Order payment method"
+              />
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Currency</label>
+              <input
+                type="text"
+                style={styles.input}
+                value={orderCurrency}
+                onChange={(e) => setOrderCurrency(e.target.value.toUpperCase())}
+                placeholder="LKR"
+              />
+            </div>
+          </div>
+
+          <div style={styles.toggleRow}>
+            <div style={styles.toggleInfo}>
+              <span style={styles.toggleLabel}>Bank / QR Payment Block</span>
+              <span style={styles.toggleDescription}>Required when payment method is Bank / QR.</span>
+            </div>
+            <Toggle checked={bankQrEnabled} onChange={setBankQrEnabled} />
+          </div>
+
+          <div style={styles.formGrid}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>QR Image URL</label>
+              <input
+                type="text"
+                style={styles.input}
+                value={bankQrImageUrl}
+                onChange={(e) => setBankQrImageUrl(e.target.value)}
+                placeholder="https://..."
+              />
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Bank Name</label>
+              <input
+                type="text"
+                style={styles.input}
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                placeholder="Commercial Bank"
+              />
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Account Name</label>
+              <input
+                type="text"
+                style={styles.input}
+                value={accountName}
+                onChange={(e) => setAccountName(e.target.value)}
+                placeholder="Escl8 Pvt Ltd"
+              />
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Account Number</label>
+              <input
+                type="text"
+                style={styles.input}
+                value={accountNumber}
+                onChange={(e) => setAccountNumber(e.target.value)}
+                placeholder="1234567890"
+              />
+            </div>
+          </div>
+
+          <div style={styles.formGrid}>
+            <div style={styles.toggleRow}>
+              <div style={styles.toggleInfo}>
+                <span style={styles.toggleLabel}>Show QR</span>
+                <span style={styles.toggleDescription}>Send the QR image when the order is approved.</span>
+              </div>
+              <Toggle checked={bankQrShowQr} onChange={setBankQrShowQr} />
+            </div>
+            <div style={styles.toggleRow}>
+              <div style={styles.toggleInfo}>
+                <span style={styles.toggleLabel}>Show Bank Details</span>
+                <span style={styles.toggleDescription}>Send bank transfer details in WhatsApp.</span>
+              </div>
+              <Toggle checked={bankQrShowBankDetails} onChange={setBankQrShowBankDetails} />
+            </div>
+          </div>
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Account Instructions</label>
+            <textarea
+              style={{ ...styles.textarea, minHeight: 90 }}
+              value={accountInstructions}
+              onChange={(e) => setAccountInstructions(e.target.value)}
+              placeholder="Add the order reference in the transfer note and send the payment slip here."
+            />
+          </div>
+        </div>
+        <div style={styles.actions}>
+          <button
+            style={styles.btnPrimary}
+            onClick={handleSaveOrderSettings}
+            disabled={updateOrderSettings.isPending}
+          >
+            {Icons.save}
+            {updateOrderSettings.isPending ? "Saving..." : "Save Order Flow"}
+          </button>
+        </div>
       </div>
     </div>
   );

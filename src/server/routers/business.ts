@@ -5,6 +5,7 @@ import { businesses, users, whatsappIdentities, messageThreads, threadMessages }
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { mergeOrderFlowSettings, normalizeOrderFlowSettings } from "@/lib/order-settings";
 
 export const businessRouter = router({
   listPhoneNumbers: businessProcedure.query(async ({ ctx }) => {
@@ -53,6 +54,7 @@ export const businessRouter = router({
 
       return {
         ...biz,
+        orderSettings: normalizeOrderFlowSettings(biz.settings),
         responseUsage: {
           used: Number(usageRow?.used ?? 0),
           max: 50_000,
@@ -176,5 +178,79 @@ export const businessRouter = router({
         });
       }
       return updated;
+    }),
+
+  updateOrderSettings: businessProcedure
+    .input(
+      z.object({
+        email: z.string().email(),
+        businessId: z.string().min(1),
+        ticketToOrderEnabled: z.boolean(),
+        paymentMethod: z.enum(["manual", "cod", "bank_qr"]),
+        currency: z.string().min(1).max(10),
+        bankQr: z.object({
+          enabled: z.boolean(),
+          showQr: z.boolean(),
+          showBankDetails: z.boolean(),
+          qrImageUrl: z.string().optional(),
+          bankName: z.string().optional(),
+          accountName: z.string().optional(),
+          accountNumber: z.string().optional(),
+          accountInstructions: z.string().optional(),
+        }),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.userEmail && input.email !== ctx.userEmail) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
+      }
+      if (input.businessId !== ctx.businessId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
+      }
+
+      const [biz] = await db.select().from(businesses).where(eq(businesses.id, input.businessId)).limit(1);
+      if (!biz) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
+      }
+
+      const normalized = normalizeOrderFlowSettings({
+        orderFlow: {
+          ticketToOrderEnabled: input.ticketToOrderEnabled,
+          paymentMethod: input.paymentMethod,
+          currency: input.currency,
+          bankQr: input.bankQr,
+        },
+      });
+
+      const [updated] = await db
+        .update(businesses)
+        .set({
+          settings: mergeOrderFlowSettings((biz.settings ?? {}) as Record<string, unknown>, normalized),
+          updatedAt: new Date(),
+        })
+        .where(eq(businesses.id, input.businessId))
+        .returning();
+
+      if (updated) {
+        recordBusinessEvent({
+          event: "business.order_settings_updated",
+          action: "updateOrderSettings",
+          area: "business",
+          businessId: ctx.businessId,
+          entity: "business",
+          entityId: updated.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          attributes: {
+            currency: normalized.currency,
+            payment_method: normalized.paymentMethod,
+            ticket_to_order_enabled: normalized.ticketToOrderEnabled,
+          },
+        });
+      }
+
+      return updated ?? null;
     }),
 });

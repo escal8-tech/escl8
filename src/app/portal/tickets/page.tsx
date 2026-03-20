@@ -834,6 +834,14 @@ export default function TicketsPage() {
                     >
                       <RowActionsMenu
                         items={[
+                          ...(typeKey === "ordercreation"
+                            ? [
+                                {
+                                  label: "Edit Ticket",
+                                  onSelect: () => setSelectedTicketId(ticket.id),
+                                },
+                              ]
+                            : []),
                           {
                             label: "Open Thread",
                             onSelect: () => router.push(getThreadHref(ticket as TicketRow)),
@@ -922,6 +930,8 @@ function TicketDetailsDrawer({
   const utils = trpc.useUtils();
   const [updatingOutcome, setUpdatingOutcome] = useState(false);
   const [updatingSla, setUpdatingSla] = useState(false);
+  const [savingTicket, setSavingTicket] = useState(false);
+  const [orderActionPending, setOrderActionPending] = useState<"approve" | "deny" | null>(null);
   const ticketId = ticket?.id ?? "";
   const updateOutcome = trpc.tickets.updateTicketOutcome.useMutation({
     onSuccess: async () => {
@@ -942,6 +952,39 @@ function TicketDetailsDrawer({
     },
     onSettled: () => setUpdatingSla(false),
   });
+  const updateTicket = trpc.tickets.updateTicket.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.tickets.listTickets.invalidate(),
+        utils.tickets.listTicketEvents.invalidate(),
+      ]);
+    },
+    onSettled: () => setSavingTicket(false),
+  });
+  const approveOrderTicket = trpc.tickets.approveOrderTicket.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.tickets.listTickets.invalidate(),
+        utils.tickets.listTicketEvents.invalidate(),
+        utils.tickets.getPerformance.invalidate(),
+        utils.orders.listOrders.invalidate(),
+        utils.orders.getStats.invalidate(),
+      ]);
+    },
+    onSettled: () => setOrderActionPending(null),
+  });
+  const denyOrderTicket = trpc.tickets.denyOrderTicket.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.tickets.listTickets.invalidate(),
+        utils.tickets.listTicketEvents.invalidate(),
+        utils.tickets.getPerformance.invalidate(),
+        utils.orders.listOrders.invalidate(),
+        utils.orders.getStats.invalidate(),
+      ]);
+    },
+    onSettled: () => setOrderActionPending(null),
+  });
   const eventsQuery = trpc.tickets.listTicketEvents.useQuery(
     { ticketId, limit: 80 },
     { enabled: Boolean(ticketId) },
@@ -950,8 +993,25 @@ function TicketDetailsDrawer({
     ? (getTicketValue(ticket, "slaDueAt", "sla_due_at") as Date | string | null | undefined)
     : null;
   const [slaInput, setSlaInput] = useState(() => toDateTimeLocalValue(slaDueAtRaw));
+  const fields = ticket ? getTicketFields(ticket) : {};
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftSummary, setDraftSummary] = useState("");
+  const [draftNotes, setDraftNotes] = useState("");
+  const [draftCustomerName, setDraftCustomerName] = useState("");
+  const [draftCustomerPhone, setDraftCustomerPhone] = useState("");
+  const [draftFieldsText, setDraftFieldsText] = useState(() => JSON.stringify(fields, null, 2));
+  useEffect(() => {
+    if (!ticket) return;
+    setSlaInput(toDateTimeLocalValue(slaDueAtRaw));
+    setDraftTitle(ticket.title || "");
+    setDraftSummary(ticket.summary || "");
+    setDraftNotes(ticket.notes || "");
+    setDraftCustomerName(getTicketString(ticket, "customerName", "customer_name"));
+    setDraftCustomerPhone(getTicketString(ticket, "customerPhone", "customer_phone"));
+    setDraftFieldsText(JSON.stringify(getTicketFields(ticket), null, 2));
+  }, [ticket, slaDueAtRaw]);
   if (!ticket) return null;
-  const fields = getTicketFields(ticket);
+  const isOrderTicket = getTicketString(ticket, "ticketTypeKey", "ticket_type_key").toLowerCase() === "ordercreation";
   const fieldRows = Object.entries(fields);
   const status = getTicketString(ticket, "status");
   const outcome = (getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome;
@@ -970,6 +1030,50 @@ function TicketDetailsDrawer({
   const updatedAt = getTicketValue(ticket, "updatedAt", "updated_at") as Date | string | null | undefined;
   const resolvedAt = getTicketValue(ticket, "resolvedAt", "resolved_at") as Date | string | null | undefined;
   const closedAt = getTicketValue(ticket, "closedAt", "closed_at") as Date | string | null | undefined;
+
+  const handleSaveTicket = () => {
+    let parsedFields: Record<string, unknown>;
+    try {
+      parsedFields = draftFieldsText.trim() ? (JSON.parse(draftFieldsText) as Record<string, unknown>) : {};
+    } catch {
+      window.alert("Fields must be valid JSON before saving.");
+      return;
+    }
+    setSavingTicket(true);
+    updateTicket.mutate({
+      id: ticket.id,
+      title: draftTitle,
+      summary: draftSummary,
+      notes: draftNotes,
+      customerName: draftCustomerName,
+      customerPhone: draftCustomerPhone,
+      fields: parsedFields,
+    });
+  };
+
+  const handleApproveOrder = async () => {
+    setOrderActionPending("approve");
+    try {
+      const result = await approveOrderTicket.mutateAsync({ id: ticket.id });
+      if (result.delivery && !result.delivery.ok && result.delivery.error) {
+        window.alert(`Order approved, but payment message delivery failed: ${result.delivery.error}`);
+      }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Failed to approve order ticket.");
+      setOrderActionPending(null);
+    }
+  };
+
+  const handleDenyOrder = async () => {
+    const reason = window.prompt("Reason for denial", lossReason || "Out of stock") || "";
+    setOrderActionPending("deny");
+    try {
+      await denyOrderTicket.mutateAsync({ id: ticket.id, reason });
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Failed to deny order ticket.");
+      setOrderActionPending(null);
+    }
+  };
 
   return (
     <>
@@ -1145,6 +1249,132 @@ function TicketDetailsDrawer({
                     <p style={{ margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{ticket.notes}</p>
                   </div>
                 ) : null}
+                {isOrderTicket ? (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>Edit Ticket</div>
+                    <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+                      <div>
+                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Title</div>
+                        <input
+                          type="text"
+                          value={draftTitle}
+                          onChange={(e) => setDraftTitle(e.target.value)}
+                          style={{
+                            width: "100%",
+                            border: "1px solid var(--border)",
+                            borderRadius: 8,
+                            background: "var(--card)",
+                            color: "var(--foreground)",
+                            padding: "8px 10px",
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Customer Name</div>
+                        <input
+                          type="text"
+                          value={draftCustomerName}
+                          onChange={(e) => setDraftCustomerName(e.target.value)}
+                          style={{
+                            width: "100%",
+                            border: "1px solid var(--border)",
+                            borderRadius: 8,
+                            background: "var(--card)",
+                            color: "var(--foreground)",
+                            padding: "8px 10px",
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Summary</div>
+                        <textarea
+                          value={draftSummary}
+                          onChange={(e) => setDraftSummary(e.target.value)}
+                          style={{
+                            width: "100%",
+                            minHeight: 90,
+                            border: "1px solid var(--border)",
+                            borderRadius: 8,
+                            background: "var(--card)",
+                            color: "var(--foreground)",
+                            padding: "8px 10px",
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Customer Phone</div>
+                        <input
+                          type="text"
+                          value={draftCustomerPhone}
+                          onChange={(e) => setDraftCustomerPhone(e.target.value)}
+                          style={{
+                            width: "100%",
+                            border: "1px solid var(--border)",
+                            borderRadius: 8,
+                            background: "var(--card)",
+                            color: "var(--foreground)",
+                            padding: "8px 10px",
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Internal Notes</div>
+                      <textarea
+                        value={draftNotes}
+                        onChange={(e) => setDraftNotes(e.target.value)}
+                        style={{
+                          width: "100%",
+                          minHeight: 80,
+                          border: "1px solid var(--border)",
+                          borderRadius: 8,
+                          background: "var(--card)",
+                          color: "var(--foreground)",
+                          padding: "8px 10px",
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Editable Fields JSON</div>
+                      <textarea
+                        value={draftFieldsText}
+                        onChange={(e) => setDraftFieldsText(e.target.value)}
+                        style={{
+                          width: "100%",
+                          minHeight: 180,
+                          fontFamily: "monospace",
+                          fontSize: 12,
+                          border: "1px solid var(--border)",
+                          borderRadius: 8,
+                          background: "var(--card)",
+                          color: "var(--foreground)",
+                          padding: "8px 10px",
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button type="button" className="btn btn-primary" disabled={savingTicket} onClick={handleSaveTicket}>
+                        {savingTicket ? "Saving..." : "Save Ticket"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={orderActionPending !== null}
+                        onClick={() => void handleApproveOrder()}
+                      >
+                        {orderActionPending === "approve" ? "Approving..." : "Approve Order"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={orderActionPending !== null}
+                        onClick={() => void handleDenyOrder()}
+                      >
+                        {orderActionPending === "deny" ? "Denying..." : "Deny Order"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 <div>
                   <div className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>Fields</div>
                   {fieldRows.length ? (
@@ -1261,4 +1491,3 @@ function TicketDetailsDrawer({
     </>
   );
 }
-

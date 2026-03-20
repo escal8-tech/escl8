@@ -1,13 +1,31 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
-import { supportTicketEvents, supportTicketTypes, supportTickets } from "../../../drizzle/schema";
+import {
+  businesses,
+  customers,
+  orders,
+  supportTicketEvents,
+  supportTicketTypes,
+  supportTickets,
+} from "../../../drizzle/schema";
 import { TRPCError } from "@trpc/server";
+import { normalizeOrderFlowSettings } from "@/lib/order-settings";
 import { DEFAULT_TICKET_TYPE_KEYS, ensureDefaultTicketTypes } from "../services/ticketDefaults";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { sendWhatsAppMessagesViaBot } from "../services/botApi";
+import {
+  buildOrderApprovalMessages,
+  computeOrderExpectedAmount,
+  formatOrderItemsSummary,
+  logOrderEvent,
+  persistOutboundThreadMessage,
+  sanitizePhoneDigits,
+} from "../services/orderFlow";
 
 const ticketStatusSchema = z.enum(["open", "in_progress", "resolved"]);
 const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
@@ -45,6 +63,34 @@ async function logTicketEvent(params: {
     actorLabel: params.actorLabel ?? null,
     payload: params.payload ?? {},
   });
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function validateTicketOrderFlow(input: {
+  ticketTypeKey: string | null | undefined;
+  ticketFlowEnabled: boolean;
+}) {
+  if (normalizeKey(String(input.ticketTypeKey || "")) !== "ordercreation") {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Only order creation tickets support approve and deny." });
+  }
+  if (!input.ticketFlowEnabled) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
+  }
+}
+
+function bankQrMessagingConfigured(settings: ReturnType<typeof normalizeOrderFlowSettings>): boolean {
+  if (settings.paymentMethod !== "bank_qr") return true;
+  const bankQr = settings.bankQr;
+  const hasQr = bankQr.showQr && Boolean(bankQr.qrImageUrl);
+  const hasBankDetails =
+    bankQr.showBankDetails && Boolean(bankQr.bankName || bankQr.accountName || bankQr.accountNumber || bankQr.accountInstructions);
+  return hasQr || hasBankDetails;
 }
 
 export const ticketsRouter = router({
@@ -250,6 +296,90 @@ export const ticketsRouter = router({
         });
       }
       return created;
+    }),
+
+  updateTicket: businessProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        title: z.string().nullish(),
+        summary: z.string().nullish(),
+        notes: z.string().nullish(),
+        priority: ticketPrioritySchema.optional(),
+        customerName: z.string().nullish(),
+        customerPhone: z.string().nullish(),
+        fields: z.record(z.string(), z.unknown()).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [existing] = await db
+        .select()
+        .from(supportTickets)
+        .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
+        .limit(1);
+      if (!existing) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
+      }
+
+      const nextFields = input.fields ?? asRecord(existing.fields);
+      const [updated] = await db
+        .update(supportTickets)
+        .set({
+          title: input.title === undefined ? existing.title : input.title?.trim() || null,
+          summary: input.summary === undefined ? existing.summary : input.summary?.trim() || null,
+          notes: input.notes === undefined ? existing.notes : input.notes?.trim() || null,
+          priority: input.priority ?? existing.priority,
+          customerName:
+            input.customerName === undefined ? existing.customerName : input.customerName?.trim() || null,
+          customerPhone:
+            input.customerPhone === undefined ? existing.customerPhone : input.customerPhone?.trim() || null,
+          fields: nextFields,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
+        .returning();
+
+      if (updated) {
+        await logTicketEvent({
+          businessId: ctx.businessId,
+          ticketId: updated.id,
+          eventType: "edited",
+          actorType: "user",
+          actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+          actorLabel: ctx.userEmail ?? "user",
+          payload: {
+            fieldsUpdated: input.fields ? Object.keys(input.fields) : [],
+            priority: updated.priority,
+          },
+        });
+        await publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "ticket",
+          op: "upsert",
+          entityId: updated.id,
+          payload: { ticket: updated as any },
+          createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
+        });
+        recordBusinessEvent({
+          event: "ticket.updated",
+          action: "updateTicket",
+          area: "ticket",
+          businessId: ctx.businessId,
+          entity: "ticket",
+          entityId: updated.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          status: updated.status,
+          attributes: {
+            priority: updated.priority,
+            ticket_type_key: updated.ticketTypeKey,
+          },
+        });
+      }
+
+      return updated ?? null;
     }),
 
   updateTicketStatus: businessProcedure
@@ -497,6 +627,439 @@ export const ticketsRouter = router({
         }
       }
       return updated ?? null;
+    }),
+
+  approveOrderTicket: businessProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const [biz] = await db
+        .select({ settings: businesses.settings })
+        .from(businesses)
+        .where(eq(businesses.id, ctx.businessId))
+        .limit(1);
+      const orderSettings = normalizeOrderFlowSettings(biz?.settings);
+
+      const [ticket] = await db
+        .select({
+          id: supportTickets.id,
+          businessId: supportTickets.businessId,
+          ticketTypeKey: supportTickets.ticketTypeKey,
+          status: supportTickets.status,
+          source: supportTickets.source,
+          customerId: supportTickets.customerId,
+          threadId: supportTickets.threadId,
+          whatsappIdentityId: supportTickets.whatsappIdentityId,
+          customerName: supportTickets.customerName,
+          customerPhone: supportTickets.customerPhone,
+          title: supportTickets.title,
+          summary: supportTickets.summary,
+          fields: supportTickets.fields,
+          notes: supportTickets.notes,
+          priority: supportTickets.priority,
+          createdBy: supportTickets.createdBy,
+          createdAt: supportTickets.createdAt,
+          updatedAt: supportTickets.updatedAt,
+          customerExternalId: customers.externalId,
+        })
+        .from(supportTickets)
+        .leftJoin(customers, eq(supportTickets.customerId, customers.id))
+        .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
+        .limit(1);
+
+      if (!ticket) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
+      }
+      validateTicketOrderFlow({
+        ticketTypeKey: ticket.ticketTypeKey,
+        ticketFlowEnabled: orderSettings.ticketToOrderEnabled,
+      });
+      if (orderSettings.paymentMethod === "bank_qr" && !bankQrMessagingConfigured(orderSettings)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Bank or QR payment details are not configured in General settings.",
+        });
+      }
+
+      const fields = asRecord(ticket.fields);
+      const itemsSummary = formatOrderItemsSummary(fields);
+      const expectedAmount = computeOrderExpectedAmount(fields);
+      const approvalRecipient =
+        orderSettings.paymentMethod === "bank_qr"
+          ? sanitizePhoneDigits(ticket.customerExternalId || ticket.customerPhone)
+          : "";
+      if (orderSettings.paymentMethod === "bank_qr" && (!ticket.whatsappIdentityId || !approvalRecipient)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Ticket is missing WhatsApp routing details for payment delivery.",
+        });
+      }
+      const now = new Date();
+      const nextOrderStatus = orderSettings.paymentMethod === "bank_qr" ? "awaiting_payment" : "approved";
+      const ticketSnapshot = {
+        ticketId: ticket.id,
+        title: ticket.title ?? null,
+        summary: ticket.summary ?? null,
+        fields,
+        notes: ticket.notes ?? null,
+        priority: ticket.priority ?? null,
+      };
+      const paymentConfigSnapshot = {
+        paymentMethod: orderSettings.paymentMethod,
+        currency: orderSettings.currency,
+        bankQr: orderSettings.bankQr,
+      };
+
+      const result = await db.transaction(async (tx) => {
+        const [existingOrder] = await tx
+          .select({
+            id: orders.id,
+            status: orders.status,
+            paymentReference: orders.paymentReference,
+            paidAmount: orders.paidAmount,
+            paymentApprovedAt: orders.paymentApprovedAt,
+            paymentRejectedAt: orders.paymentRejectedAt,
+          })
+          .from(orders)
+          .where(and(eq(orders.businessId, ctx.businessId), eq(orders.supportTicketId, ticket.id)))
+          .limit(1);
+
+        const orderId = existingOrder?.id ?? randomUUID();
+        const paymentReference =
+          orderSettings.paymentMethod === "bank_qr"
+            ? existingOrder?.paymentReference ?? `ORD-${orderId.slice(0, 8).toUpperCase()}`
+            : null;
+
+        const baseOrderValues = {
+          businessId: ctx.businessId,
+          supportTicketId: ticket.id,
+          source: ticket.source || "whatsapp",
+          customerId: ticket.customerId ?? null,
+          threadId: ticket.threadId ?? null,
+          whatsappIdentityId: ticket.whatsappIdentityId ?? null,
+          customerName: ticket.customerName?.trim() || null,
+          customerPhone: ticket.customerPhone?.trim() || null,
+          status: existingOrder?.status === "paid" ? "paid" : nextOrderStatus,
+          paymentMethod: orderSettings.paymentMethod,
+          currency: orderSettings.currency,
+          expectedAmount,
+          paymentReference,
+          ticketSnapshot,
+          paymentConfigSnapshot,
+          notes: ticket.notes?.trim() || null,
+          approvedAt: now,
+          updatedAt: now,
+        } as const;
+
+        const [orderRow] = existingOrder
+          ? await tx
+              .update(orders)
+              .set({
+                ...baseOrderValues,
+                paidAmount: existingOrder.paidAmount,
+                paymentApprovedAt: existingOrder.paymentApprovedAt,
+                paymentRejectedAt: existingOrder.paymentRejectedAt,
+              })
+              .where(eq(orders.id, existingOrder.id))
+              .returning()
+          : await tx
+              .insert(orders)
+              .values({
+                id: orderId,
+                ...baseOrderValues,
+              })
+              .returning();
+
+        const [ticketRow] = await tx
+          .update(supportTickets)
+          .set({
+            status: "resolved",
+            outcome: "won",
+            lossReason: null,
+            resolvedAt: now,
+            closedAt: null,
+            updatedAt: now,
+          })
+          .where(and(eq(supportTickets.id, ticket.id), eq(supportTickets.businessId, ctx.businessId)))
+          .returning();
+
+        return {
+          order: orderRow ?? null,
+          ticket: ticketRow ?? null,
+        };
+      });
+
+      if (!result.order || !result.ticket) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to approve order ticket." });
+      }
+
+      await Promise.all([
+        logTicketEvent({
+          businessId: ctx.businessId,
+          ticketId: result.ticket.id,
+          eventType: "order_approved",
+          actorType: "user",
+          actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+          actorLabel: ctx.userEmail ?? "user",
+          payload: {
+            orderId: result.order.id,
+            orderStatus: result.order.status,
+            paymentMethod: result.order.paymentMethod,
+          },
+        }),
+        logOrderEvent({
+          businessId: ctx.businessId,
+          orderId: result.order.id,
+          eventType: "approved",
+          actorType: "user",
+          actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+          actorLabel: ctx.userEmail ?? "user",
+          payload: {
+            supportTicketId: result.ticket.id,
+            paymentMethod: result.order.paymentMethod,
+            expectedAmount: result.order.expectedAmount,
+          },
+        }),
+      ]);
+
+      let delivery: { ok: boolean; error?: string | null } = { ok: true };
+      if (orderSettings.paymentMethod === "bank_qr") {
+        const approvalMessages = buildOrderApprovalMessages({
+          orderId: result.order.id,
+          customerName: ticket.customerName,
+          itemsSummary,
+          expectedAmount,
+          paymentReference: result.order.paymentReference,
+          orderSettings,
+        });
+
+        try {
+          const sendResults = await sendWhatsAppMessagesViaBot({
+            businessId: ctx.businessId,
+            phoneNumberId: ticket.whatsappIdentityId!,
+            to: approvalRecipient,
+            messages: approvalMessages,
+          });
+
+          if (ticket.threadId) {
+            for (const [index, outbound] of approvalMessages.entries()) {
+              await persistOutboundThreadMessage({
+                threadId: ticket.threadId,
+                messageType: outbound.type,
+                textBody: outbound.type === "text" ? outbound.text : outbound.caption ?? "[payment QR image]",
+                externalMessageId: sendResults[index]?.messageId ?? null,
+                meta: {
+                  source: "order_ticket_approval",
+                  orderId: result.order.id,
+                  providerResponse: sendResults[index]?.providerResponse ?? null,
+                  whatsappIdentityId: ticket.whatsappIdentityId,
+                },
+              });
+            }
+          }
+        } catch (error) {
+          delivery = {
+            ok: false,
+            error: error instanceof Error ? error.message : "Failed to deliver payment instructions.",
+          };
+          await logOrderEvent({
+            businessId: ctx.businessId,
+            orderId: result.order.id,
+            eventType: "payment_instructions_delivery_failed",
+            actorType: "system",
+            actorLabel: "bot",
+            payload: {
+              error: delivery.error,
+            },
+          });
+        }
+      }
+
+      await Promise.all([
+        publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "ticket",
+          op: "upsert",
+          entityId: result.ticket.id,
+          payload: { ticket: result.ticket as any },
+          createdAt: result.ticket.updatedAt ?? now,
+        }),
+        publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "order",
+          op: "upsert",
+          entityId: result.order.id,
+          payload: { order: result.order as any },
+          createdAt: result.order.updatedAt ?? now,
+        }),
+      ]);
+
+      recordBusinessEvent({
+        event: "ticket.order_approved",
+        action: "approveOrderTicket",
+        area: "ticket",
+        businessId: ctx.businessId,
+        entity: "ticket",
+        entityId: result.ticket.id,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: delivery.ok ? "success" : "degraded",
+        status: result.order.status,
+        attributes: {
+          delivery_ok: delivery.ok,
+          order_id: result.order.id,
+          payment_method: result.order.paymentMethod,
+        },
+      });
+
+      return {
+        ticket: result.ticket,
+        order: result.order,
+        delivery,
+      };
+    }),
+
+  denyOrderTicket: businessProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        reason: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [biz] = await db
+        .select({ settings: businesses.settings })
+        .from(businesses)
+        .where(eq(businesses.id, ctx.businessId))
+        .limit(1);
+      const orderSettings = normalizeOrderFlowSettings(biz?.settings);
+
+      const [ticket] = await db
+        .select({
+          id: supportTickets.id,
+          ticketTypeKey: supportTickets.ticketTypeKey,
+          notes: supportTickets.notes,
+        })
+        .from(supportTickets)
+        .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
+        .limit(1);
+      if (!ticket) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
+      }
+      validateTicketOrderFlow({
+        ticketTypeKey: ticket.ticketTypeKey,
+        ticketFlowEnabled: orderSettings.ticketToOrderEnabled,
+      });
+
+      const now = new Date();
+      const normalizedReason = input.reason?.trim() || "Denied";
+      const result = await db.transaction(async (tx) => {
+        const [existingOrder] = await tx
+          .select({ id: orders.id })
+          .from(orders)
+          .where(and(eq(orders.businessId, ctx.businessId), eq(orders.supportTicketId, input.id)))
+          .limit(1);
+
+        const [ticketRow] = await tx
+          .update(supportTickets)
+          .set({
+            status: "resolved",
+            outcome: "lost",
+            lossReason: normalizedReason,
+            resolvedAt: now,
+            closedAt: null,
+            updatedAt: now,
+          })
+          .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
+          .returning();
+
+        const [orderRow] = existingOrder
+          ? await tx
+              .update(orders)
+              .set({
+                status: "denied",
+                notes: ticket.notes?.trim() || normalizedReason,
+                updatedAt: now,
+              })
+              .where(eq(orders.id, existingOrder.id))
+              .returning()
+          : [];
+
+        return {
+          ticket: ticketRow ?? null,
+          order: orderRow ?? null,
+        };
+      });
+
+      if (!result.ticket) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to deny order ticket." });
+      }
+
+      await logTicketEvent({
+        businessId: ctx.businessId,
+        ticketId: result.ticket.id,
+        eventType: "order_denied",
+        actorType: "user",
+        actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+        actorLabel: ctx.userEmail ?? "user",
+        payload: {
+          reason: normalizedReason,
+          orderId: result.order?.id ?? null,
+        },
+      });
+      if (result.order) {
+        await logOrderEvent({
+          businessId: ctx.businessId,
+          orderId: result.order.id,
+          eventType: "denied",
+          actorType: "user",
+          actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+          actorLabel: ctx.userEmail ?? "user",
+          payload: {
+            reason: normalizedReason,
+            supportTicketId: result.ticket.id,
+          },
+        });
+      }
+
+      await publishPortalEvent({
+        businessId: ctx.businessId,
+        entity: "ticket",
+        op: "upsert",
+        entityId: result.ticket.id,
+        payload: { ticket: result.ticket as any },
+        createdAt: result.ticket.updatedAt ?? now,
+      });
+      if (result.order) {
+        await publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "order",
+          op: "upsert",
+          entityId: result.order.id,
+          payload: { order: result.order as any },
+          createdAt: result.order.updatedAt ?? now,
+        });
+      }
+
+      recordBusinessEvent({
+        event: "ticket.order_denied",
+        action: "denyOrderTicket",
+        area: "ticket",
+        businessId: ctx.businessId,
+        entity: "ticket",
+        entityId: result.ticket.id,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: "success",
+        status: "denied",
+        attributes: {
+          order_id: result.order?.id ?? null,
+          reason: normalizedReason,
+        },
+      });
+
+      return result;
     }),
 
   listTicketEvents: businessProcedure
