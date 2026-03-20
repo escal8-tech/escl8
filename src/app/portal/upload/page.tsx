@@ -2,9 +2,11 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import PortalAuthProvider from "@/components/PortalAuthProvider";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { fetchWithFirebaseAuth } from "@/lib/client-auth-ops";
+import { recordClientBusinessEvent } from "@/lib/client-business-monitoring";
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/components/ToastProvider";
 import { DocSlot, DocType, ExistingMap, ExistingDoc } from "./types";
@@ -147,6 +149,20 @@ const DOC_SLOTS: DocSlot[] = [
     accept: ".pdf,.txt,.doc,.docx",
   },
 ];
+
+function getDocTitle(docType: DocType): string {
+  return DOC_SLOTS.find((slot) => slot.key === docType)?.title || docType;
+}
+
+function getEmailDomain(email?: string | null): string | undefined {
+  const normalized = String(email || "").trim().toLowerCase();
+  const atIndex = normalized.lastIndexOf("@");
+  return atIndex > 0 ? normalized.slice(atIndex + 1) : undefined;
+}
+
+function normalizeStatus(status?: string | null): string {
+  return String(status || "not_indexed").trim().toLowerCase();
+}
 
 /* ─────────────────────────────────────────────────────────────────────────────
    STYLES
@@ -736,6 +752,7 @@ function DocumentCard({
    MAIN UPLOAD CONTENT
 ───────────────────────────────────────────────────────────────────────────── */
 function UploadContent() {
+  const pathname = usePathname();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [existing, setExisting] = useState<ExistingMap>({});
@@ -744,8 +761,12 @@ function UploadContent() {
   const [retrainBusy, setRetrainBusy] = useState<DocType | null>(null);
   const toast = useToast();
   const retrainToastRef = useRef(new Map<DocType, string>());
+  const observedStatusRef = useRef(new Map<DocType, string>());
+  const pendingTrainingDocsRef = useRef(new Set<DocType>());
 
   const retrainMutation = trpc.rag.enqueueRetrain.useMutation();
+  const route = pathname || "/portal/upload";
+  const emailDomain = getEmailDomain(userEmail);
 
   const fetchExisting = useCallback(async () => {
     try {
@@ -804,12 +825,12 @@ function UploadContent() {
 
   useEffect(() => {
     for (const [docType, toastId] of retrainToastRef.current.entries()) {
-      const status = String(existing?.[docType]?.indexingStatus ?? "").toLowerCase();
+      const status = normalizeStatus(existing?.[docType]?.indexingStatus);
       if (status === "indexed") {
         toast.update(toastId, {
           type: "success",
           title: "Training complete",
-          message: `AI trained successfully on ${DOC_SLOTS.find((slot) => slot.key === docType)?.title || docType}`,
+          message: `AI trained successfully on ${getDocTitle(docType)}`,
           durationMs: 4000,
         });
         retrainToastRef.current.delete(docType);
@@ -824,6 +845,61 @@ function UploadContent() {
       }
     }
   }, [existing, toast]);
+
+  useEffect(() => {
+    for (const slot of DOC_SLOTS) {
+      const docType = slot.key;
+      const currentDoc = existing?.[docType];
+      const currentStatus = normalizeStatus(currentDoc?.indexingStatus);
+      const previousStatus = observedStatusRef.current.get(docType);
+
+      if (previousStatus === currentStatus) {
+        continue;
+      }
+
+      if (pendingTrainingDocsRef.current.has(docType)) {
+        if (currentStatus === "indexed") {
+          pendingTrainingDocsRef.current.delete(docType);
+          recordClientBusinessEvent({
+            event: "document.training_completed",
+            action: "portal.upload.train",
+            area: "documents",
+            level: "info",
+            outcome: "success",
+            route,
+            attributes: {
+              business_id: businessId,
+              doc_type: docType,
+              document_name: currentDoc?.name,
+              email_domain: emailDomain,
+              last_indexed_at: currentDoc?.lastIndexedAt,
+            },
+          });
+        } else if (currentStatus === "failed") {
+          pendingTrainingDocsRef.current.delete(docType);
+          recordClientBusinessEvent({
+            event: "document.training_failed",
+            action: "portal.upload.train",
+            area: "documents",
+            level: "error",
+            outcome: "flow_broken",
+            route,
+            error: new Error(currentDoc?.lastError || `${getDocTitle(docType)} training failed.`),
+            captureInSentry: true,
+            attributes: {
+              business_id: businessId,
+              doc_type: docType,
+              document_name: currentDoc?.name,
+              email_domain: emailDomain,
+              last_error: currentDoc?.lastError,
+            },
+          });
+        }
+      }
+
+      observedStatusRef.current.set(docType, currentStatus);
+    }
+  }, [businessId, emailDomain, existing, route]);
 
   const onUpload = useCallback(async (docType: DocType, file: File | null) => {
     if (!file) return;
@@ -844,10 +920,48 @@ function UploadContent() {
         missingSessionEvent: "document.upload_session_missing",
         requestFailureEvent: "document.upload_failed",
         tokenFailureEvent: "document.upload_failed",
+        route,
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Upload failed");
+      if (!res.ok) {
+        const uploadError = new Error(json.error || "Upload failed");
+        recordClientBusinessEvent({
+          event: "document.upload_rejected",
+          action: "portal.upload.submit",
+          area: "documents",
+          level: res.status >= 500 ? "error" : "warn",
+          outcome: res.status >= 500 ? "unexpected_failure" : "handled_failure",
+          route,
+          error: uploadError,
+          captureInSentry: res.status >= 500,
+          attributes: {
+            business_id: businessId,
+            doc_type: docType,
+            document_name: file.name,
+            email_domain: emailDomain,
+            file_size: file.size,
+            http_status: res.status,
+          },
+        });
+        throw uploadError;
+      }
       setExisting((prev) => ({ ...prev, [docType]: json.file }));
+      recordClientBusinessEvent({
+        event: "document.upload_succeeded",
+        action: "portal.upload.submit",
+        area: "documents",
+        level: "info",
+        outcome: "success",
+        route,
+        attributes: {
+          business_id: businessId,
+          doc_type: docType,
+          document_name: file.name,
+          email_domain: emailDomain,
+          file_size: file.size,
+          indexing_status: json.file?.indexingStatus,
+        },
+      });
       toast.show({
         type: "success",
         title: "File uploaded",
@@ -865,7 +979,7 @@ function UploadContent() {
     } finally {
       setBusy(false);
     }
-  }, [toast]);
+  }, [businessId, emailDomain, route, toast]);
 
   const retrain = useCallback(async (docType: DocType) => {
     setRetrainBusy(docType);
@@ -887,13 +1001,44 @@ function UploadContent() {
     try {
       if (!userEmail) throw new Error("Missing user email");
       await retrainMutation.mutateAsync({ email: userEmail, docType });
+      pendingTrainingDocsRef.current.add(docType);
+      recordClientBusinessEvent({
+        event: "document.training_requested",
+        action: "portal.upload.train",
+        area: "documents",
+        level: "info",
+        outcome: "queued",
+        route,
+        attributes: {
+          business_id: businessId,
+          doc_type: docType,
+          document_name: existing?.[docType]?.name,
+          email_domain: emailDomain,
+        },
+      });
       toast.update(toastId, {
         type: "progress",
         title: "Training queued",
         message: "Live updates enabled. Status will update automatically.",
       });
     } catch (e: any) {
+      pendingTrainingDocsRef.current.delete(docType);
       setError(e?.message || "Retrain failed");
+      recordClientBusinessEvent({
+        event: "document.training_request_failed",
+        action: "portal.upload.train",
+        area: "documents",
+        level: "warn",
+        outcome: "handled_failure",
+        route,
+        error: e instanceof Error ? e : new Error(String(e)),
+        attributes: {
+          business_id: businessId,
+          doc_type: docType,
+          document_name: existing?.[docType]?.name,
+          email_domain: emailDomain,
+        },
+      });
       toast.update(toastId, {
         type: "error",
         title: "Unable to start training",
@@ -904,7 +1049,7 @@ function UploadContent() {
     } finally {
       setRetrainBusy(null);
     }
-  }, [userEmail, retrainMutation, toast]);
+  }, [businessId, emailDomain, existing, retrainMutation, route, toast, userEmail]);
 
   return (
     <div style={styles.page}>

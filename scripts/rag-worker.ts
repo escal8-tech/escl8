@@ -7,6 +7,9 @@ import { ragJobs, trainingDocuments } from "../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { ensureRagQueue } from "../src/server/rag/queue";
 import { publishPortalEvent, toPortalDocumentPayload } from "../src/server/realtime/portalEvents";
+import { recordBusinessEvent } from "../src/lib/business-monitoring";
+import { captureSentryException } from "../src/lib/sentry-monitoring";
+import { registerNodeRuntimeMonitoring } from "../src/lib/node-runtime-monitoring";
 
 type RagJobRow = typeof ragJobs.$inferSelect;
 
@@ -95,8 +98,7 @@ async function claimNextJob(): Promise<RagJobRow | null> {
   `);
 
   // drizzle returns { rows } on node-postgres driver
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rows = (res as any).rows as RagJobRow[] | undefined;
+  const rows = (res as { rows?: RagJobRow[] }).rows;
   const job = rows?.[0] ?? null;
   if (job) {
     console.log(`[rag-worker] claimed job=${job.id} businessId=${job.businessId} docType=${job.docType} attempts=${job.attempts}`);
@@ -123,6 +125,22 @@ async function processJob(job: RagJobRow) {
   if (!doc) {
     throw new Error(`Training document not found for businessId=${job.businessId} docType=${docType}`);
   }
+
+  recordBusinessEvent({
+    event: "rag.training_started",
+    action: "rag-worker.process-job",
+    area: "rag",
+    businessId: job.businessId,
+    entity: "training_document",
+    entityId: doc.id,
+    outcome: "started",
+    status: "indexing",
+    attributes: {
+      doc_type: docType,
+      file_name: doc.originalFilename,
+      rag_job_id: job.id,
+    },
+  });
 
   const [indexingDoc] = await db
     .update(trainingDocuments)
@@ -180,6 +198,23 @@ async function processJob(job: RagJobRow) {
     .set({ status: "succeeded", finishedAt: new Date(), error: null })
     .where(eq(ragJobs.id, job.id));
 
+  recordBusinessEvent({
+    event: "rag.training_completed",
+    action: "rag-worker.process-job",
+    area: "rag",
+    businessId: job.businessId,
+    entity: "training_document",
+    entityId: indexedDoc?.id ?? doc.id,
+    outcome: "success",
+    status: "indexed",
+    attributes: {
+      chunk_count: res.chunkCount,
+      doc_type: docType,
+      file_name: doc.originalFilename,
+      rag_job_id: job.id,
+    },
+  });
+
   console.log(`[rag-worker] done job=${job.id} businessId=${job.businessId} docType=${docType} chunks=${res.chunkCount}`);
 
   // After successful indexing, check if all 3 key docs are indexed and generate bot instructions
@@ -189,10 +224,46 @@ async function processJob(job: RagJobRow) {
       const { generateAndSaveBotInstructions } = await import("../src/server/rag/generateBotInstructions");
       const saved = await generateAndSaveBotInstructions(job.businessId);
       if (saved) {
+        recordBusinessEvent({
+          event: "rag.instructions_generated",
+          action: "rag-worker.generate-instructions",
+          area: "rag",
+          businessId: job.businessId,
+          entity: "rag_job",
+          entityId: job.id,
+          outcome: "success",
+          attributes: {
+            doc_type: docType,
+          },
+        });
         console.log(`[rag-worker] bot instructions generated and saved for businessId=${job.businessId}`);
       }
     } catch (instrErr: any) {
       // Don't fail the job if instruction generation fails, just log it
+      recordBusinessEvent({
+        event: "rag.instructions_generation_failed",
+        level: "error",
+        action: "rag-worker.generate-instructions",
+        area: "rag",
+        businessId: job.businessId,
+        entity: "rag_job",
+        entityId: job.id,
+        outcome: "failed",
+        attributes: {
+          doc_type: docType,
+          error_message: instrErr instanceof Error ? instrErr.message : String(instrErr),
+        },
+      });
+      captureSentryException(instrErr, {
+        action: "rag-worker.generate-instructions",
+        area: "rag",
+        level: "error",
+        tags: {
+          "rag.doc_type": docType,
+          "rag.job_id": job.id,
+          "escal8.business_id": job.businessId,
+        },
+      });
       console.error(`[rag-worker] failed to generate bot instructions: ${instrErr?.message || String(instrErr)}`);
     }
   }
@@ -242,11 +313,46 @@ async function failJob(job: RagJobRow, err: unknown) {
     }
   }
 
+  recordBusinessEvent({
+    event: "rag.training_failed",
+    level: "error",
+    action: "rag-worker.process-job",
+    area: "rag",
+    businessId: job.businessId,
+    entity: "rag_job",
+    entityId: job.id,
+    outcome: "failed",
+    status: "failed",
+    attributes: {
+      doc_type: String(job.docType || ""),
+      error_message: msg,
+      training_document_id: job.trainingDocumentId,
+    },
+  });
+  captureSentryException(err, {
+    action: "rag-worker.process-job",
+    area: "rag",
+    level: "error",
+    tags: {
+      "rag.doc_type": job.docType,
+      "rag.job_id": job.id,
+      "escal8.business_id": job.businessId,
+    },
+    contexts: {
+      rag: {
+        businessId: job.businessId,
+        docType: job.docType,
+        jobId: job.id,
+        trainingDocumentId: job.trainingDocumentId,
+      },
+    },
+  });
   console.error(`[rag-worker] Failed job=${job.id}: ${msg}`);
   if (stack) console.error(stack);
 }
 
 async function main() {
+  registerNodeRuntimeMonitoring();
   const pollMs = Number(process.env.RAG_WORKER_POLL_MS || 1500);
   const mode = (process.env.RAG_WORKER_MODE || "").toLowerCase();
   let useQueue = mode === "queue" || (mode !== "db");
@@ -297,4 +403,3 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
-

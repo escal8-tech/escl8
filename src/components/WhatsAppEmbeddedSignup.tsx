@@ -160,6 +160,24 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
           fb_status: response?.status,
         },
       });
+    } else {
+      setBusy(false);
+      setStatus("Facebook login did not complete properly.");
+      recordClientBusinessEvent({
+        event: "whatsapp.facebook_login_response_unexpected",
+        action: "portal-whatsapp-embedded-signup",
+        area: "whatsapp",
+        level: "error",
+        outcome: "flow_broken",
+        route,
+        error: new Error("Facebook login returned an unexpected response shape."),
+        captureInSentry: true,
+        attributes: {
+          email_domain: emailDomain,
+          fb_status: typeof response?.status === "string" ? response.status : undefined,
+          has_auth_code: Boolean(response?.authResponse?.code),
+        },
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emailDomain, route]);
@@ -277,10 +295,36 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
       if (payload.setupComplete) {
         setStatus("WhatsApp synced. Setup complete.");
         setConnected(true);
+        recordClientBusinessEvent({
+          event: "whatsapp.embedded_signup_succeeded",
+          action: "portal-whatsapp-embedded-signup",
+          area: "whatsapp",
+          level: "info",
+          outcome: "success",
+          route,
+          attributes: {
+            email_domain: emailDomain,
+            phone_number_id: idsRef.current?.phoneNumberId,
+            waba_id: idsRef.current?.wabaId,
+          },
+        });
         onConnected?.();
       } else {
         setStatus(payload.message || "WhatsApp linked, but setup is still pending on the server.");
         setConnected(false);
+        recordClientBusinessEvent({
+          event: "whatsapp.embedded_signup_pending",
+          action: "portal-whatsapp-embedded-signup",
+          area: "whatsapp",
+          level: "warn",
+          outcome: "pending_server_setup",
+          route,
+          attributes: {
+            email_domain: emailDomain,
+            phone_number_id: idsRef.current?.phoneNumberId,
+            waba_id: idsRef.current?.wabaId,
+          },
+        });
       }
     } catch (err: any) {
       if (!failureAlreadyLogged) {
@@ -307,22 +351,68 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
   }, [email, emailDomain, onConnected, route]);
 
   const launchWhatsAppSignup = useCallback(() => {
-    if (!window.FB) return;
+    if (!window.FB) {
+      setBusy(false);
+      setStatus("Facebook SDK is not ready yet. Please try again.");
+      recordClientBusinessEvent({
+        event: "whatsapp.facebook_sdk_missing",
+        action: "portal-whatsapp-embedded-signup",
+        area: "whatsapp",
+        level: "error",
+        outcome: "unexpected_failure",
+        route,
+        error: new Error("Facebook SDK was unavailable when embedded signup was launched."),
+        captureInSentry: true,
+        attributes: {
+          email_domain: emailDomain,
+        },
+      });
+      return;
+    }
     setBusy(true);
     setStatus("Opening Facebook to connect WhatsApp…");
+    recordClientBusinessEvent({
+      event: "whatsapp.facebook_login_started",
+      action: "portal-whatsapp-embedded-signup",
+      area: "whatsapp",
+      level: "info",
+      outcome: "started",
+      route,
+      attributes: {
+        email_domain: emailDomain,
+      },
+    });
     // Reset previous state
     codeRef.current = null;
     idsRef.current = null;
     sentRef.current = false;
     setConnected(false);
 
-    window.FB.login(fbLoginCallback, {
-      config_id: FB_EMBEDDED_SIGNUP_CONFIG_ID, // configuration ID goes here
-      response_type: "code", // must be set to 'code' for System User access token
-      override_default_response_type: true, // when true, any response types passed in the "response_type" will take precedence over the default types
-      extras: { version: "v3" },
-    });
-  }, [fbLoginCallback]);
+    try {
+      window.FB.login(fbLoginCallback, {
+        config_id: FB_EMBEDDED_SIGNUP_CONFIG_ID, // configuration ID goes here
+        response_type: "code", // must be set to 'code' for System User access token
+        override_default_response_type: true, // when true, any response types passed in the "response_type" will take precedence over the default types
+        extras: { version: "v3" },
+      });
+    } catch (error) {
+      setBusy(false);
+      setStatus("Unable to open Facebook login.");
+      recordClientBusinessEvent({
+        event: "whatsapp.facebook_login_launch_failed",
+        action: "portal-whatsapp-embedded-signup",
+        area: "whatsapp",
+        level: "error",
+        outcome: "unexpected_failure",
+        route,
+        error: error instanceof Error ? error : new Error(String(error)),
+        captureInSentry: true,
+        attributes: {
+          email_domain: emailDomain,
+        },
+      });
+    }
+  }, [emailDomain, fbLoginCallback, route]);
 
   const baseStyle = {
     backgroundColor: "#1877f2",
