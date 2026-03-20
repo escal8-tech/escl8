@@ -9,12 +9,12 @@ export type Source = 'whatsapp' | 'shopee' | 'lazada' | 'telegram' | 'instagram'
 export type RequestRow = {
   id: string;
   customerId?: string | null;
-  customerNumber: string;
+  customerNumber: string | null;
   sentiment: string | null;
   status?: string | null;
   type?: string | null;
   source?: string; // whatsapp | shopee | lazada | etc.
-  price: number | null;
+  price: number | string | null;
   paid: boolean;
   createdAt: string | Date;
   updatedAt?: string | Date | null;

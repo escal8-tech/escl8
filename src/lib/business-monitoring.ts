@@ -62,11 +62,20 @@ function inferArea(event: string, entity?: string | null): string {
   return "app";
 }
 
+function normalizeBusinessLevel(level: GrafanaLogLevel | undefined, outcome: string | null | undefined): GrafanaLogLevel {
+  const resolved = level || "info";
+  if (outcome === "handled_failure" && (resolved === "error" || resolved === "fatal")) {
+    return "warn";
+  }
+  return resolved;
+}
+
 export function recordBusinessEvent(input: BusinessEventInput): void {
   const event = String(input.event || "").trim() || "business.event";
+  const level = normalizeBusinessLevel(input.level, input.outcome);
 
   recordGrafanaLog(
-    input.level || "info",
+    level,
     event,
     normalizeAttributes({
       app_name: APP_NAME,

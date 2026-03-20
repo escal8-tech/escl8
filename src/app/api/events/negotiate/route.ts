@@ -61,6 +61,7 @@ export async function GET(req: Request) {
   const conn = process.env.WEB_PUBSUB_CONNECTION_STRING || process.env.WEB_PUBSUB_CONN || "";
   const hub = process.env.WEB_PUBSUB_HUB || "portal";
   if (!conn) {
+    const error = new Error("WEB_PUBSUB_CONNECTION_STRING missing");
     recordBusinessEvent({
       event: "realtime.negotiate_failed",
       level: "error",
@@ -75,6 +76,15 @@ export async function GET(req: Request) {
         missing_env: "WEB_PUBSUB_CONNECTION_STRING",
       },
     });
+    captureSentryException(error, {
+      action: "realtime-negotiate",
+      area: "realtime",
+      level: "error",
+      tags: {
+        "escal8.business_id": identity.businessId,
+        "realtime.hub": hub,
+      },
+    });
     return NextResponse.json({ error: "WEB_PUBSUB_CONNECTION_STRING missing" }, { status: 503 });
   }
 
@@ -82,7 +92,7 @@ export async function GET(req: Request) {
   try {
     const reqFn = eval("require") as NodeRequire;
     WebPubSubServiceClientCtor = reqFn("@azure/web-pubsub").WebPubSubServiceClient;
-  } catch {
+  } catch (error) {
     recordBusinessEvent({
       event: "realtime.negotiate_failed",
       level: "error",
@@ -95,6 +105,15 @@ export async function GET(req: Request) {
       entity: "realtime_session",
       attributes: {
         dependency: "@azure/web-pubsub",
+      },
+    });
+    captureSentryException(error, {
+      action: "realtime-negotiate",
+      area: "realtime",
+      level: "error",
+      tags: {
+        "escal8.business_id": identity.businessId,
+        "realtime.hub": hub,
       },
     });
     return NextResponse.json({ error: "@azure/web-pubsub not installed" }, { status: 503 });

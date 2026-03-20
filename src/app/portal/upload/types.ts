@@ -1,11 +1,11 @@
-export type DocType = "considerations" | "conversations" | "inventory" | "bank" | "address";
+import type { DocSlot, DocType, IndexingStatus } from "@/lib/rag-documents";
 
-export type DocSlot = { key: DocType; title: string; hint: string; accept: string };
+export type { DocSlot, DocType };
 
 export type ExistingDoc = {
 	name: string;
 	size: number;
-	indexingStatus?: string;
+	indexingStatus?: IndexingStatus | string;
 	lastIndexedAt?: string | null;
 	lastError?: string | null;
 	uploadedAt?: string | null;

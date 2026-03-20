@@ -4,11 +4,10 @@ import { users } from "@/../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 import { checkRateLimit } from "@/server/rateLimit";
+import { isDocType, type DocType } from "@/lib/rag-documents";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-type DocType = "considerations" | "conversations" | "inventory" | "bank" | "address";
 
 export async function POST(request: Request) {
   try {
@@ -60,7 +59,7 @@ export async function POST(request: Request) {
 
     if (!businessId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const docType = (body.docType as DocType);
-    if (!docType || !["considerations","conversations","inventory","bank","address"].includes(docType)) {
+    if (!isDocType(docType)) {
       return NextResponse.json({ error: "Invalid docType" }, { status: 400 });
     }
 

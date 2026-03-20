@@ -357,6 +357,7 @@ export function recordGrafanaLog(
   attributes: MonitoringAttributes = {},
   options: {
     forceClientDelivery?: boolean;
+    flushImmediately?: boolean;
     runtime?: GrafanaRuntime;
     source?: string;
   } = {},
@@ -384,6 +385,10 @@ export function recordGrafanaLog(
     },
     Boolean(options.forceClientDelivery),
   );
+
+  if (options.flushImmediately) {
+    void flushBrowserQueue();
+  }
 }
 
 export function installServerConsoleBridge(): void {

@@ -1,6 +1,5 @@
 import { BlobServiceClient } from "@azure/storage-blob";
-
-type DocType = "considerations" | "conversations" | "inventory" | "bank" | "address";
+import type { DocType } from "@/lib/rag-documents";
 
 const AZURE_CONN = process.env.AZURE_BLOB_CONNECTION_STRING || "";
 const AZURE_CONTAINER = process.env.AZURE_BLOB_CONTAINER || "uploads";

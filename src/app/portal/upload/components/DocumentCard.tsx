@@ -1,11 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { DocSlot } from "../types";
+import { ExistingDoc, type DocSlot } from "../types";
+import { INDEXING_STATUS, isIndexedIndexingStatus, isTrainingIndexingStatus, normalizeIndexingStatus } from "@/lib/rag-documents";
+import { DOC_SLOT_ICONS, UploadIcons, uploadStyles } from "./UploadPageUI";
 
 type Props = {
   slot: DocSlot;
-  current: { name: string; size: number; indexingStatus?: string; lastError?: string | null } | null | undefined;
+  current: ExistingDoc | null | undefined;
   busy: boolean;
   retrainBusy: boolean;
   onUpload: (file: File | null) => void;
@@ -13,7 +15,15 @@ type Props = {
   disabled: boolean;
 };
 
-export function DocumentCard({ slot, current, busy, retrainBusy, onUpload, onRetrain, disabled }: Props) {
+export function DocumentCard({
+  slot,
+  current,
+  busy,
+  retrainBusy,
+  onUpload,
+  onRetrain,
+  disabled,
+}: Props) {
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -25,6 +35,7 @@ export function DocumentCard({ slot, current, busy, retrainBusy, onUpload, onRet
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
     onUpload(file);
+    e.target.value = "";
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -43,80 +54,147 @@ export function DocumentCard({ slot, current, busy, retrainBusy, onUpload, onRet
     setDragActive(active);
   };
 
-  const dropBorder = dragActive ? "2px dashed #60a5fa" : "2px dashed var(--border)";
-  const dropBg = dragActive ? "rgba(37, 99, 235, 0.06)" : "rgba(255,255,255,0.03)";
+  const status = normalizeIndexingStatus(current?.indexingStatus || INDEXING_STATUS.NOT_INDEXED);
+  const isTraining = isTrainingIndexingStatus(status) || retrainBusy;
+  const isIndexed = isIndexedIndexingStatus(status);
+  const isFailed = status === INDEXING_STATUS.FAILED;
+  const canRetrain = Boolean(current) && !disabled && !isTraining;
 
-  const status = (current?.indexingStatus || "not_indexed").toLowerCase();
-  const isTraining = status === "queued" || status === "indexing" || retrainBusy;
-  const isIndexed = status === "indexed";
-  const canRetrain = Boolean(current) && !disabled && !isIndexed && !isTraining;
+  const statusBadge = (() => {
+    if (isTraining) {
+      return { bg: "rgba(0, 212, 255, 0.15)", color: "var(--accent)", text: "Training...", icon: UploadIcons.loader };
+    }
+    if (isIndexed) {
+      return { bg: "rgba(16, 185, 129, 0.15)", color: "var(--success)", text: "Trained", icon: UploadIcons.check };
+    }
+    if (isFailed) {
+      return { bg: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", text: "Failed", icon: UploadIcons.alert };
+    }
+    if (current) {
+      return { bg: "rgba(245, 158, 11, 0.15)", color: "#F59E0B", text: "Needs Training", icon: UploadIcons.refresh };
+    }
+    return { bg: "var(--card-muted)", color: "var(--muted)", text: "Not Uploaded", icon: null };
+  })();
 
   return (
-    <div className="glass" style={{ padding: 16, borderRadius: 16 }}>
-      <h3 style={{ marginBottom: 6 }}>{slot.title}</h3>
-      <p className="muted" style={{ marginBottom: 12 }}>{slot.hint}</p>
+    <div style={uploadStyles.card}>
+      <div style={uploadStyles.cardHeader}>
+        <div style={uploadStyles.cardIcon}>{DOC_SLOT_ICONS[slot.key]}</div>
+        <div style={uploadStyles.cardInfo}>
+          <h3 style={uploadStyles.cardTitle}>{slot.title}</h3>
+          <p style={uploadStyles.cardHint}>{slot.hint}</p>
+        </div>
+        <div style={{ ...uploadStyles.cardStatus, background: statusBadge.bg, color: statusBadge.color }}>
+          {statusBadge.icon}
+          {statusBadge.text}
+        </div>
+      </div>
 
-      <div
-        onDragEnter={(e) => handleDrag(e, true)}
-        onDragOver={(e) => handleDrag(e, true)}
-        onDragLeave={(e) => handleDrag(e, false)}
-        onDrop={handleDrop}
-        style={{
-          border: dropBorder,
-          borderRadius: 14,
-          background: dropBg,
-          padding: 16,
-          minHeight: 180,
-          display: "grid",
-          gap: 12,
-          alignContent: "space-between",
-          cursor: disabled ? "not-allowed" : "pointer",
-          transition: "border-color 120ms ease, background 120ms ease",
-        }}
-        onClick={triggerFilePicker}
-      >
-        <div style={{ display: "grid", gap: 8 }}>
-          <p style={{ margin: 0, fontWeight: 600 }}>Drag & drop your file here</p>
-          <p className="muted" style={{ margin: 0, fontSize: 13 }}>PDF, DOCX, TXT, CSV (per slot rules). Or click to browse.</p>
-          <div style={{ marginTop: 6 }}>
-            {current ? (
-              <p className="muted" style={{ margin: 0 }}>Current: {current.name} — {(current.size / 1024).toFixed(1)} KB</p>
-            ) : (
-              <p className="muted" style={{ margin: 0 }}>No file uploaded yet</p>
-            )}
-          </div>
+      <div style={uploadStyles.cardBody}>
+        <div
+          onDragEnter={(e) => handleDrag(e, true)}
+          onDragOver={(e) => handleDrag(e, true)}
+          onDragLeave={(e) => handleDrag(e, false)}
+          onDrop={handleDrop}
+          onClick={triggerFilePicker}
+          style={{
+            ...uploadStyles.dropzone,
+            ...(dragActive ? uploadStyles.dropzoneActive : {}),
+            ...(disabled ? uploadStyles.dropzoneDisabled : {}),
+          }}
+        >
+          <div style={uploadStyles.dropzoneIcon}>{UploadIcons.cloud}</div>
+          <p style={uploadStyles.dropzoneTitle}>
+            {dragActive ? "Drop file here" : "Drag & drop your file here"}
+          </p>
+          <p style={uploadStyles.dropzoneHint}>
+            or click to browse • {slot.accept.split(",").join(", ")}
+          </p>
+        </div>
+
+        <div style={uploadStyles.statusArea}>
+          {current ? (
+            <div style={uploadStyles.fileInfo}>
+              <div style={uploadStyles.fileIcon}>{UploadIcons.file}</div>
+              <div style={uploadStyles.fileDetails}>
+                <span style={uploadStyles.fileName}>{current.name}</span>
+                <span style={uploadStyles.fileSize}>
+                  {(current.size / 1024).toFixed(1)} KB
+                  {current.uploadedAt ? <> • Uploaded {new Date(current.uploadedAt).toLocaleDateString()}</> : null}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...uploadStyles.fileInfo, visibility: "hidden" }}>
+              <div style={uploadStyles.fileIcon}>{UploadIcons.file}</div>
+              <div style={uploadStyles.fileDetails}>
+                <span style={uploadStyles.fileName}>Placeholder</span>
+                <span style={uploadStyles.fileSize}>0.0 KB</span>
+              </div>
+            </div>
+          )}
+
+          {isTraining ? (
+            <div style={uploadStyles.progressContainer}>
+              {UploadIcons.loader}
+              <span style={uploadStyles.progressText}>Training AI on this document...</span>
+            </div>
+          ) : (
+            <div style={{ ...uploadStyles.progressContainer, visibility: "hidden" }}>
+              {UploadIcons.loader}
+              <span style={uploadStyles.progressText}>Training AI on this document...</span>
+            </div>
+          )}
+
           {current?.lastError ? (
-            <p style={{ margin: 0, fontSize: 13, color: "crimson" }}>Last training error: {current.lastError}</p>
+            <div style={uploadStyles.errorText}>
+              {UploadIcons.alert}
+              <span>{current.lastError}</span>
+            </div>
           ) : null}
-          {busy && <p className="muted" style={{ margin: 0 }}>Working…</p>}
         </div>
+      </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className="btn"
-            style={{ opacity: disabled ? 0.6 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
-            disabled={disabled || busy}
-            onClick={(e) => {
-              e.stopPropagation();
-              triggerFilePicker();
-            }}
-          >
-            {current ? "Re-upload" : "Upload"}
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={!canRetrain}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRetrain();
-            }}
-            style={{ opacity: !canRetrain ? 0.6 : 1 }}
-          >
-            {isTraining ? "Training…" : isIndexed ? "Trained" : "Retrain"}
-          </button>
-        </div>
+      <div style={uploadStyles.cardActions}>
+        <button
+          style={{ ...uploadStyles.btnSecondary, ...(disabled || busy ? uploadStyles.btnDisabled : {}) }}
+          disabled={disabled || busy}
+          onClick={(e) => {
+            e.stopPropagation();
+            triggerFilePicker();
+          }}
+        >
+          {UploadIcons.upload}
+          {current ? "Replace" : "Upload"}
+        </button>
+        <button
+          style={{
+            ...(isIndexed ? uploadStyles.btnSuccess : uploadStyles.btnPrimary),
+            ...(!canRetrain ? uploadStyles.btnDisabled : {}),
+          }}
+          disabled={!canRetrain}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRetrain();
+          }}
+        >
+          {isTraining ? (
+            <>
+              {UploadIcons.loader}
+              Training...
+            </>
+          ) : isIndexed ? (
+            <>
+              {UploadIcons.check}
+              Trained
+            </>
+          ) : (
+            <>
+              {UploadIcons.refresh}
+              Train AI
+            </>
+          )}
+        </button>
       </div>
 
       <input

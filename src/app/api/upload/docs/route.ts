@@ -9,11 +9,11 @@ import { checkRateLimit } from "@/server/rateLimit";
 import { publishPortalEvent, toPortalDocumentPayload } from "@/server/realtime/portalEvents";
 import { captureSentryException, recordSentryLog, recordSentryMetric } from "@/lib/sentry-monitoring";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { buildDocTypeRecord, INDEXING_STATUS, isDocType, type DocType } from "@/lib/rag-documents";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-type DocType = "considerations" | "conversations" | "inventory" | "bank" | "address";
 const ALLOWED_MIME = new Set([
   "application/pdf",
   "text/plain",
@@ -31,20 +31,14 @@ function maxUploadBytes() {
 }
 
 async function listCurrent(businessId: string) {
-  const out: Record<DocType, {
+  const out = buildDocTypeRecord<{
     name: string;
     size: number;
     indexingStatus: string;
     lastIndexedAt: string | null;
     lastError: string | null;
     uploadedAt: string | null;
-  } | null> = {
-    considerations: null,
-    conversations: null,
-    inventory: null,
-    bank: null,
-    address: null,
-  };
+  } | null>(() => null);
 
   const rows = await db
     .select()
@@ -59,7 +53,7 @@ async function listCurrent(businessId: string) {
     out[dt] = {
       name,
       size,
-      indexingStatus: String(row.indexingStatus ?? "not_indexed"),
+      indexingStatus: String(row.indexingStatus ?? INDEXING_STATUS.NOT_INDEXED),
       lastIndexedAt: row.lastIndexedAt ? new Date(row.lastIndexedAt as any).toISOString() : null,
       lastError: (row.lastError as any) ?? null,
       uploadedAt: row.uploadedAt ? new Date(row.uploadedAt as any).toISOString() : null,
@@ -169,7 +163,7 @@ export async function POST(request: Request) {
         { status: 413 },
       );
     }
-    if (!docType || !["considerations","conversations","inventory","bank","address"].includes(docType)) {
+    if (!isDocType(docType)) {
       return NextResponse.json({ error: "Invalid docType" }, { status: 400 });
     }
 
@@ -206,7 +200,7 @@ export async function POST(request: Request) {
         originalFilename: file.name,
         contentType: stored.contentType ?? file.type ?? null,
         sizeBytes: stored.size,
-        indexingStatus: "not_indexed",
+        indexingStatus: INDEXING_STATUS.NOT_INDEXED,
         uploadedAt: now,
         updatedAt: now,
       })
@@ -218,7 +212,7 @@ export async function POST(request: Request) {
           originalFilename: file.name,
           contentType: stored.contentType ?? file.type ?? null,
           sizeBytes: stored.size,
-          indexingStatus: "not_indexed",
+          indexingStatus: INDEXING_STATUS.NOT_INDEXED,
           lastError: null,
           updatedAt: now,
           uploadedAt: now,

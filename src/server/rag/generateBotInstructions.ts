@@ -3,9 +3,10 @@ import * as Sentry from "@sentry/nextjs";
 import OpenAI from "openai";
 import { db } from "../db/client";
 import { trainingDocuments, businesses } from "../../../drizzle/schema";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { downloadBlobToBuffer } from "./blob";
 import { extractTextFromBuffer } from "./extractText";
+import { INDEXING_STATUS, KEY_DOC_TYPES } from "@/lib/rag-documents";
 
 let client: OpenAI | null = null;
 
@@ -26,17 +27,15 @@ function getClient(): OpenAI {
  * Check if all 3 key document types (considerations, conversations, inventory) are indexed
  */
 export async function areKeyDocsIndexed(businessId: string): Promise<boolean> {
-  const keyDocTypes = ["considerations", "conversations", "inventory"] as const;
-  
   const docs = await db
     .select()
     .from(trainingDocuments)
     .where(eq(trainingDocuments.businessId, businessId));
 
-  const indexedDocs = docs.filter(d => d.indexingStatus === "indexed");
+  const indexedDocs = docs.filter(d => d.indexingStatus === INDEXING_STATUS.INDEXED);
   const indexedTypes = new Set(indexedDocs.map(d => d.docType));
 
-  return keyDocTypes.every(type => indexedTypes.has(type));
+  return KEY_DOC_TYPES.every(type => indexedTypes.has(type));
 }
 
 /**
@@ -47,8 +46,6 @@ async function getDocumentTexts(businessId: string): Promise<{
   conversations: string | null;
   inventory: string | null;
 }> {
-  const keyDocTypes = ["considerations", "conversations", "inventory"] as const;
-  
   const docs = await db
     .select()
     .from(trainingDocuments)
@@ -60,8 +57,8 @@ async function getDocumentTexts(businessId: string): Promise<{
     inventory: null,
   };
 
-  for (const docType of keyDocTypes) {
-    const doc = docs.find(d => d.docType === docType && d.indexingStatus === "indexed");
+  for (const docType of KEY_DOC_TYPES) {
+    const doc = docs.find(d => d.docType === docType && d.indexingStatus === INDEXING_STATUS.INDEXED);
     if (!doc) continue;
 
     try {
