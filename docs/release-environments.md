@@ -96,4 +96,6 @@ Keep staging and production in separate Grafana environments, stacks, or at mini
 
 - `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` control trace export.
 - `GRAFANA_LOGS_ENDPOINT`, `GRAFANA_LOGS_USER`, and `GRAFANA_LOGS_API_KEY` control Loki log export.
+- Set the same `GRAFANA_LOGS_*` values on every production runtime, not just the web app.
+- For `escl8`, that means the web app, the `rag:worker` runtime, and the `requests:rollover` job.
 - Browser logs stay off by default. Only enable `NEXT_PUBLIC_GRAFANA_BROWSER_LOGS_ENABLED=true` once server-side Grafana log forwarding is already working.

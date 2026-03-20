@@ -13,6 +13,7 @@ import { registerNodeRuntimeMonitoring } from "../src/lib/node-runtime-monitorin
 import { INDEXING_STATUS, isKeyDocType, RAG_JOB_STATUS } from "../src/lib/rag-documents";
 
 type RagJobRow = typeof ragJobs.$inferSelect;
+const WORKER_NAME = "rag_worker";
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -360,10 +361,39 @@ async function main() {
     try {
       await ensureRagQueue();
     } catch (err: any) {
+      recordBusinessEvent({
+        event: "worker.rag.queue_fallback",
+        level: "warn",
+        action: "rag-worker.startup",
+        area: "rag",
+        source: "worker.rag",
+        outcome: "degraded",
+        status: "db_fallback",
+        attributes: {
+          error_message: err instanceof Error ? err.message : String(err),
+          job_name: WORKER_NAME,
+          requested_mode: mode || "auto",
+        },
+      });
       console.error(`[rag-worker] queue init failed, falling back to db polling: ${err?.message || String(err)}`);
       useQueue = false;
     }
   }
+
+  recordBusinessEvent({
+    event: "worker.rag.started",
+    action: "rag-worker.startup",
+    area: "rag",
+    source: "worker.rag",
+    outcome: "success",
+    status: "started",
+    attributes: {
+      job_name: WORKER_NAME,
+      mode_active: useQueue ? "queue" : "db",
+      mode_requested: mode || "auto",
+      poll_ms: pollMs,
+    },
+  });
   console.log(`[rag-worker] started (poll=${pollMs}ms mode=${useQueue ? "queue" : "db"})`);
 
   while (true) {
@@ -400,6 +430,32 @@ async function main() {
 }
 
 main().catch((e) => {
+  captureSentryException(e, {
+    action: "rag-worker.main",
+    area: "rag",
+    level: "error",
+    tags: {
+      "job.name": WORKER_NAME,
+    },
+    contexts: {
+      job: {
+        name: WORKER_NAME,
+      },
+    },
+  });
+  recordBusinessEvent({
+    event: "worker.rag.failed",
+    level: "error",
+    action: "rag-worker.main",
+    area: "rag",
+    source: "worker.rag",
+    outcome: "failed",
+    status: "crashed",
+    attributes: {
+      error_message: e instanceof Error ? e.message : String(e),
+      job_name: WORKER_NAME,
+    },
+  });
   console.error(e);
   process.exit(1);
 });
