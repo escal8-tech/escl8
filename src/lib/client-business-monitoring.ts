@@ -81,6 +81,7 @@ export function recordClientBusinessEvent(input: {
     },
     {
       forceClientDelivery: true,
+      flushImmediately: Boolean(input.captureInSentry),
       runtime: "client",
       source: "business",
     },
