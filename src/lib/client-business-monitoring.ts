@@ -54,6 +54,17 @@ export function shouldCaptureUnexpectedClientError(error: unknown): boolean {
   return !HANDLED_CLIENT_AUTH_ERROR_CODES.has(code);
 }
 
+function normalizeClientBusinessLevel(
+  level: GrafanaLogLevel | undefined,
+  outcome: string | null | undefined,
+): GrafanaLogLevel {
+  const resolved = level || "info";
+  if (outcome === "handled_failure" && (resolved === "error" || resolved === "fatal")) {
+    return "warn";
+  }
+  return resolved;
+}
+
 export function recordClientBusinessEvent(input: {
   action?: string;
   area?: string;
@@ -65,8 +76,10 @@ export function recordClientBusinessEvent(input: {
   outcome?: string | null;
   route?: string | null;
 }): void {
+  const level = normalizeClientBusinessLevel(input.level, input.outcome);
+  const shouldCaptureInSentry = Boolean(input.captureInSentry) && input.outcome !== "handled_failure";
   recordGrafanaLog(
-    input.level || "info",
+    level,
     input.event,
     {
       action: input.action || input.event,
@@ -81,13 +94,13 @@ export function recordClientBusinessEvent(input: {
     },
     {
       forceClientDelivery: true,
-      flushImmediately: Boolean(input.captureInSentry),
+      flushImmediately: shouldCaptureInSentry,
       runtime: "client",
       source: "business",
     },
   );
 
-  if (input.captureInSentry && input.error) {
+  if (shouldCaptureInSentry && input.error) {
     captureSentryException(input.error, {
       action: input.action || input.event,
       area: input.area || "app",
@@ -98,7 +111,7 @@ export function recordClientBusinessEvent(input: {
           ...(input.attributes || {}),
         },
       },
-      level: input.level === "warn" ? "warning" : "error",
+      level: level === "warn" ? "warning" : "error",
       tags: {
         "client.event": input.event,
         route: input.route,
