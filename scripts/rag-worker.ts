@@ -10,6 +10,7 @@ import { publishPortalEvent, toPortalDocumentPayload } from "../src/server/realt
 import { recordBusinessEvent } from "../src/lib/business-monitoring";
 import { captureSentryException } from "../src/lib/sentry-monitoring";
 import { registerNodeRuntimeMonitoring } from "../src/lib/node-runtime-monitoring";
+import { INDEXING_STATUS, isKeyDocType, RAG_JOB_STATUS } from "../src/lib/rag-documents";
 
 type RagJobRow = typeof ragJobs.$inferSelect;
 
@@ -48,7 +49,7 @@ async function claimNextJobFromQueue(): Promise<{ job: RagJobRow; receipt: Queue
     return null;
   }
 
-  if (job.status !== "queued") {
+  if (job.status !== RAG_JOB_STATUS.QUEUED) {
     await queue.deleteMessage(msg.messageId, msg.popReceipt);
     return null;
   }
@@ -56,7 +57,7 @@ async function claimNextJobFromQueue(): Promise<{ job: RagJobRow; receipt: Queue
   await db
     .update(ragJobs)
     .set({
-      status: "running",
+      status: RAG_JOB_STATUS.RUNNING,
       startedAt: new Date(),
       attempts: sql`COALESCE(${ragJobs.attempts}, 0) + 1`,
     })
@@ -64,7 +65,7 @@ async function claimNextJobFromQueue(): Promise<{ job: RagJobRow; receipt: Queue
 
   console.log(`[rag-worker] claimed job=${job.id} businessId=${job.businessId} docType=${job.docType} attempts=${(job.attempts ?? 0) + 1}`);
 
-  return { job: { ...job, status: "running", attempts: (job.attempts ?? 0) + 1 }, receipt: { messageId: msg.messageId, popReceipt: msg.popReceipt } };
+  return { job: { ...job, status: RAG_JOB_STATUS.RUNNING, attempts: (job.attempts ?? 0) + 1 }, receipt: { messageId: msg.messageId, popReceipt: msg.popReceipt } };
 }
 
 async function claimNextJob(): Promise<RagJobRow | null> {
@@ -134,7 +135,7 @@ async function processJob(job: RagJobRow) {
     entity: "training_document",
     entityId: doc.id,
     outcome: "started",
-    status: "indexing",
+    status: INDEXING_STATUS.INDEXING,
     attributes: {
       doc_type: docType,
       file_name: doc.originalFilename,
@@ -144,7 +145,7 @@ async function processJob(job: RagJobRow) {
 
   const [indexingDoc] = await db
     .update(trainingDocuments)
-    .set({ indexingStatus: "indexing", updatedAt: new Date(), lastError: null })
+    .set({ indexingStatus: INDEXING_STATUS.INDEXING, updatedAt: new Date(), lastError: null })
     .where(eq(trainingDocuments.id, doc.id))
     .returning();
 
@@ -173,7 +174,7 @@ async function processJob(job: RagJobRow) {
   const [indexedDoc] = await db
     .update(trainingDocuments)
     .set({
-      indexingStatus: "indexed",
+      indexingStatus: INDEXING_STATUS.INDEXED,
       lastIndexedAt: new Date(),
       sha256Hex: res.sha256,
       updatedAt: new Date(),
@@ -195,7 +196,7 @@ async function processJob(job: RagJobRow) {
 
   await db
     .update(ragJobs)
-    .set({ status: "succeeded", finishedAt: new Date(), error: null })
+    .set({ status: RAG_JOB_STATUS.SUCCEEDED, finishedAt: new Date(), error: null })
     .where(eq(ragJobs.id, job.id));
 
   recordBusinessEvent({
@@ -206,7 +207,7 @@ async function processJob(job: RagJobRow) {
     entity: "training_document",
     entityId: indexedDoc?.id ?? doc.id,
     outcome: "success",
-    status: "indexed",
+    status: INDEXING_STATUS.INDEXED,
     attributes: {
       chunk_count: res.chunkCount,
       doc_type: docType,
@@ -218,8 +219,7 @@ async function processJob(job: RagJobRow) {
   console.log(`[rag-worker] done job=${job.id} businessId=${job.businessId} docType=${docType} chunks=${res.chunkCount}`);
 
   // After successful indexing, check if all 3 key docs are indexed and generate bot instructions
-  const keyDocTypes = ["considerations", "conversations", "inventory"];
-  if (keyDocTypes.includes(docType)) {
+  if (isKeyDocType(docType)) {
     try {
       const { generateAndSaveBotInstructions } = await import("../src/server/rag/generateBotInstructions");
       const saved = await generateAndSaveBotInstructions(job.businessId);
@@ -274,13 +274,13 @@ async function failJob(job: RagJobRow, err: unknown) {
   const stack = err instanceof Error ? err.stack : undefined;
   await db
     .update(ragJobs)
-    .set({ status: "failed", finishedAt: new Date(), error: msg })
+    .set({ status: RAG_JOB_STATUS.FAILED, finishedAt: new Date(), error: msg })
     .where(eq(ragJobs.id, job.id));
 
   if (job.trainingDocumentId) {
     const [failedDoc] = await db
       .update(trainingDocuments)
-      .set({ indexingStatus: "failed", updatedAt: new Date(), lastError: msg })
+      .set({ indexingStatus: INDEXING_STATUS.FAILED, updatedAt: new Date(), lastError: msg })
       .where(eq(trainingDocuments.id, job.trainingDocumentId))
       .returning();
 
@@ -297,7 +297,7 @@ async function failJob(job: RagJobRow, err: unknown) {
   } else if (job.businessId && job.docType) {
     const [failedDoc] = await db
       .update(trainingDocuments)
-      .set({ indexingStatus: "failed", updatedAt: new Date(), lastError: msg })
+      .set({ indexingStatus: INDEXING_STATUS.FAILED, updatedAt: new Date(), lastError: msg })
       .where(and(eq(trainingDocuments.businessId, job.businessId), eq(trainingDocuments.docType, job.docType)))
       .returning();
 

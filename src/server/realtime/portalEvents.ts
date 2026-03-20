@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { captureSentryException } from "@/lib/sentry-monitoring";
+import { INDEXING_STATUS } from "@/lib/rag-documents";
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
 
@@ -170,7 +171,7 @@ export function toPortalDocumentPayload(row: {
     docType: row.docType,
     name: row.originalFilename || row.blobPath.split("/").slice(-1)[0] || "latest",
     size: Number(row.sizeBytes ?? 0),
-    indexingStatus: String(row.indexingStatus ?? "not_indexed"),
+    indexingStatus: String(row.indexingStatus ?? INDEXING_STATUS.NOT_INDEXED),
     lastIndexedAt: row.lastIndexedAt ? new Date(row.lastIndexedAt).toISOString() : null,
     lastError: row.lastError ?? null,
     uploadedAt: row.uploadedAt ? new Date(row.uploadedAt).toISOString() : null,

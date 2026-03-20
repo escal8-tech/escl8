@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import crypto from "crypto";
+import type { DocType } from "@/lib/rag-documents";
 import { downloadBlobToBuffer, uploadTextToBlob } from "./blob";
 import { extractTextFromBuffer, PAGE_BOUNDARY, SpreadsheetRow } from "./extractText";
 import { smartChunkText, classifyChunksWithLLM, SmartChunk } from "./smartChunk";
 import { embedTexts } from "./embed";
 import { getPineconeIndex } from "./pinecone";
-
-export type DocType = "considerations" | "conversations" | "inventory" | "bank" | "address";
 
 function sha256Hex(buf: Buffer): string {
   return crypto.createHash("sha256").update(buf).digest("hex");
@@ -149,20 +148,6 @@ function buildParagraphSections(text: string, pages?: string[]): Section[] {
   }
 
   return sections;
-}
-
-function makeAbstract(text: string, targetTokens: number): string {
-  const maxChars = targetTokens * 4;
-  const sentences = text.split(/(?<=[.!?])\s+/);
-  let out = "";
-  for (const s of sentences) {
-    if ((out + s).length > maxChars) break;
-    out = out ? `${out} ${s}` : s;
-  }
-  if (!out) {
-    out = text.slice(0, maxChars);
-  }
-  return out.trim();
 }
 
 function splitTextWithOverlap(text: string, maxTokens: number, overlapTokens: number): string[] {
@@ -508,4 +493,3 @@ export async function indexSingleDocType(params: {
   console.log(`[rag:index] done businessId=${businessId} docType=${docType} upserted=${upserted}`);
   return { chunkCount: upserted, sha256: hash };
 }
-

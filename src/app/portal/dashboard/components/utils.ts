@@ -116,3 +116,12 @@ export function parseSummary(value: unknown): { kind: "list"; items: string[] } 
   return { kind: "text", text: String(value) };
 }
 
+export function normalizeRequests<T extends { createdAt: string | Date; updatedAt?: string | Date | null }>(
+  requests: T[],
+): T[] {
+  return requests.map((request) => ({
+    ...request,
+    createdAt: request.createdAt instanceof Date ? request.createdAt.toISOString() : request.createdAt,
+    updatedAt: request.updatedAt instanceof Date ? request.updatedAt.toISOString() : request.updatedAt,
+  }));
+}

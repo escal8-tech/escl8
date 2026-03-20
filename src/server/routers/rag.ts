@@ -10,8 +10,9 @@ import { retrieve, getGroundedContext } from "../rag/retrieve";
 import { enqueueRagJobMessage } from "../rag/queue";
 import { publishPortalEvent, toPortalDocumentPayload } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { DOC_TYPES, INDEXING_STATUS, RAG_JOB_STATUS } from "@/lib/rag-documents";
 
-const docTypeSchema = z.enum(["considerations", "conversations", "inventory", "bank", "address"]);
+const docTypeSchema = z.enum(DOC_TYPES);
 const chunkTypeSchema = z.enum(["pricing", "policy", "faq", "example_dialogue", "contact_info", "product_info", "product_index", "section_abstract", "section_full", "general"]);
 
 export const ragRouter = router({
@@ -40,7 +41,7 @@ export const ragRouter = router({
           businessId: ctx.businessId,
           docType: input.docType,
           trainingDocumentId: doc.id,
-          status: "queued",
+          status: RAG_JOB_STATUS.QUEUED,
           attempts: 0,
           createdAt: now,
         })
@@ -50,7 +51,7 @@ export const ragRouter = router({
 
       const [updatedDoc] = await db
         .update(trainingDocuments)
-        .set({ indexingStatus: "queued", updatedAt: new Date(), lastError: null })
+        .set({ indexingStatus: INDEXING_STATUS.QUEUED, updatedAt: new Date(), lastError: null })
         .where(eq(trainingDocuments.id, doc.id))
         .returning();
 
