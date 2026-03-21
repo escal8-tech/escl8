@@ -13,7 +13,7 @@ export type Toast = {
   durationMs?: number; // undefined => sticky until dismissed
 };
 
-type ToastInput = Omit<Toast, "id" | "createdAt">;
+export type ToastInput = Omit<Toast, "id" | "createdAt">;
 
 type ToastContextValue = {
   toasts: Toast[];
@@ -22,6 +22,8 @@ type ToastContextValue = {
   dismiss: (id: string) => void;
   dismissAll: () => void;
 };
+
+export type ToastController = Pick<ToastContextValue, "show" | "update" | "dismiss" | "dismissAll">;
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 

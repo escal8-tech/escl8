@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useToast } from "@/components/ToastProvider";
+import { showErrorToast, showInfoToast, showSuccessToast } from "@/components/toast-utils";
 import { trpc } from "@/utils/trpc";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TableSelect } from "@/app/portal/components/TableToolbarControls";
@@ -23,6 +25,10 @@ type TicketRow = {
   [key: string]: unknown;
   id: string;
   status: string;
+  orderId?: string | null;
+  orderStatus?: string | null;
+  orderPaymentMethod?: string | null;
+  orderUpdatedAt?: Date | string | null;
   title?: string | null;
   summary?: string | null;
   notes?: string | null;
@@ -49,6 +55,19 @@ type TicketRow = {
 
 const STATUS_OPTIONS: TicketStatus[] = ["open", "in_progress", "resolved"];
 const OUTCOME_OPTIONS: TicketOutcome[] = ["pending", "won", "lost"];
+const ORDER_STAGE_OPTIONS = [
+  "pending_approval",
+  "approved",
+  "awaiting_payment",
+  "payment_submitted",
+  "payment_rejected",
+  "paid",
+  "refund_pending",
+  "refunded",
+  "denied",
+] as const;
+type OrderStage = (typeof ORDER_STAGE_OPTIONS)[number];
+type TicketListFilter = "all" | TicketStatus | OrderStage;
 const LOSS_REASON_OPTIONS = [
   "Price too high",
   "No response",
@@ -546,29 +565,121 @@ function normalizeTicketTypeLabel(typeKey: string, label: string): string {
   return label;
 }
 
+function isOrderTicketRow(ticket: TicketRow): boolean {
+  return getTicketString(ticket, "ticketTypeKey", "ticket_type_key").toLowerCase() === "ordercreation";
+}
+
+function resolveOrderStage(ticket: TicketRow): OrderStage {
+  const orderStatus = getTicketString(ticket, "orderStatus", "order_status").toLowerCase();
+  if (ORDER_STAGE_OPTIONS.includes(orderStatus as OrderStage)) {
+    return orderStatus as OrderStage;
+  }
+  const outcome = getTicketString(ticket, "outcome", "outcome").toLowerCase();
+  if (outcome === "lost") return "denied";
+  if (outcome === "won") return "approved";
+  return "pending_approval";
+}
+
+function formatOrderStage(stage: OrderStage): string {
+  if (stage === "pending_approval") return "Pending approval";
+  return formatStatus(stage);
+}
+
+function describeOrderStage(stage: OrderStage): string {
+  if (stage === "pending_approval") return "Review the ticket, confirm details, then approve or deny it.";
+  if (stage === "approved") return "Approved for manual follow-up outside of payment proof tracking.";
+  if (stage === "awaiting_payment") return "Approved and waiting for the customer to send payment proof.";
+  if (stage === "payment_submitted") return "Payment proof received and waiting for staff review.";
+  if (stage === "payment_rejected") return "Customer needs to resend payment proof.";
+  if (stage === "paid") return "Payment approved and revenue captured.";
+  if (stage === "refund_pending") return "Refund is being processed.";
+  if (stage === "refunded") return "Refund completed and order closed.";
+  return "Order flow closed without approval.";
+}
+
+function orderStagePillStyle(stage: OrderStage): CSSProperties {
+  if (stage === "paid") {
+    return {
+      background: "rgba(34, 197, 94, 0.12)",
+      color: "#86efac",
+      border: "1px solid rgba(34, 197, 94, 0.28)",
+    };
+  }
+  if (stage === "awaiting_payment" || stage === "payment_submitted") {
+    return {
+      background: "rgba(245, 158, 11, 0.12)",
+      color: "#fcd34d",
+      border: "1px solid rgba(245, 158, 11, 0.28)",
+    };
+  }
+  if (stage === "approved") {
+    return {
+      background: "rgba(56, 189, 248, 0.12)",
+      color: "#7dd3fc",
+      border: "1px solid rgba(56, 189, 248, 0.28)",
+    };
+  }
+  if (stage === "refund_pending") {
+    return {
+      background: "rgba(249, 115, 22, 0.12)",
+      color: "#fdba74",
+      border: "1px solid rgba(249, 115, 22, 0.28)",
+    };
+  }
+  if (stage === "refunded") {
+    return {
+      background: "rgba(139, 92, 246, 0.12)",
+      color: "#c4b5fd",
+      border: "1px solid rgba(139, 92, 246, 0.28)",
+    };
+  }
+  if (stage === "payment_rejected" || stage === "denied") {
+    return {
+      background: "rgba(239, 68, 68, 0.12)",
+      color: "#fca5a5",
+      border: "1px solid rgba(239, 68, 68, 0.28)",
+    };
+  }
+  return {
+    background: "rgba(148, 163, 184, 0.12)",
+    color: "#cbd5e1",
+    border: "1px solid rgba(148, 163, 184, 0.28)",
+  };
+}
+
+function canApproveOrderStage(stage: OrderStage): boolean {
+  return stage === "pending_approval";
+}
+
+function canDenyOrderStage(stage: OrderStage): boolean {
+  return !["paid", "refund_pending", "refunded", "denied"].includes(stage);
+}
+
 export default function TicketsPage() {
   const utils = trpc.useUtils();
+  const toast = useToast();
   const router = useRouter();
-  const [statusFilter, setStatusFilter] = useState<"all" | TicketStatus>("all");
+  const [filtersByType, setFiltersByType] = useState<Record<string, TicketListFilter>>({});
   const [ticketIdQuery, setTicketIdQuery] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [updatingOutcomeId, setUpdatingOutcomeId] = useState<string | null>(null);
+  const [orderActionTicketId, setOrderActionTicketId] = useState<string | null>(null);
+  const [denyDialogTicket, setDenyDialogTicket] = useState<TicketRow | null>(null);
+  const [denyReasonDraft, setDenyReasonDraft] = useState("Out of stock");
   const [pendingBotCustomerIds, setPendingBotCustomerIds] = useState<Record<string, boolean>>({});
   const [botPausedOverrides, setBotPausedOverrides] = useState<Record<string, boolean>>({});
   const [page, setPage] = useState(0);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const searchParams = useSearchParams();
+  const queryTypeKey = (searchParams?.get("type") || "").toLowerCase();
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
     return () => window.clearInterval(id);
   }, []);
 
   const ticketTypesQuery = trpc.tickets.listTypes.useQuery({ includeDisabled: true });
-  const ticketListInput = useMemo(
-    () => (statusFilter === "all" ? undefined : { status: statusFilter, limit: 400 }),
-    [statusFilter],
-  );
+  const ticketListInput = useMemo(() => ({ limit: 400 }), []);
   const ticketsQuery = trpc.tickets.listTickets.useQuery(ticketListInput);
   const updateStatus = trpc.tickets.updateTicketStatus.useMutation({
     onSuccess: async () => {
@@ -624,6 +735,69 @@ export default function TicketsPage() {
   const ticketsData = useMemo(() => ticketsQuery.data ?? [], [ticketsQuery.data]);
   const ticketTypesData = useMemo(() => ticketTypesQuery.data ?? [], [ticketTypesQuery.data]);
 
+  const approveOrderTicket = trpc.tickets.approveOrderTicket.useMutation({
+    onSuccess: async (result, vars) => {
+      await Promise.all([
+        utils.tickets.listTickets.invalidate(),
+        utils.tickets.listTicketEvents.invalidate(),
+        utils.tickets.getPerformance.invalidate(),
+        utils.orders.listOrders.invalidate(),
+        utils.orders.getStats.invalidate(),
+      ]);
+      if (selectedTicketId === vars.id) {
+        setSelectedTicketId(null);
+      }
+      if (result.delivery && !result.delivery.ok && result.delivery.error) {
+        showInfoToast(toast, {
+          title: "Ticket approved",
+          message: `Ticket was approved, but payment instructions could not be sent: ${result.delivery.error}`,
+          durationMs: 6200,
+        });
+        return;
+      }
+      showSuccessToast(toast, {
+        title: "Ticket approved",
+        message:
+          String(result.order?.paymentMethod || "").toLowerCase() === "bank_qr"
+            ? "Ticket was approved and payment instructions were sent to the customer."
+            : "Ticket was approved successfully.",
+      });
+    },
+    onError: (error) => {
+      showErrorToast(toast, {
+        title: "Approval failed",
+        message: error.message || "Failed to approve order ticket.",
+      });
+    },
+    onSettled: () => setOrderActionTicketId(null),
+  });
+  const denyOrderTicket = trpc.tickets.denyOrderTicket.useMutation({
+    onSuccess: async (_result, vars) => {
+      await Promise.all([
+        utils.tickets.listTickets.invalidate(),
+        utils.tickets.listTicketEvents.invalidate(),
+        utils.tickets.getPerformance.invalidate(),
+        utils.orders.listOrders.invalidate(),
+        utils.orders.getStats.invalidate(),
+      ]);
+      if (selectedTicketId === vars.id) {
+        setSelectedTicketId(null);
+      }
+      setDenyDialogTicket(null);
+      showSuccessToast(toast, {
+        title: "Ticket denied",
+        message: "Ticket was denied successfully.",
+      });
+    },
+    onError: (error) => {
+      showErrorToast(toast, {
+        title: "Denial failed",
+        message: error.message || "Failed to deny order ticket.",
+      });
+    },
+    onSettled: () => setOrderActionTicketId(null),
+  });
+
   const groupedTickets = useMemo(() => {
     const ticketsByType = new Map<string, TicketRow[]>();
     for (const ticket of ticketsData as TicketRow[]) {
@@ -664,7 +838,6 @@ export default function TicketsPage() {
 
   const normalizedGroups = useMemo(() => groupedTickets.sort((a, b) => a.label.localeCompare(b.label)), [groupedTickets]);
 
-  const queryTypeKey = (searchParams?.get("type") || "").toLowerCase();
   const effectiveTypeKey = useMemo(() => {
     if (!normalizedGroups.length) return null;
     if (queryTypeKey && normalizedGroups.some((g) => g.typeKey === queryTypeKey)) return queryTypeKey;
@@ -678,8 +851,19 @@ export default function TicketsPage() {
     () => normalizedGroups.find((g) => g.typeKey === effectiveTypeKey) ?? null,
     [normalizedGroups, effectiveTypeKey],
   );
+  const activeFilterKey = effectiveTypeKey ?? "__all";
+  const statusFilter = filtersByType[activeFilterKey] ?? "all";
+  const isOrderTicketView = activeGroup?.typeKey === "ordercreation";
   const filteredRows = useMemo(() => {
-    const rows = activeGroup?.rows ?? [];
+    let rows = activeGroup?.rows ?? [];
+    if (isOrderTicketView && statusFilter !== "all") {
+      rows = rows.filter((ticket) => resolveOrderStage(ticket) === statusFilter);
+    } else if (!isOrderTicketView && statusFilter !== "all") {
+      rows = rows.filter((ticket) => {
+        const normalizedStatus = ticket.status === "closed" ? "resolved" : ticket.status;
+        return normalizedStatus === statusFilter;
+      });
+    }
     const q = ticketIdQuery.trim().toLowerCase().replace(/^#/, "");
     if (!q) return rows;
     return rows.filter((ticket) => {
@@ -687,7 +871,7 @@ export default function TicketsPage() {
       const short = shortId(ticket.id).toLowerCase();
       return full.includes(q) || short.includes(q);
     });
-  }, [activeGroup?.rows, ticketIdQuery]);
+  }, [activeGroup?.rows, isOrderTicketView, statusFilter, ticketIdQuery]);
   const typeRequiresNameMap = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const type of ticketTypesData as Array<Record<string, unknown>>) {
@@ -730,7 +914,36 @@ export default function TicketsPage() {
     return query ? `/portal/messages?${query}` : "/portal/messages";
   }, []);
 
+  const handleApproveTicket = async (ticketId: string) => {
+    setOrderActionTicketId(ticketId);
+    try {
+      await approveOrderTicket.mutateAsync({ id: ticketId });
+    } catch {
+      // Toast is handled by the mutation onError path.
+    }
+  };
+
+  const openDenyDialog = (ticket: TicketRow) => {
+    setDenyDialogTicket(ticket);
+    setDenyReasonDraft(getTicketString(ticket, "lossReason", "loss_reason") || "Out of stock");
+  };
+
+  const handleConfirmDeny = async () => {
+    if (!denyDialogTicket) return;
+    const normalizedReason = denyReasonDraft.trim() || "Denied";
+    setOrderActionTicketId(denyDialogTicket.id);
+    try {
+      await denyOrderTicket.mutateAsync({
+        id: denyDialogTicket.id,
+        reason: normalizedReason,
+      });
+    } catch {
+      // Toast is handled by the mutation onError path.
+    }
+  };
+
   return (
+    <>
     <PortalDataTable
       search={{
         value: ticketIdQuery,
@@ -745,21 +958,39 @@ export default function TicketsPage() {
       endControls={(
         <>
           <label htmlFor="ticket-status-filter" style={{ color: "var(--muted)", fontSize: 12 }}>
-            Status
+            {isOrderTicketView ? "Stage" : "Status"}
           </label>
         <TableSelect
           id="ticket-status-filter"
-          style={{ width: 120 }}
+          style={{ width: isOrderTicketView ? 170 : 120 }}
           value={statusFilter}
           onChange={(e) => {
-            setStatusFilter(e.target.value as "all" | TicketStatus);
+            const nextFilter = e.target.value as TicketListFilter;
+            setFiltersByType((prev) => ({ ...prev, [activeFilterKey]: nextFilter }));
             setPage(0);
           }}
         >
-          <option value="all">All</option>
-          <option value="open">Open</option>
-          <option value="in_progress">In Progress</option>
-          <option value="resolved">Resolved</option>
+          {isOrderTicketView ? (
+            <>
+              <option value="all">All stages</option>
+              <option value="pending_approval">Pending Approval</option>
+              <option value="approved">Approved</option>
+              <option value="awaiting_payment">Awaiting Payment</option>
+              <option value="payment_submitted">Payment Review</option>
+              <option value="payment_rejected">Payment Rejected</option>
+              <option value="paid">Paid</option>
+              <option value="refund_pending">Refund Pending</option>
+              <option value="refunded">Refunded</option>
+              <option value="denied">Denied</option>
+            </>
+          ) : (
+            <>
+              <option value="all">All</option>
+              <option value="open">Open</option>
+              <option value="in_progress">In Progress</option>
+              <option value="resolved">Resolved</option>
+            </>
+          )}
         </TableSelect>
         </>
       )}
@@ -833,15 +1064,21 @@ export default function TicketsPage() {
                 <th style={{ textAlign: "left", width: "10%" }}>Priority</th>
                 <th style={{ textAlign: "left", width: "10%" }}>SLA</th>
                 <th style={{ textAlign: "center", width: "8%" }}>Bot</th>
-                <th style={{ textAlign: "right", width: "9%" }}>Status</th>
-                <th style={{ textAlign: "right", width: "9%" }}>Outcome</th>
-                <th style={{ textAlign: "center", width: "4%" }} />
+                <th style={{ textAlign: "left", width: isOrderTicketView ? "14%" : "9%" }}>
+                  {isOrderTicketView ? "Stage" : "Status"}
+                </th>
+                {!isOrderTicketView ? (
+                  <th style={{ textAlign: "right", width: "9%" }}>Outcome</th>
+                ) : null}
+                <th style={{ textAlign: "center", width: isOrderTicketView ? "12%" : "4%" }} />
               </tr>
             </thead>
             <tbody>
               {pageRows.map((ticket) => {
                 const fields = getTicketFields(ticket as TicketRow);
                 const typeKey = getTicketString(ticket as TicketRow, "ticketTypeKey", "ticket_type_key").toLowerCase();
+                const isOrderRow = typeKey === "ordercreation";
+                const orderStage = resolveOrderStage(ticket as TicketRow);
                 const requiresName = Boolean(typeRequiresNameMap.get(typeKey));
                 const phoneFromTicket = getTicketString(ticket as TicketRow, "customerPhone", "customer_phone").trim();
                 const phoneFromFields = firstFieldText(fields, ["contact", "phone", "phoneNumber", "mobile", "whatsapp", "customerPhone"]);
@@ -959,87 +1196,149 @@ export default function TicketsPage() {
                         <span className="text-muted" style={{ fontSize: 12 }}>-</span>
                       )}
                     </td>
-                    <td style={{ textAlign: "right" }}>
-                      <TableSelect
-                        style={{ width: "100%" }}
-                        value={(ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus}
-                        disabled={updatingId === ticket.id}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          const nextStatus = e.target.value as TicketStatus;
-                          setUpdatingId(ticket.id);
-                          updateStatus.mutate({ id: ticket.id, status: nextStatus });
-                        }}
-                      >
-                        {STATUS_OPTIONS.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </TableSelect>
+                    <td style={{ textAlign: isOrderRow ? "left" : "right" }}>
+                      {isOrderRow ? (
+                        <div style={{ display: "grid", gap: 4 }}>
+                          <span
+                            style={{
+                              ...orderStagePillStyle(orderStage),
+                              padding: "4px 10px",
+                              borderRadius: 999,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              letterSpacing: "0.01em",
+                              textTransform: "uppercase",
+                              display: "inline-flex",
+                              width: "fit-content",
+                            }}
+                          >
+                            {formatOrderStage(orderStage)}
+                          </span>
+                          <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                            {describeOrderStage(orderStage)}
+                          </div>
+                        </div>
+                      ) : (
+                        <TableSelect
+                          style={{ width: "100%" }}
+                          value={(ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus}
+                          disabled={updatingId === ticket.id}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            const nextStatus = e.target.value as TicketStatus;
+                            setUpdatingId(ticket.id);
+                            updateStatus.mutate({ id: ticket.id, status: nextStatus });
+                          }}
+                        >
+                          {STATUS_OPTIONS.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ))}
+                        </TableSelect>
+                      )}
                     </td>
-                    <td style={{ textAlign: "right" }}>
-                      <TableSelect
-                        style={{ width: "100%" }}
-                        value={(getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome}
-                        disabled={updatingOutcomeId === ticket.id || ticket.status !== "resolved"}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          const nextOutcome = e.target.value as TicketOutcome;
-                          setUpdatingOutcomeId(ticket.id);
-                          updateOutcome.mutate({
-                            id: ticket.id,
-                            outcome: nextOutcome,
-                            lossReason:
-                              nextOutcome === "lost"
-                                ? getTicketString(ticket, "lossReason", "loss_reason") || "Other"
-                                : undefined,
-                          });
-                        }}
-                      >
-                        {OUTCOME_OPTIONS.map((outcome) => (
-                          <option key={outcome} value={outcome}>
-                            {outcome}
-                          </option>
-                        ))}
-                      </TableSelect>
-                    </td>
-                    <td
-                      style={{ textAlign: "center" }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <RowActionsMenu
-                        items={[
-                          ...(typeKey === "ordercreation"
-                            ? [
-                                {
-                                  label: "Edit Ticket",
-                                  onSelect: () => setSelectedTicketId(ticket.id),
+                    {!isOrderTicketView ? (
+                      <td style={{ textAlign: "right" }}>
+                        <TableSelect
+                          style={{ width: "100%" }}
+                          value={(getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome}
+                          disabled={updatingOutcomeId === ticket.id || ticket.status !== "resolved"}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            const nextOutcome = e.target.value as TicketOutcome;
+                            setUpdatingOutcomeId(ticket.id);
+                            updateOutcome.mutate({
+                              id: ticket.id,
+                              outcome: nextOutcome,
+                              lossReason:
+                                nextOutcome === "lost"
+                                  ? getTicketString(ticket, "lossReason", "loss_reason") || "Other"
+                                  : undefined,
+                            });
+                          }}
+                        >
+                          {OUTCOME_OPTIONS.map((outcome) => (
+                            <option key={outcome} value={outcome}>
+                              {outcome}
+                            </option>
+                          ))}
+                        </TableSelect>
+                      </td>
+                    ) : null}
+                    <td style={{ textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+                      {isOrderRow ? (
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            disabled={orderActionTicketId !== null || !canApproveOrderStage(orderStage)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleApproveTicket(ticket.id);
+                            }}
+                          >
+                            {orderActionTicketId === ticket.id && canApproveOrderStage(orderStage) ? "Approving..." : "Approve"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            disabled={orderActionTicketId !== null || !canDenyOrderStage(orderStage)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDenyDialog(ticket as TicketRow);
+                            }}
+                          >
+                            Deny
+                          </button>
+                          <RowActionsMenu
+                            items={[
+                              {
+                                label: "Open Details",
+                                onSelect: () => setSelectedTicketId(ticket.id),
+                              },
+                              {
+                                label: "Open Thread",
+                                onSelect: () => router.push(getThreadHref(ticket as TicketRow)),
+                              },
+                              {
+                                label: "Customer Details",
+                                disabled: !getTicketString(ticket as TicketRow, "customerId", "customer_id"),
+                                onSelect: () => {
+                                  const customerId = getTicketString(ticket as TicketRow, "customerId", "customer_id");
+                                  if (!customerId) return;
+                                  router.push(`/portal/customers?customerId=${encodeURIComponent(customerId)}`);
                                 },
-                              ]
-                            : []),
-                          {
-                            label: "Open Thread",
-                            onSelect: () => router.push(getThreadHref(ticket as TicketRow)),
-                          },
-                          {
-                            label: "Customer Details",
-                            disabled: !getTicketString(ticket as TicketRow, "customerId", "customer_id"),
-                            onSelect: () => {
-                              const customerId = getTicketString(ticket as TicketRow, "customerId", "customer_id");
-                              if (!customerId) return;
-                              router.push(`/portal/customers?customerId=${encodeURIComponent(customerId)}`);
+                              },
+                            ]}
+                          />
+                        </div>
+                      ) : (
+                        <RowActionsMenu
+                          items={[
+                            {
+                              label: "Open Thread",
+                              onSelect: () => router.push(getThreadHref(ticket as TicketRow)),
                             },
-                          },
-                        ]}
-                      />
+                            {
+                              label: "Customer Details",
+                              disabled: !getTicketString(ticket as TicketRow, "customerId", "customer_id"),
+                              onSelect: () => {
+                                const customerId = getTicketString(ticket as TicketRow, "customerId", "customer_id");
+                                if (!customerId) return;
+                                router.push(`/portal/customers?customerId=${encodeURIComponent(customerId)}`);
+                              },
+                            },
+                          ]}
+                        />
+                      )}
                     </td>
                   </tr>
                 );
               })}
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={9} style={{ color: "var(--muted)", textAlign: "center", padding: "20px 10px" }}>
+                  <td colSpan={isOrderTicketView ? 8 : 9} style={{ color: "var(--muted)", textAlign: "center", padding: "20px 10px" }}>
                     {ticketIdQuery ? (
                       "No ticket IDs match your search."
                     ) : (
@@ -1088,6 +1387,78 @@ export default function TicketsPage() {
         nowMs={nowMs}
       />
     </PortalDataTable>
+    {denyDialogTicket ? (
+      <>
+        <div className="drawer-backdrop open" onClick={() => setDenyDialogTicket(null)} />
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 4200,
+            display: "grid",
+            placeItems: "center",
+            padding: 20,
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              width: "min(520px, calc(100vw - 32px))",
+              pointerEvents: "auto",
+              border: "1px solid rgba(212, 168, 75, 0.28)",
+              boxShadow: "0 26px 64px rgba(0, 0, 0, 0.42)",
+            }}
+          >
+            <div className="card-body" style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "grid", gap: 4 }}>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>Deny order ticket</div>
+                <div className="text-muted" style={{ fontSize: 13 }}>
+                  Add the internal reason for denying this order. The ticket will close and the order stage will move to denied.
+                </div>
+              </div>
+              <div>
+                <div className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>Reason</div>
+                <textarea
+                  value={denyReasonDraft}
+                  onChange={(e) => setDenyReasonDraft(e.target.value)}
+                  placeholder="Out of stock"
+                  style={{
+                    width: "100%",
+                    minHeight: 110,
+                    border: "1px solid var(--border)",
+                    borderRadius: 10,
+                    background: "var(--card)",
+                    color: "var(--foreground)",
+                    padding: "10px 12px",
+                    resize: "vertical",
+                  }}
+                />
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={orderActionTicketId !== null}
+                  onClick={() => setDenyDialogTicket(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={orderActionTicketId !== null}
+                  onClick={() => void handleConfirmDeny()}
+                >
+                  {orderActionTicketId === denyDialogTicket.id ? "Denying..." : "Confirm Deny"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </>
+    ) : null}
+    </>
   );
 }
 
@@ -1103,11 +1474,11 @@ function TicketDetailsDrawer({
   nowMs: number;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const utils = trpc.useUtils();
   const [updatingOutcome, setUpdatingOutcome] = useState(false);
   const [updatingSla, setUpdatingSla] = useState(false);
   const [savingTicket, setSavingTicket] = useState(false);
-  const [orderActionPending, setOrderActionPending] = useState<"approve" | "deny" | null>(null);
   const ticketId = ticket?.id ?? "";
   const updateOutcome = trpc.tickets.updateTicketOutcome.useMutation({
     onSuccess: async () => {
@@ -1115,6 +1486,16 @@ function TicketDetailsDrawer({
         utils.tickets.listTickets.invalidate(),
         utils.tickets.getPerformance.invalidate(),
       ]);
+      showSuccessToast(toast, {
+        title: "Outcome updated",
+        message: "Ticket outcome saved successfully.",
+      });
+    },
+    onError: (error) => {
+      showErrorToast(toast, {
+        title: "Update failed",
+        message: error.message || "Ticket outcome could not be saved.",
+      });
     },
     onSettled: () => setUpdatingOutcome(false),
   });
@@ -1125,6 +1506,16 @@ function TicketDetailsDrawer({
         utils.tickets.listTicketEvents.invalidate(),
         utils.tickets.getPerformance.invalidate(),
       ]);
+      showSuccessToast(toast, {
+        title: "SLA updated",
+        message: "Ticket SLA saved successfully.",
+      });
+    },
+    onError: (error) => {
+      showErrorToast(toast, {
+        title: "Update failed",
+        message: error.message || "Ticket SLA could not be saved.",
+      });
     },
     onSettled: () => setUpdatingSla(false),
   });
@@ -1134,32 +1525,18 @@ function TicketDetailsDrawer({
         utils.tickets.listTickets.invalidate(),
         utils.tickets.listTicketEvents.invalidate(),
       ]);
+      showSuccessToast(toast, {
+        title: "Ticket updated",
+        message: "Ticket details saved successfully.",
+      });
+    },
+    onError: (error) => {
+      showErrorToast(toast, {
+        title: "Save failed",
+        message: error.message || "Ticket details could not be saved.",
+      });
     },
     onSettled: () => setSavingTicket(false),
-  });
-  const approveOrderTicket = trpc.tickets.approveOrderTicket.useMutation({
-    onSuccess: async () => {
-      await Promise.all([
-        utils.tickets.listTickets.invalidate(),
-        utils.tickets.listTicketEvents.invalidate(),
-        utils.tickets.getPerformance.invalidate(),
-        utils.orders.listOrders.invalidate(),
-        utils.orders.getStats.invalidate(),
-      ]);
-    },
-    onSettled: () => setOrderActionPending(null),
-  });
-  const denyOrderTicket = trpc.tickets.denyOrderTicket.useMutation({
-    onSuccess: async () => {
-      await Promise.all([
-        utils.tickets.listTickets.invalidate(),
-        utils.tickets.listTicketEvents.invalidate(),
-        utils.tickets.getPerformance.invalidate(),
-        utils.orders.listOrders.invalidate(),
-        utils.orders.getStats.invalidate(),
-      ]);
-    },
-    onSettled: () => setOrderActionPending(null),
   });
   const eventsQuery = trpc.tickets.listTicketEvents.useQuery(
     { ticketId, limit: 80 },
@@ -1168,31 +1545,21 @@ function TicketDetailsDrawer({
   const slaDueAtRaw = ticket
     ? (getTicketValue(ticket, "slaDueAt", "sla_due_at") as Date | string | null | undefined)
     : null;
-  const [slaInput, setSlaInput] = useState(() => toDateTimeLocalValue(slaDueAtRaw));
   const fields = ticket ? getTicketFields(ticket) : {};
-  const [draftTitle, setDraftTitle] = useState("");
-  const [draftSummary, setDraftSummary] = useState("");
-  const [draftNotes, setDraftNotes] = useState("");
-  const [draftCustomerName, setDraftCustomerName] = useState("");
-  const [draftCustomerPhone, setDraftCustomerPhone] = useState("");
-  const [draftOrderLines, setDraftOrderLines] = useState<OrderEditorLine[]>([]);
-  const [draftOrderTotal, setDraftOrderTotal] = useState("");
+  const initialCustomerName = ticket ? getTicketString(ticket, "customerName", "customer_name") : "";
+  const initialCustomerPhone = ticket ? getTicketString(ticket, "customerPhone", "customer_phone") : "";
+  const [slaInput, setSlaInput] = useState(() => toDateTimeLocalValue(slaDueAtRaw));
+  const [draftTitle, setDraftTitle] = useState(() => ticket?.title || "");
+  const [draftSummary, setDraftSummary] = useState(() => ticket?.summary || "");
+  const [draftNotes, setDraftNotes] = useState(() => ticket?.notes || "");
+  const [draftCustomerName, setDraftCustomerName] = useState(() => initialCustomerName);
+  const [draftCustomerPhone, setDraftCustomerPhone] = useState(() => initialCustomerPhone);
+  const [draftOrderLines, setDraftOrderLines] = useState<OrderEditorLine[]>(() => buildOrderEditorLines(fields));
+  const [draftOrderTotal, setDraftOrderTotal] = useState(() => getOrderDraftTotal(fields));
   const [draftFieldsText, setDraftFieldsText] = useState(() => JSON.stringify(fields, null, 2));
-  useEffect(() => {
-    if (!ticket) return;
-    setSlaInput(toDateTimeLocalValue(slaDueAtRaw));
-    setDraftTitle(ticket.title || "");
-    setDraftSummary(ticket.summary || "");
-    setDraftNotes(ticket.notes || "");
-    setDraftCustomerName(getTicketString(ticket, "customerName", "customer_name"));
-    setDraftCustomerPhone(getTicketString(ticket, "customerPhone", "customer_phone"));
-    const nextFields = getTicketFields(ticket);
-    setDraftOrderLines(buildOrderEditorLines(nextFields));
-    setDraftOrderTotal(getOrderDraftTotal(nextFields));
-    setDraftFieldsText(JSON.stringify(nextFields, null, 2));
-  }, [ticket, slaDueAtRaw]);
   if (!ticket) return null;
-  const isOrderTicket = getTicketString(ticket, "ticketTypeKey", "ticket_type_key").toLowerCase() === "ordercreation";
+  const isOrderTicket = isOrderTicketRow(ticket);
+  const orderStage = resolveOrderStage(ticket);
   const computedOrderTotal = computeOrderEditorTotal(draftOrderLines);
   const fieldRows = Object.entries(fields);
   const status = getTicketString(ticket, "status");
@@ -1218,7 +1585,10 @@ function TicketDetailsDrawer({
     try {
       parsedFields = draftFieldsText.trim() ? (JSON.parse(draftFieldsText) as Record<string, unknown>) : {};
     } catch {
-      window.alert("Fields must be valid JSON before saving.");
+      showErrorToast(toast, {
+        title: "Invalid JSON",
+        message: "Fields must be valid JSON before saving.",
+      });
       return;
     }
     if (isOrderTicket) {
@@ -1234,30 +1604,6 @@ function TicketDetailsDrawer({
       customerPhone: draftCustomerPhone,
       fields: parsedFields,
     });
-  };
-
-  const handleApproveOrder = async () => {
-    setOrderActionPending("approve");
-    try {
-      const result = await approveOrderTicket.mutateAsync({ id: ticket.id });
-      if (result.delivery && !result.delivery.ok && result.delivery.error) {
-        window.alert(`Order approved, but payment message delivery failed: ${result.delivery.error}`);
-      }
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : "Failed to approve order ticket.");
-      setOrderActionPending(null);
-    }
-  };
-
-  const handleDenyOrder = async () => {
-    const reason = window.prompt("Reason for denial", lossReason || "Out of stock") || "";
-    setOrderActionPending("deny");
-    try {
-      await denyOrderTicket.mutateAsync({ id: ticket.id, reason });
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : "Failed to deny order ticket.");
-      setOrderActionPending(null);
-    }
   };
 
   return (
@@ -1288,8 +1634,8 @@ function TicketDetailsDrawer({
                     <div>{formatStatus(priority || "-")}</div>
                   </div>
                   <div>
-                    <div className="text-muted" style={{ fontSize: 12 }}>Outcome</div>
-                    <div>{outcome}</div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>{isOrderTicket ? "Order Stage" : "Outcome"}</div>
+                    <div>{isOrderTicket ? formatOrderStage(orderStage) : outcome}</div>
                   </div>
                   <div>
                     <div className="text-muted" style={{ fontSize: 12 }}>SLA Due</div>
@@ -1365,49 +1711,91 @@ function TicketDetailsDrawer({
                     </button>
                   </div>
                 </div>
-                <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-                  <div>
-                    <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Outcome</div>
-                    <TableSelect
-                      style={{ width: "100%" }}
-                      value={outcome}
-                      disabled={updatingOutcome || status !== "resolved"}
-                      onChange={(e) => {
-                        const nextOutcome = e.target.value as TicketOutcome;
-                        setUpdatingOutcome(true);
-                        updateOutcome.mutate({
-                          id: ticket.id,
-                          outcome: nextOutcome,
-                          lossReason: nextOutcome === "lost" ? lossReason || "Other" : undefined,
-                        });
-                      }}
-                    >
-                      {OUTCOME_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </TableSelect>
+                {isOrderTicket ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 8,
+                      padding: 12,
+                      borderRadius: 12,
+                      border: "1px solid var(--border)",
+                      background: "rgba(255, 255, 255, 0.02)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                      <div>
+                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Current stage</div>
+                        <span
+                          style={{
+                            ...orderStagePillStyle(orderStage),
+                            padding: "4px 10px",
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            display: "inline-flex",
+                          }}
+                        >
+                          {formatOrderStage(orderStage)}
+                        </span>
+                      </div>
+                      <div style={{ maxWidth: 320 }}>
+                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Workflow note</div>
+                        <div style={{ fontSize: 13, color: "var(--foreground)" }}>{describeOrderStage(orderStage)}</div>
+                      </div>
+                    </div>
+                    {lossReason ? (
+                      <div>
+                        <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Last denial reason</div>
+                        <div style={{ fontSize: 13 }}>{lossReason}</div>
+                      </div>
+                    ) : null}
                   </div>
-                  <div>
-                    <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Loss reason</div>
-                    <TableSelect
-                      style={{ width: "100%" }}
-                      value={lossReason || "Other"}
-                      disabled={updatingOutcome || outcome !== "lost"}
-                      onChange={(e) => {
-                        setUpdatingOutcome(true);
-                        updateOutcome.mutate({
-                          id: ticket.id,
-                          outcome: "lost",
-                          lossReason: e.target.value,
-                        });
-                      }}
-                    >
-                      {LOSS_REASON_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </TableSelect>
+                ) : (
+                  <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+                    <div>
+                      <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Outcome</div>
+                      <TableSelect
+                        style={{ width: "100%" }}
+                        value={outcome}
+                        disabled={updatingOutcome || status !== "resolved"}
+                        onChange={(e) => {
+                          const nextOutcome = e.target.value as TicketOutcome;
+                          setUpdatingOutcome(true);
+                          updateOutcome.mutate({
+                            id: ticket.id,
+                            outcome: nextOutcome,
+                            lossReason: nextOutcome === "lost" ? lossReason || "Other" : undefined,
+                          });
+                        }}
+                      >
+                        {OUTCOME_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </TableSelect>
+                    </div>
+                    <div>
+                      <div className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>Loss reason</div>
+                      <TableSelect
+                        style={{ width: "100%" }}
+                        value={lossReason || "Other"}
+                        disabled={updatingOutcome || outcome !== "lost"}
+                        onChange={(e) => {
+                          setUpdatingOutcome(true);
+                          updateOutcome.mutate({
+                            id: ticket.id,
+                            outcome: "lost",
+                            lossReason: e.target.value,
+                          });
+                        }}
+                      >
+                        {LOSS_REASON_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </TableSelect>
+                    </div>
                   </div>
-                </div>
+                )}
                 <div>
                   <div className="text-muted" style={{ fontSize: 12 }}>Customer</div>
                   <div style={{ fontWeight: 500 }}>{customerName || customerPhone || "-"}</div>
@@ -1686,22 +2074,6 @@ function TicketDetailsDrawer({
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                       <button type="button" className="btn btn-primary" disabled={savingTicket} onClick={handleSaveTicket}>
                         {savingTicket ? "Saving..." : "Save Ticket"}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={orderActionPending !== null}
-                        onClick={() => void handleApproveOrder()}
-                      >
-                        {orderActionPending === "approve" ? "Approving..." : "Approve Order"}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={orderActionPending !== null}
-                        onClick={() => void handleDenyOrder()}
-                      >
-                        {orderActionPending === "deny" ? "Denying..." : "Deny Order"}
                       </button>
                     </div>
                   </div>
