@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, integer, timestamp, jsonb, uniqueIndex, index, numeric, check, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, integer, timestamp, jsonb, uniqueIndex, index, numeric, check, primaryKey, foreignKey } from "drizzle-orm/pg-core";
 import crypto from "crypto";
 import { relations, sql } from "drizzle-orm";
 
@@ -256,10 +256,7 @@ export const customers = pgTable(
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
 
     // Which phone number / WhatsApp identity this customer contacted (nullable for non-WhatsApp sources)
-    whatsappIdentityId: text("whatsapp_identity_id").references(() => whatsappIdentities.phoneNumberId, {
-      onDelete: "set null",
-      onUpdate: "cascade",
-    }),
+    whatsappIdentityId: text("whatsapp_identity_id"),
     
     // Source/channel this customer came from
     source: text("source").notNull().default("whatsapp"), // whatsapp | instagram | facebook | telegram | etc.
@@ -328,6 +325,11 @@ export const customers = pgTable(
     customersBotPausedIdx: index("customers_bot_paused_idx").on(t.businessId, t.botPaused),
     // Soft delete filter
     customersDeletedAtIdx: index("customers_deleted_at_idx").on(t.deletedAt),
+    customersWhatsappIdentityFk: foreignKey({
+      name: "customers_whatsapp_identity_fk",
+      columns: [t.whatsappIdentityId],
+      foreignColumns: [whatsappIdentities.phoneNumberId],
+    }).onDelete("set null").onUpdate("cascade"),
 
     // Sanity checks
     customersIdNonEmpty: check(
@@ -370,10 +372,7 @@ export const messageThreads = pgTable(
       .references(() => customers.id, { onDelete: "cascade", onUpdate: "cascade" }),
 
     // Which phone number / WhatsApp identity this thread is for
-    whatsappIdentityId: text("whatsapp_identity_id").references(() => whatsappIdentities.phoneNumberId, {
-      onDelete: "set null",
-      onUpdate: "cascade",
-    }),
+    whatsappIdentityId: text("whatsapp_identity_id"),
 
     // one thread per (business, customer, whatsappIdentityId) - allows same customer to have threads with different phone numbers
     status: text("status").notNull().default("open"),
@@ -398,6 +397,11 @@ export const messageThreads = pgTable(
     messageThreadsWhatsappIdentityIdx: index("message_threads_whatsapp_identity_id_idx").on(t.whatsappIdentityId),
     messageThreadsLastMessageIdx: index("message_threads_last_message_at_idx").on(t.lastMessageAt),
     messageThreadsDeletedAtIdx: index("message_threads_deleted_at_idx").on(t.deletedAt),
+    messageThreadsWhatsappIdentityFk: foreignKey({
+      name: "message_threads_whatsapp_identity_fk",
+      columns: [t.whatsappIdentityId],
+      foreignColumns: [whatsappIdentities.phoneNumberId],
+    }).onDelete("set null").onUpdate("cascade"),
   }),
 );
 
@@ -551,10 +555,7 @@ export const supportTickets = pgTable(
       onDelete: "set null",
       onUpdate: "cascade",
     }),
-    whatsappIdentityId: text("whatsapp_identity_id").references(() => whatsappIdentities.phoneNumberId, {
-      onDelete: "set null",
-      onUpdate: "cascade",
-    }),
+    whatsappIdentityId: text("whatsapp_identity_id"),
     customerName: text("customer_name"),
     customerPhone: text("customer_phone"),
     title: text("title"),
@@ -575,6 +576,11 @@ export const supportTickets = pgTable(
     supportTicketsSlaDueIdx: index("support_tickets_sla_due_at_idx").on(t.slaDueAt),
     supportTicketsCreatedIdx: index("support_tickets_created_at_idx").on(t.createdAt),
     supportTicketsCustomerIdx: index("support_tickets_customer_id_idx").on(t.customerId),
+    supportTicketsWhatsappIdentityFk: foreignKey({
+      name: "support_tickets_whatsapp_identity_fk",
+      columns: [t.whatsappIdentityId],
+      foreignColumns: [whatsappIdentities.phoneNumberId],
+    }).onDelete("set null").onUpdate("cascade"),
   }),
 );
 
@@ -601,10 +607,7 @@ export const orders = pgTable(
       onDelete: "set null",
       onUpdate: "cascade",
     }),
-    whatsappIdentityId: text("whatsapp_identity_id").references(() => whatsappIdentities.phoneNumberId, {
-      onDelete: "set null",
-      onUpdate: "cascade",
-    }),
+    whatsappIdentityId: text("whatsapp_identity_id"),
     customerName: text("customer_name"),
     customerPhone: text("customer_phone"),
     status: text("status").notNull().default("approved"),
@@ -631,6 +634,11 @@ export const orders = pgTable(
     ordersStatusIdx: index("orders_status_idx").on(t.businessId, t.status),
     ordersCustomerIdx: index("orders_customer_id_idx").on(t.customerId),
     ordersTicketUx: uniqueIndex("orders_support_ticket_id_ux").on(t.supportTicketId).where(sql`${t.supportTicketId} is not null`),
+    ordersWhatsappIdentityFk: foreignKey({
+      name: "orders_whatsapp_identity_fk",
+      columns: [t.whatsappIdentityId],
+      foreignColumns: [whatsappIdentities.phoneNumberId],
+    }).onDelete("set null").onUpdate("cascade"),
   }),
 );
 
@@ -655,10 +663,7 @@ export const orderPayments = pgTable(
       onDelete: "set null",
       onUpdate: "cascade",
     }),
-    whatsappIdentityId: text("whatsapp_identity_id").references(() => whatsappIdentities.phoneNumberId, {
-      onDelete: "set null",
-      onUpdate: "cascade",
-    }),
+    whatsappIdentityId: text("whatsapp_identity_id"),
     paymentMethod: text("payment_method").notNull().default("bank_qr"),
     status: text("status").notNull().default("submitted"),
     currency: text("currency").notNull().default("LKR"),
@@ -678,6 +683,11 @@ export const orderPayments = pgTable(
     orderPaymentsOrderIdx: index("order_payments_order_id_idx").on(t.orderId),
     orderPaymentsStatusIdx: index("order_payments_status_idx").on(t.businessId, t.status),
     orderPaymentsCreatedIdx: index("order_payments_created_at_idx").on(t.createdAt),
+    orderPaymentsWhatsappIdentityFk: foreignKey({
+      name: "order_payments_whatsapp_identity_fk",
+      columns: [t.whatsappIdentityId],
+      foreignColumns: [whatsappIdentities.phoneNumberId],
+    }).onDelete("set null").onUpdate("cascade"),
   }),
 );
 
