@@ -2,10 +2,21 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { messageThreads, orderEvents, threadMessages } from "../../../drizzle/schema";
 import type { OrderFlowSettings } from "@/lib/order-settings";
+import { publishPortalEvent } from "@/server/realtime/portalEvents";
 
 export type OrderApprovalMessage =
   | { type: "text"; text: string }
   | { type: "image"; imageUrl: string; caption?: string };
+
+type PortalJsonValue = string | number | boolean | null | PortalJsonValue[] | { [k: string]: PortalJsonValue };
+
+function toPortalPayload(value: unknown): Record<string, PortalJsonValue> {
+  const serialized = JSON.parse(JSON.stringify(value ?? {})) as PortalJsonValue;
+  if (!serialized || typeof serialized !== "object" || Array.isArray(serialized)) {
+    return {};
+  }
+  return serialized as Record<string, PortalJsonValue>;
+}
 
 export function sanitizePhoneDigits(value: string | null | undefined): string {
   return String(value ?? "").replace(/[^\d]/g, "");
@@ -211,6 +222,7 @@ export async function logOrderEvent(params: {
 }
 
 export async function persistOutboundThreadMessage(params: {
+  businessId?: string;
   threadId: string;
   messageType: string;
   textBody?: string | null;
@@ -238,6 +250,17 @@ export async function persistOutboundThreadMessage(params: {
       updatedAt: now,
     })
     .where(eq(messageThreads.id, params.threadId));
+
+  if (saved && params.businessId) {
+    await publishPortalEvent({
+      businessId: params.businessId,
+      entity: "thread_message",
+      op: "insert",
+      entityId: saved.id,
+      payload: toPortalPayload({ message: saved }),
+      createdAt: saved.createdAt ?? now,
+    });
+  }
 
   return saved ?? null;
 }

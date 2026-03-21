@@ -25,6 +25,16 @@ type PaymentProofAnalyzerResult = {
   extracted?: Record<string, unknown>;
 };
 
+type PortalJsonValue = string | number | boolean | null | PortalJsonValue[] | { [k: string]: PortalJsonValue };
+
+function toPortalPayload(value: unknown): Record<string, PortalJsonValue> {
+  const serialized = JSON.parse(JSON.stringify(value ?? {})) as PortalJsonValue;
+  if (!serialized || typeof serialized !== "object" || Array.isArray(serialized)) {
+    return {};
+  }
+  return serialized as Record<string, PortalJsonValue>;
+}
+
 function getInternalApiKey(): string {
   return String(
     process.env.ORDER_PAYMENT_API_KEY ||
@@ -84,10 +94,7 @@ async function analyzePaymentProof(input: {
     },
     body: JSON.stringify({
       expectedAmount,
-      paidAmount: expectedAmount,
       expectedReference: input.expectedReference ?? "",
-      providedReference: input.expectedReference ?? "",
-      paymentDate: new Date().toISOString().slice(0, 10),
       currency: input.currency,
       paymentProofUrl: input.paymentProofUrl ?? undefined,
       paymentProofText: input.paymentProofText ?? undefined,
@@ -168,7 +175,6 @@ export async function POST(request: Request) {
 
   const submittedAmount =
     toMoneyString(analysis?.extracted?.amount) ??
-    toMoneyString(orderRow.expectedAmount) ??
     null;
   const now = new Date();
   const [paymentRow] = await db
@@ -185,7 +191,7 @@ export async function POST(request: Request) {
       expectedAmount: orderRow.expectedAmount,
       paidAmount: submittedAmount,
       paidDate: analysis?.extracted?.paymentDate ? String(analysis.extracted.paymentDate) : null,
-      referenceCode: orderRow.paymentReference,
+      referenceCode: String(analysis?.extracted?.reference || orderRow.paymentReference || "").trim() || null,
       proofUrl: storedProof?.url ?? null,
       aiCheckStatus: analysis?.status ?? "needs_review",
       aiCheckNotes: analysis?.summary ?? (storedProof?.url ? "Payment proof received." : "Payment details received."),
@@ -234,12 +240,12 @@ export async function POST(request: Request) {
       entity: "order",
       op: "upsert",
       entityId: updatedOrder.id,
-      payload: {
+      payload: toPortalPayload({
         order: {
           ...updatedOrder,
           latestPayment: paymentRow,
-        } as any,
-      } as any,
+        },
+      }),
       createdAt: updatedOrder.updatedAt ?? now,
     });
 

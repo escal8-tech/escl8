@@ -7,8 +7,9 @@ import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { db } from "../db/client";
 import { businessProcedure, router } from "../trpc";
-import { businesses, orderEvents, orderPayments, orders } from "../../../drizzle/schema";
-import { logOrderEvent } from "../services/orderFlow";
+import { businesses, customers, messageThreads, orderEvents, orderPayments, orders } from "../../../drizzle/schema";
+import { sendWhatsAppMessagesViaBot, type BotSendMessage } from "../services/botApi";
+import { logOrderEvent, persistOutboundThreadMessage, sanitizePhoneDigits } from "../services/orderFlow";
 
 const reviewActionSchema = z.enum(["approve", "reject"]);
 const refundActionSchema = z.enum(["mark_pending", "mark_refunded", "cancel"]);
@@ -56,6 +57,281 @@ async function getBusinessOrderSettings(businessId: string) {
     .where(eq(businesses.id, businessId))
     .limit(1);
   return normalizeOrderFlowSettings(biz?.settings);
+}
+
+function coalesceText(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    const normalized = String(value ?? "").trim();
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function preferredWhatsAppNumber(source: string | null | undefined, ...values: Array<string | null | undefined>): string | null {
+  const sourceKey = String(source ?? "").trim().toLowerCase();
+  for (const value of values) {
+    const normalized = sanitizePhoneDigits(value);
+    if (normalized) return normalized;
+  }
+  if (sourceKey === "whatsapp") {
+    for (const value of values) {
+      const fallback = String(value ?? "").trim();
+      if (fallback) return fallback;
+    }
+  }
+  return null;
+}
+
+function maskPhoneNumber(value: string | null | undefined): string | null {
+  const digits = sanitizePhoneDigits(value);
+  if (!digits) return null;
+  if (digits.length <= 4) return digits;
+  return `${"*".repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
+}
+
+type OrderCustomerContext = {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  externalId: string | null;
+  source: string | null;
+  whatsappIdentityId: string | null;
+};
+
+type OrderThreadContext = {
+  threadId: string;
+  whatsappIdentityId: string | null;
+  customerId: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  customerExternalId: string | null;
+  customerSource: string | null;
+};
+
+async function getOrderCustomerContext(businessId: string, customerId: string | null | undefined): Promise<OrderCustomerContext | null> {
+  const normalizedCustomerId = String(customerId ?? "").trim();
+  if (!normalizedCustomerId) return null;
+  const [row] = await db
+    .select({
+      id: customers.id,
+      name: customers.name,
+      phone: customers.phone,
+      externalId: customers.externalId,
+      source: customers.source,
+      whatsappIdentityId: customers.whatsappIdentityId,
+    })
+    .from(customers)
+    .where(and(eq(customers.businessId, businessId), eq(customers.id, normalizedCustomerId)))
+    .limit(1);
+  return row ?? null;
+}
+
+async function getOrderThreadContext(businessId: string, threadId: string | null | undefined): Promise<OrderThreadContext | null> {
+  const normalizedThreadId = String(threadId ?? "").trim();
+  if (!normalizedThreadId) return null;
+  const [row] = await db
+    .select({
+      threadId: messageThreads.id,
+      whatsappIdentityId: messageThreads.whatsappIdentityId,
+      customerId: customers.id,
+      customerName: customers.name,
+      customerPhone: customers.phone,
+      customerExternalId: customers.externalId,
+      customerSource: customers.source,
+    })
+    .from(messageThreads)
+    .innerJoin(customers, eq(messageThreads.customerId, customers.id))
+    .where(and(eq(messageThreads.businessId, businessId), eq(messageThreads.id, normalizedThreadId)))
+    .limit(1);
+  return row ?? null;
+}
+
+async function resolveOrderNotificationContext(params: {
+  businessId: string;
+  customerId?: string | null;
+  threadId?: string | null;
+  whatsappIdentityId?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+}) {
+  const directCustomer = await getOrderCustomerContext(params.businessId, params.customerId);
+  const threadContext = await getOrderThreadContext(params.businessId, params.threadId);
+
+  const customerName = coalesceText(
+    params.customerName,
+    directCustomer?.name ?? null,
+    threadContext?.customerName ?? null,
+  );
+  const customerPhone = coalesceText(
+    params.customerPhone,
+    directCustomer?.phone ?? null,
+    threadContext?.customerPhone ?? null,
+    (directCustomer?.source ?? "").toLowerCase() === "whatsapp" ? directCustomer?.externalId ?? null : null,
+  );
+  const whatsappIdentityId = coalesceText(
+    params.whatsappIdentityId,
+    directCustomer?.whatsappIdentityId ?? null,
+    threadContext?.whatsappIdentityId ?? null,
+  );
+  const recipient =
+    preferredWhatsAppNumber("whatsapp", customerPhone) ??
+    preferredWhatsAppNumber(directCustomer?.source, directCustomer?.phone, directCustomer?.externalId) ??
+    preferredWhatsAppNumber(threadContext?.customerSource, threadContext?.customerPhone, threadContext?.customerExternalId);
+
+  return {
+    customerName,
+    threadId: coalesceText(params.threadId, threadContext?.threadId ?? null),
+    whatsappIdentityId,
+    approvalRecipient: recipient ?? "",
+    recipientSource:
+      preferredWhatsAppNumber("whatsapp", customerPhone) != null
+        ? "order.customer_phone"
+        : preferredWhatsAppNumber(directCustomer?.source, directCustomer?.phone) != null
+          ? "customer.phone"
+          : preferredWhatsAppNumber(directCustomer?.source, directCustomer?.externalId) != null
+            ? "customer.external_id"
+            : preferredWhatsAppNumber(threadContext?.customerSource, threadContext?.customerPhone) != null
+              ? "thread.customer.phone"
+              : preferredWhatsAppNumber(threadContext?.customerSource, threadContext?.customerExternalId) != null
+                ? "thread.customer.external_id"
+                : null,
+    whatsappIdentitySource: coalesceText(params.whatsappIdentityId)
+      ? "order.whatsapp_identity_id"
+      : coalesceText(directCustomer?.whatsappIdentityId ?? null)
+        ? "customer.whatsapp_identity_id"
+        : coalesceText(threadContext?.whatsappIdentityId ?? null)
+          ? "thread.whatsapp_identity_id"
+          : null,
+  };
+}
+
+async function deliverOrderUpdateMessages(params: {
+  businessId: string;
+  orderRow: {
+    id: string;
+    customerId?: string | null;
+    threadId?: string | null;
+    whatsappIdentityId?: string | null;
+    customerName?: string | null;
+    customerPhone?: string | null;
+  };
+  messages: BotSendMessage[];
+  source: string;
+}) {
+  if (!params.messages.length) {
+    return { ok: true as const, error: null, recipientSource: null as string | null, whatsappIdentitySource: null as string | null };
+  }
+  const contactContext = await resolveOrderNotificationContext({
+    businessId: params.businessId,
+    customerId: params.orderRow.customerId ?? null,
+    threadId: params.orderRow.threadId ?? null,
+    whatsappIdentityId: params.orderRow.whatsappIdentityId ?? null,
+    customerName: params.orderRow.customerName ?? null,
+    customerPhone: params.orderRow.customerPhone ?? null,
+  });
+  const recipient = sanitizePhoneDigits(contactContext.approvalRecipient);
+  if (!contactContext.whatsappIdentityId || !recipient) {
+    return {
+      ok: false as const,
+      error: "Order is missing WhatsApp routing details for customer notification.",
+      recipientSource: contactContext.recipientSource,
+      whatsappIdentitySource: contactContext.whatsappIdentitySource,
+    };
+  }
+
+  try {
+    const sendResults = await sendWhatsAppMessagesViaBot({
+      businessId: params.businessId,
+      phoneNumberId: contactContext.whatsappIdentityId,
+      to: recipient,
+      messages: params.messages,
+    });
+
+    if (contactContext.threadId) {
+      for (const [index, outbound] of params.messages.entries()) {
+        await persistOutboundThreadMessage({
+          businessId: params.businessId,
+          threadId: contactContext.threadId,
+          messageType: outbound.type,
+          textBody: outbound.type === "text" ? outbound.text : outbound.caption ?? "[order update image]",
+          externalMessageId: sendResults[index]?.messageId ?? null,
+          meta: {
+            source: params.source,
+            orderId: params.orderRow.id,
+            providerResponse: sendResults[index]?.providerResponse ?? null,
+            whatsappIdentityId: contactContext.whatsappIdentityId,
+            recipient: maskPhoneNumber(recipient),
+          },
+        });
+      }
+    }
+
+    return {
+      ok: true as const,
+      error: null,
+      recipientSource: contactContext.recipientSource,
+      whatsappIdentitySource: contactContext.whatsappIdentitySource,
+    };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "Failed to deliver WhatsApp order update.",
+      recipientSource: contactContext.recipientSource,
+      whatsappIdentitySource: contactContext.whatsappIdentitySource,
+    };
+  }
+}
+
+function buildPaymentReviewMessages(input: {
+  action: "approve" | "reject";
+  orderId: string;
+  paymentReference?: string | null;
+  paidAmount?: string | number | null;
+  currency: string;
+  notes?: string | null;
+}): BotSendMessage[] {
+  const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
+  if (input.action === "approve") {
+    const lines = [
+      `We have approved your payment for order reference ${ref}.`,
+      input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
+      "Your order is now marked as paid and our team will continue processing it.",
+    ].filter(Boolean);
+    return [{ type: "text", text: lines.join("\n") }];
+  }
+  const lines = [
+    `We reviewed the payment proof for order reference ${ref}, but we could not verify it yet.`,
+    input.notes ? `Reason: ${String(input.notes).trim()}.` : null,
+    "Please resend a clear payment slip in this chat after checking the transfer details.",
+  ].filter(Boolean);
+  return [{ type: "text", text: lines.join("\n") }];
+}
+
+function buildRefundStatusMessages(input: {
+  action: "mark_pending" | "mark_refunded" | "cancel";
+  orderId: string;
+  paymentReference?: string | null;
+  refundAmount?: string | null;
+  currency: string;
+  reason?: string | null;
+}): BotSendMessage[] {
+  const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
+  if (input.action === "mark_pending") {
+    const lines = [
+      `We have started reviewing your refund for order reference ${ref}.`,
+      input.reason ? `Reason noted: ${input.reason}.` : null,
+      "We will update you again as soon as the refund is processed.",
+    ].filter(Boolean);
+    return [{ type: "text", text: lines.join("\n") }];
+  }
+  if (input.action === "mark_refunded") {
+    const lines = [
+      `Your refund for order reference ${ref} has been completed.`,
+      input.refundAmount ? `Refunded amount: ${input.currency} ${input.refundAmount}.` : null,
+    ].filter(Boolean);
+    return [{ type: "text", text: lines.join("\n") }];
+  }
+  return [{ type: "text", text: `Your refund request for order reference ${ref} has been cancelled, and the order remains paid.` }];
 }
 
 export const ordersRouter = router({
@@ -225,6 +501,24 @@ export const ordersRouter = router({
       if (!orderRow) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
       }
+      if (String(paymentRow.status || "").trim().toLowerCase() !== "submitted") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Only submitted payments can be reviewed." });
+      }
+      if (String(orderRow.status || "").trim().toLowerCase() !== "payment_submitted") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Only payment-submitted orders can be reviewed." });
+      }
+      const [latestPayment] = await db
+        .select({
+          id: orderPayments.id,
+          status: orderPayments.status,
+        })
+        .from(orderPayments)
+        .where(and(eq(orderPayments.businessId, ctx.businessId), eq(orderPayments.orderId, paymentRow.orderId)))
+        .orderBy(desc(orderPayments.createdAt), desc(orderPayments.id))
+        .limit(1);
+      if (!latestPayment || latestPayment.id !== paymentRow.id) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Only the latest payment submission can be reviewed." });
+      }
 
       const now = new Date();
       const nextPaymentStatus = input.action === "approve" ? "approved_manual" : "rejected";
@@ -245,64 +539,97 @@ export const ordersRouter = router({
         .set({
           status: nextOrderStatus,
           paidAmount: paymentRow.paidAmount ?? orderRow.paidAmount,
-          paymentApprovedAt: input.action === "approve" ? now : orderRow.paymentApprovedAt,
-          paymentRejectedAt: input.action === "reject" ? now : orderRow.paymentRejectedAt,
+          paymentApprovedAt: input.action === "approve" ? now : null,
+          paymentRejectedAt: input.action === "reject" ? now : null,
           updatedAt: now,
         })
         .where(eq(orders.id, orderRow.id))
         .returning();
 
-      if (updatedOrder) {
+      if (!updatedPayment || !updatedOrder) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to review payment." });
+      }
+
+      const delivery = await deliverOrderUpdateMessages({
+        businessId: ctx.businessId,
+        orderRow: updatedOrder,
+        source: input.action === "approve" ? "order_payment_approved" : "order_payment_rejected",
+        messages: buildPaymentReviewMessages({
+          action: input.action,
+          orderId: updatedOrder.id,
+          paymentReference: updatedOrder.paymentReference,
+          paidAmount: updatedPayment.paidAmount ?? updatedOrder.paidAmount,
+          currency: String(updatedOrder.currency || "LKR").trim() || "LKR",
+          notes: input.notes?.trim() || null,
+        }),
+      });
+
+      await logOrderEvent({
+        businessId: ctx.businessId,
+        orderId: updatedOrder.id,
+        eventType: input.action === "approve" ? "payment_approved" : "payment_rejected",
+        actorType: "user",
+        actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+        actorLabel: ctx.userEmail ?? "user",
+        payload: {
+          notes: input.notes?.trim() || null,
+          paymentId: paymentRow.id,
+          paymentStatus: nextPaymentStatus,
+        },
+      });
+      if (!delivery.ok) {
         await logOrderEvent({
           businessId: ctx.businessId,
           orderId: updatedOrder.id,
-          eventType: input.action === "approve" ? "payment_approved" : "payment_rejected",
-          actorType: "user",
-          actorId: ctx.userId ?? ctx.firebaseUid ?? null,
-          actorLabel: ctx.userEmail ?? "user",
+          eventType: "payment_review_notification_failed",
+          actorType: "system",
+          actorLabel: "bot",
           payload: {
-            notes: input.notes?.trim() || null,
-            paymentId: paymentRow.id,
-            paymentStatus: nextPaymentStatus,
-          },
-        });
-
-        await publishPortalEvent({
-          businessId: ctx.businessId,
-          entity: "order",
-          op: "upsert",
-          entityId: updatedOrder.id,
-          payload: {
-            order: {
-              ...updatedOrder,
-              latestPayment: updatedPayment ?? paymentRow,
-            } as any,
-          },
-          createdAt: updatedOrder.updatedAt ?? updatedOrder.createdAt ?? now,
-        });
-
-        recordBusinessEvent({
-          event: "order.payment_reviewed",
-          action: "reviewPayment",
-          area: "order",
-          businessId: ctx.businessId,
-          entity: "order_payment",
-          entityId: paymentRow.id,
-          userId: ctx.userId,
-          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-          actorType: "user",
-          outcome: "success",
-          status: nextPaymentStatus,
-          attributes: {
             action: input.action,
-            order_id: updatedOrder.id,
+            error: delivery.error,
           },
         });
       }
 
+      await publishPortalEvent({
+        businessId: ctx.businessId,
+        entity: "order",
+        op: "upsert",
+        entityId: updatedOrder.id,
+        payload: {
+          order: {
+            ...updatedOrder,
+            latestPayment: updatedPayment,
+          } as any,
+        },
+        createdAt: updatedOrder.updatedAt ?? updatedOrder.createdAt ?? now,
+      });
+
+      recordBusinessEvent({
+        event: "order.payment_reviewed",
+        action: "reviewPayment",
+        area: "order",
+        businessId: ctx.businessId,
+        entity: "order_payment",
+        entityId: paymentRow.id,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: delivery.ok ? "success" : "degraded",
+        status: nextPaymentStatus,
+        attributes: {
+          action: input.action,
+          order_id: updatedOrder.id,
+          delivery_ok: delivery.ok,
+          delivery_phone_source: delivery.recipientSource,
+          delivery_identity_source: delivery.whatsappIdentitySource,
+        },
+      });
+
       return {
-        order: updatedOrder ?? null,
-        payment: updatedPayment ?? null,
+        order: updatedOrder,
+        payment: updatedPayment,
+        delivery,
       };
     }),
 
@@ -403,6 +730,38 @@ export const ordersRouter = router({
         createdAt: updatedOrder.updatedAt ?? updatedOrder.createdAt ?? now,
       });
 
+      const delivery = await deliverOrderUpdateMessages({
+        businessId: ctx.businessId,
+        orderRow: updatedOrder,
+        source:
+          input.action === "mark_pending"
+            ? "order_refund_pending"
+            : input.action === "mark_refunded"
+              ? "order_refund_completed"
+              : "order_refund_cancelled",
+        messages: buildRefundStatusMessages({
+          action: input.action,
+          orderId: updatedOrder.id,
+          paymentReference: updatedOrder.paymentReference,
+          refundAmount: input.action === "cancel" ? null : nextRefundAmount,
+          currency: String(updatedOrder.currency || "LKR").trim() || "LKR",
+          reason: input.action === "cancel" ? null : nextRefundReason,
+        }),
+      });
+      if (!delivery.ok) {
+        await logOrderEvent({
+          businessId: ctx.businessId,
+          orderId: updatedOrder.id,
+          eventType: "refund_notification_failed",
+          actorType: "system",
+          actorLabel: "bot",
+          payload: {
+            action: input.action,
+            error: delivery.error,
+          },
+        });
+      }
+
       recordBusinessEvent({
         event: "order.refund_status_updated",
         action: "updateRefundStatus",
@@ -413,15 +772,18 @@ export const ordersRouter = router({
         userId: ctx.userId,
         actorId: ctx.firebaseUid ?? ctx.userId ?? null,
         actorType: "user",
-        outcome: "success",
+        outcome: delivery.ok ? "success" : "degraded",
         status: nextStatus,
         attributes: {
           previous_status: orderRow.status,
           refund_action: input.action,
           refund_amount: input.action === "cancel" ? null : nextRefundAmount,
+          delivery_ok: delivery.ok,
+          delivery_phone_source: delivery.recipientSource,
+          delivery_identity_source: delivery.whatsappIdentitySource,
         },
       });
 
-      return { order: updatedOrder };
+      return { order: updatedOrder, delivery };
     }),
 });
