@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { fetchWithFirebaseAuth } from "@/lib/client-auth-ops";
 import { isClientErrorReported } from "@/lib/client-business-monitoring";
 import { recordGrafanaLog } from "@/lib/grafana-monitoring";
@@ -226,6 +226,11 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
   const bookingsList = utils.bookings.list as any;
   const ticketsList = utils.tickets.listTickets as any;
   const ticketTypesList = utils.tickets.listTypes as any;
+  const optionsRef = useRef(options);
+
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
 
   useEffect(() => {
     let cancelled = false;
@@ -275,36 +280,38 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     };
 
     const runCatchup = () => {
+      const currentOptions = optionsRef.current;
       const now = Date.now();
       if (now - lastCatchupAt < 3000) return;
       lastCatchupAt = now;
 
       const jobs: Array<Promise<unknown>> = [];
-      if (options.requestListInput) jobs.push(requestsList.invalidate(options.requestListInput));
-      if (options.requestStatsInput !== undefined) jobs.push(requestsStats.invalidate(options.requestStatsInput));
-      if (options.requestActivityInput) jobs.push(requestsActivity.invalidate(options.requestActivityInput));
-      if (options.customerListInput !== undefined) jobs.push(customersList.invalidate(options.customerListInput));
+      if (currentOptions.requestListInput) jobs.push(requestsList.invalidate(currentOptions.requestListInput));
+      if (currentOptions.requestStatsInput !== undefined) jobs.push(requestsStats.invalidate(currentOptions.requestStatsInput));
+      if (currentOptions.requestActivityInput) jobs.push(requestsActivity.invalidate(currentOptions.requestActivityInput));
+      if (currentOptions.customerListInput !== undefined) jobs.push(customersList.invalidate(currentOptions.customerListInput));
       jobs.push(customersStats.invalidate(undefined));
-      if (options.messagesThreadListInput) jobs.push(threadsList.invalidate(options.messagesThreadListInput));
-      if (options.bookingsListInput !== undefined) jobs.push(bookingsList.invalidate(options.bookingsListInput));
-      if (options.ticketListInputs && options.ticketListInputs.length > 0) {
-        for (const input of options.ticketListInputs) jobs.push(ticketsList.invalidate(input));
+      if (currentOptions.messagesThreadListInput) jobs.push(threadsList.invalidate(currentOptions.messagesThreadListInput));
+      if (currentOptions.bookingsListInput !== undefined) jobs.push(bookingsList.invalidate(currentOptions.bookingsListInput));
+      if (currentOptions.ticketListInputs && currentOptions.ticketListInputs.length > 0) {
+        for (const input of currentOptions.ticketListInputs) jobs.push(ticketsList.invalidate(input));
       }
       jobs.push(ticketTypesList.invalidate({ includeDisabled: true }));
-      if (options.activeThreadId) {
+      if (currentOptions.activeThreadId) {
         jobs.push(
           messagesList.invalidate({
-            threadId: options.activeThreadId,
-            limit: options.activeThreadPageSize ?? 20,
+            threadId: currentOptions.activeThreadId,
+            limit: currentOptions.activeThreadPageSize ?? 20,
           }),
         );
       }
 
       void Promise.allSettled(jobs);
-      void options.onCatchup?.();
+      void currentOptions.onCatchup?.();
     };
 
     const applyEvent = (event: PortalEvent) => {
+      const currentOptions = optionsRef.current;
       const payload = (event.payload ?? {}) as Record<string, unknown>;
       const request = payload.request as Record<string, unknown> | undefined;
       const customer = payload.customer as Record<string, unknown> | undefined;
@@ -336,9 +343,9 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
 
       const phoneIdentityId = eventPhoneIdentity(payload);
 
-      const customerFilter = options.customerListInput?.whatsappIdentityId;
-      const requestFilter = options.requestListInput?.whatsappIdentityId;
-      const threadFilter = options.messagesThreadListInput?.whatsappIdentityId;
+      const customerFilter = currentOptions.customerListInput?.whatsappIdentityId;
+      const requestFilter = currentOptions.requestListInput?.whatsappIdentityId;
+      const threadFilter = currentOptions.messagesThreadListInput?.whatsappIdentityId;
 
       const customerMatchesFilter = !customerFilter || customerFilter === phoneIdentityId;
       const requestMatchesFilter = !requestFilter || requestFilter === phoneIdentityId;
@@ -347,7 +354,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       const maybeCustomer = customer;
       if (maybeCustomer && customerMatchesFilter) {
         let nextCustomers: Array<Record<string, unknown>> = [];
-        const customerInput = options.customerListInput;
+        const customerInput = currentOptions.customerListInput;
         customersList.setData(customerInput, (old: Array<Record<string, unknown>> | undefined) => {
           if (event.op === "deleted") {
             const targetId = String(maybeCustomer.id ?? event.entityId ?? "");
@@ -364,35 +371,35 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       }
 
       const maybeRequest = request;
-      if (maybeRequest && requestMatchesFilter && options.requestListInput) {
-        const limit = options.requestListInput.limit ?? 100;
+      if (maybeRequest && requestMatchesFilter && currentOptions.requestListInput) {
+        const limit = currentOptions.requestListInput.limit ?? 100;
         let nextRequests: Array<Record<string, unknown>> = [];
-        requestsList.setData(options.requestListInput, (old: Array<Record<string, unknown>> | undefined) => {
+        requestsList.setData(currentOptions.requestListInput, (old: Array<Record<string, unknown>> | undefined) => {
           nextRequests = upsertById(old, maybeRequest).slice(0, limit);
           return nextRequests;
         });
 
-        requestsStats.setData(options.requestStatsInput, computeRequestStats(nextRequests));
-        if (options.requestActivityInput) {
+        requestsStats.setData(currentOptions.requestStatsInput, computeRequestStats(nextRequests));
+        if (currentOptions.requestActivityInput) {
           const now = Date.now();
           if (now - lastActivityInvalidateAt > 1500) {
             lastActivityInvalidateAt = now;
-            void requestsActivity.invalidate(options.requestActivityInput);
+            void requestsActivity.invalidate(currentOptions.requestActivityInput);
           }
         }
       }
-      if (!maybeRequest && event.entity === "request" && options.requestListInput) {
+      if (!maybeRequest && event.entity === "request" && currentOptions.requestListInput) {
         // Bulk request events (like midnight rollover) should refresh request-derived widgets.
-        void requestsList.invalidate(options.requestListInput);
-        void requestsStats.invalidate(options.requestStatsInput);
-        if (options.requestActivityInput) {
-          void requestsActivity.invalidate(options.requestActivityInput);
+        void requestsList.invalidate(currentOptions.requestListInput);
+        void requestsStats.invalidate(currentOptions.requestStatsInput);
+        if (currentOptions.requestActivityInput) {
+          void requestsActivity.invalidate(currentOptions.requestActivityInput);
         }
       }
 
       const maybeThread = thread;
-      if (maybeThread && threadMatchesFilter && options.messagesThreadListInput) {
-        const threadInput = options.messagesThreadListInput;
+      if (maybeThread && threadMatchesFilter && currentOptions.messagesThreadListInput) {
+        const threadInput = currentOptions.messagesThreadListInput;
         const limit = threadInput.limit ?? 50;
         threadsList.setData(threadInput, (old: Array<Record<string, unknown>> | undefined) => {
           const upserted = upsertByKey(old, maybeThread, "threadId");
@@ -408,9 +415,9 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       }
 
       const maybeMessage = message as MessageRow | undefined;
-      if (maybeMessage && options.activeThreadId && maybeMessage.threadId === options.activeThreadId) {
-        const pageSize = options.activeThreadPageSize ?? 20;
-        const listInput = { threadId: options.activeThreadId, limit: pageSize };
+      if (maybeMessage && currentOptions.activeThreadId && maybeMessage.threadId === currentOptions.activeThreadId) {
+        const pageSize = currentOptions.activeThreadPageSize ?? 20;
+        const listInput = { threadId: currentOptions.activeThreadId, limit: pageSize };
 
         messagesList.setData(
           listInput,
@@ -437,12 +444,12 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
           },
         );
 
-        options.onThreadMessage?.(maybeMessage);
+        currentOptions.onThreadMessage?.(maybeMessage);
       }
 
       const maybeBooking = booking;
-      if (maybeBooking && options.bookingsListInput !== undefined) {
-        const bookingInput = options.bookingsListInput;
+      if (maybeBooking && currentOptions.bookingsListInput !== undefined) {
+        const bookingInput = currentOptions.bookingsListInput;
         bookingsList.setData(bookingInput, (old: Array<Record<string, unknown>> | undefined) => {
           if (event.op === "deleted") {
             const targetId = String(maybeBooking.id ?? event.entityId ?? "");
@@ -453,8 +460,8 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       }
 
       const maybeTicket = ticket;
-      if (maybeTicket && options.ticketListInputs && options.ticketListInputs.length > 0) {
-        for (const listInput of options.ticketListInputs) {
+      if (maybeTicket && currentOptions.ticketListInputs && currentOptions.ticketListInputs.length > 0) {
+        for (const listInput of currentOptions.ticketListInputs) {
           const limit = listInput?.limit ?? 400;
           ticketsList.setData(listInput, (old: Array<Record<string, unknown>> | undefined) => {
             const current = old ?? [];
@@ -472,14 +479,14 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
               .slice(0, limit);
           });
         }
-        options.onTicket?.(maybeTicket, event);
-      } else if (!maybeTicket && event.entity === "ticket" && options.ticketListInputs && options.ticketListInputs.length > 0) {
-        for (const listInput of options.ticketListInputs) {
+        currentOptions.onTicket?.(maybeTicket, event);
+      } else if (!maybeTicket && event.entity === "ticket" && currentOptions.ticketListInputs && currentOptions.ticketListInputs.length > 0) {
+        for (const listInput of currentOptions.ticketListInputs) {
           void ticketsList.invalidate(listInput);
         }
       }
 
-      options.onEvent?.(event);
+      currentOptions.onEvent?.(event);
     };
 
     const connect = async () => {
@@ -623,15 +630,6 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       if (ws) ws.close();
     };
   }, [
-    options.customerListInput,
-    options.requestListInput,
-    options.requestStatsInput,
-    options.requestActivityInput,
-    options.messagesThreadListInput,
-    options.bookingsListInput,
-    options.activeThreadId,
-    options.activeThreadPageSize,
-    options.onThreadMessage,
     customersList,
     customersStats,
     requestsList,
@@ -642,9 +640,5 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     bookingsList,
     ticketsList,
     ticketTypesList,
-    options.ticketListInputs,
-    options.onEvent,
-    options.onTicket,
-    options.onCatchup,
   ]);
 }
