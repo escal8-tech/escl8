@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { trpc } from "@/utils/trpc";
 import { PortalSelect } from "@/app/portal/components/PortalSelect";
+import { useToast } from "@/components/ToastProvider";
+import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
 import { recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
 import type { OrderPaymentMethod } from "@/lib/order-settings";
 
@@ -524,23 +526,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--muted)",
     fontWeight: 500,
   },
-  toast: {
-    position: "fixed" as const,
-    bottom: 24,
-    right: 24,
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    padding: "14px 20px",
-    borderRadius: 12,
-    background: "var(--foreground)",
-    color: "var(--background)",
-    fontSize: 14,
-    fontWeight: 500,
-    boxShadow: "0 10px 40px rgba(0,0,0,0.3)",
-    zIndex: 1000,
-    animation: "slideUp 0.3s ease",
-  },
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -557,19 +542,6 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (val: boole
       onKeyDown={(e) => e.key === "Enter" && onChange(!checked)}
     >
       <div style={{ ...styles.toggleKnob, ...(checked ? styles.toggleKnobActive : {}) }} />
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
-   TOAST COMPONENT
-───────────────────────────────────────────────────────────────────────────── */
-function Toast({ message, show }: { message: string; show: boolean }) {
-  if (!show) return null;
-  return (
-    <div style={styles.toast}>
-      <span style={{ color: "var(--success)" }}>{Icons.check}</span>
-      {message}
     </div>
   );
 }
@@ -592,9 +564,9 @@ const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
 ───────────────────────────────────────────────────────────────────────────── */
 export default function SettingsPage() {
   const auth = getFirebaseAuth();
+  const toast = useToast();
   const [email, setEmail] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
-  const [toast, setToast] = useState<string | null>(null);
 
   // Booking settings state
   const [unitCapacity, setUnitCapacity] = useState<number>(1);
@@ -632,20 +604,29 @@ export default function SettingsPage() {
   const ticketTypesQuery = trpc.tickets.listTypes.useQuery({ includeDisabled: true }, { enabled: !!email });
   const updateBooking = trpc.business.updateBookingConfig.useMutation({
     onSuccess: () => {
-      showToast("Settings saved successfully!");
+      showSuccessToast(toast, {
+        title: "Settings updated",
+        message: "Booking settings saved successfully.",
+      });
       businessQuery.refetch();
     },
   });
   const upsertTicketType = trpc.tickets.upsertType.useMutation();
   const updateTimezone = trpc.business.updateTimezone.useMutation({
     onSuccess: () => {
-      showToast("Timezone saved successfully!");
+      showSuccessToast(toast, {
+        title: "Timezone updated",
+        message: "Timezone saved successfully.",
+      });
       businessQuery.refetch();
     },
   });
   const updateOrderSettings = trpc.business.updateOrderSettings.useMutation({
     onSuccess: () => {
-      showToast("Order settings saved successfully!");
+      showSuccessToast(toast, {
+        title: "Order settings updated",
+        message: "Order flow settings saved successfully.",
+      });
       businessQuery.refetch();
     },
   });
@@ -674,11 +655,6 @@ export default function SettingsPage() {
       setAccountInstructions(orderSettings?.bankQr?.accountInstructions ?? "");
     }
   }, [businessQuery.data]);
-
-  const showToast = useCallback((message: string) => {
-    setToast(message);
-    setTimeout(() => setToast(null), 3000);
-  }, []);
 
   const handleLogout = async () => {
     if (!auth) {
@@ -767,11 +743,17 @@ export default function SettingsPage() {
         enabled: nextEnabled,
         requiredFields: getRequiredFieldsForTicket(ticketType),
       });
-      showToast("Ticket type updated");
+      showSuccessToast(toast, {
+        title: "Ticket type updated",
+        message: "Ticket settings saved successfully.",
+      });
       await ticketTypesQuery.refetch();
     } catch {
       setTicketEnabledById((prev) => ({ ...prev, [ticketType.id]: previousEnabled }));
-      showToast("Failed to update ticket type");
+      showErrorToast(toast, {
+        title: "Update failed",
+        message: "Ticket settings could not be saved.",
+      });
     }
   };
 
@@ -787,10 +769,16 @@ export default function SettingsPage() {
           requiredFields: getRequiredFieldsForTicket(ticketType),
         });
       }
-      showToast("All ticket fields saved");
+      showSuccessToast(toast, {
+        title: "Ticket settings updated",
+        message: "All ticket field rules were saved successfully.",
+      });
       await ticketTypesQuery.refetch();
     } catch {
-      showToast("Failed to save all ticket fields");
+      showErrorToast(toast, {
+        title: "Save failed",
+        message: "Ticket field rules could not be saved.",
+      });
     } finally {
       setSavingAllTicketTypes(false);
     }
@@ -1388,9 +1376,6 @@ export default function SettingsPage() {
       <div style={{ animation: "fadeIn 0.3s ease" }}>
         {renderTabContent()}
       </div>
-
-      {/* Toast */}
-      <Toast message={toast || ""} show={!!toast} />
     </div>
   );
 }

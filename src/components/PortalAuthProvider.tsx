@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
 import { isClientErrorReported } from "@/lib/client-business-monitoring";
@@ -17,8 +17,13 @@ export default function PortalAuthProvider({ children }: Props) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
   const router = useRouter();
   const { mutateAsync: ensureUser } = trpc.user.ensure.useMutation();
+
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
 
   useEffect(() => {
     if (!auth) return;
@@ -72,7 +77,7 @@ export default function PortalAuthProvider({ children }: Props) {
           freshToken: true,
           missingConfigEvent: "auth.user_bootstrap_failed",
           missingSessionEvent: "auth.user_bootstrap_session_missing",
-          route: pathname ?? "/portal",
+          route: pathnameRef.current ?? "/portal",
           tokenFailureEvent: "auth.user_bootstrap_failed",
         });
         const email = user.email;
@@ -84,7 +89,7 @@ export default function PortalAuthProvider({ children }: Props) {
         const message = e instanceof Error ? e.message : "Failed to initialize your account.";
         recordSentryMetric("count", "escl8.auth.ensure_user_error", 1, {
           area: "auth",
-          route: pathname,
+          route: pathnameRef.current,
         });
         if (!isClientErrorReported(e)) {
           captureSentryException(e, {
@@ -94,12 +99,12 @@ export default function PortalAuthProvider({ children }: Props) {
               auth: {
                 email: user.email ?? null,
                 firebaseUid: user.uid ?? null,
-                route: pathname ?? null,
+                route: pathnameRef.current ?? null,
               },
             },
             level: "error",
             tags: {
-              "auth.route": pathname ?? null,
+              "auth.route": pathnameRef.current ?? null,
             },
           });
         }
@@ -110,7 +115,7 @@ export default function PortalAuthProvider({ children }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [user, router, ensureUser, pathname]);
+  }, [user, router, ensureUser]);
 
   if (user === undefined) {
     return (

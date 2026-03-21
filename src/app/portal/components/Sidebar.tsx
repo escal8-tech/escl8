@@ -69,6 +69,13 @@ const Icons = {
       <path d="M9 9v12" />
     </svg>
   ),
+  revenue: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M15.5 9.5c0-1.38-1.57-2.5-3.5-2.5s-3.5 1.12-3.5 2.5S10.07 12 12 12s3.5 1.12 3.5 2.5S13.93 17 12 17s-3.5-1.12-3.5-2.5" />
+      <path d="M12 6.5v11" />
+    </svg>
+  ),
   home: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -158,7 +165,7 @@ export default function Sidebar({
   const mainNavItems = [
     ...navItems,
     ...(businessQuery.data?.orderSettings?.ticketToOrderEnabled
-      ? [{ href: "/portal/orders", label: "Orders", icon: "tickets" as const }]
+      ? [{ href: "/portal/revenue", label: "Revenue", icon: "revenue" as const }]
       : []),
   ];
 

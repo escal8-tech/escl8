@@ -10,8 +10,10 @@ const routeLabels: Record<string, string> = {
   messages: "Messages",
   upload: "Documents",
   bookings: "Bookings",
+  orders: "Revenue",
   sync: "Sync",
   settings: "Settings",
+  revenue: "Revenue",
 };
 
 const ticketTypeLabels: Record<string, string> = {
