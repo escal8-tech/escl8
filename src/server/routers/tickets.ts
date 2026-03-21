@@ -18,7 +18,7 @@ import { normalizeOrderFlowSettings } from "@/lib/order-settings";
 import { DEFAULT_TICKET_TYPE_KEYS, ensureDefaultTicketTypes } from "../services/ticketDefaults";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
-import { sendWhatsAppMessagesViaBot } from "../services/botApi";
+import { sendWhatsAppMessagesViaBot, type BotSendMessage } from "../services/botApi";
 import {
   buildOrderApprovalMessages,
   computeOrderExpectedAmount,
@@ -82,6 +82,20 @@ function validateTicketOrderFlow(input: {
   }
   if (!input.ticketFlowEnabled) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
+  }
+}
+
+function assertTicketAwaitingOrderDecision(input: {
+  status: string | null | undefined;
+  outcome: string | null | undefined;
+}) {
+  const status = String(input.status ?? "").trim().toLowerCase();
+  const outcome = String(input.outcome ?? "").trim().toLowerCase();
+  if (status === "resolved" || (outcome && outcome !== "pending")) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Only unresolved order tickets can be approved or denied.",
+    });
   }
 }
 
@@ -268,6 +282,94 @@ async function resolveTicketContactContext(params: {
     recipientSource,
     whatsappIdentitySource,
   };
+}
+
+type TicketContactContext = Awaited<ReturnType<typeof resolveTicketContactContext>>;
+
+async function deliverTicketOrderMessages(params: {
+  businessId: string;
+  contactContext: TicketContactContext;
+  messages: BotSendMessage[];
+  source: string;
+  orderId?: string | null;
+  fallbackImageText?: string;
+}) {
+  if (!params.messages.length) {
+    return {
+      ok: true as const,
+      error: null,
+      recipientSource: params.contactContext.recipientSource,
+      whatsappIdentitySource: params.contactContext.whatsappIdentitySource,
+    };
+  }
+
+  const recipient = sanitizePhoneDigits(params.contactContext.approvalRecipient);
+  if (!params.contactContext.whatsappIdentityId || !recipient) {
+    return {
+      ok: false as const,
+      error: "Ticket is missing WhatsApp routing details for customer notification.",
+      recipientSource: params.contactContext.recipientSource,
+      whatsappIdentitySource: params.contactContext.whatsappIdentitySource,
+    };
+  }
+
+  try {
+    const sendResults = await sendWhatsAppMessagesViaBot({
+      businessId: params.businessId,
+      phoneNumberId: params.contactContext.whatsappIdentityId,
+      to: recipient,
+      messages: params.messages,
+    });
+
+    if (params.contactContext.threadId) {
+      for (const [index, outbound] of params.messages.entries()) {
+        await persistOutboundThreadMessage({
+          businessId: params.businessId,
+          threadId: params.contactContext.threadId,
+          messageType: outbound.type,
+          textBody: outbound.type === "text" ? outbound.text : outbound.caption ?? params.fallbackImageText ?? "[order update image]",
+          externalMessageId: sendResults[index]?.messageId ?? null,
+          meta: {
+            source: params.source,
+            orderId: params.orderId ?? null,
+            providerResponse: sendResults[index]?.providerResponse ?? null,
+            whatsappIdentityId: params.contactContext.whatsappIdentityId,
+            recipient: maskPhoneNumber(recipient),
+          },
+        });
+      }
+    }
+
+    return {
+      ok: true as const,
+      error: null,
+      recipientSource: params.contactContext.recipientSource,
+      whatsappIdentitySource: params.contactContext.whatsappIdentitySource,
+    };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "Failed to deliver WhatsApp order update.",
+      recipientSource: params.contactContext.recipientSource,
+      whatsappIdentitySource: params.contactContext.whatsappIdentitySource,
+    };
+  }
+}
+
+function buildOrderDenialMessages(input: {
+  customerName?: string | null;
+  reason?: string | null;
+}): BotSendMessage[] {
+  const normalizedReason = String(input.reason ?? "").trim();
+  const customerLine = input.customerName
+    ? `Hi ${input.customerName}, we could not approve your order request yet.`
+    : "We could not approve your order request yet.";
+  const lines = [
+    customerLine,
+    normalizedReason && normalizedReason.toLowerCase() !== "denied" ? `Reason: ${normalizedReason}.` : null,
+    "Please reply in this chat if you want to update the request or place a new order.",
+  ].filter(Boolean);
+  return [{ type: "text", text: lines.join("\n") }];
 }
 
 export const ticketsRouter = router({
@@ -839,6 +941,7 @@ export const ticketsRouter = router({
           businessId: supportTickets.businessId,
           ticketTypeKey: supportTickets.ticketTypeKey,
           status: supportTickets.status,
+          outcome: supportTickets.outcome,
           source: supportTickets.source,
           customerId: supportTickets.customerId,
           threadId: supportTickets.threadId,
@@ -865,6 +968,10 @@ export const ticketsRouter = router({
         ticketTypeKey: ticket.ticketTypeKey,
         ticketFlowEnabled: orderSettings.ticketToOrderEnabled,
       });
+      assertTicketAwaitingOrderDecision({
+        status: ticket.status,
+        outcome: ticket.outcome,
+      });
       if (orderSettings.paymentMethod === "bank_qr" && !bankQrMessagingConfigured(orderSettings)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -875,6 +982,12 @@ export const ticketsRouter = router({
       const fields = asRecord(ticket.fields);
       const itemsSummary = formatOrderItemsSummary(fields);
       const expectedAmount = computeOrderExpectedAmount(fields);
+      if (orderSettings.paymentMethod === "bank_qr" && !expectedAmount) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Bank or QR order approval requires a verified payable amount.",
+        });
+      }
       const contactContext = await resolveTicketContactContext({
         businessId: ctx.businessId,
         customerId: ticket.customerId,
@@ -912,19 +1025,21 @@ export const ticketsRouter = router({
           .select({
             id: orders.id,
             status: orders.status,
-            paymentReference: orders.paymentReference,
-            paidAmount: orders.paidAmount,
-            paymentApprovedAt: orders.paymentApprovedAt,
-            paymentRejectedAt: orders.paymentRejectedAt,
           })
           .from(orders)
           .where(and(eq(orders.businessId, ctx.businessId), eq(orders.supportTicketId, ticket.id)))
           .limit(1);
+        if (existingOrder) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Ticket already has a linked order (${existingOrder.status || "existing"}) and cannot be approved again.`,
+          });
+        }
 
-        const orderId = existingOrder?.id ?? randomUUID();
+        const orderId = randomUUID();
         const paymentReference =
           orderSettings.paymentMethod === "bank_qr"
-            ? existingOrder?.paymentReference ?? `ORD-${orderId.slice(0, 8).toUpperCase()}`
+            ? `ORD-${orderId.slice(0, 8).toUpperCase()}`
             : null;
 
         const baseOrderValues = {
@@ -936,7 +1051,7 @@ export const ticketsRouter = router({
           whatsappIdentityId: contactContext.whatsappIdentityId,
           customerName: contactContext.customerName,
           customerPhone: contactContext.customerPhone,
-          status: existingOrder?.status === "paid" ? "paid" : nextOrderStatus,
+          status: nextOrderStatus,
           paymentMethod: orderSettings.paymentMethod,
           currency: orderSettings.currency,
           expectedAmount,
@@ -948,24 +1063,13 @@ export const ticketsRouter = router({
           updatedAt: now,
         } as const;
 
-        const [orderRow] = existingOrder
-          ? await tx
-              .update(orders)
-              .set({
-                ...baseOrderValues,
-                paidAmount: existingOrder.paidAmount,
-                paymentApprovedAt: existingOrder.paymentApprovedAt,
-                paymentRejectedAt: existingOrder.paymentRejectedAt,
-              })
-              .where(eq(orders.id, existingOrder.id))
-              .returning()
-          : await tx
-              .insert(orders)
-              .values({
-                id: orderId,
-                ...baseOrderValues,
-              })
-              .returning();
+        const [orderRow] = await tx
+          .insert(orders)
+          .values({
+            id: orderId,
+            ...baseOrderValues,
+          })
+          .returning();
 
         const [ticketRow] = await tx
           .update(supportTickets)
@@ -1031,43 +1135,22 @@ export const ticketsRouter = router({
       if (orderSettings.paymentMethod === "bank_qr") {
         const approvalMessages = buildOrderApprovalMessages({
           orderId: result.order.id,
-          customerName: ticket.customerName,
+          customerName: contactContext.customerName ?? ticket.customerName,
           itemsSummary,
           expectedAmount,
           paymentReference: result.order.paymentReference,
           orderSettings,
         });
 
-        try {
-          const sendResults = await sendWhatsAppMessagesViaBot({
-            businessId: ctx.businessId,
-            phoneNumberId: contactContext.whatsappIdentityId!,
-            to: approvalRecipient,
-            messages: approvalMessages,
-          });
-
-          if (ticket.threadId) {
-            for (const [index, outbound] of approvalMessages.entries()) {
-              await persistOutboundThreadMessage({
-                threadId: ticket.threadId,
-                messageType: outbound.type,
-                textBody: outbound.type === "text" ? outbound.text : outbound.caption ?? "[payment QR image]",
-                externalMessageId: sendResults[index]?.messageId ?? null,
-                meta: {
-                  source: "order_ticket_approval",
-                  orderId: result.order.id,
-                  providerResponse: sendResults[index]?.providerResponse ?? null,
-                  whatsappIdentityId: contactContext.whatsappIdentityId,
-                  recipient: maskPhoneNumber(approvalRecipient),
-                },
-              });
-            }
-          }
-        } catch (error) {
-          delivery = {
-            ok: false,
-            error: error instanceof Error ? error.message : "Failed to deliver payment instructions.",
-          };
+        delivery = await deliverTicketOrderMessages({
+          businessId: ctx.businessId,
+          contactContext,
+          messages: approvalMessages,
+          source: "order_ticket_approval",
+          orderId: result.order.id,
+          fallbackImageText: "[payment QR image]",
+        });
+        if (!delivery.ok) {
           await logOrderEvent({
             businessId: ctx.businessId,
             orderId: result.order.id,
@@ -1146,7 +1229,16 @@ export const ticketsRouter = router({
       const [ticket] = await db
         .select({
           id: supportTickets.id,
+          businessId: supportTickets.businessId,
           ticketTypeKey: supportTickets.ticketTypeKey,
+          status: supportTickets.status,
+          outcome: supportTickets.outcome,
+          source: supportTickets.source,
+          customerId: supportTickets.customerId,
+          threadId: supportTickets.threadId,
+          whatsappIdentityId: supportTickets.whatsappIdentityId,
+          customerName: supportTickets.customerName,
+          customerPhone: supportTickets.customerPhone,
           notes: supportTickets.notes,
         })
         .from(supportTickets)
@@ -1159,15 +1251,36 @@ export const ticketsRouter = router({
         ticketTypeKey: ticket.ticketTypeKey,
         ticketFlowEnabled: orderSettings.ticketToOrderEnabled,
       });
+      assertTicketAwaitingOrderDecision({
+        status: ticket.status,
+        outcome: ticket.outcome,
+      });
 
       const now = new Date();
       const normalizedReason = input.reason?.trim() || "Denied";
+      const contactContext = await resolveTicketContactContext({
+        businessId: ctx.businessId,
+        customerId: ticket.customerId,
+        threadId: ticket.threadId,
+        whatsappIdentityId: ticket.whatsappIdentityId,
+        customerName: ticket.customerName,
+        customerPhone: ticket.customerPhone,
+      });
       const result = await db.transaction(async (tx) => {
         const [existingOrder] = await tx
-          .select({ id: orders.id })
+          .select({
+            id: orders.id,
+            status: orders.status,
+          })
           .from(orders)
           .where(and(eq(orders.businessId, ctx.businessId), eq(orders.supportTicketId, input.id)))
           .limit(1);
+        if (existingOrder) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Ticket already has a linked order (${existingOrder.status || "existing"}) and cannot be denied.`,
+          });
+        }
 
         const [ticketRow] = await tx
           .update(supportTickets)
@@ -1182,21 +1295,9 @@ export const ticketsRouter = router({
           .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
           .returning();
 
-        const [orderRow] = existingOrder
-          ? await tx
-              .update(orders)
-              .set({
-                status: "denied",
-                notes: ticket.notes?.trim() || normalizedReason,
-                updatedAt: now,
-              })
-              .where(eq(orders.id, existingOrder.id))
-              .returning()
-          : [];
-
         return {
           ticket: ticketRow ?? null,
-          order: orderRow ?? null,
+          order: null,
         };
       });
 
@@ -1213,20 +1314,28 @@ export const ticketsRouter = router({
         actorLabel: ctx.userEmail ?? "user",
         payload: {
           reason: normalizedReason,
-          orderId: result.order?.id ?? null,
+          orderId: null,
         },
       });
-      if (result.order) {
-        await logOrderEvent({
+
+      const delivery = await deliverTicketOrderMessages({
+        businessId: ctx.businessId,
+        contactContext,
+        messages: buildOrderDenialMessages({
+          customerName: contactContext.customerName ?? ticket.customerName,
+          reason: normalizedReason,
+        }),
+        source: "order_ticket_denied",
+      });
+      if (!delivery.ok) {
+        await logTicketEvent({
           businessId: ctx.businessId,
-          orderId: result.order.id,
-          eventType: "denied",
-          actorType: "user",
-          actorId: ctx.userId ?? ctx.firebaseUid ?? null,
-          actorLabel: ctx.userEmail ?? "user",
+          ticketId: result.ticket.id,
+          eventType: "order_denial_notification_failed",
+          actorType: "system",
+          actorLabel: "bot",
           payload: {
-            reason: normalizedReason,
-            supportTicketId: result.ticket.id,
+            error: delivery.error,
           },
         });
       }
@@ -1239,16 +1348,6 @@ export const ticketsRouter = router({
         payload: { ticket: result.ticket as any },
         createdAt: result.ticket.updatedAt ?? now,
       });
-      if (result.order) {
-        await publishPortalEvent({
-          businessId: ctx.businessId,
-          entity: "order",
-          op: "upsert",
-          entityId: result.order.id,
-          payload: { order: result.order as any },
-          createdAt: result.order.updatedAt ?? now,
-        });
-      }
 
       recordBusinessEvent({
         event: "ticket.order_denied",
@@ -1260,15 +1359,21 @@ export const ticketsRouter = router({
         userId: ctx.userId,
         actorId: ctx.firebaseUid ?? ctx.userId ?? null,
         actorType: "user",
-        outcome: "success",
+        outcome: delivery.ok ? "success" : "degraded",
         status: "denied",
         attributes: {
-          order_id: result.order?.id ?? null,
+          order_id: null,
           reason: normalizedReason,
+          delivery_ok: delivery.ok,
+          delivery_phone_source: delivery.recipientSource,
+          delivery_identity_source: delivery.whatsappIdentitySource,
         },
       });
 
-      return result;
+      return {
+        ...result,
+        delivery,
+      };
     }),
 
   listTicketEvents: businessProcedure
