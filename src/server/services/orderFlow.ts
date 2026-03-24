@@ -2,6 +2,10 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { messageThreads, orderEvents, threadMessages } from "../../../drizzle/schema";
 import type { OrderFlowSettings } from "@/lib/order-settings";
+import {
+  formatOrderFulfillmentStatus,
+  type OrderFulfillmentStatus,
+} from "@/lib/order-operations";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 
 export type OrderApprovalMessage =
@@ -54,6 +58,14 @@ export type NormalizedOrderLineItem = {
   lineTotal?: string;
 };
 
+export type OrderFulfillmentSeed = {
+  recipientName: string | null;
+  recipientPhone: string | null;
+  shippingAddress: string | null;
+  deliveryArea: string | null;
+  deliveryNotes: string | null;
+};
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -88,6 +100,21 @@ function normalizeOrderLineItemRow(value: unknown): NormalizedOrderLineItem | nu
     ...(unitPrice ? { unitPrice } : {}),
     ...(lineTotal ? { lineTotal } : {}),
   };
+}
+
+function normalizeFieldKey(value: string): string {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function findFieldValue(fields: Record<string, unknown>, ...keys: string[]): string | null {
+  const wanted = new Set(keys.map((key) => normalizeFieldKey(key)).filter(Boolean));
+  if (!wanted.size) return null;
+  for (const [key, value] of Object.entries(fields)) {
+    if (!wanted.has(normalizeFieldKey(key))) continue;
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return null;
 }
 
 function normalizeOrderLineItemKey(value: string): string {
@@ -196,9 +223,113 @@ export function buildOrderApprovalMessages(input: {
         caption: "Scan this QR and send the payment slip here once the transfer is complete.",
       });
     }
+  } else if (input.orderSettings.paymentMethod === "cod") {
+    messages.push({
+      type: "text",
+      text: "Cash on delivery is set for this order. We will keep you updated here as the delivery moves forward.",
+    });
+  } else {
+    messages.push({
+      type: "text",
+      text: "Our team will continue processing this order and send delivery updates in this chat.",
+    });
   }
 
   return messages;
+}
+
+export function extractOrderFulfillmentSeed(input: {
+  fields: Record<string, unknown>;
+  customerName?: string | null;
+  customerPhone?: string | null;
+}): OrderFulfillmentSeed {
+  const fields = input.fields;
+  return {
+    recipientName:
+      findFieldValue(fields, "recipientname", "receivername", "contactname", "deliveryname", "name") ??
+      (String(input.customerName ?? "").trim() || null),
+    recipientPhone:
+      findFieldValue(fields, "recipientphone", "receiverphone", "deliveryphone", "contactphone", "phone", "phonenumber") ??
+      (String(input.customerPhone ?? "").trim() || null),
+    shippingAddress:
+      findFieldValue(fields, "shippingaddress", "deliveryaddress", "address", "deliverylocation", "location"),
+    deliveryArea:
+      findFieldValue(fields, "deliveryarea", "area", "city", "town", "district", "region"),
+    deliveryNotes:
+      findFieldValue(fields, "deliverynotes", "deliverynote", "notes", "note", "landmark", "instructions"),
+  };
+}
+
+export function buildFulfillmentStatusMessages(input: {
+  customerName?: string | null;
+  orderId: string;
+  fulfillmentStatus: OrderFulfillmentStatus;
+  courierName?: string | null;
+  trackingNumber?: string | null;
+  trackingUrl?: string | null;
+  scheduledDeliveryAt?: Date | string | null;
+  note?: string | null;
+}): OrderApprovalMessage[] {
+  const ref = String(input.orderId || "").slice(0, 8).toUpperCase();
+  const customerLine = input.customerName ? `Hi ${input.customerName},` : "Hello,";
+  const statusLabel = formatOrderFulfillmentStatus(input.fulfillmentStatus);
+  const lines = [customerLine];
+  if (input.fulfillmentStatus === "on_hold") {
+    lines.push(`Your order ${ref} is on hold while we complete the remaining checks.`);
+  } else if (input.fulfillmentStatus === "queued") {
+    lines.push(`Your order ${ref} is now queued for fulfilment.`);
+  } else if (input.fulfillmentStatus === "preparing") {
+    lines.push(`We have started preparing your order ${ref}.`);
+  } else if (input.fulfillmentStatus === "packed") {
+    lines.push(`Your order ${ref} has been packed and is waiting for courier handoff.`);
+  } else if (input.fulfillmentStatus === "dispatched") {
+    lines.push(`Your order ${ref} has been dispatched.`);
+  } else if (input.fulfillmentStatus === "out_for_delivery") {
+    lines.push(`Your order ${ref} is out for delivery.`);
+  } else if (input.fulfillmentStatus === "delivered") {
+    lines.push(`Your order ${ref} has been marked as delivered.`);
+  } else if (input.fulfillmentStatus === "failed_delivery") {
+    lines.push(`We could not complete the delivery for order ${ref} on this attempt.`);
+  } else if (input.fulfillmentStatus === "returned") {
+    lines.push(`Order ${ref} has been marked as returned to the sender.`);
+  } else {
+    lines.push(`Your order ${ref} is now ${statusLabel.toLowerCase()}.`);
+  }
+
+  if (input.courierName) {
+    lines.push(`Courier: ${input.courierName}`);
+  }
+  if (input.trackingNumber) {
+    lines.push(`Tracking number: ${input.trackingNumber}`);
+  }
+  if (input.trackingUrl) {
+    lines.push(`Tracking link: ${input.trackingUrl}`);
+  }
+  if (input.scheduledDeliveryAt) {
+    const dt = new Date(input.scheduledDeliveryAt);
+    if (!Number.isNaN(dt.getTime())) {
+      lines.push(`Scheduled delivery: ${dt.toLocaleString()}`);
+    }
+  }
+  if (input.note) {
+    lines.push(`Note: ${String(input.note).trim()}`);
+  }
+  return [{ type: "text", text: lines.join("\n") }];
+}
+
+export function buildManualCollectionMessages(input: {
+  customerName?: string | null;
+  orderId: string;
+  currency: string;
+  paidAmount?: string | number | null;
+}): OrderApprovalMessage[] {
+  const ref = String(input.orderId || "").slice(0, 8).toUpperCase();
+  const lines = [
+    input.customerName ? `Hi ${input.customerName}, we have recorded your payment for order ${ref}.` : `We have recorded your payment for order ${ref}.`,
+    input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
+    "We will continue with fulfilment and keep you updated in this chat.",
+  ].filter(Boolean);
+  return [{ type: "text", text: lines.join("\n") }];
 }
 
 export async function logOrderEvent(params: {

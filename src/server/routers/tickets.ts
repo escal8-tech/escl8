@@ -15,6 +15,7 @@ import {
 } from "../../../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 import { normalizeOrderFlowSettings } from "@/lib/order-settings";
+import { resolveInitialFulfillmentStatus } from "@/lib/order-operations";
 import { DEFAULT_TICKET_TYPE_KEYS, ensureDefaultTicketTypes } from "../services/ticketDefaults";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
@@ -22,6 +23,7 @@ import { sendWhatsAppMessagesViaBot, type BotSendMessage } from "../services/bot
 import {
   buildOrderApprovalMessages,
   computeOrderExpectedAmount,
+  extractOrderFulfillmentSeed,
   formatOrderItemsSummary,
   logOrderEvent,
   persistOutboundThreadMessage,
@@ -1025,6 +1027,12 @@ export const ticketsRouter = router({
       }
       const now = new Date();
       const nextOrderStatus = orderSettings.paymentMethod === "bank_qr" ? "awaiting_payment" : "approved";
+      const initialFulfillmentStatus = resolveInitialFulfillmentStatus(orderSettings.paymentMethod);
+      const fulfillmentSeed = extractOrderFulfillmentSeed({
+        fields,
+        customerName: contactContext.customerName ?? ticket.customerName,
+        customerPhone: contactContext.customerPhone ?? ticket.customerPhone,
+      });
       const ticketSnapshot = {
         ticketId: ticket.id,
         title: ticket.title ?? null,
@@ -1071,6 +1079,13 @@ export const ticketsRouter = router({
           customerName: contactContext.customerName,
           customerPhone: contactContext.customerPhone,
           status: nextOrderStatus,
+          fulfillmentStatus: initialFulfillmentStatus,
+          fulfillmentUpdatedAt: now,
+          recipientName: fulfillmentSeed.recipientName,
+          recipientPhone: fulfillmentSeed.recipientPhone,
+          shippingAddress: fulfillmentSeed.shippingAddress,
+          deliveryArea: fulfillmentSeed.deliveryArea,
+          deliveryNotes: fulfillmentSeed.deliveryNotes,
           paymentMethod: orderSettings.paymentMethod,
           currency: orderSettings.currency,
           expectedAmount,
@@ -1151,36 +1166,36 @@ export const ticketsRouter = router({
       ]);
 
       let delivery: { ok: boolean; error?: string | null } = { ok: true };
-      if (orderSettings.paymentMethod === "bank_qr") {
-        const approvalMessages = buildOrderApprovalMessages({
-          orderId: result.order.id,
-          customerName: contactContext.customerName ?? ticket.customerName,
-          itemsSummary,
-          expectedAmount,
-          paymentReference: result.order.paymentReference,
-          orderSettings,
-        });
+      const approvalMessages = buildOrderApprovalMessages({
+        orderId: result.order.id,
+        customerName: contactContext.customerName ?? ticket.customerName,
+        itemsSummary,
+        expectedAmount,
+        paymentReference: result.order.paymentReference,
+        orderSettings,
+      });
 
-        delivery = await deliverTicketOrderMessages({
+      delivery = await deliverTicketOrderMessages({
+        businessId: ctx.businessId,
+        contactContext,
+        messages: approvalMessages,
+        source: "order_ticket_approval",
+        orderId: result.order.id,
+        fallbackImageText: "[payment QR image]",
+      });
+      if (!delivery.ok) {
+        await logOrderEvent({
           businessId: ctx.businessId,
-          contactContext,
-          messages: approvalMessages,
-          source: "order_ticket_approval",
           orderId: result.order.id,
-          fallbackImageText: "[payment QR image]",
+          eventType: orderSettings.paymentMethod === "bank_qr"
+            ? "payment_instructions_delivery_failed"
+            : "order_approval_notification_failed",
+          actorType: "system",
+          actorLabel: "bot",
+          payload: {
+            error: delivery.error,
+          },
         });
-        if (!delivery.ok) {
-          await logOrderEvent({
-            businessId: ctx.businessId,
-            orderId: result.order.id,
-            eventType: "payment_instructions_delivery_failed",
-            actorType: "system",
-            actorLabel: "bot",
-            payload: {
-              error: delivery.error,
-            },
-          });
-        }
       }
 
       const [realtimeTicket] = await Promise.all([

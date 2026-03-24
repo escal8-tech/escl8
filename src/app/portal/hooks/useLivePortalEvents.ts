@@ -447,7 +447,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         );
 
         currentOptions.onThreadMessage?.(maybeMessage);
-      }
+      } 
 
       const maybeBooking = booking;
       if (maybeBooking && currentOptions.bookingsListInput !== undefined) {
