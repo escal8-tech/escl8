@@ -12,6 +12,12 @@ export type OrderApprovalMessage =
   | { type: "text"; text: string }
   | { type: "image"; imageUrl: string; caption?: string };
 
+export type OrderEmailMessage = {
+  subject: string;
+  text: string;
+  html: string;
+};
+
 type PortalJsonValue = string | number | boolean | null | PortalJsonValue[] | { [k: string]: PortalJsonValue };
 
 function toPortalPayload(value: unknown): Record<string, PortalJsonValue> {
@@ -20,6 +26,39 @@ function toPortalPayload(value: unknown): Record<string, PortalJsonValue> {
     return {};
   }
   return serialized as Record<string, PortalJsonValue>;
+}
+
+function escapeHtml(value: string): string {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderOrderEmailHtml(params: {
+  heading: string;
+  lead?: string | null;
+  lines: string[];
+  imageUrl?: string | null;
+}): string {
+  const lines = params.lines.filter(Boolean);
+  const imageUrl = String(params.imageUrl || "").trim();
+  const listItems = lines.map((line) => `<li style="margin:0 0 10px">${escapeHtml(line)}</li>`).join("");
+  return [
+    '<div style="font-family:Montserrat,Arial,sans-serif;max-width:640px;margin:0 auto;padding:24px;background:#0b1220;color:#e5edf6">',
+    '<div style="border:1px solid #21324a;border-radius:18px;padding:24px;background:linear-gradient(180deg,#122038,#0d172a)">',
+    `<div style="font-size:24px;font-weight:700;margin:0 0 10px">${escapeHtml(params.heading)}</div>`,
+    params.lead ? `<p style="margin:0 0 18px;color:#b8c7da;line-height:1.6">${escapeHtml(params.lead)}</p>` : "",
+    `<ul style="padding-left:18px;margin:0;color:#f6fbff;line-height:1.65">${listItems}</ul>`,
+    imageUrl
+      ? `<div style="margin-top:20px"><img src="${escapeHtml(imageUrl)}" alt="Payment QR" style="max-width:240px;border-radius:14px;border:1px solid #2d4361" /></div>`
+      : "",
+    '<div style="margin-top:22px;font-size:12px;color:#90a4be">Sent by your Escl8 order operations workflow.</div>',
+    "</div>",
+    "</div>",
+  ].join("");
 }
 
 export function sanitizePhoneDigits(value: string | null | undefined): string {
@@ -238,6 +277,93 @@ export function buildOrderApprovalMessages(input: {
   return messages;
 }
 
+export function buildOrderApprovalEmail(input: {
+  orderId: string;
+  customerName?: string | null;
+  itemsSummary: string;
+  expectedAmount: string | null;
+  paymentReference: string | null;
+  orderSettings: OrderFlowSettings;
+}): OrderEmailMessage {
+  const ref = input.orderId.slice(0, 8).toUpperCase();
+  const lead = input.customerName
+    ? `Hi ${input.customerName}, your order has been approved and is now in our operations queue.`
+    : "Your order has been approved and is now in our operations queue.";
+  const lines = [`Order reference: ${ref}`, `Items: ${input.itemsSummary}`];
+  if (input.expectedAmount) {
+    lines.push(`Total due: ${input.orderSettings.currency} ${input.expectedAmount}`);
+  }
+  if (input.paymentReference) {
+    lines.push(`Payment reference: ${input.paymentReference}`);
+  }
+
+  let imageUrl: string | null = null;
+  if (input.orderSettings.paymentMethod === "bank_qr") {
+    lines.push("Please complete the payment and reply to the same WhatsApp chat with the payment slip image or PDF.");
+    if (input.orderSettings.bankQr.showBankDetails) {
+      if (input.orderSettings.bankQr.bankName) lines.push(`Bank: ${input.orderSettings.bankQr.bankName}`);
+      if (input.orderSettings.bankQr.accountName) lines.push(`Account name: ${input.orderSettings.bankQr.accountName}`);
+      if (input.orderSettings.bankQr.accountNumber) lines.push(`Account number: ${input.orderSettings.bankQr.accountNumber}`);
+      if (input.orderSettings.bankQr.accountInstructions) lines.push(input.orderSettings.bankQr.accountInstructions);
+    }
+    if (input.orderSettings.bankQr.showQr && input.orderSettings.bankQr.qrImageUrl) {
+      imageUrl = input.orderSettings.bankQr.qrImageUrl;
+      lines.push(`QR image: ${input.orderSettings.bankQr.qrImageUrl}`);
+    }
+  } else if (input.orderSettings.paymentMethod === "cod") {
+    lines.push("Payment method: Cash on delivery.");
+  } else {
+    lines.push("Our team will continue processing the order and email you as it moves forward.");
+  }
+
+  return {
+    subject: `Order approved: ${ref}`,
+    text: [lead, ...lines].join("\n"),
+    html: renderOrderEmailHtml({
+      heading: `Order ${ref} approved`,
+      lead,
+      lines,
+      imageUrl,
+    }),
+  };
+}
+
+export function buildPaymentSubmittedEmail(input: {
+  customerName?: string | null;
+  orderId: string;
+  currency: string;
+  expectedAmount?: string | null;
+  submittedAmount?: string | null;
+  paymentReference?: string | null;
+  aiCheckStatus?: string | null;
+  aiCheckNotes?: string | null;
+}): OrderEmailMessage {
+  const ref = String(input.orderId || "").slice(0, 8).toUpperCase();
+  const lead = input.customerName
+    ? `Hi ${input.customerName}, we received the payment proof for order ${ref}.`
+    : `We received the payment proof for order ${ref}.`;
+  const lines = [
+    `Order reference: ${ref}`,
+    input.paymentReference ? `Payment reference: ${input.paymentReference}` : "",
+    input.expectedAmount ? `Expected amount: ${input.currency} ${input.expectedAmount}` : "",
+    input.submittedAmount ? `Submitted amount: ${input.currency} ${input.submittedAmount}` : "",
+    input.aiCheckStatus === "passed"
+      ? "Our automated check found the proof broadly consistent with the order details. It is now waiting for final staff verification."
+      : "The payment proof has been submitted for manual finance review.",
+    input.aiCheckNotes ? `Review note: ${input.aiCheckNotes}` : "",
+    "We will email you again as soon as the finance review is complete.",
+  ].filter(Boolean);
+  return {
+    subject: `Payment proof received: ${ref}`,
+    text: [lead, ...lines].join("\n"),
+    html: renderOrderEmailHtml({
+      heading: `Payment proof received for ${ref}`,
+      lead,
+      lines,
+    }),
+  };
+}
+
 export function extractOrderFulfillmentSeed(input: {
   fields: Record<string, unknown>;
   customerName?: string | null;
@@ -317,6 +443,43 @@ export function buildFulfillmentStatusMessages(input: {
   return [{ type: "text", text: lines.join("\n") }];
 }
 
+export function buildFulfillmentStatusEmail(input: {
+  customerName?: string | null;
+  orderId: string;
+  fulfillmentStatus: OrderFulfillmentStatus;
+  courierName?: string | null;
+  trackingNumber?: string | null;
+  trackingUrl?: string | null;
+  scheduledDeliveryAt?: Date | string | null;
+  note?: string | null;
+}): OrderEmailMessage {
+  const ref = String(input.orderId || "").slice(0, 8).toUpperCase();
+  const statusLabel = formatOrderFulfillmentStatus(input.fulfillmentStatus);
+  const lead = input.customerName
+    ? `Hi ${input.customerName}, here is the latest update for order ${ref}.`
+    : `Here is the latest update for order ${ref}.`;
+  const lines = [`Status: ${statusLabel}`];
+  if (input.courierName) lines.push(`Courier: ${input.courierName}`);
+  if (input.trackingNumber) lines.push(`Tracking number: ${input.trackingNumber}`);
+  if (input.trackingUrl) lines.push(`Tracking link: ${input.trackingUrl}`);
+  if (input.scheduledDeliveryAt) {
+    const dt = new Date(input.scheduledDeliveryAt);
+    if (!Number.isNaN(dt.getTime())) {
+      lines.push(`Scheduled delivery: ${dt.toLocaleString()}`);
+    }
+  }
+  if (input.note) lines.push(`Note: ${String(input.note).trim()}`);
+  return {
+    subject: `Order update: ${ref} ${statusLabel}`,
+    text: [lead, ...lines].join("\n"),
+    html: renderOrderEmailHtml({
+      heading: `Order ${ref} update`,
+      lead,
+      lines,
+    }),
+  };
+}
+
 export function buildManualCollectionMessages(input: {
   customerName?: string | null;
   orderId: string;
@@ -330,6 +493,32 @@ export function buildManualCollectionMessages(input: {
     "We will continue with fulfilment and keep you updated in this chat.",
   ].filter(Boolean);
   return [{ type: "text", text: lines.join("\n") }];
+}
+
+export function buildManualCollectionEmail(input: {
+  customerName?: string | null;
+  orderId: string;
+  currency: string;
+  paidAmount?: string | number | null;
+}): OrderEmailMessage {
+  const ref = String(input.orderId || "").slice(0, 8).toUpperCase();
+  const lead = input.customerName
+    ? `Hi ${input.customerName}, your payment for order ${ref} has been confirmed.`
+    : `Your payment for order ${ref} has been confirmed.`;
+  const lines = [
+    input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}` : "",
+    "Your order is now confirmed and queued for fulfilment.",
+    "We will email you again when the order is dispatched.",
+  ].filter(Boolean);
+  return {
+    subject: `Order confirmed: ${ref}`,
+    text: [lead, ...lines].join("\n"),
+    html: renderOrderEmailHtml({
+      heading: `Order ${ref} confirmed`,
+      lead,
+      lines,
+    }),
+  };
 }
 
 export async function logOrderEvent(params: {
@@ -361,6 +550,16 @@ export async function persistOutboundThreadMessage(params: {
   meta?: Record<string, unknown>;
 }) {
   const now = new Date();
+  if (params.externalMessageId) {
+    const [existing] = await db
+      .select()
+      .from(threadMessages)
+      .where(eq(threadMessages.externalMessageId, params.externalMessageId))
+      .limit(1);
+    if (existing) {
+      return existing;
+    }
+  }
   const [saved] = await db
     .insert(threadMessages)
     .values({

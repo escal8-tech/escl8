@@ -28,6 +28,7 @@ export async function sendWhatsAppMessagesViaBot(input: {
   phoneNumberId: string;
   to: string;
   messages: BotSendMessage[];
+  idempotencyKey?: string;
 }) {
   const baseUrl = getBotBaseUrl();
   const apiKey = getBotApiKey();
@@ -43,12 +44,18 @@ export async function sendWhatsAppMessagesViaBot(input: {
     headers: {
       "content-type": "application/json",
       "x-api-key": apiKey,
+      ...(String(input.idempotencyKey || "").trim()
+        ? { "x-idempotency-key": String(input.idempotencyKey).trim() }
+        : {}),
     },
     body: JSON.stringify({
       businessId: input.businessId,
       phoneNumberId: input.phoneNumberId,
       to: input.to,
       messages: input.messages,
+      ...(String(input.idempotencyKey || "").trim()
+        ? { idempotencyKey: String(input.idempotencyKey).trim() }
+        : {}),
     }),
     cache: "no-store",
   });

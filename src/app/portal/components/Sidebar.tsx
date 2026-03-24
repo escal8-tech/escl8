@@ -102,6 +102,7 @@ const navItems = [
 const ticketNavItems = [
   { href: "/portal/tickets?type=ordercreation", label: "Order Tickets", icon: "tickets", typeKey: "ordercreation" },
   { href: "/portal/tickets?type=orderstatus", label: "Order Status", icon: "tickets", typeKey: "orderstatus" },
+  { href: "/portal/tickets?type=paymentstatus", label: "Payment Status", icon: "tickets", typeKey: "paymentstatus" },
   { href: "/portal/tickets?type=complaint", label: "Complaint", icon: "tickets", typeKey: "complaint" },
   { href: "/portal/tickets?type=refund", label: "Refund", icon: "tickets", typeKey: "refund" },
   { href: "/portal/tickets?type=cancellation", label: "Cancellation", icon: "tickets", typeKey: "cancellation" },

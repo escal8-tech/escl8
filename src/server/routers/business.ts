@@ -55,6 +55,10 @@ export const businessRouter = router({
       return {
         ...biz,
         orderSettings: normalizeOrderFlowSettings(biz.settings),
+        gmailConnected: Boolean(biz.gmailConnected),
+        gmailEmail: biz.gmailEmail ?? null,
+        gmailConnectedAt: biz.gmailConnectedAt ?? null,
+        gmailError: biz.gmailError ?? null,
         responseUsage: {
           used: Number(usageRow?.used ?? 0),
           max: 50_000,
@@ -252,5 +256,64 @@ export const businessRouter = router({
       }
 
       return updated ?? null;
+    }),
+
+  disconnectGmailConnection: businessProcedure
+    .input(
+      z.object({
+        email: z.string().email(),
+        businessId: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.userEmail && input.email !== ctx.userEmail) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
+      }
+      if (input.businessId !== ctx.businessId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
+      }
+
+      const now = new Date();
+      const [updated] = await db
+        .update(businesses)
+        .set({
+          gmailConnected: false,
+          gmailEmail: null,
+          gmailRefreshToken: null,
+          gmailAccessToken: null,
+          gmailAccessTokenExpiresAt: null,
+          gmailScope: null,
+          gmailConnectedAt: null,
+          gmailError: null,
+          updatedAt: now,
+        })
+        .where(eq(businesses.id, input.businessId))
+        .returning({
+          gmailConnected: businesses.gmailConnected,
+          gmailEmail: businesses.gmailEmail,
+          gmailConnectedAt: businesses.gmailConnectedAt,
+          gmailError: businesses.gmailError,
+        });
+
+      recordBusinessEvent({
+        event: "business.gmail_disconnected",
+        action: "disconnectGmailConnection",
+        area: "business",
+        businessId: ctx.businessId,
+        entity: "business",
+        entityId: input.businessId,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: "success",
+        status: "disconnected",
+      });
+
+      return {
+        gmailConnected: Boolean(updated?.gmailConnected),
+        gmailEmail: updated?.gmailEmail ?? null,
+        gmailConnectedAt: updated?.gmailConnectedAt ?? null,
+        gmailError: updated?.gmailError ?? null,
+      };
     }),
 });

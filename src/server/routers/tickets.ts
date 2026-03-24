@@ -19,14 +19,14 @@ import { resolveInitialFulfillmentStatus } from "@/lib/order-operations";
 import { DEFAULT_TICKET_TYPE_KEYS, ensureDefaultTicketTypes } from "../services/ticketDefaults";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
-import { sendWhatsAppMessagesViaBot, type BotSendMessage } from "../services/botApi";
+import { drainBusinessOutbox, enqueueWhatsAppOutboxMessages } from "@/server/services/messageOutbox";
+import { type BotSendMessage } from "../services/botApi";
 import {
   buildOrderApprovalMessages,
   computeOrderExpectedAmount,
   extractOrderFulfillmentSeed,
   formatOrderItemsSummary,
   logOrderEvent,
-  persistOutboundThreadMessage,
   sanitizePhoneDigits,
 } from "../services/orderFlow";
 
@@ -143,6 +143,7 @@ function maskPhoneNumber(value: string | null | undefined): string | null {
 type CustomerContext = {
   id: string;
   name: string | null;
+  email: string | null;
   phone: string | null;
   externalId: string | null;
   source: string | null;
@@ -166,6 +167,7 @@ async function getCustomerContext(businessId: string, customerId: string | null 
     .select({
       id: customers.id,
       name: customers.name,
+      email: customers.email,
       phone: customers.phone,
       externalId: customers.externalId,
       source: customers.source,
@@ -175,6 +177,16 @@ async function getCustomerContext(businessId: string, customerId: string | null 
     .where(and(eq(customers.businessId, businessId), eq(customers.id, normalizedCustomerId)))
     .limit(1);
   return row ?? null;
+}
+
+function extractCustomerEmail(fields: Record<string, unknown>): string | null {
+  for (const [key, value] of Object.entries(fields)) {
+    const normalized = normalizeKey(key);
+    if (normalized !== "email" && normalized !== "customeremail") continue;
+    const text = String(value ?? "").trim().toLowerCase();
+    if (text && text.includes("@")) return text.slice(0, 320);
+  }
+  return null;
 }
 
 async function getThreadContext(businessId: string, threadId: string | null | undefined): Promise<ThreadContext | null> {
@@ -220,6 +232,7 @@ async function resolveTicketContactContext(params: {
     directCustomer?.name ?? null,
     threadContext?.customerName ?? null,
   );
+  const customerEmail = coalesceText(directCustomer?.email ?? null);
   const customerExternalId = coalesceText(
     params.customerExternalId,
     directCustomer?.externalId ?? null,
@@ -275,6 +288,7 @@ async function resolveTicketContactContext(params: {
   return {
     customerId,
     customerName,
+    customerEmail,
     customerPhone,
     customerExternalId,
     customerSource,
@@ -286,7 +300,13 @@ async function resolveTicketContactContext(params: {
   };
 }
 
-type TicketContactContext = Awaited<ReturnType<typeof resolveTicketContactContext>>;
+async function lockWorkflowKey(tx: any, key: string) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
+}
+
+async function flushBusinessOutbox(businessId: string) {
+  await drainBusinessOutbox({ businessId, limit: 25 });
+}
 
 async function getHydratedTicketRow(businessId: string, ticketId: string) {
   const [row] = await db
@@ -320,76 +340,6 @@ async function publishHydratedTicketUpsert(input: {
     createdAt: input.createdAt ?? ticket.updatedAt ?? ticket.createdAt ?? new Date(),
   });
   return ticket;
-}
-
-async function deliverTicketOrderMessages(params: {
-  businessId: string;
-  contactContext: TicketContactContext;
-  messages: BotSendMessage[];
-  source: string;
-  orderId?: string | null;
-  fallbackImageText?: string;
-}) {
-  if (!params.messages.length) {
-    return {
-      ok: true as const,
-      error: null,
-      recipientSource: params.contactContext.recipientSource,
-      whatsappIdentitySource: params.contactContext.whatsappIdentitySource,
-    };
-  }
-
-  const recipient = sanitizePhoneDigits(params.contactContext.approvalRecipient);
-  if (!params.contactContext.whatsappIdentityId || !recipient) {
-    return {
-      ok: false as const,
-      error: "Ticket is missing WhatsApp routing details for customer notification.",
-      recipientSource: params.contactContext.recipientSource,
-      whatsappIdentitySource: params.contactContext.whatsappIdentitySource,
-    };
-  }
-
-  try {
-    const sendResults = await sendWhatsAppMessagesViaBot({
-      businessId: params.businessId,
-      phoneNumberId: params.contactContext.whatsappIdentityId,
-      to: recipient,
-      messages: params.messages,
-    });
-
-    if (params.contactContext.threadId) {
-      for (const [index, outbound] of params.messages.entries()) {
-        await persistOutboundThreadMessage({
-          businessId: params.businessId,
-          threadId: params.contactContext.threadId,
-          messageType: outbound.type,
-          textBody: outbound.type === "text" ? outbound.text : outbound.caption ?? params.fallbackImageText ?? "[order update image]",
-          externalMessageId: sendResults[index]?.messageId ?? null,
-          meta: {
-            source: params.source,
-            orderId: params.orderId ?? null,
-            providerResponse: sendResults[index]?.providerResponse ?? null,
-            whatsappIdentityId: params.contactContext.whatsappIdentityId,
-            recipient: maskPhoneNumber(recipient),
-          },
-        });
-      }
-    }
-
-    return {
-      ok: true as const,
-      error: null,
-      recipientSource: params.contactContext.recipientSource,
-      whatsappIdentitySource: params.contactContext.whatsappIdentitySource,
-    };
-  } catch (error) {
-    return {
-      ok: false as const,
-      error: error instanceof Error ? error.message : "Failed to deliver WhatsApp order update.",
-      recipientSource: params.contactContext.recipientSource,
-      whatsappIdentitySource: params.contactContext.whatsappIdentitySource,
-    };
-  }
 }
 
 function buildOrderDenialMessages(input: {
@@ -1001,6 +951,7 @@ export const ticketsRouter = router({
       }
 
       const fields = asRecord(ticket.fields);
+      const requestedCustomerEmail = extractCustomerEmail(fields);
       const itemsSummary = formatOrderItemsSummary(fields);
       const expectedAmount = computeOrderExpectedAmount(fields);
       if (orderSettings.paymentMethod === "bank_qr" && !expectedAmount) {
@@ -1017,6 +968,13 @@ export const ticketsRouter = router({
         customerName: ticket.customerName,
         customerPhone: ticket.customerPhone,
       });
+      const customerEmail = coalesceText(requestedCustomerEmail, contactContext.customerEmail);
+      if (!customerEmail) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Order approval requires the customer's email. Add it to the ticket fields before approving.",
+        });
+      }
       const approvalRecipient =
         orderSettings.paymentMethod === "bank_qr" ? sanitizePhoneDigits(contactContext.approvalRecipient) : "";
       if (orderSettings.paymentMethod === "bank_qr" && (!contactContext.whatsappIdentityId || !approvalRecipient)) {
@@ -1048,6 +1006,8 @@ export const ticketsRouter = router({
       };
 
       const result = await db.transaction(async (tx) => {
+        await lockWorkflowKey(tx, `${ctx.businessId}::ticket::${ticket.id}`);
+
         const [existingOrder] = await tx
           .select({
             id: orders.id,
@@ -1078,6 +1038,7 @@ export const ticketsRouter = router({
           whatsappIdentityId: contactContext.whatsappIdentityId,
           customerName: contactContext.customerName,
           customerPhone: contactContext.customerPhone,
+          customerEmail,
           status: nextOrderStatus,
           fulfillmentStatus: initialFulfillmentStatus,
           fulfillmentUpdatedAt: now,
@@ -1105,6 +1066,16 @@ export const ticketsRouter = router({
           })
           .returning();
 
+        if (contactContext.customerId && customerEmail) {
+          await tx
+            .update(customers)
+            .set({
+              email: customerEmail,
+              updatedAt: now,
+            })
+            .where(and(eq(customers.businessId, ctx.businessId), eq(customers.id, contactContext.customerId)));
+        }
+
         const [ticketRow] = await tx
           .update(supportTickets)
           .set({
@@ -1123,9 +1094,33 @@ export const ticketsRouter = router({
           .where(and(eq(supportTickets.id, ticket.id), eq(supportTickets.businessId, ctx.businessId)))
           .returning();
 
+        const approvalMessages = buildOrderApprovalMessages({
+          orderId: orderRow?.id ?? orderId,
+          customerName: contactContext.customerName ?? ticket.customerName,
+          itemsSummary,
+          expectedAmount,
+          paymentReference: orderRow?.paymentReference ?? paymentReference,
+          orderSettings,
+        });
+        const notification = await enqueueWhatsAppOutboxMessages(tx, {
+          businessId: ctx.businessId,
+          entityType: "order",
+          entityId: orderRow?.id ?? orderId,
+          customerId: contactContext.customerId,
+          threadId: contactContext.threadId,
+          whatsappIdentityId: contactContext.whatsappIdentityId,
+          recipient: contactContext.approvalRecipient,
+          recipientSource: contactContext.recipientSource,
+          whatsappIdentitySource: contactContext.whatsappIdentitySource,
+          source: "order_ticket_approval",
+          idempotencyBaseKey: `order_ticket:${ticket.id}:approval:${orderRow?.id ?? orderId}`,
+          messages: approvalMessages,
+        });
+
         return {
           order: orderRow ?? null,
           ticket: ticketRow ?? null,
+          notification,
         };
       });
 
@@ -1165,24 +1160,38 @@ export const ticketsRouter = router({
         }),
       ]);
 
-      let delivery: { ok: boolean; error?: string | null } = { ok: true };
-      const approvalMessages = buildOrderApprovalMessages({
-        orderId: result.order.id,
-        customerName: contactContext.customerName ?? ticket.customerName,
-        itemsSummary,
-        expectedAmount,
-        paymentReference: result.order.paymentReference,
-        orderSettings,
-      });
-
-      delivery = await deliverTicketOrderMessages({
-        businessId: ctx.businessId,
-        contactContext,
-        messages: approvalMessages,
-        source: "order_ticket_approval",
-        orderId: result.order.id,
-        fallbackImageText: "[payment QR image]",
-      });
+      let delivery: {
+        ok: boolean;
+        error: string | null;
+        recipientSource: string | null;
+        whatsappIdentitySource: string | null;
+      } = {
+        ok: true,
+        error: null,
+        recipientSource: result.notification.recipientSource,
+        whatsappIdentitySource: result.notification.whatsappIdentitySource,
+      };
+      if (!result.notification.ok) {
+        delivery = {
+          ok: false,
+          error: result.notification.error,
+          recipientSource: result.notification.recipientSource,
+          whatsappIdentitySource: result.notification.whatsappIdentitySource,
+        };
+      } else if (result.notification.idempotencyKeys.length) {
+        const drained = await drainBusinessOutbox({
+          businessId: ctx.businessId,
+          idempotencyKeys: result.notification.idempotencyKeys,
+          limit: result.notification.idempotencyKeys.length,
+        });
+        delivery = {
+          ok: drained.ok,
+          error: drained.error,
+          recipientSource: result.notification.recipientSource,
+          whatsappIdentitySource: result.notification.whatsappIdentitySource,
+        };
+      }
+      await flushBusinessOutbox(ctx.businessId);
       if (!delivery.ok) {
         await logOrderEvent({
           businessId: ctx.businessId,
@@ -1230,8 +1239,8 @@ export const ticketsRouter = router({
           delivery_ok: delivery.ok,
           order_id: result.order.id,
           payment_method: result.order.paymentMethod,
-          delivery_phone_source: contactContext.recipientSource,
-          delivery_identity_source: contactContext.whatsappIdentitySource,
+          delivery_phone_source: delivery.recipientSource,
+          delivery_identity_source: delivery.whatsappIdentitySource,
         },
       });
 
@@ -1298,6 +1307,8 @@ export const ticketsRouter = router({
         customerPhone: ticket.customerPhone,
       });
       const result = await db.transaction(async (tx) => {
+        await lockWorkflowKey(tx, `${ctx.businessId}::ticket::${input.id}`);
+
         const [existingOrder] = await tx
           .select({
             id: orders.id,
@@ -1326,9 +1337,28 @@ export const ticketsRouter = router({
           .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
           .returning();
 
+        const notification = await enqueueWhatsAppOutboxMessages(tx, {
+          businessId: ctx.businessId,
+          entityType: "ticket",
+          entityId: input.id,
+          customerId: contactContext.customerId,
+          threadId: contactContext.threadId,
+          whatsappIdentityId: contactContext.whatsappIdentityId,
+          recipient: contactContext.approvalRecipient,
+          recipientSource: contactContext.recipientSource,
+          whatsappIdentitySource: contactContext.whatsappIdentitySource,
+          source: "order_ticket_denied",
+          idempotencyBaseKey: `order_ticket:${input.id}:denial`,
+          messages: buildOrderDenialMessages({
+            customerName: contactContext.customerName ?? ticket.customerName,
+            reason: normalizedReason,
+          }),
+        });
+
         return {
           ticket: ticketRow ?? null,
           order: null,
+          notification,
         };
       });
 
@@ -1349,15 +1379,38 @@ export const ticketsRouter = router({
         },
       });
 
-      const delivery = await deliverTicketOrderMessages({
-        businessId: ctx.businessId,
-        contactContext,
-        messages: buildOrderDenialMessages({
-          customerName: contactContext.customerName ?? ticket.customerName,
-          reason: normalizedReason,
-        }),
-        source: "order_ticket_denied",
-      });
+      let delivery: {
+        ok: boolean;
+        error: string | null;
+        recipientSource: string | null;
+        whatsappIdentitySource: string | null;
+      } = {
+        ok: true,
+        error: null,
+        recipientSource: result.notification.recipientSource,
+        whatsappIdentitySource: result.notification.whatsappIdentitySource,
+      };
+      if (!result.notification.ok) {
+        delivery = {
+          ok: false,
+          error: result.notification.error,
+          recipientSource: result.notification.recipientSource,
+          whatsappIdentitySource: result.notification.whatsappIdentitySource,
+        };
+      } else if (result.notification.idempotencyKeys.length) {
+        const drained = await drainBusinessOutbox({
+          businessId: ctx.businessId,
+          idempotencyKeys: result.notification.idempotencyKeys,
+          limit: result.notification.idempotencyKeys.length,
+        });
+        delivery = {
+          ok: drained.ok,
+          error: drained.error,
+          recipientSource: result.notification.recipientSource,
+          whatsappIdentitySource: result.notification.whatsappIdentitySource,
+        };
+      }
+      await flushBusinessOutbox(ctx.businessId);
       if (!delivery.ok) {
         await logTicketEvent({
           businessId: ctx.businessId,
