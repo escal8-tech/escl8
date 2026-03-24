@@ -425,8 +425,22 @@ function applyOrderEditorToFields(
 
 function formatItemsCell(fields: Record<string, unknown>): string {
   const pairs = buildOrderPairs(fields);
-  if (!pairs.length) return "-";
-  return pairs.map((pair) => `${pair.item} x ${pair.quantity}`).join(", ");
+  if (pairs.length) {
+    return pairs.map((pair) => `${pair.item} x ${pair.quantity}`).join(", ");
+  }
+
+  const primaryNarrative =
+    firstFieldText(fields, ["issue", "details", "reason", "requestdetails", "request"]) ||
+    firstFieldText(fields, ["summary", "title"]);
+  const referenceBits = [
+    firstFieldText(fields, ["orderid", "referenceid", "refid"]),
+    firstFieldText(fields, ["warrantynumber", "serial", "serialnumber"]),
+    firstFieldText(fields, ["invoice", "receipt"]),
+  ].filter(Boolean);
+
+  const combined = [primaryNarrative, ...referenceBits].filter(Boolean).join(" | ").trim();
+  if (!combined) return "-";
+  return combined.length > 140 ? `${combined.slice(0, 137)}...` : combined;
 }
 
 const INVALID_CUSTOMER_NAME_TOKENS = new Set([
@@ -471,6 +485,18 @@ function firstFieldText(fields: Record<string, unknown>, aliases: string[]): str
     if (first) return first;
   }
   return "";
+}
+
+function prettifyFieldLabel(key: string): string {
+  const cleaned = String(key ?? "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  if (!cleaned) return "Field";
+  return cleaned
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function formatOrderLineItemsFromFields(fields: Record<string, unknown>): string | null {
@@ -528,6 +554,52 @@ function formatFieldValue(value: unknown, key?: string, fields?: Record<string, 
   } catch {
     return String(value);
   }
+}
+
+type ImportantFieldRow = {
+  key: string;
+  label: string;
+  value: string;
+};
+
+function getImportantFieldRows(fields: Record<string, unknown>): ImportantFieldRow[] {
+  const preferredKeys = [
+    "issue",
+    "details",
+    "reason",
+    "requestdetails",
+    "orderid",
+    "referenceid",
+    "warrantynumber",
+    "invoice",
+    "line_items",
+    "items",
+    "product",
+    "quantity",
+    "name",
+    "contact",
+    "phone",
+    "customerphone",
+  ];
+  const seen = new Set<string>();
+  const rows: ImportantFieldRow[] = [];
+
+  for (const preferredKey of preferredKeys) {
+    for (const [rawKey, rawValue] of Object.entries(fields)) {
+      const normalizedKey = rawKey.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (normalizedKey !== preferredKey.replace(/[^a-z0-9]/g, "")) continue;
+      const value = formatFieldValue(rawValue, rawKey, fields).trim();
+      if (!value || value === "-" || seen.has(normalizedKey)) continue;
+      rows.push({
+        key: rawKey,
+        label: prettifyFieldLabel(rawKey),
+        value,
+      });
+      seen.add(normalizedKey);
+    }
+  }
+
+  return rows;
 }
 
 function priorityPillStyle(priorityRaw: string): CSSProperties {
@@ -1546,8 +1618,18 @@ function TicketDetailsDrawer({
     ? (getTicketValue(ticket, "slaDueAt", "sla_due_at") as Date | string | null | undefined)
     : null;
   const fields = ticket ? getTicketFields(ticket) : {};
-  const initialCustomerName = ticket ? getTicketString(ticket, "customerName", "customer_name") : "";
-  const initialCustomerPhone = ticket ? getTicketString(ticket, "customerPhone", "customer_phone") : "";
+  const initialCustomerName = ticket
+    ? (
+        firstFieldText(fields, ["name", "customerName", "customer_name"]) ||
+        getTicketString(ticket, "customerName", "customer_name")
+      )
+    : "";
+  const initialCustomerPhone = ticket
+    ? (
+        firstFieldText(fields, ["contact", "phone", "phoneNumber", "mobile", "whatsapp", "customerPhone"]) ||
+        getTicketString(ticket, "customerPhone", "customer_phone")
+      )
+    : "";
   const [slaInput, setSlaInput] = useState(() => toDateTimeLocalValue(slaDueAtRaw));
   const [draftTitle, setDraftTitle] = useState(() => ticket?.title || "");
   const [draftSummary, setDraftSummary] = useState(() => ticket?.summary || "");
@@ -1562,6 +1644,7 @@ function TicketDetailsDrawer({
   const orderStage = resolveOrderStage(ticket);
   const computedOrderTotal = computeOrderEditorTotal(draftOrderLines);
   const fieldRows = Object.entries(fields);
+  const importantFieldRows = getImportantFieldRows(fields);
   const status = getTicketString(ticket, "status");
   const outcome = (getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome;
   const lossReason = getTicketString(ticket, "lossReason", "loss_reason");
@@ -1571,8 +1654,8 @@ function TicketDetailsDrawer({
   const source = getTicketString(ticket, "source");
   const typeKey = getTicketString(ticket, "ticketTypeKey", "ticket_type_key");
   const createdBy = getTicketString(ticket, "createdBy", "created_by");
-  const customerName = getTicketString(ticket, "customerName", "customer_name");
-  const customerPhone = getTicketString(ticket, "customerPhone", "customer_phone");
+  const customerName = initialCustomerName;
+  const customerPhone = initialCustomerPhone;
   const customerId = getTicketString(ticket, "customerId", "customer_id");
   const customerHref = customerId ? `/portal/customers?customerId=${encodeURIComponent(customerId)}` : null;
   const createdAt = getTicketValue(ticket, "createdAt", "created_at") as Date | string | null | undefined;
@@ -1816,6 +1899,28 @@ function TicketDetailsDrawer({
                     {ticket.summary || ticket.title || "No summary available."}
                   </p>
                 </div>
+                {importantFieldRows.length ? (
+                  <div>
+                    <div className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>Captured Details</div>
+                    <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+                      {importantFieldRows.map((row) => (
+                        <div
+                          key={row.key}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "140px minmax(0, 1fr)",
+                            gap: 10,
+                            padding: "8px 10px",
+                            borderBottom: "1px solid var(--border)",
+                          }}
+                        >
+                          <div style={{ color: "var(--muted)", fontSize: 12 }}>{row.label}</div>
+                          <div style={{ fontSize: 13, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{row.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {ticket.notes ? (
                   <div>
                     <div className="text-muted" style={{ fontSize: 12 }}>Notes</div>
