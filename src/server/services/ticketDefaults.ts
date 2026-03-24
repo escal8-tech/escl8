@@ -6,7 +6,7 @@ export const DEFAULT_TICKET_TYPES = [
   {
     key: "ordercreation",
     label: "Orders",
-    requiredFields: ["name", "items", "quantity"],
+    requiredFields: ["name", "email", "items", "quantity"],
     sortOrder: 10,
   },
   {
@@ -14,6 +14,12 @@ export const DEFAULT_TICKET_TYPES = [
     label: "Order Status",
     requiredFields: ["orderid"],
     sortOrder: 20,
+  },
+  {
+    key: "paymentstatus",
+    label: "Payment Status",
+    requiredFields: ["orderid"],
+    sortOrder: 25,
   },
   {
     key: "complaint",

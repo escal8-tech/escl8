@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, integer, timestamp, jsonb, uniqueIndex, index, numeric, check, primaryKey, foreignKey } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, integer, timestamp, jsonb, uniqueIndex, index, numeric, check, foreignKey } from "drizzle-orm/pg-core";
 import crypto from "crypto";
 import { relations, sql } from "drizzle-orm";
 
@@ -31,6 +31,14 @@ export const businesses = pgTable(
     bookingCloseTime: text("booking_close_time"), // "18:00"
 
     settings: jsonb("settings").$type<Record<string, unknown>>().default({}),
+    gmailConnected: boolean("gmail_connected").notNull().default(false),
+    gmailEmail: text("gmail_email"),
+    gmailRefreshToken: text("gmail_refresh_token"),
+    gmailAccessToken: text("gmail_access_token"),
+    gmailAccessTokenExpiresAt: timestamp("gmail_access_token_expires_at", { withTimezone: true }),
+    gmailScope: text("gmail_scope"),
+    gmailConnectedAt: timestamp("gmail_connected_at", { withTimezone: true }),
+    gmailError: text("gmail_error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -558,6 +566,7 @@ export const supportTickets = pgTable(
     whatsappIdentityId: text("whatsapp_identity_id"),
     customerName: text("customer_name"),
     customerPhone: text("customer_phone"),
+    idempotencyKey: text("idempotency_key"),
     title: text("title"),
     summary: text("summary"),
     fields: jsonb("fields").$type<Record<string, unknown>>().notNull().default({}),
@@ -576,8 +585,61 @@ export const supportTickets = pgTable(
     supportTicketsSlaDueIdx: index("support_tickets_sla_due_at_idx").on(t.slaDueAt),
     supportTicketsCreatedIdx: index("support_tickets_created_at_idx").on(t.createdAt),
     supportTicketsCustomerIdx: index("support_tickets_customer_id_idx").on(t.customerId),
+    supportTicketsIdempotencyUx: uniqueIndex("support_tickets_business_idempotency_uk")
+      .on(t.businessId, t.idempotencyKey)
+      .where(sql`${t.idempotencyKey} is not null`),
     supportTicketsWhatsappIdentityFk: foreignKey({
       name: "support_tickets_whatsapp_identity_fk",
+      columns: [t.whatsappIdentityId],
+      foreignColumns: [whatsappIdentities.phoneNumberId],
+    }).onDelete("set null").onUpdate("cascade"),
+  }),
+);
+
+export const messageOutbox = pgTable(
+  "message_outbox",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    entityType: text("entity_type"),
+    entityId: text("entity_id"),
+    customerId: text("customer_id").references(() => customers.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    threadId: text("thread_id").references(() => messageThreads.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    whatsappIdentityId: text("whatsapp_identity_id"),
+    recipient: text("recipient"),
+    channel: text("channel").notNull().default("whatsapp"),
+    source: text("source").notNull().default("system"),
+    messageType: text("message_type").notNull().default("text"),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    providerMessageId: text("provider_message_id"),
+    providerResponse: jsonb("provider_response").$type<Record<string, unknown> | null>().default(null),
+    idempotencyKey: text("idempotency_key").notNull(),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    messageOutboxBusinessStatusIdx: index("message_outbox_status_idx").on(t.businessId, t.status, t.createdAt),
+    messageOutboxEntityIdx: index("message_outbox_entity_idx").on(t.businessId, t.entityType, t.entityId, t.createdAt),
+    messageOutboxThreadIdx: index("message_outbox_thread_idx").on(t.threadId, t.createdAt),
+    messageOutboxIdempotencyUx: uniqueIndex("message_outbox_business_idempotency_uk").on(t.businessId, t.idempotencyKey),
+    messageOutboxWhatsappIdentityFk: foreignKey({
+      name: "message_outbox_whatsapp_identity_fk",
       columns: [t.whatsappIdentityId],
       foreignColumns: [whatsappIdentities.phoneNumberId],
     }).onDelete("set null").onUpdate("cascade"),
@@ -610,6 +672,7 @@ export const orders = pgTable(
     whatsappIdentityId: text("whatsapp_identity_id"),
     customerName: text("customer_name"),
     customerPhone: text("customer_phone"),
+    customerEmail: text("customer_email"),
     status: text("status").notNull().default("approved"),
     fulfillmentStatus: text("fulfillment_status").notNull().default("queued"),
     fulfillmentUpdatedAt: timestamp("fulfillment_updated_at", { withTimezone: true }),
@@ -872,6 +935,8 @@ export type SupportTicketTypeRow = typeof supportTicketTypes.$inferSelect;
 export type NewSupportTicketType = typeof supportTicketTypes.$inferInsert;
 export type SupportTicketRow = typeof supportTickets.$inferSelect;
 export type NewSupportTicket = typeof supportTickets.$inferInsert;
+export type MessageOutboxRow = typeof messageOutbox.$inferSelect;
+export type NewMessageOutbox = typeof messageOutbox.$inferInsert;
 export type SupportTicketEventRow = typeof supportTicketEvents.$inferSelect;
 export type NewSupportTicketEvent = typeof supportTicketEvents.$inferInsert;
 export type OrderRow = typeof orders.$inferSelect;

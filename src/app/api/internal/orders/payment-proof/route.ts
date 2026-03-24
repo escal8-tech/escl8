@@ -173,53 +173,58 @@ export async function POST(request: Request) {
     paymentProofText: paymentText || null,
   });
 
-  const submittedAmount =
-    toMoneyString(analysis?.extracted?.amount) ??
-    null;
+  const submittedAmount = toMoneyString(analysis?.extracted?.amount) ?? null;
+  const aiCheckStatus = analysis?.status ?? "needs_review";
+  const aiCheckNotes = analysis?.summary ?? (storedProof?.url ? "Payment proof received." : "Payment details received.");
   const now = new Date();
-  const [paymentRow] = await db
-    .insert(orderPayments)
-    .values({
-      businessId,
-      orderId: orderRow.id,
-      customerId: orderRow.customerId,
-      threadId: orderRow.threadId,
-      whatsappIdentityId: orderRow.whatsappIdentityId,
-      paymentMethod: orderRow.paymentMethod,
-      status: "submitted",
-      currency: orderRow.currency,
-      expectedAmount: orderRow.expectedAmount,
-      paidAmount: submittedAmount,
-      paidDate: analysis?.extracted?.paymentDate ? String(analysis.extracted.paymentDate) : null,
-      referenceCode: String(analysis?.extracted?.reference || orderRow.paymentReference || "").trim() || null,
-      proofUrl: storedProof?.url ?? null,
-      aiCheckStatus: analysis?.status ?? "needs_review",
-      aiCheckNotes: analysis?.summary ?? (storedProof?.url ? "Payment proof received." : "Payment details received."),
-      details: {
-        analysis: analysis ?? null,
-        proofText: paymentText || null,
-        storage: storedProof
-          ? {
-              blobPath: storedProof.blobPath,
-              contentType: storedProof.contentType ?? null,
-              name: storedProof.name,
-            }
-          : null,
-      },
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning();
+  const txResult = await db.transaction(async (tx) => {
+    const [paymentRow] = await tx
+      .insert(orderPayments)
+      .values({
+        businessId,
+        orderId: orderRow.id,
+        customerId: orderRow.customerId,
+        threadId: orderRow.threadId,
+        whatsappIdentityId: orderRow.whatsappIdentityId,
+        paymentMethod: orderRow.paymentMethod,
+        status: "submitted",
+        currency: orderRow.currency,
+        expectedAmount: orderRow.expectedAmount,
+        paidAmount: submittedAmount,
+        paidDate: analysis?.extracted?.paymentDate ? String(analysis.extracted.paymentDate) : null,
+        referenceCode: String(analysis?.extracted?.reference || orderRow.paymentReference || "").trim() || null,
+        proofUrl: storedProof?.url ?? null,
+        aiCheckStatus,
+        aiCheckNotes,
+        details: {
+          analysis: analysis ?? null,
+          proofText: paymentText || null,
+          storage: storedProof
+            ? {
+                blobPath: storedProof.blobPath,
+                contentType: storedProof.contentType ?? null,
+                name: storedProof.name,
+              }
+            : null,
+        },
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
 
-  const [updatedOrder] = await db
-    .update(orders)
-    .set({
-      status: "payment_submitted",
-      paidAmount: submittedAmount,
-      updatedAt: now,
-    })
-    .where(eq(orders.id, orderRow.id))
-    .returning();
+    const [updatedOrder] = await tx
+      .update(orders)
+      .set({
+        status: "payment_submitted",
+        paidAmount: submittedAmount,
+        updatedAt: now,
+      })
+      .where(eq(orders.id, orderRow.id))
+      .returning();
+
+    return { paymentRow, updatedOrder };
+  });
+  const { paymentRow, updatedOrder } = txResult;
 
   if (updatedOrder && paymentRow) {
     await logOrderEvent({
@@ -266,7 +271,6 @@ export async function POST(request: Request) {
       },
     });
   }
-
   return NextResponse.json({
     success: true,
     orderId: updatedOrder?.id ?? orderRow.id,

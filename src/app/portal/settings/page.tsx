@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
+import { getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
+import { describeCompanyGmailError } from "@/lib/company-gmail";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { trpc } from "@/utils/trpc";
 import { PortalSelect } from "@/app/portal/components/PortalSelect";
@@ -590,6 +592,7 @@ export default function SettingsPage() {
   const [accountName, setAccountName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountInstructions, setAccountInstructions] = useState("");
+  const [gmailConnectPending, setGmailConnectPending] = useState(false);
 
   useEffect(() => {
     if (!auth) return;
@@ -630,6 +633,21 @@ export default function SettingsPage() {
       businessQuery.refetch();
     },
   });
+  const disconnectGmail = trpc.business.disconnectGmailConnection.useMutation({
+    onSuccess: () => {
+      showSuccessToast(toast, {
+        title: "Gmail disconnected",
+        message: "Order emails will pause until a company Gmail account is connected again.",
+      });
+      businessQuery.refetch();
+    },
+    onError: () => {
+      showErrorToast(toast, {
+        title: "Disconnect failed",
+        message: "The Gmail connection could not be removed.",
+      });
+    },
+  });
 
   useEffect(() => {
     if (businessQuery.data) {
@@ -655,6 +673,36 @@ export default function SettingsPage() {
       setAccountInstructions(orderSettings?.bankQr?.accountInstructions ?? "");
     }
   }, [businessQuery.data]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const gmail = String(url.searchParams.get("gmail") || "").trim().toLowerCase();
+    if (!gmail) return;
+    if (gmail === "connected") {
+      showSuccessToast(toast, {
+        title: "Gmail connected",
+        message: "Order emails will now be sent from the connected Gmail account.",
+      });
+      void businessQuery.refetch();
+    } else {
+      const messageMap: Record<string, string> = {
+        auth_required: "Sign in again before connecting the company Gmail account.",
+        forbidden: "You do not have permission to connect Gmail for this business.",
+        env_missing: "Google OAuth is not configured on the server.",
+        token_error: "Google rejected the Gmail connection during token exchange.",
+        token_missing: "Google did not return the Gmail refresh token. Try connecting again.",
+        email_missing: "Google did not return the Gmail sender address.",
+        error: "The Gmail connection could not be completed.",
+      };
+      showErrorToast(toast, {
+        title: "Gmail connection failed",
+        message: messageMap[gmail] || "The Gmail connection could not be completed.",
+      });
+    }
+    url.searchParams.delete("gmail");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [businessQuery, toast]);
 
   const handleLogout = async () => {
     if (!auth) {
@@ -803,6 +851,34 @@ export default function SettingsPage() {
         accountInstructions: accountInstructions.trim(),
       },
     });
+  };
+
+  const handleConnectGmail = async () => {
+    if (gmailConnectPending) return;
+    setGmailConnectPending(true);
+    try {
+      const idToken = await getFirebaseIdTokenOrThrow({
+        action: "settings-connect-gmail",
+        area: "business",
+        route: "/portal/settings",
+      });
+      const nextUrl = new URL("/api/auth/gmail/connect", window.location.origin);
+      nextUrl.searchParams.set("idToken", idToken);
+      nextUrl.searchParams.set("returnTo", "/portal/settings");
+      window.location.assign(nextUrl.toString());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not start Gmail connection.";
+      showErrorToast(toast, {
+        title: "Gmail connection failed",
+        message,
+      });
+      setGmailConnectPending(false);
+    }
+  };
+
+  const handleDisconnectGmail = async () => {
+    if (!email || !businessQuery.data?.id) return;
+    await disconnectGmail.mutateAsync({ email, businessId: businessQuery.data.id });
   };
 
   const getInitials = (email: string | null) => {
@@ -1258,6 +1334,9 @@ export default function SettingsPage() {
 
   const renderIntegrationsTab = () => {
     const isConnected = userQuery.data?.whatsappConnected;
+    const gmailConnected = Boolean(businessQuery.data?.gmailConnected);
+    const gmailAddress = String(businessQuery.data?.gmailEmail || "").trim();
+    const gmailError = describeCompanyGmailError(businessQuery.data?.gmailError);
 
     return (
       <div style={styles.section}>
@@ -1292,6 +1371,57 @@ export default function SettingsPage() {
               >
                 {isConnected ? "Manage" : "Connect"}
               </button>
+            </div>
+          </div>
+        </div>
+
+        <div style={styles.card}>
+          <div style={styles.cardHeader}>
+            <div style={{ ...styles.cardIcon, background: "linear-gradient(135deg, #ea4335, #fbbc05)" }}>
+              {Icons.bell}
+            </div>
+            <div>
+              <h3 style={styles.cardTitle}>Order Email Updates</h3>
+              <p style={styles.cardDescription}>Send the payment-approved email from a company Gmail account after staff manually verify the payment.</p>
+            </div>
+          </div>
+          <div style={styles.cardBody}>
+            <div style={styles.statusCard}>
+              <div style={{ ...styles.statusIcon, ...(gmailConnected ? styles.statusConnected : styles.statusDisconnected) }}>
+                {gmailConnected ? Icons.check : Icons.bell}
+              </div>
+              <div style={styles.statusInfo}>
+                <span style={styles.statusTitle}>
+                  {gmailConnected ? "Company Gmail Connected" : "Company Gmail Not Connected"}
+                </span>
+                <span style={styles.statusDescription}>
+                  {gmailConnected
+                    ? `Order updates are sent from ${gmailAddress || "the connected Gmail account"}.`
+                    : "Connect a Gmail account so all order updates can continue by email after the WhatsApp 24-hour window closes."}
+                </span>
+                {gmailError ? (
+                  <span style={{ ...styles.statusDescription, color: "var(--danger)" }}>
+                    {gmailError}
+                  </span>
+                ) : null}
+              </div>
+              {gmailConnected ? (
+                <button
+                  style={styles.btnSecondary}
+                  onClick={() => void handleDisconnectGmail()}
+                  disabled={disconnectGmail.isPending}
+                >
+                  {disconnectGmail.isPending ? "Disconnecting..." : "Disconnect"}
+                </button>
+              ) : (
+                <button
+                  style={styles.btnPrimary}
+                  onClick={() => void handleConnectGmail()}
+                  disabled={gmailConnectPending}
+                >
+                  {gmailConnectPending ? "Connecting..." : "Connect Gmail"}
+                </button>
+              )}
             </div>
           </div>
         </div>
