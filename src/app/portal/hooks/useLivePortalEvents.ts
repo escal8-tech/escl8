@@ -26,6 +26,11 @@ type TicketListInput = {
   limit?: number;
 };
 
+type OrderListInput = {
+  limit?: number;
+  status?: string;
+};
+
 type MessageRow = {
   id: string;
   threadId?: string;
@@ -44,6 +49,9 @@ type LiveSyncOptions = {
   messagesThreadListInput?: ThreadListInput;
   bookingsListInput?: { businessId?: string };
   ticketListInputs?: Array<TicketListInput | undefined>;
+  orderListInput?: OrderListInput;
+  activeOrderId?: string | null;
+  refreshOrderStats?: boolean;
   activeThreadId?: string | null;
   activeThreadPageSize?: number;
   onThreadMessage?: (message: MessageRow) => void;
@@ -214,6 +222,15 @@ function ticketMatchesFilter(ticket: Record<string, unknown>, input?: TicketList
   return true;
 }
 
+function orderMatchesFilter(order: Record<string, unknown>, input?: OrderListInput): boolean {
+  if (!input) return true;
+  if (input.status) {
+    const status = String(order.status ?? "").trim().toLowerCase();
+    if (status !== String(input.status).trim().toLowerCase()) return false;
+  }
+  return true;
+}
+
 export function useLivePortalEvents(options: LiveSyncOptions = {}) {
   const utils = trpc.useUtils();
   const customersList = utils.customers.list as any;
@@ -226,6 +243,10 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
   const bookingsList = utils.bookings.list as any;
   const ticketsList = utils.tickets.listTickets as any;
   const ticketTypesList = utils.tickets.listTypes as any;
+  const ordersList = utils.orders.listOrders as any;
+  const ordersStats = utils.orders.getStats as any;
+  const orderPayments = utils.orders.getOrderPayments as any;
+  const orderEvents = utils.orders.getOrderEvents as any;
   const optionsRef = useRef(options);
 
   useEffect(() => {
@@ -239,6 +260,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     let ackId = 1;
     let lastCatchupAt = 0;
     let lastActivityInvalidateAt = 0;
+    let lastOrderStatsInvalidateAt = 0;
     let hasConnectedOnce = false;
     let lastRealtimeClientFailureAt = 0;
     const recentEventKeys = new Map<string, number>();
@@ -296,6 +318,12 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       if (currentOptions.ticketListInputs && currentOptions.ticketListInputs.length > 0) {
         for (const input of currentOptions.ticketListInputs) jobs.push(ticketsList.invalidate(input));
       }
+      if (currentOptions.orderListInput !== undefined) jobs.push(ordersList.invalidate(currentOptions.orderListInput));
+      if (currentOptions.refreshOrderStats) jobs.push(ordersStats.invalidate(undefined));
+      if (currentOptions.activeOrderId) {
+        jobs.push(orderPayments.invalidate({ orderId: currentOptions.activeOrderId }));
+        jobs.push(orderEvents.invalidate({ orderId: currentOptions.activeOrderId }));
+      }
       jobs.push(ticketTypesList.invalidate({ includeDisabled: true }));
       if (currentOptions.activeThreadId) {
         jobs.push(
@@ -319,15 +347,18 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       const message = payload.message as Record<string, unknown> | undefined;
       const booking = payload.booking as Record<string, unknown> | undefined;
       const ticket = payload.ticket as Record<string, unknown> | undefined;
+      const order = payload.order as Record<string, unknown> | undefined;
       const dedupeId =
         String(event.entityId ?? "") ||
-        String(request?.id ?? customer?.id ?? thread?.threadId ?? message?.id ?? "");
+        String(request?.id ?? customer?.id ?? thread?.threadId ?? message?.id ?? order?.id ?? "");
       const dedupeStamp = String(
         request?.updatedAt ??
           customer?.updatedAt ??
           thread?.lastMessageAt ??
           ticket?.updatedAt ??
           ticket?.createdAt ??
+          order?.updatedAt ??
+          order?.createdAt ??
           message?.createdAt ??
           event.createdAt ??
           "",
@@ -459,6 +490,60 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
           }
           return upsertById(old, maybeBooking);
         });
+      }
+
+      const maybeOrder = order;
+      if (maybeOrder && currentOptions.orderListInput !== undefined) {
+        const orderInput = currentOptions.orderListInput;
+        const limit = orderInput.limit ?? 200;
+        ordersList.setData(
+          orderInput,
+          (
+            old:
+              | {
+                  settings?: Record<string, unknown>;
+                  items?: Array<Record<string, unknown>>;
+                }
+              | undefined,
+          ) => {
+            const currentItems = old?.items ?? [];
+            const existing = currentItems.find((row) => String(row.id ?? "") === String(maybeOrder.id ?? ""));
+            const merged = existing ? { ...existing, ...maybeOrder } : { ...maybeOrder };
+            const nextItems = currentItems.filter((row) => String(row.id ?? "") !== String(maybeOrder.id ?? ""));
+            const matches = event.op !== "deleted" && orderMatchesFilter(merged, orderInput);
+            const items = matches ? [merged, ...nextItems] : nextItems;
+            const sorted = items
+              .slice()
+              .sort((a, b) => {
+                const aTs = new Date(String(a.updatedAt ?? a.createdAt ?? 0)).getTime();
+                const bTs = new Date(String(b.updatedAt ?? b.createdAt ?? 0)).getTime();
+                return bTs - aTs;
+              })
+              .slice(0, limit);
+            return {
+              ...(old ?? {}),
+              items: sorted,
+            };
+          },
+        );
+      } else if (!maybeOrder && event.entity === "order" && currentOptions.orderListInput !== undefined) {
+        void ordersList.invalidate(currentOptions.orderListInput);
+      }
+
+      if (event.entity === "order" && currentOptions.refreshOrderStats) {
+        const now = Date.now();
+        if (now - lastOrderStatsInvalidateAt > 1500) {
+          lastOrderStatsInvalidateAt = now;
+          void ordersStats.invalidate(undefined);
+        }
+      }
+      if (event.entity === "order" && currentOptions.activeOrderId) {
+        const activeOrderId = String(currentOptions.activeOrderId);
+        const eventOrderId = String(event.entityId ?? maybeOrder?.id ?? "");
+        if (activeOrderId && eventOrderId && activeOrderId === eventOrderId) {
+          void orderPayments.invalidate({ orderId: activeOrderId });
+          void orderEvents.invalidate({ orderId: activeOrderId });
+        }
       }
 
       const maybeTicket = ticket;
@@ -642,5 +727,9 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     bookingsList,
     ticketsList,
     ticketTypesList,
+    ordersList,
+    ordersStats,
+    orderPayments,
+    orderEvents,
   ]);
 }

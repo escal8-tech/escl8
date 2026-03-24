@@ -13,11 +13,13 @@ import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { drainBusinessOutbox, enqueueEmailOutboxMessages, enqueueWhatsAppOutboxMessages } from "@/server/services/messageOutbox";
 import { db } from "../db/client";
 import { businessProcedure, router } from "../trpc";
-import { businesses, customers, messageThreads, orderEvents, orderPayments, orders } from "../../../drizzle/schema";
+import { businesses, customers, messageThreads, orderEvents, orderPayments, orders, threadMessages, whatsappIdentities } from "../../../drizzle/schema";
 import { type BotSendMessage } from "../services/botApi";
 import {
+  buildOrderApprovalMessages,
   buildFulfillmentStatusMessages,
   buildManualCollectionMessages,
+  formatOrderItemsSummary,
   logOrderEvent,
   sanitizePhoneDigits,
 } from "../services/orderFlow";
@@ -26,6 +28,7 @@ import type { OrderEmailMessage } from "../services/orderFlow";
 const reviewActionSchema = z.enum(["approve", "reject"]);
 const refundActionSchema = z.enum(["mark_pending", "mark_refunded", "cancel"]);
 const fulfillmentStatusSchema = z.enum(ORDER_FULFILLMENT_STATUSES);
+const WHATSAPP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function resolveOrderLedgerAmount(
   orderRow: {
@@ -152,6 +155,43 @@ function coalesceText(...values: Array<string | null | undefined>): string | nul
   return null;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function buildStoredOrderFlowSettings(orderRow: {
+  paymentMethod?: string | null;
+  currency?: string | null;
+  paymentConfigSnapshot?: Record<string, unknown> | null;
+}) {
+  const snapshot = asRecord(orderRow.paymentConfigSnapshot);
+  return normalizeOrderFlowSettings({
+    orderFlow: {
+      ticketToOrderEnabled: true,
+      paymentMethod: snapshot.paymentMethod ?? orderRow.paymentMethod ?? "manual",
+      currency: snapshot.currency ?? orderRow.currency ?? "LKR",
+      bankQr: asRecord(snapshot.bankQr),
+    },
+  });
+}
+
+function whatsappWindowState(lastInboundAt: Date | string | null | undefined) {
+  const parsed = lastInboundAt ? new Date(lastInboundAt) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) {
+    return {
+      lastInboundAt: null as Date | null,
+      whatsappWindowExpiresAt: null as Date | null,
+      whatsappWindowOpen: false,
+    };
+  }
+  const expiresAt = new Date(parsed.getTime() + WHATSAPP_WINDOW_MS);
+  return {
+    lastInboundAt: parsed,
+    whatsappWindowExpiresAt: expiresAt,
+    whatsappWindowOpen: expiresAt.getTime() > Date.now(),
+  };
+}
+
 function preferredWhatsAppNumber(source: string | null | undefined, ...values: Array<string | null | undefined>): string | null {
   const sourceKey = String(source ?? "").trim().toLowerCase();
   for (const value of values) {
@@ -165,6 +205,13 @@ function preferredWhatsAppNumber(source: string | null | undefined, ...values: A
     }
   }
   return null;
+}
+
+function maskPhoneNumber(value: string | null | undefined): string | null {
+  const digits = sanitizePhoneDigits(value);
+  if (!digits) return null;
+  if (digits.length <= 4) return digits;
+  return `${digits.slice(0, 2)}${"*".repeat(Math.max(0, digits.length - 4))}${digits.slice(-2)}`;
 }
 
 type OrderCustomerContext = {
@@ -412,13 +459,46 @@ export const ordersRouter = router({
         }
       }
 
+      const threadIds = [...new Set(orderRows.map((row) => String(row.threadId || "").trim()).filter(Boolean))];
+      const latestInboundRows = threadIds.length
+        ? await db
+            .select({
+              threadId: threadMessages.threadId,
+              createdAt: threadMessages.createdAt,
+            })
+            .from(threadMessages)
+            .where(and(inArray(threadMessages.threadId, threadIds), eq(threadMessages.direction, "inbound")))
+            .orderBy(desc(threadMessages.createdAt))
+        : [];
+      const latestInboundByThread = new Map<string, Date | string | null>();
+      for (const row of latestInboundRows) {
+        if (!latestInboundByThread.has(row.threadId)) {
+          latestInboundByThread.set(row.threadId, row.createdAt);
+        }
+      }
+
+      const identityIds = [...new Set(orderRows.map((row) => String(row.whatsappIdentityId || "").trim()).filter(Boolean))];
+      const identityRows = identityIds.length
+        ? await db
+            .select({
+              phoneNumberId: whatsappIdentities.phoneNumberId,
+              displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
+            })
+            .from(whatsappIdentities)
+            .where(inArray(whatsappIdentities.phoneNumberId, identityIds))
+        : [];
+      const displayPhoneByIdentity = new Map(identityRows.map((row) => [row.phoneNumberId, row.displayPhoneNumber ?? null]));
+
       return {
         settings,
         items: orderRows.map((row) => {
           const latestPayment = latestPaymentByOrder.get(row.id) ?? null;
+          const windowState = whatsappWindowState(row.threadId ? latestInboundByThread.get(row.threadId) : null);
           return {
             ...row,
             latestPayment,
+            botDisplayPhoneNumber: row.whatsappIdentityId ? displayPhoneByIdentity.get(row.whatsappIdentityId) ?? null : null,
+            ...windowState,
           };
         }),
       };
@@ -508,6 +588,162 @@ export const ordersRouter = router({
         .from(orderEvents)
         .where(and(eq(orderEvents.businessId, ctx.businessId), eq(orderEvents.orderId, input.orderId)))
         .orderBy(desc(orderEvents.createdAt));
+    }),
+
+  sendPaymentDetails: businessProcedure
+    .input(z.object({ orderId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const settings = await getBusinessOrderSettings(ctx.businessId);
+      if (!settings.ticketToOrderEnabled) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
+      }
+      const now = new Date();
+      const result = await db.transaction(async (tx) => {
+        await lockWorkflowKey(tx, `${ctx.businessId}::order::${input.orderId}`);
+
+        const [orderRow] = await tx
+          .select()
+          .from(orders)
+          .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, input.orderId)))
+          .limit(1);
+        if (!orderRow) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
+        }
+        if (String(orderRow.paymentMethod || "").trim().toLowerCase() !== "bank_qr") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Payment details can only be sent for Bank / QR orders." });
+        }
+        if (!["awaiting_payment", "payment_rejected"].includes(String(orderRow.status || "").trim().toLowerCase())) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Payment details can only be resent while the order is awaiting payment." });
+        }
+
+        const lastInboundRows = orderRow.threadId
+          ? await tx
+              .select({ createdAt: threadMessages.createdAt })
+              .from(threadMessages)
+              .where(and(eq(threadMessages.threadId, orderRow.threadId), eq(threadMessages.direction, "inbound")))
+              .orderBy(desc(threadMessages.createdAt))
+              .limit(1)
+          : [];
+        const lastInboundAt = lastInboundRows[0]?.createdAt ?? null;
+        const windowState = whatsappWindowState(lastInboundAt);
+        if (!windowState.whatsappWindowOpen) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "The WhatsApp 24-hour window is closed for this customer." });
+        }
+
+        const contactContext = await resolveOrderNotificationContext({
+          businessId: ctx.businessId,
+          customerId: orderRow.customerId ?? null,
+          threadId: orderRow.threadId ?? null,
+          whatsappIdentityId: orderRow.whatsappIdentityId ?? null,
+          customerName: orderRow.customerName ?? null,
+          customerEmail: orderRow.customerEmail ?? null,
+          customerPhone: orderRow.customerPhone ?? null,
+        });
+        if (!contactContext.whatsappIdentityId || !sanitizePhoneDigits(contactContext.approvalRecipient)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This order is missing WhatsApp routing details." });
+        }
+
+        const orderSettings = buildStoredOrderFlowSettings(orderRow);
+        const snapshot = asRecord(orderRow.ticketSnapshot);
+        const messages = buildOrderApprovalMessages({
+          orderId: orderRow.id,
+          customerName: contactContext.customerName ?? orderRow.customerName,
+          itemsSummary: formatOrderItemsSummary(snapshot),
+          expectedAmount: orderRow.expectedAmount?.toString() ?? null,
+          paymentReference: orderRow.paymentReference,
+          orderSettings,
+        });
+        const notification = await enqueueWhatsAppOutboxMessages(tx, {
+          businessId: ctx.businessId,
+          entityType: "order",
+          entityId: orderRow.id,
+          customerId: orderRow.customerId ?? null,
+          threadId: contactContext.threadId ?? null,
+          whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
+          recipient: contactContext.approvalRecipient,
+          recipientSource: contactContext.recipientSource,
+          whatsappIdentitySource: contactContext.whatsappIdentitySource,
+          source: "order_payment_details_manual_send",
+          idempotencyBaseKey: `order:${orderRow.id}:payment_details_manual_send:${now.toISOString()}`,
+          messages,
+        });
+
+        return {
+          orderRow,
+          notification,
+          windowState,
+          botDisplayPhoneNumber: contactContext.whatsappIdentityId,
+        };
+      });
+
+      let delivery = {
+        ok: true,
+        error: null as string | null,
+        recipientSource: result.notification.recipientSource,
+        whatsappIdentitySource: result.notification.whatsappIdentitySource,
+      };
+      if (!result.notification.ok) {
+        delivery = {
+          ok: false,
+          error: result.notification.error,
+          recipientSource: result.notification.recipientSource,
+          whatsappIdentitySource: result.notification.whatsappIdentitySource,
+        };
+      } else if (result.notification.idempotencyKeys.length) {
+        const drained = await drainBusinessOutbox({
+          businessId: ctx.businessId,
+          idempotencyKeys: result.notification.idempotencyKeys,
+          limit: result.notification.idempotencyKeys.length,
+        });
+        delivery = {
+          ok: drained.ok,
+          error: drained.error,
+          recipientSource: result.notification.recipientSource,
+          whatsappIdentitySource: result.notification.whatsappIdentitySource,
+        };
+      }
+      await flushBusinessOutbox(ctx.businessId);
+
+      await logOrderEvent({
+        businessId: ctx.businessId,
+        orderId: result.orderRow.id,
+        eventType: "payment_details_sent",
+        actorType: "user",
+        actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+        actorLabel: ctx.userEmail ?? "user",
+        payload: {
+          recipient: maskPhoneNumber(result.orderRow.customerPhone ?? null),
+          recipientSource: delivery.recipientSource,
+          whatsappIdentitySource: delivery.whatsappIdentitySource,
+          windowExpiresAt: result.windowState.whatsappWindowExpiresAt?.toISOString() ?? null,
+        },
+      });
+
+      recordBusinessEvent({
+        event: "order.payment_details_sent",
+        action: "sendPaymentDetails",
+        area: "order",
+        businessId: ctx.businessId,
+        entity: "order",
+        entityId: result.orderRow.id,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: delivery.ok ? "success" : "degraded",
+        status: result.orderRow.status,
+        attributes: {
+          delivery_ok: delivery.ok,
+          delivery_phone_source: delivery.recipientSource,
+          delivery_identity_source: delivery.whatsappIdentitySource,
+        },
+      });
+
+      return {
+        ok: delivery.ok,
+        error: delivery.error,
+        orderId: result.orderRow.id,
+        windowExpiresAt: result.windowState.whatsappWindowExpiresAt,
+      };
     }),
 
   reviewPayment: businessProcedure

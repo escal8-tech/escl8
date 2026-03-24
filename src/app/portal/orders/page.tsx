@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/components/ToastProvider";
 import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
 import { PortalDataTable } from "@/app/portal/components/PortalDataTable";
 import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
 import { TablePagination } from "@/app/portal/components/TablePagination";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
+import { normalizeOrderFlowSettings } from "@/lib/order-settings";
 import {
   describeOrderFulfillmentNextAction,
   describeOrderFulfillmentState,
@@ -57,6 +58,7 @@ type OrderRow = {
   returnedAt?: Date | string | null;
   paymentMethod?: string | null;
   paymentReference?: string | null;
+  paymentConfigSnapshot?: Record<string, unknown> | null;
   expectedAmount?: string | number | null;
   paidAmount?: string | number | null;
   refundAmount?: string | number | null;
@@ -64,6 +66,10 @@ type OrderRow = {
   refundRequestedAt?: Date | string | null;
   refundedAt?: Date | string | null;
   ticketSnapshot?: Record<string, unknown> | null;
+  botDisplayPhoneNumber?: string | null;
+  lastInboundAt?: Date | string | null;
+  whatsappWindowExpiresAt?: Date | string | null;
+  whatsappWindowOpen?: boolean;
   createdAt?: Date | string | null;
   updatedAt?: Date | string | null;
   latestPayment?: OrderPaymentRow | null;
@@ -196,6 +202,84 @@ function isManualCollectionOrder(order: OrderRow): boolean {
 
 function canRecordManualPayment(order: OrderRow): boolean {
   return isManualCollectionOrder(order) && getOrderStatus(order) === "approved";
+}
+
+function needsPaymentDetailsWorkflow(order: OrderRow): boolean {
+  const method = String(order.paymentMethod || "").trim().toLowerCase();
+  const status = getOrderStatus(order);
+  return method === "bank_qr" && ["awaiting_payment", "payment_rejected"].includes(status);
+}
+
+function resolveWhatsAppWindowExpiresAt(order: OrderRow): Date | null {
+  const parsed = order.whatsappWindowExpiresAt ? new Date(order.whatsappWindowExpiresAt) : null;
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
+}
+
+function isWhatsAppWindowOpen(order: OrderRow, nowTs: number): boolean {
+  const expiresAt = resolveWhatsAppWindowExpiresAt(order);
+  if (expiresAt) return expiresAt.getTime() > nowTs;
+  return Boolean(order.whatsappWindowOpen);
+}
+
+function formatCountdownParts(totalSeconds: number): string {
+  const remaining = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(remaining / 3600);
+  const minutes = Math.floor((remaining % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${remaining % 60}s`;
+}
+
+function describeWhatsAppWindow(order: OrderRow, nowTs: number): string {
+  const expiresAt = resolveWhatsAppWindowExpiresAt(order);
+  if (!expiresAt) {
+    return "No inbound customer reply recorded for this bot thread yet.";
+  }
+  const deltaSeconds = Math.round((expiresAt.getTime() - nowTs) / 1000);
+  if (deltaSeconds > 0) {
+    return `Window open for ${formatCountdownParts(deltaSeconds)} more.`;
+  }
+  return `Window closed ${formatCountdownParts(Math.abs(deltaSeconds))} ago.`;
+}
+
+function getStoredOrderSettings(order: OrderRow) {
+  const snapshot = asRecord(order.paymentConfigSnapshot);
+  return normalizeOrderFlowSettings({
+    orderFlow: {
+      ticketToOrderEnabled: true,
+      paymentMethod: snapshot.paymentMethod ?? order.paymentMethod ?? "manual",
+      currency: snapshot.currency ?? order.currency ?? "LKR",
+      bankQr: asRecord(snapshot.bankQr),
+    },
+  });
+}
+
+function buildManualPaymentInstructions(order: OrderRow): string {
+  const settings = getStoredOrderSettings(order);
+  const bankQr = settings.bankQr;
+  const botNumber = String(order.botDisplayPhoneNumber || "").trim();
+  const orderReference = String(order.paymentReference || order.id.slice(0, 8).toUpperCase()).trim();
+  const lines = [
+    order.customerName ? `Hi ${order.customerName}, your order has been approved.` : "Your order has been approved.",
+    `Order reference: ${orderReference}`,
+    `Total due: ${formatMoney(settings.currency, order.expectedAmount)}`,
+  ];
+  if (bankQr.showBankDetails) {
+    if (bankQr.bankName) lines.push(`Bank: ${bankQr.bankName}`);
+    if (bankQr.accountName) lines.push(`Account name: ${bankQr.accountName}`);
+    if (bankQr.accountNumber) lines.push(`Account number: ${bankQr.accountNumber}`);
+    if (bankQr.accountInstructions) lines.push(bankQr.accountInstructions);
+  }
+  if (bankQr.showQr && bankQr.qrImageUrl) {
+    lines.push(`QR: ${bankQr.qrImageUrl}`);
+  }
+  lines.push(
+    botNumber
+      ? `After payment, send the slip image or PDF to this bot number: ${botNumber}`
+      : "After payment, send the slip image or PDF back to the same bot chat.",
+  );
+  lines.push(`Please include order reference ${orderReference} with the slip.`);
+  return lines.join("\n");
 }
 
 function describeFinanceState(order: OrderRow, latestPayment?: OrderPaymentRow | null): string {
@@ -359,6 +443,7 @@ export default function OrdersPage() {
   const [activeFilter, setActiveFilter] = useState<OperationsFilterKey>("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [nowTs, setNowTs] = useState(() => Date.now());
   const ordersQuery = trpc.orders.listOrders.useQuery({ limit: 500 });
   const statsQuery = trpc.orders.getStats.useQuery();
   const reviewPayment = trpc.orders.reviewPayment.useMutation({
@@ -399,15 +484,24 @@ export default function OrdersPage() {
       ]);
     },
   });
-
-  useLivePortalEvents({
-    onEvent: async (event) => {
-      if (event.entity !== "order") return;
+  const sendPaymentDetails = trpc.orders.sendPaymentDetails.useMutation({
+    onSuccess: async () => {
       await Promise.all([
         utils.orders.listOrders.invalidate(),
-        utils.orders.getStats.invalidate(),
+        utils.orders.getOrderEvents.invalidate(),
       ]);
     },
+  });
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => setNowTs(Date.now()), 30_000);
+    return () => window.clearInterval(timerId);
+  }, []);
+
+  useLivePortalEvents({
+    orderListInput: { limit: 500 },
+    refreshOrderStats: true,
+    activeOrderId: selectedOrderId,
   });
 
   const orders = useMemo(() => (ordersQuery.data?.items ?? []) as OrderRow[], [ordersQuery.data?.items]);
@@ -495,7 +589,8 @@ export default function OrdersPage() {
     reviewPayment.isPending ||
     updateRefundStatus.isPending ||
     updateFulfillment.isPending ||
-    captureManualPayment.isPending;
+    captureManualPayment.isPending ||
+    sendPaymentDetails.isPending;
 
   const handleReview = async (paymentId: string, action: "approve" | "reject") => {
     try {
@@ -571,6 +666,21 @@ export default function OrdersPage() {
       showErrorToast(toast, {
         title: "Could not record payment",
         message: error instanceof Error ? error.message : "Manual collection update failed.",
+      });
+    }
+  };
+
+  const handleSendPaymentDetails = async (order: OrderRow) => {
+    try {
+      await sendPaymentDetails.mutateAsync({ orderId: order.id });
+      showSuccessToast(toast, {
+        title: "Payment details sent",
+        message: "The bot sent the payment instructions in the active WhatsApp thread.",
+      });
+    } catch (error) {
+      showErrorToast(toast, {
+        title: "Could not send payment details",
+        message: error instanceof Error ? error.message : "Payment details could not be sent.",
       });
     }
   };
@@ -849,6 +959,11 @@ export default function OrdersPage() {
                           onSelect: () => latestPayment && void handleReview(latestPayment.id, "reject"),
                         },
                         {
+                          label: "Send Payment Details",
+                          disabled: !needsPaymentDetailsWorkflow(order) || !isWhatsAppWindowOpen(order, nowTs),
+                          onSelect: () => void handleSendPaymentDetails(order),
+                        },
+                        {
                           label: "Record Manual Payment",
                           disabled: !canRecordManualPayment(order),
                           onSelect: () => void handleManualPayment(order),
@@ -882,8 +997,10 @@ export default function OrdersPage() {
         onReviewPayment={handleReview}
         onRefundAction={handleRefundAction}
         onRecordManualPayment={handleManualPayment}
+        onSendPaymentDetails={handleSendPaymentDetails}
         onUpdateFulfillment={handleFulfillmentUpdate}
         busy={isBusy}
+        nowTs={nowTs}
       />
     </PortalDataTable>
   );
@@ -912,14 +1029,17 @@ function OrderDetailsDrawer({
   onReviewPayment,
   onRefundAction,
   onRecordManualPayment,
+  onSendPaymentDetails,
   onUpdateFulfillment,
   busy,
+  nowTs,
 }: {
   order: OrderRow | null;
   onClose: () => void;
   onReviewPayment: (paymentId: string, action: "approve" | "reject") => Promise<void>;
   onRefundAction: (order: OrderRow, action: "mark_pending" | "mark_refunded" | "cancel") => Promise<void>;
   onRecordManualPayment: (order: OrderRow) => Promise<void>;
+  onSendPaymentDetails: (order: OrderRow) => Promise<void>;
   onUpdateFulfillment: (input: {
     orderId: string;
     fulfillmentStatus?: OrderFulfillmentStatus;
@@ -937,7 +1057,9 @@ function OrderDetailsDrawer({
     notifyCustomer?: boolean;
   }) => Promise<void>;
   busy: boolean;
+  nowTs: number;
 }) {
+  const toast = useToast();
   const paymentsQuery = trpc.orders.getOrderPayments.useQuery(
     { orderId: order?.id ?? "" },
     { enabled: Boolean(order?.id) },
@@ -971,6 +1093,35 @@ function OrderDetailsDrawer({
     shippingAddress ? null : "shipping address",
   ].filter(Boolean) as string[];
   const readyForDispatch = Boolean(courierName || trackingNumber || dispatchReference);
+  const paymentWindowOpen = isWhatsAppWindowOpen(order, nowTs);
+  const showPaymentWorkflowCard = needsPaymentDetailsWorkflow(order);
+  const manualPaymentInstructions = showPaymentWorkflowCard ? buildManualPaymentInstructions(order) : "";
+  const paymentWindowTone = paymentWindowOpen
+    ? {
+        color: "#86efac",
+        background: "rgba(34, 197, 94, 0.1)",
+        border: "1px solid rgba(34, 197, 94, 0.24)",
+      }
+    : {
+        color: "#fcd34d",
+        background: "rgba(245, 158, 11, 0.12)",
+        border: "1px solid rgba(245, 158, 11, 0.22)",
+      };
+
+  const copyManualInstructions = async () => {
+    try {
+      await navigator.clipboard.writeText(manualPaymentInstructions);
+      showSuccessToast(toast, {
+        title: "Instructions copied",
+        message: "The manual payment instructions are ready to paste into staff WhatsApp.",
+      });
+    } catch (error) {
+      showErrorToast(toast, {
+        title: "Copy failed",
+        message: error instanceof Error ? error.message : "Could not copy the payment instructions.",
+      });
+    }
+  };
 
   return (
     <>
@@ -1281,6 +1432,77 @@ function OrderDetailsDrawer({
                   <Detail label="Expected" value={formatMoney(order.currency, order.expectedAmount)} />
                   <Detail label="Captured" value={formatMoney(order.currency, order.paidAmount)} />
                 </div>
+                {showPaymentWorkflowCard ? (
+                  <div
+                    style={{
+                      borderRadius: 14,
+                      padding: "14px 16px",
+                      display: "grid",
+                      gap: 10,
+                      ...paymentWindowTone,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>Bot Payment Thread</div>
+                        <div style={{ fontSize: 12, color: paymentWindowTone.color }}>
+                          {describeWhatsAppWindow(order, nowTs)}
+                        </div>
+                      </div>
+                      <StatusPill
+                        label={paymentWindowOpen ? "Window Open" : "Window Closed"}
+                        tone={paymentWindowTone}
+                      />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                      <Detail label="Bot Number" value={String(order.botDisplayPhoneNumber || "Not available")} />
+                      <Detail label="Window Expires" value={formatDate(order.whatsappWindowExpiresAt)} />
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={busy || !paymentWindowOpen}
+                        onClick={() => void onSendPaymentDetails(order)}
+                      >
+                        Send Payment Details
+                      </button>
+                      {!paymentWindowOpen ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={busy}
+                          onClick={() => void copyManualInstructions()}
+                        >
+                          Copy Manual Instructions
+                        </button>
+                      ) : null}
+                    </div>
+                    {!paymentWindowOpen ? (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <div className="text-muted" style={{ fontSize: 12 }}>
+                          The bot window is closed. Staff can send these details from another WhatsApp number and ask the customer to send the slip back to the bot thread.
+                        </div>
+                        <pre
+                          style={{
+                            margin: 0,
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                            borderRadius: 12,
+                            border: "1px solid rgba(148, 163, 184, 0.18)",
+                            background: "rgba(15, 23, 42, 0.68)",
+                            padding: "12px 14px",
+                            fontSize: 12,
+                            lineHeight: 1.6,
+                            color: "var(--foreground)",
+                          }}
+                        >
+                          {manualPaymentInstructions}
+                        </pre>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 {!latestPayment ? (
                   <div className="text-muted" style={{ fontSize: 13 }}>No payment proof submitted yet.</div>
                 ) : (
