@@ -286,6 +286,40 @@ async function resolveTicketContactContext(params: {
 
 type TicketContactContext = Awaited<ReturnType<typeof resolveTicketContactContext>>;
 
+async function getHydratedTicketRow(businessId: string, ticketId: string) {
+  const [row] = await db
+    .select({
+      ...getTableColumns(supportTickets),
+      orderId: orders.id,
+      orderStatus: orders.status,
+      orderPaymentMethod: orders.paymentMethod,
+      orderUpdatedAt: orders.updatedAt,
+    })
+    .from(supportTickets)
+    .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
+    .where(and(eq(supportTickets.businessId, businessId), eq(supportTickets.id, ticketId)))
+    .limit(1);
+  return row ?? null;
+}
+
+async function publishHydratedTicketUpsert(input: {
+  businessId: string;
+  ticketId: string;
+  createdAt?: Date | string | null;
+}) {
+  const ticket = await getHydratedTicketRow(input.businessId, input.ticketId);
+  if (!ticket) return null;
+  await publishPortalEvent({
+    businessId: input.businessId,
+    entity: "ticket",
+    op: "upsert",
+    entityId: ticket.id,
+    payload: { ticket: ticket as any },
+    createdAt: input.createdAt ?? ticket.updatedAt ?? ticket.createdAt ?? new Date(),
+  });
+  return ticket;
+}
+
 async function deliverTicketOrderMessages(params: {
   businessId: string;
   contactContext: TicketContactContext;
@@ -474,7 +508,7 @@ export const ticketsRouter = router({
         .from(supportTickets)
         .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
         .where(and(...conditions))
-        .orderBy(desc(supportTickets.createdAt))
+        .orderBy(desc(supportTickets.updatedAt), desc(supportTickets.createdAt))
         .limit(input?.limit ?? 200);
     }),
 
@@ -561,12 +595,9 @@ export const ticketsRouter = router({
             slaDueAt: created.slaDueAt ? new Date(created.slaDueAt).toISOString() : null,
           },
         });
-        await publishPortalEvent({
+        await publishHydratedTicketUpsert({
           businessId: ctx.businessId,
-          entity: "ticket",
-          op: "upsert",
-          entityId: created.id,
-          payload: { ticket: created as any },
+          ticketId: created.id,
           createdAt: created.updatedAt ?? created.createdAt ?? new Date(),
         });
         recordBusinessEvent({
@@ -648,12 +679,9 @@ export const ticketsRouter = router({
             priority: updated.priority,
           },
         });
-        await publishPortalEvent({
+        await publishHydratedTicketUpsert({
           businessId: ctx.businessId,
-          entity: "ticket",
-          op: "upsert",
-          entityId: updated.id,
-          payload: { ticket: updated as any },
+          ticketId: updated.id,
           createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
         });
         recordBusinessEvent({
@@ -731,12 +759,9 @@ export const ticketsRouter = router({
             },
           });
         }
-        await publishPortalEvent({
+        await publishHydratedTicketUpsert({
           businessId: ctx.businessId,
-          entity: "ticket",
-          op: "upsert",
-          entityId: updated.id,
-          payload: { ticket: updated as any },
+          ticketId: updated.id,
           createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
         });
         if (existing.status !== updated.status) {
@@ -820,12 +845,9 @@ export const ticketsRouter = router({
             },
           });
         }
-        await publishPortalEvent({
+        await publishHydratedTicketUpsert({
           businessId: ctx.businessId,
-          entity: "ticket",
-          op: "upsert",
-          entityId: updated.id,
-          payload: { ticket: updated as any },
+          ticketId: updated.id,
           createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
         });
         if (existing.outcome !== updated.outcome || (existing.lossReason ?? "") !== (updated.lossReason ?? "")) {
@@ -895,12 +917,9 @@ export const ticketsRouter = router({
             },
           });
         }
-        await publishPortalEvent({
+        await publishHydratedTicketUpsert({
           businessId: ctx.businessId,
-          entity: "ticket",
-          op: "upsert",
-          entityId: updated.id,
-          payload: { ticket: updated as any },
+          ticketId: updated.id,
           createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
         });
         if (fromIso !== toIso) {
@@ -1164,13 +1183,10 @@ export const ticketsRouter = router({
         }
       }
 
-      await Promise.all([
-        publishPortalEvent({
+      const [realtimeTicket] = await Promise.all([
+        publishHydratedTicketUpsert({
           businessId: ctx.businessId,
-          entity: "ticket",
-          op: "upsert",
-          entityId: result.ticket.id,
-          payload: { ticket: result.ticket as any },
+          ticketId: result.ticket.id,
           createdAt: result.ticket.updatedAt ?? now,
         }),
         publishPortalEvent({
@@ -1205,7 +1221,7 @@ export const ticketsRouter = router({
       });
 
       return {
-        ticket: result.ticket,
+        ticket: realtimeTicket ?? result.ticket,
         order: result.order,
         delivery,
       };
@@ -1340,12 +1356,9 @@ export const ticketsRouter = router({
         });
       }
 
-      await publishPortalEvent({
+      const realtimeTicket = await publishHydratedTicketUpsert({
         businessId: ctx.businessId,
-        entity: "ticket",
-        op: "upsert",
-        entityId: result.ticket.id,
-        payload: { ticket: result.ticket as any },
+        ticketId: result.ticket.id,
         createdAt: result.ticket.updatedAt ?? now,
       });
 
@@ -1372,6 +1385,7 @@ export const ticketsRouter = router({
 
       return {
         ...result,
+        ticket: realtimeTicket ?? result.ticket,
         delivery,
       };
     }),

@@ -326,6 +326,8 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         request?.updatedAt ??
           customer?.updatedAt ??
           thread?.lastMessageAt ??
+          ticket?.updatedAt ??
+          ticket?.createdAt ??
           message?.createdAt ??
           event.createdAt ??
           "",
@@ -472,8 +474,8 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
             return upserted
               .slice()
               .sort((a, b) => {
-                const aTs = new Date(String(a.createdAt ?? a.updatedAt ?? 0)).getTime();
-                const bTs = new Date(String(b.createdAt ?? b.updatedAt ?? 0)).getTime();
+                const aTs = new Date(String(a.updatedAt ?? a.createdAt ?? 0)).getTime();
+                const bTs = new Date(String(b.updatedAt ?? b.createdAt ?? 0)).getTime();
                 return bTs - aTs;
               })
               .slice(0, limit);
