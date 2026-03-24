@@ -659,7 +659,7 @@ function formatOrderStage(stage: OrderStage): string {
 
 function describeOrderStage(stage: OrderStage): string {
   if (stage === "pending_approval") return "Review the ticket, confirm details, then approve or deny it.";
-  if (stage === "approved") return "Approved for manual follow-up outside of payment proof tracking.";
+  if (stage === "approved") return "Approved and moved into the Orders workspace for fulfilment tracking.";
   if (stage === "awaiting_payment") return "Approved and waiting for the customer to send payment proof.";
   if (stage === "payment_submitted") return "Payment proof received and waiting for staff review.";
   if (stage === "payment_rejected") return "Customer needs to resend payment proof.";

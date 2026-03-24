@@ -1132,7 +1132,7 @@ export default function SettingsPage() {
           <div style={styles.toggleRow}>
             <div style={styles.toggleInfo}>
               <span style={styles.toggleLabel}>Enable Ticket To Order</span>
-              <span style={styles.toggleDescription}>Show approval, denial, and payment tracking for order creation tickets.</span>
+              <span style={styles.toggleDescription}>Show approval, denial, payment tracking, fulfilment stages, and courier operations for order creation tickets.</span>
             </div>
             <Toggle checked={ticketToOrderEnabled} onChange={setTicketToOrderEnabled} />
           </div>

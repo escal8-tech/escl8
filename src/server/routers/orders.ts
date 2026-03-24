@@ -3,16 +3,28 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { normalizeOrderFlowSettings } from "@/lib/order-settings";
+import {
+  ORDER_FULFILLMENT_STATUSES,
+  normalizeOrderFulfillmentStatus,
+  type OrderFulfillmentStatus,
+} from "@/lib/order-operations";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { db } from "../db/client";
 import { businessProcedure, router } from "../trpc";
 import { businesses, customers, messageThreads, orderEvents, orderPayments, orders } from "../../../drizzle/schema";
 import { sendWhatsAppMessagesViaBot, type BotSendMessage } from "../services/botApi";
-import { logOrderEvent, persistOutboundThreadMessage, sanitizePhoneDigits } from "../services/orderFlow";
+import {
+  buildFulfillmentStatusMessages,
+  buildManualCollectionMessages,
+  logOrderEvent,
+  persistOutboundThreadMessage,
+  sanitizePhoneDigits,
+} from "../services/orderFlow";
 
 const reviewActionSchema = z.enum(["approve", "reject"]);
 const refundActionSchema = z.enum(["mark_pending", "mark_refunded", "cancel"]);
+const fulfillmentStatusSchema = z.enum(ORDER_FULFILLMENT_STATUSES);
 
 function resolveOrderLedgerAmount(
   orderRow: {
@@ -57,6 +69,78 @@ async function getBusinessOrderSettings(businessId: string) {
     .where(eq(businesses.id, businessId))
     .limit(1);
   return normalizeOrderFlowSettings(biz?.settings);
+}
+
+function cleanOptionalText(value: string | null | undefined, max = 500): string | null {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return null;
+  return normalized.slice(0, max);
+}
+
+function cleanOptionalUrl(value: string | null | undefined): string | null {
+  const normalized = cleanOptionalText(value, 1000);
+  if (!normalized) return null;
+  return /^https?:\/\//i.test(normalized) ? normalized : null;
+}
+
+function parseOptionalDate(value: string | null | undefined): Date | null {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return null;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function asNullableDate(value: Date | string | null | undefined): Date | null {
+  if (!value) return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function nextFulfillmentTimestamps(input: {
+  currentStatus: string | null | undefined;
+  nextStatus: OrderFulfillmentStatus;
+  now: Date;
+  existing: {
+    packedAt?: Date | string | null;
+    dispatchedAt?: Date | string | null;
+    outForDeliveryAt?: Date | string | null;
+    deliveredAt?: Date | string | null;
+    failedDeliveryAt?: Date | string | null;
+    returnedAt?: Date | string | null;
+  };
+}) {
+  const current = normalizeOrderFulfillmentStatus(input.currentStatus);
+  const changed = current !== input.nextStatus;
+  const next = {
+    packedAt: asNullableDate(input.existing.packedAt),
+    dispatchedAt: asNullableDate(input.existing.dispatchedAt),
+    outForDeliveryAt: asNullableDate(input.existing.outForDeliveryAt),
+    deliveredAt: asNullableDate(input.existing.deliveredAt),
+    failedDeliveryAt: asNullableDate(input.existing.failedDeliveryAt),
+    returnedAt: asNullableDate(input.existing.returnedAt),
+    fulfillmentUpdatedAt: changed ? input.now : null,
+  };
+  if (!changed) return next;
+  if (input.nextStatus === "packed" && !next.packedAt) next.packedAt = input.now;
+  if (input.nextStatus === "dispatched" && !next.dispatchedAt) next.dispatchedAt = input.now;
+  if (input.nextStatus === "out_for_delivery" && !next.outForDeliveryAt) next.outForDeliveryAt = input.now;
+  if (input.nextStatus === "delivered" && !next.deliveredAt) next.deliveredAt = input.now;
+  if (input.nextStatus === "failed_delivery" && !next.failedDeliveryAt) next.failedDeliveryAt = input.now;
+  if (input.nextStatus === "returned" && !next.returnedAt) next.returnedAt = input.now;
+  return next;
+}
+
+function requiresDispatchData(status: OrderFulfillmentStatus): boolean {
+  return status === "dispatched" || status === "out_for_delivery";
+}
+
+function canCaptureManualPayment(orderRow: {
+  paymentMethod?: string | null;
+  status?: string | null;
+}): boolean {
+  const method = String(orderRow.paymentMethod || "").trim().toLowerCase();
+  const status = String(orderRow.status || "").trim().toLowerCase();
+  return (method === "manual" || method === "cod") && ["approved", "payment_rejected"].includes(status);
 }
 
 function coalesceText(...values: Array<string | null | undefined>): string | null {
@@ -353,7 +437,7 @@ export const ordersRouter = router({
         .select()
         .from(orders)
         .where(and(...filters))
-        .orderBy(desc(orders.createdAt))
+        .orderBy(desc(orders.updatedAt), desc(orders.createdAt))
         .limit(input?.limit ?? 200);
 
       const orderIds = orderRows.map((row) => row.id);
@@ -523,6 +607,10 @@ export const ordersRouter = router({
       const now = new Date();
       const nextPaymentStatus = input.action === "approve" ? "approved_manual" : "rejected";
       const nextOrderStatus = input.action === "approve" ? "paid" : "payment_rejected";
+      const nextFulfillmentStatus =
+        input.action === "approve" && normalizeOrderFulfillmentStatus(orderRow.fulfillmentStatus) === "on_hold"
+          ? "queued"
+          : normalizeOrderFulfillmentStatus(orderRow.fulfillmentStatus);
 
       const [updatedPayment] = await db
         .update(orderPayments)
@@ -538,6 +626,11 @@ export const ordersRouter = router({
         .update(orders)
         .set({
           status: nextOrderStatus,
+          fulfillmentStatus: nextFulfillmentStatus,
+          fulfillmentUpdatedAt:
+            input.action === "approve" && normalizeOrderFulfillmentStatus(orderRow.fulfillmentStatus) === "on_hold"
+              ? now
+              : orderRow.fulfillmentUpdatedAt,
           paidAmount: paymentRow.paidAmount ?? orderRow.paidAmount,
           paymentApprovedAt: input.action === "approve" ? now : null,
           paymentRejectedAt: input.action === "reject" ? now : null,
@@ -575,8 +668,22 @@ export const ordersRouter = router({
           notes: input.notes?.trim() || null,
           paymentId: paymentRow.id,
           paymentStatus: nextPaymentStatus,
+          fulfillmentStatus: nextFulfillmentStatus,
         },
       });
+      if (input.action === "approve" && normalizeOrderFulfillmentStatus(orderRow.fulfillmentStatus) === "on_hold") {
+        await logOrderEvent({
+          businessId: ctx.businessId,
+          orderId: updatedOrder.id,
+          eventType: "fulfillment_released",
+          actorType: "system",
+          actorLabel: "system",
+          payload: {
+            from: orderRow.fulfillmentStatus,
+            to: nextFulfillmentStatus,
+          },
+        });
+      }
       if (!delivery.ok) {
         await logOrderEvent({
           businessId: ctx.businessId,
@@ -631,6 +738,364 @@ export const ordersRouter = router({
         payment: updatedPayment,
         delivery,
       };
+    }),
+
+  updateFulfillment: businessProcedure
+    .input(
+      z.object({
+        orderId: z.string().min(1),
+        fulfillmentStatus: fulfillmentStatusSchema.optional(),
+        recipientName: z.string().optional().nullable(),
+        recipientPhone: z.string().optional().nullable(),
+        shippingAddress: z.string().optional().nullable(),
+        deliveryArea: z.string().optional().nullable(),
+        deliveryNotes: z.string().optional().nullable(),
+        courierName: z.string().optional().nullable(),
+        trackingNumber: z.string().optional().nullable(),
+        trackingUrl: z.string().optional().nullable(),
+        dispatchReference: z.string().optional().nullable(),
+        scheduledDeliveryAt: z.string().optional().nullable(),
+        fulfillmentNotes: z.string().optional().nullable(),
+        notifyCustomer: z.boolean().optional(),
+        customerMessage: z.string().optional().nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const settings = await getBusinessOrderSettings(ctx.businessId);
+      if (!settings.ticketToOrderEnabled) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
+      }
+
+      const [orderRow] = await db
+        .select()
+        .from(orders)
+        .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, input.orderId)))
+        .limit(1);
+      if (!orderRow) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
+      }
+
+      const nextFulfillmentStatus = input.fulfillmentStatus
+        ? normalizeOrderFulfillmentStatus(input.fulfillmentStatus)
+        : normalizeOrderFulfillmentStatus(orderRow.fulfillmentStatus);
+      const nextRecipientName = cleanOptionalText(
+        input.recipientName === undefined ? orderRow.recipientName : input.recipientName,
+        160,
+      );
+      const nextRecipientPhone = cleanOptionalText(
+        input.recipientPhone === undefined ? orderRow.recipientPhone : input.recipientPhone,
+        50,
+      );
+      const nextShippingAddress = cleanOptionalText(
+        input.shippingAddress === undefined ? orderRow.shippingAddress : input.shippingAddress,
+        1200,
+      );
+      const nextDeliveryArea = cleanOptionalText(
+        input.deliveryArea === undefined ? orderRow.deliveryArea : input.deliveryArea,
+        200,
+      );
+      const nextDeliveryNotes = cleanOptionalText(
+        input.deliveryNotes === undefined ? orderRow.deliveryNotes : input.deliveryNotes,
+        1200,
+      );
+      const nextCourierName = cleanOptionalText(
+        input.courierName === undefined ? orderRow.courierName : input.courierName,
+        160,
+      );
+      const nextTrackingNumber = cleanOptionalText(
+        input.trackingNumber === undefined ? orderRow.trackingNumber : input.trackingNumber,
+        160,
+      );
+      const nextTrackingUrl = cleanOptionalUrl(
+        input.trackingUrl === undefined ? orderRow.trackingUrl : input.trackingUrl,
+      );
+      const nextDispatchReference = cleanOptionalText(
+        input.dispatchReference === undefined ? orderRow.dispatchReference : input.dispatchReference,
+        200,
+      );
+      const nextScheduledDeliveryAt =
+        input.scheduledDeliveryAt === undefined
+          ? orderRow.scheduledDeliveryAt
+          : parseOptionalDate(input.scheduledDeliveryAt);
+      const nextFulfillmentNotes = cleanOptionalText(
+        input.fulfillmentNotes === undefined ? orderRow.fulfillmentNotes : input.fulfillmentNotes,
+        1200,
+      );
+
+      if (requiresDispatchData(nextFulfillmentStatus) && !coalesceText(nextCourierName, nextTrackingNumber, nextDispatchReference)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Add courier name, tracking number, or dispatch reference before moving an order into transit.",
+        });
+      }
+      if (requiresDispatchData(nextFulfillmentStatus) && !nextShippingAddress) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Add the delivery address before dispatching the order.",
+        });
+      }
+      if (requiresDispatchData(nextFulfillmentStatus) && !coalesceText(nextRecipientPhone, orderRow.customerPhone)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Add the recipient phone before dispatching the order.",
+        });
+      }
+      if (nextFulfillmentStatus === "delivered" && !coalesceText(nextRecipientName, orderRow.customerName)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Add the recipient name before marking the order delivered.",
+        });
+      }
+
+      const now = new Date();
+      const statusChanged =
+        normalizeOrderFulfillmentStatus(orderRow.fulfillmentStatus) !== nextFulfillmentStatus;
+      const nextTimestamps = nextFulfillmentTimestamps({
+        currentStatus: orderRow.fulfillmentStatus,
+        nextStatus: nextFulfillmentStatus,
+        now,
+        existing: orderRow,
+      });
+
+      const [updatedOrder] = await db
+        .update(orders)
+        .set({
+          fulfillmentStatus: nextFulfillmentStatus,
+          fulfillmentUpdatedAt: nextTimestamps.fulfillmentUpdatedAt ?? orderRow.fulfillmentUpdatedAt,
+          recipientName: nextRecipientName,
+          recipientPhone: nextRecipientPhone,
+          shippingAddress: nextShippingAddress,
+          deliveryArea: nextDeliveryArea,
+          deliveryNotes: nextDeliveryNotes,
+          courierName: nextCourierName,
+          trackingNumber: nextTrackingNumber,
+          trackingUrl: nextTrackingUrl,
+          dispatchReference: nextDispatchReference,
+          scheduledDeliveryAt: nextScheduledDeliveryAt,
+          fulfillmentNotes: nextFulfillmentNotes,
+          packedAt: nextTimestamps.packedAt,
+          dispatchedAt: nextTimestamps.dispatchedAt,
+          outForDeliveryAt: nextTimestamps.outForDeliveryAt,
+          deliveredAt: nextTimestamps.deliveredAt,
+          failedDeliveryAt: nextTimestamps.failedDeliveryAt,
+          returnedAt: nextTimestamps.returnedAt,
+          updatedAt: now,
+        })
+        .where(eq(orders.id, orderRow.id))
+        .returning();
+
+      if (!updatedOrder) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to update fulfilment." });
+      }
+
+      await logOrderEvent({
+        businessId: ctx.businessId,
+        orderId: updatedOrder.id,
+        eventType: statusChanged ? "fulfillment_status_changed" : "fulfillment_details_updated",
+        actorType: "user",
+        actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+        actorLabel: ctx.userEmail ?? "user",
+        payload: {
+          previousStatus: orderRow.fulfillmentStatus,
+          nextStatus: nextFulfillmentStatus,
+          courierName: nextCourierName,
+          trackingNumber: nextTrackingNumber,
+          dispatchReference: nextDispatchReference,
+          scheduledDeliveryAt: nextScheduledDeliveryAt ? new Date(nextScheduledDeliveryAt).toISOString() : null,
+        },
+      });
+
+      let delivery: {
+        ok: boolean;
+        error: string | null;
+        recipientSource: string | null;
+        whatsappIdentitySource: string | null;
+      } = {
+        ok: true,
+        error: null,
+        recipientSource: null,
+        whatsappIdentitySource: null,
+      };
+      const shouldNotifyCustomer = Boolean(input.notifyCustomer) && statusChanged;
+      if (shouldNotifyCustomer) {
+        delivery = await deliverOrderUpdateMessages({
+          businessId: ctx.businessId,
+          orderRow: updatedOrder,
+          source: "order_fulfillment_update",
+          messages: input.customerMessage?.trim()
+            ? [{ type: "text", text: input.customerMessage.trim() }]
+            : buildFulfillmentStatusMessages({
+                customerName: updatedOrder.customerName,
+                orderId: updatedOrder.id,
+                fulfillmentStatus: nextFulfillmentStatus,
+                courierName: nextCourierName,
+                trackingNumber: nextTrackingNumber,
+                trackingUrl: nextTrackingUrl,
+                scheduledDeliveryAt: nextScheduledDeliveryAt,
+                note: nextFulfillmentStatus === "failed_delivery" ? nextFulfillmentNotes : null,
+              }),
+        });
+        if (!delivery.ok) {
+          await logOrderEvent({
+            businessId: ctx.businessId,
+            orderId: updatedOrder.id,
+            eventType: "fulfillment_notification_failed",
+            actorType: "system",
+            actorLabel: "bot",
+            payload: {
+              fulfillmentStatus: nextFulfillmentStatus,
+              error: delivery.error,
+            },
+          });
+        }
+      }
+
+      await publishPortalEvent({
+        businessId: ctx.businessId,
+        entity: "order",
+        op: "upsert",
+        entityId: updatedOrder.id,
+        payload: { order: updatedOrder as any },
+        createdAt: updatedOrder.updatedAt ?? now,
+      });
+
+      recordBusinessEvent({
+        event: "order.fulfillment_updated",
+        action: "updateFulfillment",
+        area: "order",
+        businessId: ctx.businessId,
+        entity: "order",
+        entityId: updatedOrder.id,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: delivery.ok ? "success" : "degraded",
+        status: nextFulfillmentStatus,
+        attributes: {
+          previous_status: orderRow.fulfillmentStatus,
+          courier_name_present: Boolean(nextCourierName),
+          tracking_number_present: Boolean(nextTrackingNumber),
+          notify_customer: shouldNotifyCustomer,
+          delivery_ok: delivery.ok,
+        },
+      });
+
+      return { order: updatedOrder, delivery };
+    }),
+
+  captureManualPayment: businessProcedure
+    .input(
+      z.object({
+        orderId: z.string().min(1),
+        amount: z.string().optional(),
+        note: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const settings = await getBusinessOrderSettings(ctx.businessId);
+      if (!settings.ticketToOrderEnabled) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
+      }
+
+      const [orderRow] = await db
+        .select()
+        .from(orders)
+        .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, input.orderId)))
+        .limit(1);
+      if (!orderRow) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
+      }
+      if (!canCaptureManualPayment(orderRow)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Only manual or cash-on-delivery orders awaiting collection can be marked as paid.",
+        });
+      }
+
+      const paidAmount = resolveRefundAmount(input.amount, orderRow) ?? orderRow.expectedAmount?.toString() ?? null;
+      const now = new Date();
+
+      const [updatedOrder] = await db
+        .update(orders)
+        .set({
+          status: "paid",
+          paidAmount,
+          paymentApprovedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(orders.id, orderRow.id))
+        .returning();
+
+      if (!updatedOrder) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to record manual payment." });
+      }
+
+      await logOrderEvent({
+        businessId: ctx.businessId,
+        orderId: updatedOrder.id,
+        eventType: "manual_payment_collected",
+        actorType: "user",
+        actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+        actorLabel: ctx.userEmail ?? "user",
+        payload: {
+          amount: paidAmount,
+          note: cleanOptionalText(input.note, 400),
+          paymentMethod: updatedOrder.paymentMethod,
+        },
+      });
+
+      const delivery = await deliverOrderUpdateMessages({
+        businessId: ctx.businessId,
+        orderRow: updatedOrder,
+        source: "order_manual_payment_collected",
+        messages: buildManualCollectionMessages({
+          customerName: updatedOrder.customerName,
+          orderId: updatedOrder.id,
+          currency: String(updatedOrder.currency || "LKR").trim() || "LKR",
+          paidAmount,
+        }),
+      });
+      if (!delivery.ok) {
+        await logOrderEvent({
+          businessId: ctx.businessId,
+          orderId: updatedOrder.id,
+          eventType: "manual_payment_notification_failed",
+          actorType: "system",
+          actorLabel: "bot",
+          payload: {
+            error: delivery.error,
+          },
+        });
+      }
+
+      await publishPortalEvent({
+        businessId: ctx.businessId,
+        entity: "order",
+        op: "upsert",
+        entityId: updatedOrder.id,
+        payload: { order: updatedOrder as any },
+        createdAt: updatedOrder.updatedAt ?? now,
+      });
+
+      recordBusinessEvent({
+        event: "order.manual_payment_collected",
+        action: "captureManualPayment",
+        area: "order",
+        businessId: ctx.businessId,
+        entity: "order",
+        entityId: updatedOrder.id,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: delivery.ok ? "success" : "degraded",
+        status: updatedOrder.status,
+        attributes: {
+          payment_method: updatedOrder.paymentMethod,
+          delivery_ok: delivery.ok,
+        },
+      });
+
+      return { order: updatedOrder, delivery };
     }),
 
   updateRefundStatus: businessProcedure
