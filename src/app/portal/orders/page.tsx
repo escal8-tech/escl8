@@ -3,453 +3,143 @@
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/components/ToastProvider";
 import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
-import { PortalDataTable } from "@/app/portal/components/PortalDataTable";
 import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
 import { TablePagination } from "@/app/portal/components/TablePagination";
+import { TableSearchControl } from "@/app/portal/components/TableToolbarControls";
+import { PortalHeaderCard, PortalMetricCard } from "@/app/portal/components/PortalSurfacePrimitives";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
-import { normalizeOrderFlowSettings } from "@/lib/order-settings";
 import {
   describeOrderFulfillmentNextAction,
   describeOrderFulfillmentState,
   formatOrderFulfillmentStatus,
   getFulfillmentProgress,
-  normalizeOrderFulfillmentStatus,
-  orderFulfillmentTone,
   type OrderFulfillmentStatus,
 } from "@/lib/order-operations";
+import {
+  METHOD_FILTER_OPTIONS,
+  OPERATIONS_FILTERS,
+  PAGE_SIZE,
+  PROGRESS_FLOW,
+  RANGE_OPTIONS,
+  asRecord,
+  buildFulfillmentActions,
+  buildManualPaymentInstructions,
+  canRecordManualPayment,
+  describeFinanceState,
+  describeWhatsAppWindow,
+  financeToneClass,
+  formatDate,
+  formatEventSummary,
+  formatMoney,
+  formatOrderItems,
+  fulfillmentToneClass,
+  getDeliveryHint,
+  getDeliverySummary,
+  getFulfillmentStatus,
+  getOrderStatus,
+  isWhatsAppWindowOpen,
+  needsPaymentDetailsWorkflow,
+  normalizeStatusLabel,
+  numericAmount,
+  resolveOrderAmount,
+  shortId,
+  toDateTimeLocalValue,
+  toIsoFromDateTimeLocal,
+  type OperationsFilterKey,
+  type OrderDateField,
+  type OrderEventRow,
+  type OrderMethodFilter,
+  type OrderPaymentRow,
+  type OrderRow,
+  type RangeDays,
+} from "@/app/portal/orders/lib/orderPageUtils";
 import { trpc } from "@/utils/trpc";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
-type OrderPaymentRow = {
-  id: string;
-  status: string;
-  currency?: string | null;
-  expectedAmount?: string | number | null;
-  paidAmount?: string | number | null;
-  referenceCode?: string | null;
-  proofUrl?: string | null;
-  aiCheckStatus?: string | null;
-  aiCheckNotes?: string | null;
-  createdAt?: Date | string | null;
+type OperationsPageMode = "orders" | "revenue";
+const EMPTY_ORDER_METRICS = {
+  needsAction: 0,
+  inFulfilment: 0,
+  inTransit: 0,
+  delivered: 0,
+  exceptions: 0,
+};
+const EMPTY_ORDER_FINANCE_TOTALS = {
+  booked: 0,
+  collected: 0,
+  pending: 0,
+  refundExposure: 0,
+};
+const EMPTY_ORDER_FILTER_COUNTS: Record<OperationsFilterKey, number> = {
+  all: 0,
+  needs_action: 0,
+  on_hold: 0,
+  active: 0,
+  in_transit: 0,
+  delivered: 0,
+  exceptions: 0,
+  refunds: 0,
 };
 
-type OrderRow = {
-  id: string;
-  status: string;
-  fulfillmentStatus?: string | null;
-  currency?: string | null;
-  customerName?: string | null;
-  customerPhone?: string | null;
-  recipientName?: string | null;
-  recipientPhone?: string | null;
-  shippingAddress?: string | null;
-  deliveryArea?: string | null;
-  deliveryNotes?: string | null;
-  courierName?: string | null;
-  trackingNumber?: string | null;
-  trackingUrl?: string | null;
-  dispatchReference?: string | null;
-  scheduledDeliveryAt?: Date | string | null;
-  fulfillmentNotes?: string | null;
-  packedAt?: Date | string | null;
-  dispatchedAt?: Date | string | null;
-  outForDeliveryAt?: Date | string | null;
-  deliveredAt?: Date | string | null;
-  failedDeliveryAt?: Date | string | null;
-  returnedAt?: Date | string | null;
-  paymentMethod?: string | null;
-  paymentReference?: string | null;
-  paymentConfigSnapshot?: Record<string, unknown> | null;
-  expectedAmount?: string | number | null;
-  paidAmount?: string | number | null;
-  refundAmount?: string | number | null;
-  refundReason?: string | null;
-  refundRequestedAt?: Date | string | null;
-  refundedAt?: Date | string | null;
-  ticketSnapshot?: Record<string, unknown> | null;
-  botDisplayPhoneNumber?: string | null;
-  lastInboundAt?: Date | string | null;
-  whatsappWindowExpiresAt?: Date | string | null;
-  whatsappWindowOpen?: boolean;
-  createdAt?: Date | string | null;
-  updatedAt?: Date | string | null;
-  latestPayment?: OrderPaymentRow | null;
-};
-
-type OrderEventRow = {
-  id: string;
-  eventType: string;
-  actorType: string;
-  actorLabel?: string | null;
-  payload?: Record<string, unknown> | null;
-  createdAt?: Date | string | null;
-};
-
-const PAGE_SIZE = 20;
-const PROGRESS_FLOW: OrderFulfillmentStatus[] = [
-  "on_hold",
-  "queued",
-  "preparing",
-  "packed",
-  "dispatched",
-  "out_for_delivery",
-  "delivered",
-];
-
-const OPERATIONS_FILTERS = [
-  { key: "all", label: "All Orders" },
-  { key: "needs_action", label: "Needs Action" },
-  { key: "on_hold", label: "On Hold" },
-  { key: "active", label: "In Fulfilment" },
-  { key: "in_transit", label: "In Transit" },
-  { key: "delivered", label: "Delivered" },
-  { key: "exceptions", label: "Exceptions" },
-  { key: "refunds", label: "Refunds" },
-] as const;
-
-type OperationsFilterKey = (typeof OPERATIONS_FILTERS)[number]["key"];
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+function toMutationDate(value: unknown): Date | undefined {
+  if (!value) return undefined;
+  const normalized = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(normalized.getTime()) ? undefined : normalized;
 }
 
-function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
-}
-
-function formatDate(value: Date | string | null | undefined): string {
-  if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "-";
-  return parsed.toLocaleString(undefined, {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function toDateTimeLocalValue(value: Date | string | null | undefined): string {
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  const year = parsed.getFullYear();
-  const month = String(parsed.getMonth() + 1).padStart(2, "0");
-  const day = String(parsed.getDate()).padStart(2, "0");
-  const hour = String(parsed.getHours()).padStart(2, "0");
-  const minute = String(parsed.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hour}:${minute}`;
-}
-
-function toIsoFromDateTimeLocal(value: string): string | undefined {
-  const normalized = String(value || "").trim();
-  if (!normalized) return undefined;
-  const parsed = new Date(normalized);
-  if (Number.isNaN(parsed.getTime())) return undefined;
-  return parsed.toISOString();
-}
-
-function formatMoney(currency: string | null | undefined, value: string | number | null | undefined): string {
-  if (value == null || value === "") return "-";
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return `${currency || ""} ${value}`.trim();
-  return `${currency || "LKR"} ${amount.toFixed(2)}`;
-}
-
-function formatOrderItems(snapshot: Record<string, unknown>): string {
-  const fields = asRecord(snapshot.fields);
-  const pricedLineItems = Array.isArray(fields.priced_line_items) ? fields.priced_line_items : [];
-  const lineItems = Array.isArray(fields.line_items) ? fields.line_items : [];
-  const source = pricedLineItems.length ? pricedLineItems : lineItems;
-  const rows = source
-    .map((entry) => {
-      const row = asRecord(entry);
-      const item = String(row.item ?? "").trim();
-      const quantity = String(row.quantity ?? "").trim();
-      if (!item) return "";
-      return quantity ? `${item} x ${quantity}` : item;
-    })
-    .filter(Boolean);
-  if (rows.length) return rows.join(", ");
-
-  const items = Array.isArray(fields.items) ? fields.items : [];
-  const quantities = Array.isArray(fields.quantity) ? fields.quantity : [];
-  if (!items.length) return "No items listed";
-  return items
-    .map((item, index) => `${String(item ?? "").trim()} x ${String(quantities[index] ?? quantities[0] ?? 1).trim()}`)
-    .join(", ");
-}
-
-function normalizeStatusLabel(value: string | null | undefined): string {
-  return String(value || "-").replace(/_/g, " ");
-}
-
-function getOrderStatus(order: OrderRow): string {
-  return String(order.status || "").toLowerCase();
-}
-
-function getFulfillmentStatus(order: OrderRow): OrderFulfillmentStatus {
-  return normalizeOrderFulfillmentStatus(order.fulfillmentStatus);
-}
-
-function resolveOrderAmount(order: OrderRow): string | number | null | undefined {
-  return order.paidAmount ?? order.refundAmount ?? order.expectedAmount;
-}
-
-function isManualCollectionOrder(order: OrderRow): boolean {
-  const method = String(order.paymentMethod || "").toLowerCase();
-  return method === "manual" || method === "cod";
-}
-
-function canRecordManualPayment(order: OrderRow): boolean {
-  return isManualCollectionOrder(order) && getOrderStatus(order) === "approved";
-}
-
-function needsPaymentDetailsWorkflow(order: OrderRow): boolean {
-  const method = String(order.paymentMethod || "").trim().toLowerCase();
-  const status = getOrderStatus(order);
-  return method === "bank_qr" && ["awaiting_payment", "payment_rejected"].includes(status);
-}
-
-function resolveWhatsAppWindowExpiresAt(order: OrderRow): Date | null {
-  const parsed = order.whatsappWindowExpiresAt ? new Date(order.whatsappWindowExpiresAt) : null;
-  return parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
-}
-
-function isWhatsAppWindowOpen(order: OrderRow, nowTs: number): boolean {
-  const expiresAt = resolveWhatsAppWindowExpiresAt(order);
-  if (expiresAt) return expiresAt.getTime() > nowTs;
-  return Boolean(order.whatsappWindowOpen);
-}
-
-function formatCountdownParts(totalSeconds: number): string {
-  const remaining = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(remaining / 3600);
-  const minutes = Math.floor((remaining % 3600) / 60);
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m`;
-  return `${remaining % 60}s`;
-}
-
-function describeWhatsAppWindow(order: OrderRow, nowTs: number): string {
-  const expiresAt = resolveWhatsAppWindowExpiresAt(order);
-  if (!expiresAt) {
-    return "No inbound customer reply recorded for this bot thread yet.";
-  }
-  const deltaSeconds = Math.round((expiresAt.getTime() - nowTs) / 1000);
-  if (deltaSeconds > 0) {
-    return `Window open for ${formatCountdownParts(deltaSeconds)} more.`;
-  }
-  return `Window closed ${formatCountdownParts(Math.abs(deltaSeconds))} ago.`;
-}
-
-function getStoredOrderSettings(order: OrderRow) {
-  const snapshot = asRecord(order.paymentConfigSnapshot);
-  return normalizeOrderFlowSettings({
-    orderFlow: {
-      ticketToOrderEnabled: true,
-      paymentMethod: snapshot.paymentMethod ?? order.paymentMethod ?? "manual",
-      currency: snapshot.currency ?? order.currency ?? "LKR",
-      bankQr: asRecord(snapshot.bankQr),
-    },
-  });
-}
-
-function buildManualPaymentInstructions(order: OrderRow): string {
-  const settings = getStoredOrderSettings(order);
-  const bankQr = settings.bankQr;
-  const botNumber = String(order.botDisplayPhoneNumber || "").trim();
-  const orderReference = String(order.paymentReference || order.id.slice(0, 8).toUpperCase()).trim();
-  const lines = [
-    order.customerName ? `Hi ${order.customerName}, your order has been approved.` : "Your order has been approved.",
-    `Order reference: ${orderReference}`,
-    `Total due: ${formatMoney(settings.currency, order.expectedAmount)}`,
-  ];
-  if (bankQr.showBankDetails) {
-    if (bankQr.bankName) lines.push(`Bank: ${bankQr.bankName}`);
-    if (bankQr.accountName) lines.push(`Account name: ${bankQr.accountName}`);
-    if (bankQr.accountNumber) lines.push(`Account number: ${bankQr.accountNumber}`);
-    if (bankQr.accountInstructions) lines.push(bankQr.accountInstructions);
-  }
-  if (bankQr.showQr && bankQr.qrImageUrl) {
-    lines.push(`QR: ${bankQr.qrImageUrl}`);
-  }
-  lines.push(
-    botNumber
-      ? `After payment, send the slip image or PDF to this bot number: ${botNumber}`
-      : "After payment, send the slip image or PDF back to the same bot chat.",
-  );
-  lines.push(`Please include order reference ${orderReference} with the slip.`);
-  return lines.join("\n");
-}
-
-function describeFinanceState(order: OrderRow, latestPayment?: OrderPaymentRow | null): string {
-  const status = getOrderStatus(order);
-  const method = String(order.paymentMethod || "").toLowerCase();
-  if (status === "paid") return "Payment captured";
-  if (status === "refund_pending") return "Refund pending";
-  if (status === "refunded") return "Refunded";
-  if (status === "payment_submitted") return "Payment review";
-  if (status === "payment_rejected") return "Payment rejected";
-  if (status === "awaiting_payment") return "Awaiting payment";
-  if (status === "denied") return "Not approved";
-  if (method === "manual") return "Manual collection";
-  if (method === "cod") return "Cash on delivery";
-  if (latestPayment?.aiCheckStatus) return `AI ${normalizeStatusLabel(latestPayment.aiCheckStatus)}`;
-  return normalizeStatusLabel(status || method || "pending");
-}
-
-function financeTone(order: OrderRow): { color: string; background: string; border: string } {
-  const status = getOrderStatus(order);
-  if (status === "paid") {
-    return {
-      color: "#86efac",
-      background: "rgba(34, 197, 94, 0.12)",
-      border: "1px solid rgba(34, 197, 94, 0.28)",
-    };
-  }
-  if (status === "payment_submitted") {
-    return {
-      color: "#fcd34d",
-      background: "rgba(245, 158, 11, 0.12)",
-      border: "1px solid rgba(245, 158, 11, 0.28)",
-    };
-  }
-  if (status === "awaiting_payment" || status === "approved") {
-    return {
-      color: "#cbd5e1",
-      background: "rgba(148, 163, 184, 0.12)",
-      border: "1px solid rgba(148, 163, 184, 0.24)",
-    };
-  }
-  if (status === "payment_rejected" || status === "denied" || status === "refunded") {
-    return {
-      color: "#fca5a5",
-      background: "rgba(239, 68, 68, 0.12)",
-      border: "1px solid rgba(239, 68, 68, 0.28)",
-    };
-  }
-  return {
-    color: "#fdba74",
-    background: "rgba(249, 115, 22, 0.12)",
-    border: "1px solid rgba(249, 115, 22, 0.28)",
-  };
-}
-
-function getDeliverySummary(order: OrderRow): string {
-  const area = String(order.deliveryArea || "").trim();
-  const address = String(order.shippingAddress || "").trim();
-  const courier = String(order.courierName || "").trim();
-  const tracking = String(order.trackingNumber || order.dispatchReference || "").trim();
-  if (courier && tracking) return `${courier} • ${tracking}`;
-  if (courier) return courier;
-  if (area && address) return `${area} • ${address}`;
-  if (area) return area;
-  if (address) return address;
-  return "Missing delivery details";
-}
-
-function getDeliveryHint(order: OrderRow): string {
-  if (order.trackingUrl) return "Tracking link available";
-  if (order.scheduledDeliveryAt) return `Scheduled ${formatDate(order.scheduledDeliveryAt)}`;
-  if (order.recipientName || order.recipientPhone) {
-    return [order.recipientName, order.recipientPhone].filter(Boolean).join(" • ");
-  }
-  return "Add recipient, address, and courier details";
-}
-
-function orderNeedsAttention(order: OrderRow, latestPayment?: OrderPaymentRow | null): boolean {
-  const status = getOrderStatus(order);
-  const fulfillment = getFulfillmentStatus(order);
-  if (status === "payment_submitted" || status === "payment_rejected") return true;
-  if (fulfillment === "failed_delivery" || fulfillment === "returned") return true;
-  if (fulfillment === "packed" && !order.courierName && !order.trackingNumber && !order.dispatchReference) return true;
-  if (latestPayment?.status === "submitted") return true;
-  return false;
-}
-
-function matchesOperationsFilter(order: OrderRow, latestPayment: OrderPaymentRow | null, filter: OperationsFilterKey): boolean {
-  const status = getOrderStatus(order);
-  const fulfillment = getFulfillmentStatus(order);
-  if (filter === "all") return true;
-  if (filter === "needs_action") return orderNeedsAttention(order, latestPayment);
-  if (filter === "on_hold") return fulfillment === "on_hold";
-  if (filter === "active") return ["queued", "preparing", "packed", "dispatched", "out_for_delivery"].includes(fulfillment);
-  if (filter === "in_transit") return fulfillment === "dispatched" || fulfillment === "out_for_delivery";
-  if (filter === "delivered") return fulfillment === "delivered";
-  if (filter === "exceptions") return fulfillment === "failed_delivery" || fulfillment === "returned";
-  if (filter === "refunds") return status === "refund_pending" || status === "refunded";
-  return true;
-}
-
-function formatEventSummary(event: OrderEventRow): string | null {
-  const payload = asRecord(event.payload);
-  const candidates = [
-    payload.notes,
-    payload.note,
-    payload.reason,
-    payload.paymentStatus,
-    payload.refundAmount,
-    payload.trackingNumber,
-  ];
-  for (const value of candidates) {
-    const text = String(value ?? "").trim();
-    if (text) return text;
-  }
-  return null;
-}
-
-function buildFulfillmentActions(order: OrderRow): Array<{ label: string; nextStatus: OrderFulfillmentStatus; tone?: "primary" | "ghost" }> {
-  const fulfillment = getFulfillmentStatus(order);
-  if (fulfillment === "on_hold" && getOrderStatus(order) === "paid") {
-    return [{ label: "Release To Queue", nextStatus: "queued", tone: "primary" }];
-  }
-  if (fulfillment === "queued") {
-    return [{ label: "Start Preparing", nextStatus: "preparing", tone: "primary" }];
-  }
-  if (fulfillment === "preparing") {
-    return [{ label: "Mark Packed", nextStatus: "packed", tone: "primary" }];
-  }
-  if (fulfillment === "packed") {
-    return [{ label: "Dispatch Order", nextStatus: "dispatched", tone: "primary" }];
-  }
-  if (fulfillment === "dispatched") {
-    return [
-      { label: "Out For Delivery", nextStatus: "out_for_delivery", tone: "primary" },
-      { label: "Failed Delivery", nextStatus: "failed_delivery", tone: "ghost" },
-    ];
-  }
-  if (fulfillment === "out_for_delivery") {
-    return [
-      { label: "Mark Delivered", nextStatus: "delivered", tone: "primary" },
-      { label: "Failed Delivery", nextStatus: "failed_delivery", tone: "ghost" },
-    ];
-  }
-  if (fulfillment === "failed_delivery") {
-    return [
-      { label: "Re-Queue", nextStatus: "queued", tone: "primary" },
-      { label: "Mark Returned", nextStatus: "returned", tone: "ghost" },
-    ];
-  }
-  if (fulfillment === "delivered") {
-    return [{ label: "Mark Returned", nextStatus: "returned", tone: "ghost" }];
-  }
-  return [];
-}
-
-export default function OrdersPage() {
+export function OrdersPageScreen({ mode }: { mode: OperationsPageMode }) {
   const utils = trpc.useUtils();
   const toast = useToast();
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<OperationsFilterKey>("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [dateField, setDateField] = useState<OrderDateField>("updatedAt");
+  const [rangeDays, setRangeDays] = useState<RangeDays>(30);
+  const [methodFilter, setMethodFilter] = useState<OrderMethodFilter>("all");
   const [nowTs, setNowTs] = useState(() => Date.now());
-  const ordersQuery = trpc.orders.listOrders.useQuery({ limit: 500 });
-  const statsQuery = trpc.orders.getStats.useQuery();
+  const isRevenueRoute = mode === "revenue";
+  const overviewMode: OperationsPageMode = isRevenueRoute ? "revenue" : "orders";
+  const overviewInput = useMemo(
+    () => ({
+      dateField,
+      rangeDays,
+      methodFilter,
+      mode: overviewMode,
+    }),
+    [dateField, methodFilter, overviewMode, rangeDays],
+  );
+  const orderLedgerInput = useMemo(
+    () => ({
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
+      search: search.trim() || undefined,
+      activeFilter,
+      dateField,
+      rangeDays,
+      methodFilter,
+    }),
+    [activeFilter, dateField, methodFilter, page, rangeDays, search],
+  );
+  const overviewQuery = trpc.orders.getOverview.useQuery(overviewInput);
+  const ordersQuery = trpc.orders.listOrdersPage.useQuery(orderLedgerInput);
   const reviewPayment = trpc.orders.reviewPayment.useMutation({
     onSuccess: async () => {
       await Promise.all([
         utils.orders.listOrders.invalidate(),
+        utils.orders.listOrdersPage.invalidate(),
+        utils.orders.getOverview.invalidate(),
+        utils.orders.getOrderById.invalidate(),
         utils.orders.getStats.invalidate(),
         utils.orders.getOrderPayments.invalidate(),
         utils.orders.getOrderEvents.invalidate(),
@@ -460,6 +150,9 @@ export default function OrdersPage() {
     onSuccess: async () => {
       await Promise.all([
         utils.orders.listOrders.invalidate(),
+        utils.orders.listOrdersPage.invalidate(),
+        utils.orders.getOverview.invalidate(),
+        utils.orders.getOrderById.invalidate(),
         utils.orders.getStats.invalidate(),
         utils.orders.getOrderPayments.invalidate(),
         utils.orders.getOrderEvents.invalidate(),
@@ -470,6 +163,9 @@ export default function OrdersPage() {
     onSuccess: async () => {
       await Promise.all([
         utils.orders.listOrders.invalidate(),
+        utils.orders.listOrdersPage.invalidate(),
+        utils.orders.getOverview.invalidate(),
+        utils.orders.getOrderById.invalidate(),
         utils.orders.getStats.invalidate(),
         utils.orders.getOrderEvents.invalidate(),
       ]);
@@ -479,6 +175,9 @@ export default function OrdersPage() {
     onSuccess: async () => {
       await Promise.all([
         utils.orders.listOrders.invalidate(),
+        utils.orders.listOrdersPage.invalidate(),
+        utils.orders.getOverview.invalidate(),
+        utils.orders.getOrderById.invalidate(),
         utils.orders.getStats.invalidate(),
         utils.orders.getOrderEvents.invalidate(),
       ]);
@@ -488,6 +187,9 @@ export default function OrdersPage() {
     onSuccess: async () => {
       await Promise.all([
         utils.orders.listOrders.invalidate(),
+        utils.orders.listOrdersPage.invalidate(),
+        utils.orders.getOverview.invalidate(),
+        utils.orders.getOrderById.invalidate(),
         utils.orders.getOrderEvents.invalidate(),
       ]);
     },
@@ -498,92 +200,99 @@ export default function OrdersPage() {
     return () => window.clearInterval(timerId);
   }, []);
 
+  const invalidateOrdersView = async () => {
+    await Promise.all([
+      utils.orders.listOrdersPage.invalidate(),
+      utils.orders.getOverview.invalidate(),
+      utils.orders.getOrderById.invalidate(),
+    ]);
+  };
+
   useLivePortalEvents({
-    orderListInput: { limit: 500 },
-    refreshOrderStats: true,
+    orderLedgerInput,
+    orderOverviewInput: overviewInput,
     activeOrderId: selectedOrderId,
+    onCatchup: invalidateOrdersView,
   });
 
   const orders = useMemo(() => (ordersQuery.data?.items ?? []) as OrderRow[], [ordersQuery.data?.items]);
-  const selectedOrder = useMemo(
-    () => (selectedOrderId ? orders.find((entry) => entry.id === selectedOrderId) ?? null : null),
-    [orders, selectedOrderId],
+  const pageTitle = isRevenueRoute ? "Revenue" : "Orders";
+  const pageDescription = isRevenueRoute
+    ? "Tracks order-driven revenue across manual, bot, and other channels."
+    : "Manage approvals, payments, fulfilment, and delivery follow-up from one workspace.";
+  const currency = overviewQuery.data?.settings.currency ?? "LKR";
+  const selectedOrderQuery = trpc.orders.getOrderById.useQuery(
+    { orderId: selectedOrderId ?? "" },
+    { enabled: Boolean(selectedOrderId) },
   );
-
-  const metrics = useMemo(() => {
-    let needsAction = 0;
-    let inFulfilment = 0;
-    let inTransit = 0;
-    let delivered = 0;
-    let exceptions = 0;
-
-    for (const order of orders) {
-      const latestPayment = order.latestPayment ?? null;
-      const fulfillment = getFulfillmentStatus(order);
-      if (orderNeedsAttention(order, latestPayment)) needsAction += 1;
-      if (["queued", "preparing", "packed", "dispatched", "out_for_delivery"].includes(fulfillment)) inFulfilment += 1;
-      if (fulfillment === "dispatched" || fulfillment === "out_for_delivery") inTransit += 1;
-      if (fulfillment === "delivered") delivered += 1;
-      if (fulfillment === "failed_delivery" || fulfillment === "returned") exceptions += 1;
-    }
-
-    return {
-      needsAction,
-      inFulfilment,
-      inTransit,
-      delivered,
-      exceptions,
-    };
-  }, [orders]);
-
-  const filterCounts = useMemo<Record<OperationsFilterKey, number>>(() => {
-    const counts: Record<OperationsFilterKey, number> = {
-      all: orders.length,
-      needs_action: 0,
-      on_hold: 0,
-      active: 0,
-      in_transit: 0,
-      delivered: 0,
-      exceptions: 0,
-      refunds: 0,
-    };
-    for (const order of orders) {
-      const latestPayment = order.latestPayment ?? null;
-      for (const filter of OPERATIONS_FILTERS) {
-        if (filter.key === "all") continue;
-        if (matchesOperationsFilter(order, latestPayment, filter.key)) counts[filter.key] += 1;
-      }
-    }
-    return counts;
-  }, [orders]);
-
-  const filteredOrders = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return orders.filter((order) => {
-      const latestPayment = order.latestPayment ?? null;
-      if (!matchesOperationsFilter(order, latestPayment, activeFilter)) return false;
-      if (!needle) return true;
+  const selectedOrder = selectedOrderQuery.data
+    ?? (selectedOrderId ? orders.find((entry) => entry.id === selectedOrderId) ?? null : null);
+  const scopedCount = overviewQuery.data?.scopedCount ?? 0;
+  const metrics = overviewQuery.data?.metrics ?? EMPTY_ORDER_METRICS;
+  const financeTotals = overviewQuery.data?.financeTotals ?? EMPTY_ORDER_FINANCE_TOTALS;
+  const filterCounts = overviewQuery.data?.filterCounts ?? EMPTY_ORDER_FILTER_COUNTS;
+  const trendData = overviewQuery.data?.trendData ?? [];
+  const mixData = overviewQuery.data?.mixData ?? [];
+  const summaryCards = useMemo(() => {
+    if (isRevenueRoute) {
       return [
-        order.id,
-        order.paymentReference,
-        order.customerName,
-        order.customerPhone,
-        order.recipientName,
-        order.recipientPhone,
-        order.shippingAddress,
-        order.deliveryArea,
-        order.courierName,
-        order.trackingNumber,
-        order.dispatchReference,
-      ]
-        .map((value) => String(value ?? "").toLowerCase())
-        .some((value) => value.includes(needle));
-    });
-  }, [activeFilter, orders, search]);
+        {
+          label: "Booked",
+          value: formatMoney(currency, financeTotals.booked),
+          hint: `${scopedCount} monetized order${scopedCount === 1 ? "" : "s"}`,
+        },
+        {
+          label: "Realized Profit",
+          value: formatMoney(currency, financeTotals.collected),
+          hint: `Approved total: ${formatMoney(currency, financeTotals.collected)}`,
+        },
+        {
+          label: "Unrealized",
+          value: formatMoney(currency, financeTotals.pending),
+          hint: "Awaiting approval/review",
+        },
+        {
+          label: "Refund Exposure",
+          value: formatMoney(currency, financeTotals.refundExposure),
+          hint: `Forfeited deposits: ${formatMoney(currency, 0)}`,
+        },
+      ];
+    }
 
-  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
+    return [
+      {
+        label: "Needs Action",
+        value: String(metrics.needsAction),
+        hint: "Orders blocked on payment or fulfilment decisions",
+      },
+      {
+        label: "In Fulfilment",
+        value: String(metrics.inFulfilment),
+        hint: "Active work moving through packing and dispatch",
+      },
+      {
+        label: "In Transit",
+        value: String(metrics.inTransit),
+        hint: "Already handed off to delivery",
+      },
+      {
+        label: "Delivered",
+        value: String(metrics.delivered),
+        hint: `${metrics.exceptions} exception${metrics.exceptions === 1 ? "" : "s"} in the same range`,
+      },
+    ];
+  }, [currency, financeTotals, isRevenueRoute, metrics, scopedCount]);
+
+  const chartMoneyFormatter = (value: number | string | readonly (string | number)[] | undefined) =>
+    formatMoney(currency, Array.isArray(value) ? Number(value[0] || 0) : Number(value || 0));
+
+  const chartCountFormatter = (value: number | string | readonly (string | number)[] | undefined) =>
+    Number(Array.isArray(value) ? value[0] || 0 : value || 0);
+
+  const totalCount = ordersQuery.data?.totalCount ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
-  const pageRows = filteredOrders.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+  const pageRows = orders;
 
   const isBusy =
     reviewPayment.isPending ||
@@ -687,6 +396,7 @@ export default function OrdersPage() {
 
   const handleFulfillmentUpdate = async (input: {
     orderId: string;
+    expectedUpdatedAt?: Date;
     fulfillmentStatus?: OrderFulfillmentStatus;
     recipientName?: string | null;
     recipientPhone?: string | null;
@@ -717,7 +427,7 @@ export default function OrdersPage() {
     }
   };
 
-  if (ordersQuery.data && !ordersQuery.data.settings.ticketToOrderEnabled) {
+  if (overviewQuery.data && !overviewQuery.data.settings.ticketToOrderEnabled) {
     return (
       <div className="card" style={{ margin: 24 }}>
         <div className="card-body" style={{ padding: 24 }}>
@@ -731,263 +441,393 @@ export default function OrdersPage() {
   }
 
   return (
-    <PortalDataTable
-      search={{
-        value: search,
-        onChange: (value) => {
-          setSearch(value);
-          setPage(0);
-        },
-        placeholder: "Search by order, customer, courier, tracking, or address...",
-        style: { width: "min(620px, 58vw)", minWidth: 240, flex: "0 1 620px" },
-      }}
-      countText={`${filteredOrders.length} order${filteredOrders.length !== 1 ? "s" : ""}`}
-      footer={(
-        <TablePagination
-          page={safePage}
-          totalPages={totalPages}
-          shownCount={pageRows.length}
-          totalCount={filteredOrders.length}
-          canPrev={safePage > 0}
-          canNext={safePage < totalPages - 1}
-          onPrev={() => setPage((current) => Math.max(0, current - 1))}
-          onNext={() => setPage((current) => Math.min(totalPages - 1, current + 1))}
-        />
-      )}
-    >
-      <div className="card" style={{ marginBottom: 12, overflow: "hidden" }}>
-        <div
-          className="card-body"
-          style={{
-            padding: "18px 18px 20px",
-            display: "grid",
-            gap: 14,
-            background:
-              "radial-gradient(circle at top right, rgba(184, 134, 11, 0.18), transparent 38%), linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(11, 18, 32, 0.92))",
-          }}
-        >
-          <div style={{ display: "grid", gap: 4 }}>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>Order Operations</div>
-            <div className="text-muted" style={{ fontSize: 13, maxWidth: 760 }}>
-              Approve payment, capture manual collections, control fulfilment, and keep customers updated from one workflow.
+    <>
+      <div className="portal-page-shell">
+        <div className={`portal-page-stack${isRevenueRoute ? " portal-revenue-page" : ""}`}>
+          <PortalHeaderCard
+            title={pageTitle}
+            description={pageDescription}
+            controls={
+              <>
+                <select
+                  value={dateField}
+                  onChange={(event) => {
+                    setDateField(event.target.value as OrderDateField);
+                    setPage(0);
+                  }}
+                  className="portal-res-select"
+                  style={{ minWidth: 0 }}
+                >
+                  <option value="updatedAt">By Updated Date</option>
+                  <option value="createdAt">By Created Date</option>
+                </select>
+                <select
+                  value={methodFilter}
+                  onChange={(event) => {
+                    setMethodFilter(event.target.value as OrderMethodFilter);
+                    setPage(0);
+                  }}
+                  className={isRevenueRoute ? "portal-res-select" : "portal-res-select portal-res-select--compact"}
+                  style={{ minWidth: 0 }}
+                >
+                  {METHOD_FILTER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="portal-res-range" role="group" aria-label="Time range">
+                  {RANGE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`portal-res-range__button${rangeDays === option.value ? " is-active" : ""}`}
+                      onClick={() => {
+                        setRangeDays(option.value);
+                        setPage(0);
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            }
+          />
+
+          <div className="portal-summary-grid">
+            {summaryCards.map((card, index) => (
+              <PortalMetricCard
+                key={card.label}
+                label={card.label}
+                value={card.value}
+                hint={card.hint}
+                tone={index === 0 ? "blue" : index === 1 ? "gold" : index === 2 ? "amber" : "rose"}
+              />
+            ))}
+          </div>
+
+          <div className="portal-chart-grid">
+            <div className="portal-chart-card">
+              <div className="portal-chart-title">{isRevenueRoute ? "Revenue Trend" : "Order Trend"}</div>
+              <div className="portal-chart-copy">
+                {isRevenueRoute
+                  ? "Booked vs collected revenue over time."
+                  : "Approved and operational order value over time."}
+              </div>
+              <div className="portal-chart-canvas">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trendData}>
+                    <defs>
+                      <linearGradient id="ordersExpectedGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#083774" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#083774" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="ordersCollectedGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#b59a5a" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#b59a5a" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.22)" />
+                    <XAxis dataKey="label" stroke="var(--portal-text-soft)" fontSize={12} />
+                    <YAxis stroke="var(--portal-text-soft)" fontSize={12} />
+                    <Tooltip
+                      formatter={chartMoneyFormatter}
+                      contentStyle={{
+                        backgroundColor: "var(--portal-card-plain)",
+                        border: "1px solid var(--portal-border)",
+                        borderRadius: "10px",
+                        color: "var(--portal-text)",
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="expected"
+                      stroke="#083774"
+                      fillOpacity={1}
+                      fill="url(#ordersExpectedGradient)"
+                      strokeWidth={2}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="collected"
+                      stroke="#b59a5a"
+                      fillOpacity={1}
+                      fill="url(#ordersCollectedGradient)"
+                      strokeWidth={2}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="portal-chart-card">
+              <div className="portal-chart-title">Status Mix</div>
+              <div className="portal-chart-copy">
+                {isRevenueRoute
+                  ? "Revenue-weighted order states."
+                  : "Distribution of active order workload across the operations pipeline."}
+              </div>
+              <div className="portal-chart-canvas">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={mixData} layout="vertical" margin={{ left: 12, right: 12, top: 4, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.22)" />
+                    <XAxis type="number" stroke="var(--portal-text-soft)" fontSize={12} />
+                    <YAxis dataKey="name" type="category" stroke="var(--portal-text-soft)" fontSize={12} width={92} />
+                    <Tooltip
+                      formatter={chartCountFormatter}
+                      contentStyle={{
+                        backgroundColor: "var(--portal-card-plain)",
+                        border: "1px solid var(--portal-border)",
+                        borderRadius: "10px",
+                        color: "var(--portal-text)",
+                      }}
+                    />
+                    <Bar dataKey="value" fill="#b59a5a" radius={[6, 6, 6, 6]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))",
-              gap: 10,
-            }}
-          >
-            <SummaryCard label="Needs Action" value={String(metrics.needsAction)} />
-            <SummaryCard label="In Fulfilment" value={String(metrics.inFulfilment)} />
-            <SummaryCard label="In Transit" value={String(metrics.inTransit)} />
-            <SummaryCard label="Delivered" value={String(metrics.delivered)} />
-            <SummaryCard label="Exceptions" value={String(metrics.exceptions)} />
-            <SummaryCard
-              label="Gross Collected"
-              value={formatMoney(ordersQuery.data?.settings.currency, statsQuery.data?.grossCollectedAmount ?? 0)}
+
+          <div className="portal-table-surface portal-table-surface--fill">
+            <div className="portal-table-toolbar portal-ledger-toolbar">
+              <div className="portal-ledger-toolbar__title-group">
+                <h2 className="portal-ledger-toolbar__title">{isRevenueRoute ? "Transaction Ledger" : "Order Ledger"}</h2>
+                <span className="portal-ledger-toolbar__badge">
+                  {totalCount} {totalCount === 1 ? "Entry" : "Entries"}
+                </span>
+              </div>
+              <div className="portal-ledger-toolbar__controls">
+                <select
+                  value={activeFilter}
+                  onChange={(event) => {
+                    setActiveFilter(event.target.value as OperationsFilterKey);
+                    setPage(0);
+                  }}
+                  className="portal-res-select portal-res-select--compact"
+                >
+                  {OPERATIONS_FILTERS.map((filter) => (
+                    <option key={filter.key} value={filter.key}>
+                      {filter.label} ({filterCounts[filter.key]})
+                    </option>
+                  ))}
+                </select>
+                {!isRevenueRoute ? (
+                  <div className="portal-ledger-search">
+                    <TableSearchControl
+                      value={search}
+                      onChange={(value) => {
+                        setSearch(value);
+                        setPage(0);
+                      }}
+                      placeholder="Search orders..."
+                      style={{ width: "min(320px, 100%)" }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="portal-ledger-table-wrap">
+              <div className="portal-table-scroll">
+                <table className="table table-clickable portal-modern-table portal-ledger-table" style={{ width: "100%", tableLayout: "fixed" }}>
+                  <thead>
+                    {isRevenueRoute ? (
+                      <tr>
+                        <th style={{ textAlign: "left", width: "8%" }}>Ref</th>
+                        <th style={{ textAlign: "left", width: "22%" }}>Guest</th>
+                        <th style={{ textAlign: "left", width: "16%" }}>Status</th>
+                        <th style={{ textAlign: "left", width: "16%" }}>Timing</th>
+                        <th style={{ textAlign: "left", width: "12%" }}>Booked</th>
+                        <th style={{ textAlign: "left", width: "12%" }}>Net Realized</th>
+                        <th style={{ textAlign: "left", width: "10%" }}>Pending</th>
+                        <th style={{ textAlign: "right", width: "8%" }}>Action</th>
+                      </tr>
+                    ) : (
+                      <tr>
+                        <th style={{ textAlign: "left", width: "13%" }}>Order</th>
+                        <th style={{ textAlign: "left", width: "18%" }}>Customer</th>
+                        <th style={{ textAlign: "left", width: "20%" }}>Items</th>
+                        <th style={{ textAlign: "left", width: "13%" }}>Finance</th>
+                        <th style={{ textAlign: "left", width: "14%" }}>Fulfilment</th>
+                        <th style={{ textAlign: "left", width: "14%" }}>Delivery</th>
+                        <th style={{ textAlign: "left", width: "8%" }}>Updated</th>
+                        <th style={{ textAlign: "right", width: "8%" }}>Action</th>
+                      </tr>
+                    )}
+                  </thead>
+                  <tbody>
+                    {pageRows.map((order) => {
+                      const snapshot = asRecord(order.ticketSnapshot);
+                      const latestPayment = order.latestPayment ?? null;
+                      const fulfillment = getFulfillmentStatus(order);
+                      const expectedAmount = numericAmount(resolveOrderAmount(order));
+                      const collectedAmount = getOrderStatus(order) === "paid"
+                        ? numericAmount(order.paidAmount ?? resolveOrderAmount(order))
+                        : 0;
+                      const pendingAmount = Math.max(0, expectedAmount - collectedAmount);
+                      const canApprovePayment = Boolean(latestPayment && latestPayment.status === "submitted");
+                      const canRejectPayment = canApprovePayment;
+                      return (
+                        <tr key={order.id} onClick={() => setSelectedOrderId(order.id)} style={{ cursor: "pointer" }}>
+                          {isRevenueRoute ? (
+                            <>
+                              <td className="portal-ledger-table__ref">
+                                {order.id.startsWith("ord_") ? shortId(order.id) : `#${shortId(order.id)}`}
+                              </td>
+                              <td>
+                                <div className="portal-entity-stack">
+                                  <div className="portal-body-text">{order.customerName || order.recipientName || order.customerPhone || "-"}</div>
+                                  <div className="portal-meta-text">
+                                    {(order.recipientPhone || order.customerPhone || "No phone")}
+                                    {order.paymentReference ? ` | ${order.paymentReference}` : ""}
+                                  </div>
+                                  <div className="portal-meta-text">{formatOrderItems(snapshot)}</div>
+                                </div>
+                              </td>
+                              <td>
+                                <div className="portal-entity-stack">
+                                  <span className={financeToneClass(order)}>{describeFinanceState(order, latestPayment)}</span>
+                                  <span className={fulfillmentToneClass(fulfillment)}>{formatOrderFulfillmentStatus(fulfillment)}</span>
+                                </div>
+                              </td>
+                              <td>
+                                <div className="portal-entity-stack">
+                                  <div className="portal-body-text">
+                                    {formatDate(dateField === "createdAt" ? order.createdAt : order.updatedAt)}
+                                  </div>
+                                  <div className="portal-meta-text">Booked {formatDate(order.createdAt)}</div>
+                                </div>
+                              </td>
+                              <td className="portal-ledger-table__money">{formatMoney(order.currency, expectedAmount)}</td>
+                              <td className="portal-ledger-table__money">{formatMoney(order.currency, collectedAmount)}</td>
+                              <td className="portal-meta-text">{formatMoney(order.currency, pendingAmount)}</td>
+                            </>
+                          ) : (
+                            <>
+                              <td>
+                                <div className="portal-entity-stack">
+                                  <div className="portal-id">#{shortId(order.id)}</div>
+                                  <div className="portal-meta-text">{order.paymentReference || "-"}</div>
+                                </div>
+                              </td>
+                              <td>
+                                <div className="portal-entity-stack">
+                                  <div className="portal-body-text">{order.customerName || order.recipientName || order.customerPhone || "-"}</div>
+                                  <div className="portal-meta-text">{order.recipientPhone || order.customerPhone || "No phone"}</div>
+                                </div>
+                              </td>
+                              <td>
+                                <span className="portal-body-text">{formatOrderItems(snapshot)}</span>
+                              </td>
+                              <td>
+                                <div className="portal-entity-stack">
+                                  <span className="portal-ledger-table__money">{formatMoney(order.currency, expectedAmount)}</span>
+                                  <span className={financeToneClass(order)}>{describeFinanceState(order, latestPayment)}</span>
+                                </div>
+                              </td>
+                              <td>
+                                <div className="portal-entity-stack">
+                                  <span className={fulfillmentToneClass(fulfillment)}>{formatOrderFulfillmentStatus(fulfillment)}</span>
+                                  <div className="portal-meta-text">{describeOrderFulfillmentNextAction(fulfillment)}</div>
+                                </div>
+                              </td>
+                              <td>
+                                <div className="portal-entity-stack">
+                                  <div className="portal-body-text">{getDeliverySummary(order)}</div>
+                                  <div className="portal-meta-text">{getDeliveryHint(order)}</div>
+                                </div>
+                              </td>
+                              <td className="portal-meta-text">{formatDate(order.updatedAt)}</td>
+                            </>
+                          )}
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <div className="portal-ledger-actions">
+                              <button
+                                type="button"
+                                className={`portal-ledger-action portal-ledger-action--approve${canApprovePayment ? "" : " is-hidden"}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (latestPayment) void handleReview(latestPayment.id, "approve");
+                                }}
+                                disabled={!canApprovePayment}
+                                aria-label={canApprovePayment ? "Approve payment" : undefined}
+                              >
+                                <CheckIcon />
+                              </button>
+                              <button
+                                type="button"
+                                className={`portal-ledger-action portal-ledger-action--reject${canRejectPayment ? "" : " is-hidden"}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (latestPayment) void handleReview(latestPayment.id, "reject");
+                                }}
+                                disabled={!canRejectPayment}
+                                aria-label={canRejectPayment ? "Reject payment" : undefined}
+                              >
+                                <CloseIcon />
+                              </button>
+                              <RowActionsMenu
+                                items={[
+                                  { label: "Open Details", onSelect: () => setSelectedOrderId(order.id) },
+                                  {
+                                    label: "Approve Payment",
+                                    disabled: !canApprovePayment,
+                                    onSelect: () => latestPayment && void handleReview(latestPayment.id, "approve"),
+                                  },
+                                  {
+                                    label: "Reject Payment",
+                                    disabled: !canRejectPayment,
+                                    onSelect: () => latestPayment && void handleReview(latestPayment.id, "reject"),
+                                  },
+                                  {
+                                    label: "Send Payment Details",
+                                    disabled: !needsPaymentDetailsWorkflow(order) || !isWhatsAppWindowOpen(order, nowTs),
+                                    onSelect: () => void handleSendPaymentDetails(order),
+                                  },
+                                  {
+                                    label: "Record Manual Payment",
+                                    disabled: !canRecordManualPayment(order),
+                                    onSelect: () => void handleManualPayment(order),
+                                  },
+                                  {
+                                    label: "Start Refund",
+                                    disabled: getOrderStatus(order) !== "paid",
+                                    onSelect: () => void handleRefundAction(order, "mark_pending"),
+                                  },
+                                ]}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {pageRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} style={{ textAlign: "center", padding: "24px 10px", color: "var(--muted)" }}>
+                          No orders match this view in the selected range.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <TablePagination
+              page={safePage}
+              totalPages={totalPages}
+              shownCount={pageRows.length}
+              totalCount={totalCount}
+              canPrev={safePage > 0}
+              canNext={safePage < totalPages - 1}
+              onPrev={() => setPage((current) => Math.max(0, current - 1))}
+              onNext={() => setPage((current) => Math.min(totalPages - 1, current + 1))}
+              onPageChange={setPage}
             />
           </div>
         </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 12 }}>
-        <div className="card-body" style={{ padding: "12px 14px", display: "grid", gap: 10 }}>
-          <div style={{ display: "grid", gap: 2 }}>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>Operations Views</div>
-            <div className="text-muted" style={{ fontSize: 12 }}>
-              Switch between payment review, active fulfilment, delivery exceptions, and completed orders.
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            {OPERATIONS_FILTERS.map((filter) => {
-              const active = activeFilter === filter.key;
-              return (
-                <button
-                  key={filter.key}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => {
-                    setActiveFilter(filter.key);
-                    setPage(0);
-                  }}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "8px 12px",
-                    borderRadius: 999,
-                    border: active
-                      ? "1px solid rgba(184, 134, 11, 0.45)"
-                      : "1px solid rgba(148, 163, 184, 0.18)",
-                    background: active
-                      ? "linear-gradient(135deg, rgba(184, 134, 11, 0.22) 0%, rgba(15, 23, 42, 0.92) 100%)"
-                      : "rgba(15, 23, 42, 0.72)",
-                    color: active ? "#f8fafc" : "var(--muted)",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    whiteSpace: "nowrap",
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  <span>{filter.label}</span>
-                  <span
-                    style={{
-                      minWidth: 20,
-                      height: 20,
-                      padding: "0 6px",
-                      borderRadius: 999,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      background: active ? "rgba(255, 255, 255, 0.14)" : "rgba(255, 255, 255, 0.06)",
-                      color: active ? "#f8fafc" : "var(--foreground)",
-                    }}
-                  >
-                    {filterCounts[filter.key]}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      <div style={{ overflowX: "hidden", overflowY: "auto", flex: 1, minHeight: 0 }}>
-        <table className="table table-clickable portal-modern-table" style={{ width: "100%", tableLayout: "fixed" }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "left", width: "13%" }}>Order</th>
-              <th style={{ textAlign: "left", width: "15%" }}>Customer</th>
-              <th style={{ textAlign: "left", width: "20%" }}>Items</th>
-              <th style={{ textAlign: "left", width: "13%" }}>Finance</th>
-              <th style={{ textAlign: "left", width: "15%" }}>Fulfilment</th>
-              <th style={{ textAlign: "left", width: "16%" }}>Delivery</th>
-              <th style={{ textAlign: "left", width: "5%" }}>Updated</th>
-              <th style={{ textAlign: "center", width: "3%" }} />
-            </tr>
-          </thead>
-          <tbody>
-            {pageRows.map((order) => {
-              const snapshot = asRecord(order.ticketSnapshot);
-              const latestPayment = order.latestPayment ?? null;
-              const fulfillment = getFulfillmentStatus(order);
-              return (
-                <tr key={order.id} onClick={() => setSelectedOrderId(order.id)} style={{ cursor: "pointer" }}>
-                  <td>
-                    <div style={{ display: "grid", gap: 3 }}>
-                      <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>#{shortId(order.id)}</div>
-                      <div style={{ color: "var(--muted)", fontSize: 12 }}>{order.paymentReference || "-"}</div>
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: "grid", gap: 3 }}>
-                      <div>{order.customerName || order.recipientName || order.customerPhone || "-"}</div>
-                      <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                        {order.recipientPhone || order.customerPhone || "No phone"}
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <span style={{ display: "block", whiteSpace: "normal", wordBreak: "break-word", fontSize: 13 }}>
-                      {formatOrderItems(snapshot)}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ display: "grid", gap: 4 }}>
-                      <span style={{ fontWeight: 600 }}>{formatMoney(order.currency, resolveOrderAmount(order))}</span>
-                      <span
-                        style={{
-                          ...financeTone(order),
-                          padding: "4px 10px",
-                          borderRadius: 999,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          display: "inline-flex",
-                          width: "fit-content",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        {describeFinanceState(order, latestPayment)}
-                      </span>
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: "grid", gap: 4 }}>
-                      <span
-                        style={{
-                          ...orderFulfillmentTone(fulfillment),
-                          padding: "4px 10px",
-                          borderRadius: 999,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          textTransform: "uppercase",
-                          display: "inline-flex",
-                          width: "fit-content",
-                        }}
-                      >
-                        {formatOrderFulfillmentStatus(fulfillment)}
-                      </span>
-                      <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                        {describeOrderFulfillmentNextAction(fulfillment)}
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: "grid", gap: 3 }}>
-                      <div style={{ whiteSpace: "normal", wordBreak: "break-word", fontSize: 13 }}>
-                        {getDeliverySummary(order)}
-                      </div>
-                      <div style={{ color: "var(--muted)", fontSize: 12 }}>{getDeliveryHint(order)}</div>
-                    </div>
-                  </td>
-                  <td style={{ fontSize: 12 }}>{formatDate(order.updatedAt)}</td>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <RowActionsMenu
-                      items={[
-                        { label: "Open Details", onSelect: () => setSelectedOrderId(order.id) },
-                        {
-                          label: "Approve Payment",
-                          disabled: !latestPayment || latestPayment.status !== "submitted",
-                          onSelect: () => latestPayment && void handleReview(latestPayment.id, "approve"),
-                        },
-                        {
-                          label: "Reject Payment",
-                          disabled: !latestPayment || latestPayment.status !== "submitted",
-                          onSelect: () => latestPayment && void handleReview(latestPayment.id, "reject"),
-                        },
-                        {
-                          label: "Send Payment Details",
-                          disabled: !needsPaymentDetailsWorkflow(order) || !isWhatsAppWindowOpen(order, nowTs),
-                          onSelect: () => void handleSendPaymentDetails(order),
-                        },
-                        {
-                          label: "Record Manual Payment",
-                          disabled: !canRecordManualPayment(order),
-                          onSelect: () => void handleManualPayment(order),
-                        },
-                        {
-                          label: "Start Refund",
-                          disabled: getOrderStatus(order) !== "paid",
-                          onSelect: () => void handleRefundAction(order, "mark_pending"),
-                        },
-                      ]}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
-            {pageRows.length === 0 ? (
-              <tr>
-                <td colSpan={8} style={{ textAlign: "center", padding: "24px 10px", color: "var(--muted)" }}>
-                  No orders match this operations view.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
       </div>
 
       <OrderDetailsDrawer
@@ -1002,24 +842,28 @@ export default function OrdersPage() {
         busy={isBusy}
         nowTs={nowTs}
       />
-    </PortalDataTable>
+    </>
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+export default function OrdersPage() {
+  return <OrdersPageScreen mode="orders" />;
+}
+
+function CheckIcon() {
   return (
-    <div
-      className="card"
-      style={{
-        background: "rgba(15, 23, 42, 0.82)",
-        border: "1px solid rgba(255, 255, 255, 0.06)",
-      }}
-    >
-      <div className="card-body" style={{ padding: "12px 14px" }}>
-        <div className="text-muted" style={{ fontSize: 11 }}>{label}</div>
-        <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }}>{value}</div>
-      </div>
-    </div>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m5 12 5 5L20 7" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
   );
 }
 
@@ -1042,6 +886,7 @@ function OrderDetailsDrawer({
   onSendPaymentDetails: (order: OrderRow) => Promise<void>;
   onUpdateFulfillment: (input: {
     orderId: string;
+    expectedUpdatedAt?: Date;
     fulfillmentStatus?: OrderFulfillmentStatus;
     recipientName?: string | null;
     recipientPhone?: string | null;
@@ -1082,6 +927,7 @@ function OrderDetailsDrawer({
   const [fulfillmentNotes, setFulfillmentNotes] = useState(() => String(order?.fulfillmentNotes || "").trim());
 
   if (!order) return null;
+  const expectedUpdatedAt = toMutationDate(order.updatedAt);
   const snapshot = asRecord(order.ticketSnapshot);
   const payments = (paymentsQuery.data ?? []) as OrderPaymentRow[];
   const latestPayment = payments[0] ?? order.latestPayment ?? null;
@@ -1107,6 +953,12 @@ function OrderDetailsDrawer({
         background: "rgba(245, 158, 11, 0.12)",
         border: "1px solid rgba(245, 158, 11, 0.22)",
       };
+  const paymentWindowToneClass = paymentWindowOpen
+    ? "portal-pill portal-pill--success"
+    : "portal-pill portal-pill--warning";
+  const bookedTotal = numericAmount(resolveOrderAmount(order));
+  const paidTotal = numericAmount(order.paidAmount ?? latestPayment?.paidAmount ?? 0);
+  const pendingTotal = Math.max(0, bookedTotal - paidTotal);
 
   const copyManualInstructions = async () => {
     try {
@@ -1128,54 +980,72 @@ function OrderDetailsDrawer({
       <div className="drawer-backdrop open" onClick={onClose} />
       <div className="drawer open">
         <div className="drawer-header">
-          <h3 className="drawer-title">Order Operations</h3>
-          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close details">
-            x
-          </button>
+          <div className="portal-drawer-heading">
+            <div>
+              <div className="portal-drawer-eyebrow">Order Details</div>
+              <div className="portal-drawer-title">Order #{shortId(order.id)}</div>
+              <div className="portal-drawer-copy">
+                {(order.customerName || order.recipientName || "Unassigned customer")}
+                {formatOrderItems(snapshot) ? ` · ${formatOrderItems(snapshot)}` : ""}
+              </div>
+            </div>
+            <button className="portal-drawer-close" onClick={onClose} aria-label="Close details">
+              <CloseIcon />
+            </button>
+          </div>
+          <div className="portal-drawer-tags">
+            <StatusPill
+              label={describeFinanceState(order, latestPayment)}
+              toneClass={financeToneClass(order)}
+            />
+            <StatusPill
+              label={formatOrderFulfillmentStatus(fulfillment)}
+              toneClass={fulfillmentToneClass(fulfillment)}
+            />
+          </div>
+          <div className="portal-drawer-metrics">
+            <div className="portal-drawer-metric">
+              <div className="portal-drawer-metric__label">Booked</div>
+              <div className="portal-drawer-metric__value">{formatMoney(order.currency, bookedTotal)}</div>
+            </div>
+            <div className="portal-drawer-metric">
+              <div className="portal-drawer-metric__label">Paid</div>
+              <div className="portal-drawer-metric__value">{formatMoney(order.currency, paidTotal)}</div>
+            </div>
+            <div className="portal-drawer-metric">
+              <div className="portal-drawer-metric__label">Outstanding</div>
+              <div className="portal-drawer-metric__value">{formatMoney(order.currency, pendingTotal)}</div>
+            </div>
+          </div>
         </div>
         <div className="drawer-body">
-          <div style={{ display: "grid", gap: "var(--space-4)" }}>
-            <div
-              className="card"
-              style={{
-                overflow: "hidden",
-                background:
-                  "radial-gradient(circle at top right, rgba(184, 134, 11, 0.12), transparent 35%), linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.88))",
-              }}
-            >
-              <div className="card-body" style={{ display: "grid", gap: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                  <div style={{ display: "grid", gap: 4 }}>
-                    <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--muted)" }}>
-                      #{shortId(order.id)} ({order.id})
-                    </div>
-                    <div style={{ fontSize: 18, fontWeight: 700 }}>
-                      {order.customerName || order.recipientName || "Unassigned customer"}
-                    </div>
-                    <div className="text-muted" style={{ fontSize: 13 }}>
-                      {formatOrderItems(snapshot)}
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
-                    <StatusPill
-                      label={describeFinanceState(order, latestPayment)}
-                      tone={financeTone(order)}
-                    />
-                    <StatusPill
-                      label={formatOrderFulfillmentStatus(fulfillment)}
-                      tone={orderFulfillmentTone(fulfillment)}
-                    />
-                  </div>
+          <div className="portal-rows">
+            <div className="portal-detail-panel">
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div className="portal-section-head">
+                  <div className="portal-section-kicker">Order #{shortId(order.id)}</div>
+                  <div className="portal-section-title">{order.customerName || order.recipientName || "Unassigned customer"}</div>
+                  <div className="portal-section-caption">{formatOrderItems(snapshot)}</div>
                 </div>
+                <div className="portal-inline-actions" style={{ justifyContent: "flex-start" }}>
+                  <StatusPill
+                    label={describeFinanceState(order, latestPayment)}
+                    toneClass={financeToneClass(order)}
+                  />
+                  <StatusPill
+                    label={formatOrderFulfillmentStatus(fulfillment)}
+                    toneClass={fulfillmentToneClass(fulfillment)}
+                  />
+                </div>
+              </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-                  <Detail label="Order Reference" value={order.paymentReference || "-"} />
-                  <Detail label="Payment Method" value={normalizeStatusLabel(order.paymentMethod)} />
-                  <Detail label="Amount" value={formatMoney(order.currency, resolveOrderAmount(order))} />
-                  <Detail label="Updated" value={formatDate(order.updatedAt)} />
-                  <Detail label="Delivery" value={getDeliverySummary(order)} />
-                  <Detail label="Next Action" value={describeOrderFulfillmentNextAction(fulfillment)} />
-                </div>
+              <div className="portal-detail-grid">
+                <Detail label="Order Reference" value={order.paymentReference || "-"} />
+                <Detail label="Payment Method" value={normalizeStatusLabel(order.paymentMethod)} />
+                <Detail label="Amount" value={formatMoney(order.currency, resolveOrderAmount(order))} />
+                <Detail label="Updated" value={formatDate(order.updatedAt)} />
+                <Detail label="Delivery" value={getDeliverySummary(order)} />
+                <Detail label="Next Action" value={describeOrderFulfillmentNextAction(fulfillment)} />
               </div>
             </div>
 
@@ -1270,6 +1140,7 @@ function OrderDetailsDrawer({
                       disabled={busy || (action.nextStatus === "dispatched" && !readyForDispatch)}
                       onClick={() => void onUpdateFulfillment({
                         orderId: order.id,
+                        expectedUpdatedAt,
                         fulfillmentStatus: action.nextStatus,
                         recipientName,
                         recipientPhone,
@@ -1344,6 +1215,7 @@ function OrderDetailsDrawer({
                     disabled={busy}
                     onClick={() => void onUpdateFulfillment({
                       orderId: order.id,
+                      expectedUpdatedAt,
                       recipientName,
                       recipientPhone,
                       shippingAddress,
@@ -1380,6 +1252,7 @@ function OrderDetailsDrawer({
                     disabled={busy}
                     onClick={() => void onUpdateFulfillment({
                       orderId: order.id,
+                      expectedUpdatedAt,
                       recipientName,
                       recipientPhone,
                       shippingAddress,
@@ -1402,6 +1275,7 @@ function OrderDetailsDrawer({
                     disabled={busy || !readyForDispatch}
                     onClick={() => void onUpdateFulfillment({
                       orderId: order.id,
+                      expectedUpdatedAt,
                       fulfillmentStatus: "dispatched",
                       recipientName,
                       recipientPhone,
@@ -1451,7 +1325,7 @@ function OrderDetailsDrawer({
                       </div>
                       <StatusPill
                         label={paymentWindowOpen ? "Window Open" : "Window Closed"}
-                        tone={paymentWindowTone}
+                        toneClass={paymentWindowToneClass}
                       />
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
@@ -1656,6 +1530,27 @@ function OrderDetailsDrawer({
             </div>
           </div>
         </div>
+        <div className="portal-drawer-footer">
+          <div className="portal-drawer-footer__label">Order Actions</div>
+          <div className="portal-drawer-footer__actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy || !canRecordManualPayment(order)}
+              onClick={() => void onRecordManualPayment(order)}
+            >
+              Record Payment
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={busy || !needsPaymentDetailsWorkflow(order)}
+              onClick={() => void onSendPaymentDetails(order)}
+            >
+              Send Details
+            </button>
+          </div>
+        </div>
       </div>
     </>
   );
@@ -1663,36 +1558,21 @@ function OrderDetailsDrawer({
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <div className="text-muted" style={{ fontSize: 12 }}>{label}</div>
-      <div>{value}</div>
+    <div className="portal-detail-item">
+      <div className="portal-detail-label">{label}</div>
+      <div className="portal-detail-value">{value}</div>
     </div>
   );
 }
 
 function StatusPill({
   label,
-  tone,
+  toneClass,
 }: {
   label: string;
-  tone: { color: string; background: string; border: string };
+  toneClass: string;
 }) {
-  return (
-    <span
-      style={{
-        ...tone,
-        padding: "6px 12px",
-        borderRadius: 999,
-        fontSize: 11,
-        fontWeight: 700,
-        textTransform: "uppercase",
-        display: "inline-flex",
-        width: "fit-content",
-      }}
-    >
-      {label}
-    </span>
-  );
+  return <span className={toneClass}>{label}</span>;
 }
 
 function Field({
@@ -1709,20 +1589,13 @@ function Field({
   type?: string;
 }) {
   return (
-    <label style={{ display: "grid", gap: 6 }}>
-      <span className="text-muted" style={{ fontSize: 12 }}>{label}</span>
+    <label className="portal-field">
+      <span className="portal-field-label">{label}</span>
       <input
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: 10,
-          padding: "10px 12px",
-          background: "rgba(15, 23, 42, 0.65)",
-          color: "var(--foreground)",
-        }}
       />
     </label>
   );
@@ -1740,21 +1613,14 @@ function TextAreaField({
   placeholder: string;
 }) {
   return (
-    <label style={{ display: "grid", gap: 6 }}>
-      <span className="text-muted" style={{ fontSize: 12 }}>{label}</span>
+    <label className="portal-field">
+      <span className="portal-field-label">{label}</span>
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         rows={3}
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: 10,
-          padding: "10px 12px",
-          background: "rgba(15, 23, 42, 0.65)",
-          color: "var(--foreground)",
-          resize: "vertical",
-        }}
+        style={{ resize: "vertical" }}
       />
     </label>
   );

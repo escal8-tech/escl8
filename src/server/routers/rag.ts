@@ -66,6 +66,7 @@ export const ragRouter = router({
               ...updatedDoc,
               originalFilename: updatedDoc.originalFilename,
             }) as any,
+            ragJobId: job.id as any,
           },
           createdAt: updatedDoc.updatedAt ?? new Date(),
         });

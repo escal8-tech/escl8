@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { normalizeOrderFlowSettings } from "@/lib/order-settings";
 import {
@@ -9,6 +9,7 @@ import {
   type OrderFulfillmentStatus,
 } from "@/lib/order-operations";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { assertExpectedUpdatedAt, assertOperationThrottle, getStaffActorKey } from "@/server/operationalHardening";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { drainBusinessOutbox, enqueueEmailOutboxMessages, enqueueWhatsAppOutboxMessages } from "@/server/services/messageOutbox";
 import { db } from "../db/client";
@@ -29,6 +30,53 @@ const reviewActionSchema = z.enum(["approve", "reject"]);
 const refundActionSchema = z.enum(["mark_pending", "mark_refunded", "cancel"]);
 const fulfillmentStatusSchema = z.enum(ORDER_FULFILLMENT_STATUSES);
 const WHATSAPP_WINDOW_MS = 24 * 60 * 60 * 1000;
+const ORDER_OPERATION_LIMITS = {
+  sendPaymentDetails: {
+    actorMax: Number(process.env.ORDER_SEND_PAYMENT_DETAILS_ACTOR_MAX ?? "8"),
+    actorWindowMs: Number(process.env.ORDER_SEND_PAYMENT_DETAILS_ACTOR_WINDOW_MS ?? String(5 * 60 * 1000)),
+    businessMax: Number(process.env.ORDER_SEND_PAYMENT_DETAILS_BUSINESS_MAX ?? "80"),
+    businessWindowMs: Number(process.env.ORDER_SEND_PAYMENT_DETAILS_BUSINESS_WINDOW_MS ?? String(5 * 60 * 1000)),
+    entityMax: Number(process.env.ORDER_SEND_PAYMENT_DETAILS_ENTITY_MAX ?? "2"),
+    entityWindowMs: Number(process.env.ORDER_SEND_PAYMENT_DETAILS_ENTITY_WINDOW_MS ?? String(10 * 60 * 1000)),
+    message: "Payment instructions were sent too recently. Please wait a moment before sending them again.",
+  },
+  reviewPayment: {
+    actorMax: Number(process.env.ORDER_REVIEW_PAYMENT_ACTOR_MAX ?? "40"),
+    actorWindowMs: Number(process.env.ORDER_REVIEW_PAYMENT_ACTOR_WINDOW_MS ?? String(5 * 60 * 1000)),
+    businessMax: Number(process.env.ORDER_REVIEW_PAYMENT_BUSINESS_MAX ?? "250"),
+    businessWindowMs: Number(process.env.ORDER_REVIEW_PAYMENT_BUSINESS_WINDOW_MS ?? String(5 * 60 * 1000)),
+    entityMax: Number(process.env.ORDER_REVIEW_PAYMENT_ENTITY_MAX ?? "3"),
+    entityWindowMs: Number(process.env.ORDER_REVIEW_PAYMENT_ENTITY_WINDOW_MS ?? String(10 * 60 * 1000)),
+    message: "Too many payment reviews were attempted for this order. Please wait and try again.",
+  },
+  updateFulfillment: {
+    actorMax: Number(process.env.ORDER_UPDATE_FULFILLMENT_ACTOR_MAX ?? "120"),
+    actorWindowMs: Number(process.env.ORDER_UPDATE_FULFILLMENT_ACTOR_WINDOW_MS ?? String(5 * 60 * 1000)),
+    businessMax: Number(process.env.ORDER_UPDATE_FULFILLMENT_BUSINESS_MAX ?? "800"),
+    businessWindowMs: Number(process.env.ORDER_UPDATE_FULFILLMENT_BUSINESS_WINDOW_MS ?? String(5 * 60 * 1000)),
+    entityMax: Number(process.env.ORDER_UPDATE_FULFILLMENT_ENTITY_MAX ?? "20"),
+    entityWindowMs: Number(process.env.ORDER_UPDATE_FULFILLMENT_ENTITY_WINDOW_MS ?? String(2 * 60 * 1000)),
+    message: "This order is being updated too frequently. Please wait a moment and try again.",
+  },
+  captureManualPayment: {
+    actorMax: Number(process.env.ORDER_CAPTURE_MANUAL_PAYMENT_ACTOR_MAX ?? "40"),
+    actorWindowMs: Number(process.env.ORDER_CAPTURE_MANUAL_PAYMENT_ACTOR_WINDOW_MS ?? String(5 * 60 * 1000)),
+    businessMax: Number(process.env.ORDER_CAPTURE_MANUAL_PAYMENT_BUSINESS_MAX ?? "250"),
+    businessWindowMs: Number(process.env.ORDER_CAPTURE_MANUAL_PAYMENT_BUSINESS_WINDOW_MS ?? String(5 * 60 * 1000)),
+    entityMax: Number(process.env.ORDER_CAPTURE_MANUAL_PAYMENT_ENTITY_MAX ?? "3"),
+    entityWindowMs: Number(process.env.ORDER_CAPTURE_MANUAL_PAYMENT_ENTITY_WINDOW_MS ?? String(10 * 60 * 1000)),
+    message: "Manual payment updates were attempted too quickly. Please wait and try again.",
+  },
+  updateRefundStatus: {
+    actorMax: Number(process.env.ORDER_UPDATE_REFUND_STATUS_ACTOR_MAX ?? "40"),
+    actorWindowMs: Number(process.env.ORDER_UPDATE_REFUND_STATUS_ACTOR_WINDOW_MS ?? String(5 * 60 * 1000)),
+    businessMax: Number(process.env.ORDER_UPDATE_REFUND_STATUS_BUSINESS_MAX ?? "250"),
+    businessWindowMs: Number(process.env.ORDER_UPDATE_REFUND_STATUS_BUSINESS_WINDOW_MS ?? String(5 * 60 * 1000)),
+    entityMax: Number(process.env.ORDER_UPDATE_REFUND_STATUS_ENTITY_MAX ?? "4"),
+    entityWindowMs: Number(process.env.ORDER_UPDATE_REFUND_STATUS_ENTITY_WINDOW_MS ?? String(10 * 60 * 1000)),
+    message: "Refund updates were attempted too quickly. Please wait and try again.",
+  },
+} as const;
 
 function resolveOrderLedgerAmount(
   orderRow: {
@@ -192,6 +240,204 @@ function whatsappWindowState(lastInboundAt: Date | string | null | undefined) {
   };
 }
 
+type OrderAnalyticsDateField = "updatedAt" | "createdAt";
+type OrderAnalyticsMethodFilter = "all" | "manual" | "bank_qr" | "cod";
+type OrderAnalyticsFilterKey =
+  | "all"
+  | "needs_action"
+  | "on_hold"
+  | "active"
+  | "in_transit"
+  | "delivered"
+  | "exceptions"
+  | "refunds";
+
+function getOrderRangeBounds(rangeDays: number) {
+  const rangeEnd = new Date();
+  rangeEnd.setHours(23, 59, 59, 999);
+  const rangeStart = new Date(rangeEnd);
+  rangeStart.setDate(rangeStart.getDate() - (rangeDays - 1));
+  rangeStart.setHours(0, 0, 0, 0);
+  return { rangeStart, rangeEnd };
+}
+
+function buildOrderSearchPattern(value: string | null | undefined): string | null {
+  const normalized = String(value ?? "").trim();
+  return normalized ? `%${normalized}%` : null;
+}
+
+function buildOrderBaseConditions(params: {
+  businessId: string;
+  status?: string;
+  methodFilter?: OrderAnalyticsMethodFilter;
+  dateField?: OrderAnalyticsDateField;
+  rangeDays?: number;
+  search?: string;
+}) {
+  const conditions: any[] = [eq(orders.businessId, params.businessId)];
+
+  if (params.status) {
+    conditions.push(eq(orders.status, params.status));
+  }
+
+  if (params.methodFilter && params.methodFilter !== "all") {
+    conditions.push(eq(orders.paymentMethod, params.methodFilter));
+  }
+
+  if (params.dateField && params.rangeDays) {
+    const { rangeStart, rangeEnd } = getOrderRangeBounds(params.rangeDays);
+    const column = params.dateField === "createdAt" ? orders.createdAt : orders.updatedAt;
+    conditions.push(gte(column, rangeStart));
+    conditions.push(lte(column, rangeEnd));
+  }
+
+  const searchPattern = buildOrderSearchPattern(params.search);
+  if (searchPattern) {
+    conditions.push(
+      or(
+        ilike(orders.id, searchPattern),
+        ilike(orders.customerName, searchPattern),
+        ilike(orders.customerPhone, searchPattern),
+        ilike(orders.recipientName, searchPattern),
+        ilike(orders.recipientPhone, searchPattern),
+        ilike(orders.paymentReference, searchPattern),
+        ilike(orders.trackingNumber, searchPattern),
+        ilike(orders.dispatchReference, searchPattern),
+      ),
+    );
+  }
+
+  return conditions;
+}
+
+async function hydrateOrderRows(businessId: string, orderRows: Array<typeof orders.$inferSelect>) {
+  const orderIds = orderRows.map((row) => row.id);
+  const paymentRows = orderIds.length
+    ? await db
+        .select()
+        .from(orderPayments)
+        .where(and(eq(orderPayments.businessId, businessId), inArray(orderPayments.orderId, orderIds)))
+        .orderBy(desc(orderPayments.createdAt))
+    : [];
+
+  const latestPaymentByOrder = new Map<string, (typeof paymentRows)[number]>();
+  for (const payment of paymentRows) {
+    if (!latestPaymentByOrder.has(payment.orderId)) {
+      latestPaymentByOrder.set(payment.orderId, payment);
+    }
+  }
+
+  const threadIds = [...new Set(orderRows.map((row) => String(row.threadId || "").trim()).filter(Boolean))];
+  const latestInboundRows = threadIds.length
+    ? await db
+        .select({
+          threadId: threadMessages.threadId,
+          createdAt: threadMessages.createdAt,
+        })
+        .from(threadMessages)
+        .where(and(inArray(threadMessages.threadId, threadIds), eq(threadMessages.direction, "inbound")))
+        .orderBy(desc(threadMessages.createdAt))
+    : [];
+  const latestInboundByThread = new Map<string, Date | string | null>();
+  for (const row of latestInboundRows) {
+    if (!latestInboundByThread.has(row.threadId)) {
+      latestInboundByThread.set(row.threadId, row.createdAt);
+    }
+  }
+
+  const identityIds = [...new Set(orderRows.map((row) => String(row.whatsappIdentityId || "").trim()).filter(Boolean))];
+  const identityRows = identityIds.length
+    ? await db
+        .select({
+          phoneNumberId: whatsappIdentities.phoneNumberId,
+          displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
+        })
+        .from(whatsappIdentities)
+        .where(inArray(whatsappIdentities.phoneNumberId, identityIds))
+    : [];
+  const displayPhoneByIdentity = new Map(identityRows.map((row) => [row.phoneNumberId, row.displayPhoneNumber ?? null]));
+
+  return orderRows.map((row) => {
+    const latestPayment = latestPaymentByOrder.get(row.id) ?? null;
+    const windowState = whatsappWindowState(row.threadId ? latestInboundByThread.get(row.threadId) : null);
+    return {
+      ...row,
+      latestPayment,
+      botDisplayPhoneNumber: row.whatsappIdentityId ? displayPhoneByIdentity.get(row.whatsappIdentityId) ?? null : null,
+      ...windowState,
+    };
+  });
+}
+
+function latestSubmittedPaymentCondition() {
+  return sql<boolean>`exists (
+    select 1
+    from ${orderPayments} op
+    where op.business_id = ${orders.businessId}
+      and op.order_id = ${orders.id}
+      and lower(coalesce(op.status, '')) = 'submitted'
+      and op.created_at = (
+        select max(op2.created_at)
+        from ${orderPayments} op2
+        where op2.business_id = ${orders.businessId}
+          and op2.order_id = ${orders.id}
+      )
+  )`;
+}
+
+function buildOrderAnalyticsConditions(params: {
+  businessId: string;
+  status?: string;
+  methodFilter?: OrderAnalyticsMethodFilter;
+  dateField?: OrderAnalyticsDateField;
+  rangeDays?: number;
+  search?: string;
+  activeFilter?: OrderAnalyticsFilterKey;
+}) {
+  const conditions = buildOrderBaseConditions(params);
+  const latestPaymentSubmitted = latestSubmittedPaymentCondition();
+
+  switch (params.activeFilter) {
+    case "needs_action":
+      conditions.push(
+        sql<boolean>`(
+          lower(coalesce(${orders.status}, '')) in ('payment_submitted', 'payment_rejected')
+          or lower(coalesce(${orders.fulfillmentStatus}, '')) in ('failed_delivery', 'returned')
+          or (
+            lower(coalesce(${orders.fulfillmentStatus}, '')) = 'packed'
+            and coalesce(${orders.courierName}, '') = ''
+            and coalesce(${orders.trackingNumber}, '') = ''
+            and coalesce(${orders.dispatchReference}, '') = ''
+          )
+          or ${latestPaymentSubmitted}
+        )`,
+      );
+      break;
+    case "on_hold":
+      conditions.push(eq(orders.fulfillmentStatus, "on_hold"));
+      break;
+    case "active":
+      conditions.push(sql<boolean>`lower(coalesce(${orders.fulfillmentStatus}, '')) in ('queued', 'preparing', 'packed', 'dispatched', 'out_for_delivery')`);
+      break;
+    case "in_transit":
+      conditions.push(sql<boolean>`lower(coalesce(${orders.fulfillmentStatus}, '')) in ('dispatched', 'out_for_delivery')`);
+      break;
+    case "delivered":
+      conditions.push(eq(orders.fulfillmentStatus, "delivered"));
+      break;
+    case "exceptions":
+      conditions.push(sql<boolean>`lower(coalesce(${orders.fulfillmentStatus}, '')) in ('failed_delivery', 'returned')`);
+      break;
+    case "refunds":
+      conditions.push(sql<boolean>`lower(coalesce(${orders.status}, '')) in ('refund_pending', 'refunded')`);
+      break;
+    default:
+      break;
+  }
+
+  return { conditions, latestPaymentSubmitted };
+}
+
 function preferredWhatsAppNumber(source: string | null | undefined, ...values: Array<string | null | undefined>): string | null {
   const sourceKey = String(source ?? "").trim().toLowerCase();
   for (const value of values) {
@@ -240,6 +486,45 @@ async function lockWorkflowKey(tx: any, key: string) {
 
 async function flushBusinessOutbox(businessId: string) {
   await drainBusinessOutbox({ businessId, limit: 25 });
+}
+
+async function enforceOrderOperationThrottle(
+  tx: any,
+  ctx: {
+    businessId: string;
+    userId?: string | null;
+    firebaseUid?: string | null;
+    userEmail?: string | null;
+  },
+  action: keyof typeof ORDER_OPERATION_LIMITS,
+  entityId: string,
+) {
+  const limits = ORDER_OPERATION_LIMITS[action];
+  const actorKey = getStaffActorKey(ctx);
+  await assertOperationThrottle(tx, {
+    businessId: ctx.businessId,
+    bucket: `order.${action}.actor`,
+    scope: `${ctx.businessId}:${actorKey}`,
+    max: limits.actorMax,
+    windowMs: limits.actorWindowMs,
+    message: limits.message,
+  });
+  await assertOperationThrottle(tx, {
+    businessId: ctx.businessId,
+    bucket: `order.${action}.business`,
+    scope: ctx.businessId,
+    max: limits.businessMax,
+    windowMs: limits.businessWindowMs,
+    message: limits.message,
+  });
+  await assertOperationThrottle(tx, {
+    businessId: ctx.businessId,
+    bucket: `order.${action}.entity`,
+    scope: `${ctx.businessId}:${entityId}`,
+    max: limits.entityMax,
+    windowMs: limits.entityWindowMs,
+    message: limits.message,
+  });
 }
 
 async function getOrderCustomerContext(businessId: string, customerId: string | null | undefined): Promise<OrderCustomerContext | null> {
@@ -380,12 +665,19 @@ function buildPaymentReviewEmail(input: {
   notes?: string | null;
 }): OrderEmailMessage {
   const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
-  const subject = `Order confirmed: ${ref}`;
-  const lines = [
-    `We have approved your payment for order reference ${ref}.`,
-    input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
-    "Your order is now confirmed and queued for fulfilment.",
-  ];
+  const approved = input.action === "approve";
+  const subject = approved ? `Order confirmed: ${ref}` : `Payment needs attention: ${ref}`;
+  const lines = approved
+    ? [
+        `We have approved your payment for order reference ${ref}.`,
+        input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
+        "Your order is now confirmed and queued for fulfilment.",
+      ]
+    : [
+        `We reviewed the payment proof for order reference ${ref}, but we could not verify it yet.`,
+        input.notes ? `Reason: ${String(input.notes).trim()}.` : null,
+        "Please resend a clear payment slip after checking the transfer details.",
+      ];
   const text = lines.filter(Boolean).join("\n");
   return {
     subject,
@@ -504,6 +796,202 @@ export const ordersRouter = router({
       };
     }),
 
+  listOrdersPage: businessProcedure
+    .input(
+      z.object({
+        limit: z.number().int().min(1).max(100).default(20),
+        offset: z.number().int().min(0).default(0),
+        search: z.string().optional(),
+        activeFilter: z
+          .enum(["all", "needs_action", "on_hold", "active", "in_transit", "delivered", "exceptions", "refunds"])
+          .default("all"),
+        dateField: z.enum(["updatedAt", "createdAt"]).default("updatedAt"),
+        rangeDays: z.number().int().min(1).max(365).default(30),
+        methodFilter: z.enum(["all", "manual", "bank_qr", "cod"]).default("all"),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const settings = await getBusinessOrderSettings(ctx.businessId);
+      const { conditions } = buildOrderAnalyticsConditions({
+        businessId: ctx.businessId,
+        methodFilter: input.methodFilter,
+        dateField: input.dateField,
+        rangeDays: input.rangeDays,
+        search: input.search,
+        activeFilter: input.activeFilter,
+      });
+
+      const [countRow] = await db
+        .select({
+          count: sql<number>`count(*)::int`,
+        })
+        .from(orders)
+        .where(and(...conditions));
+
+      const orderRows = await db
+        .select()
+        .from(orders)
+        .where(and(...conditions))
+        .orderBy(desc(orders.updatedAt), desc(orders.createdAt))
+        .limit(input.limit)
+        .offset(input.offset);
+
+      const hydratedOrders = await hydrateOrderRows(ctx.businessId, orderRows);
+
+      return {
+        settings,
+        totalCount: countRow?.count ?? 0,
+        items: hydratedOrders,
+      };
+    }),
+
+  getOverview: businessProcedure
+    .input(
+      z.object({
+        dateField: z.enum(["updatedAt", "createdAt"]).default("updatedAt"),
+        rangeDays: z.number().int().min(1).max(365).default(30),
+        methodFilter: z.enum(["all", "manual", "bank_qr", "cod"]).default("all"),
+        mode: z.enum(["orders", "revenue"]).default("orders"),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const settings = await getBusinessOrderSettings(ctx.businessId);
+      const { conditions, latestPaymentSubmitted } = buildOrderAnalyticsConditions({
+        businessId: ctx.businessId,
+        methodFilter: input.methodFilter,
+        dateField: input.dateField,
+        rangeDays: input.rangeDays,
+      });
+
+      const statusExpr = sql<string>`lower(coalesce(${orders.status}, ''))`;
+      const fulfillmentExpr = sql<string>`lower(coalesce(${orders.fulfillmentStatus}, ''))`;
+      const amountExpr = sql<number>`coalesce(${orders.paidAmount}, ${orders.refundAmount}, ${orders.expectedAmount}, 0)::numeric`;
+      const paidExpr = sql<number>`coalesce(${orders.paidAmount}, ${orders.expectedAmount}, 0)::numeric`;
+      const refundExpr = sql<number>`coalesce(${orders.refundAmount}, ${orders.paidAmount}, ${orders.expectedAmount}, 0)::numeric`;
+      const needsActionExpr = sql<boolean>`(
+        ${statusExpr} in ('payment_submitted', 'payment_rejected')
+        or ${fulfillmentExpr} in ('failed_delivery', 'returned')
+        or (
+          ${fulfillmentExpr} = 'packed'
+          and coalesce(${orders.courierName}, '') = ''
+          and coalesce(${orders.trackingNumber}, '') = ''
+          and coalesce(${orders.dispatchReference}, '') = ''
+        )
+        or ${latestPaymentSubmitted}
+      )`;
+
+      const [aggregateRow] = await db
+        .select({
+          scopedCount: sql<number>`count(*)::int`,
+          needsAction: sql<number>`count(*) filter (where ${needsActionExpr})::int`,
+          inFulfilment: sql<number>`count(*) filter (where ${fulfillmentExpr} in ('queued', 'preparing', 'packed', 'dispatched', 'out_for_delivery'))::int`,
+          inTransit: sql<number>`count(*) filter (where ${fulfillmentExpr} in ('dispatched', 'out_for_delivery'))::int`,
+          delivered: sql<number>`count(*) filter (where ${fulfillmentExpr} = 'delivered')::int`,
+          exceptions: sql<number>`count(*) filter (where ${fulfillmentExpr} in ('failed_delivery', 'returned'))::int`,
+          booked: sql<number>`coalesce(sum(${amountExpr}), 0)::float`,
+          collected: sql<number>`coalesce(sum(case when ${statusExpr} = 'paid' then ${paidExpr} else 0 end), 0)::float`,
+          pending: sql<number>`coalesce(sum(case when ${statusExpr} not in ('paid', 'refunded', 'refund_pending') then ${amountExpr} else 0 end), 0)::float`,
+          refundExposure: sql<number>`coalesce(sum(case when ${statusExpr} in ('refunded', 'refund_pending') then ${refundExpr} else 0 end), 0)::float`,
+          needsActionCount: sql<number>`count(*) filter (where ${needsActionExpr})::int`,
+          onHoldCount: sql<number>`count(*) filter (where ${fulfillmentExpr} = 'on_hold')::int`,
+          activeCount: sql<number>`count(*) filter (where ${fulfillmentExpr} in ('queued', 'preparing', 'packed', 'dispatched', 'out_for_delivery'))::int`,
+          inTransitCount: sql<number>`count(*) filter (where ${fulfillmentExpr} in ('dispatched', 'out_for_delivery'))::int`,
+          deliveredCount: sql<number>`count(*) filter (where ${fulfillmentExpr} = 'delivered')::int`,
+          exceptionsCount: sql<number>`count(*) filter (where ${fulfillmentExpr} in ('failed_delivery', 'returned'))::int`,
+          refundsCount: sql<number>`count(*) filter (where ${statusExpr} in ('refund_pending', 'refunded'))::int`,
+          awaitingCount: sql<number>`count(*) filter (where ${statusExpr} not in ('paid', 'payment_submitted', 'refund_pending', 'refunded', 'payment_rejected', 'denied'))::int`,
+          reviewCount: sql<number>`count(*) filter (where ${statusExpr} = 'payment_submitted')::int`,
+          collectedCount: sql<number>`count(*) filter (where ${statusExpr} = 'paid')::int`,
+          refundsMixCount: sql<number>`count(*) filter (where ${statusExpr} in ('refund_pending', 'refunded'))::int`,
+          exceptionsMixCount: sql<number>`count(*) filter (where ${statusExpr} in ('payment_rejected', 'denied'))::int`,
+        })
+        .from(orders)
+        .where(and(...conditions));
+
+      const trendColumn = input.dateField === "createdAt" ? orders.createdAt : orders.updatedAt;
+      const trendRows = await db
+        .select({
+          day: sql<Date>`date_trunc('day', ${trendColumn})`,
+          expected: sql<number>`coalesce(sum(${amountExpr}), 0)::float`,
+          collected: sql<number>`coalesce(sum(case when ${statusExpr} = 'paid' then ${paidExpr} else 0 end), 0)::float`,
+        })
+        .from(orders)
+        .where(and(...conditions))
+        .groupBy(sql`date_trunc('day', ${trendColumn})`)
+        .orderBy(sql`date_trunc('day', ${trendColumn}) asc`);
+
+      const trendData = trendRows
+        .map((row) => ({
+          sortKey: new Date(row.day).getTime(),
+          label: new Date(row.day).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+          expected: Number(row.expected ?? 0),
+          collected: Number(row.collected ?? 0),
+        }))
+        .sort((a, b) => a.sortKey - b.sortKey)
+        .slice(-Math.min(input.rangeDays, 14));
+
+      const metrics = {
+        needsAction: Number(aggregateRow?.needsAction ?? 0),
+        inFulfilment: Number(aggregateRow?.inFulfilment ?? 0),
+        inTransit: Number(aggregateRow?.inTransit ?? 0),
+        delivered: Number(aggregateRow?.delivered ?? 0),
+        exceptions: Number(aggregateRow?.exceptions ?? 0),
+      };
+
+      const mixData = input.mode === "revenue"
+        ? [
+            { name: "Awaiting", value: Number(aggregateRow?.awaitingCount ?? 0) },
+            { name: "Review", value: Number(aggregateRow?.reviewCount ?? 0) },
+            { name: "Collected", value: Number(aggregateRow?.collectedCount ?? 0) },
+            { name: "Refunds", value: Number(aggregateRow?.refundsMixCount ?? 0) },
+            { name: "Exceptions", value: Number(aggregateRow?.exceptionsMixCount ?? 0) },
+          ].filter((entry) => entry.value > 0)
+        : [
+            { name: "Needs Action", value: metrics.needsAction },
+            { name: "In Fulfilment", value: metrics.inFulfilment },
+            { name: "In Transit", value: metrics.inTransit },
+            { name: "Delivered", value: metrics.delivered },
+            { name: "Exceptions", value: metrics.exceptions },
+          ].filter((entry) => entry.value > 0);
+
+      return {
+        settings,
+        scopedCount: Number(aggregateRow?.scopedCount ?? 0),
+        metrics,
+        financeTotals: {
+          booked: Number(aggregateRow?.booked ?? 0),
+          collected: Number(aggregateRow?.collected ?? 0),
+          pending: Number(aggregateRow?.pending ?? 0),
+          refundExposure: Number(aggregateRow?.refundExposure ?? 0),
+        },
+        filterCounts: {
+          all: Number(aggregateRow?.scopedCount ?? 0),
+          needs_action: Number(aggregateRow?.needsActionCount ?? 0),
+          on_hold: Number(aggregateRow?.onHoldCount ?? 0),
+          active: Number(aggregateRow?.activeCount ?? 0),
+          in_transit: Number(aggregateRow?.inTransitCount ?? 0),
+          delivered: Number(aggregateRow?.deliveredCount ?? 0),
+          exceptions: Number(aggregateRow?.exceptionsCount ?? 0),
+          refunds: Number(aggregateRow?.refundsCount ?? 0),
+        },
+        trendData,
+        mixData,
+      };
+    }),
+
+  getOrderById: businessProcedure
+    .input(z.object({ orderId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const rows = await db
+        .select()
+        .from(orders)
+        .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, input.orderId)))
+        .limit(1);
+      if (!rows.length) return null;
+      const [hydrated] = await hydrateOrderRows(ctx.businessId, rows);
+      return hydrated ?? null;
+    }),
+
   getStats: businessProcedure.query(async ({ ctx }) => {
     const settings = await getBusinessOrderSettings(ctx.businessId);
     const rows = await db.select().from(orders).where(eq(orders.businessId, ctx.businessId));
@@ -600,6 +1088,7 @@ export const ordersRouter = router({
       const now = new Date();
       const result = await db.transaction(async (tx) => {
         await lockWorkflowKey(tx, `${ctx.businessId}::order::${input.orderId}`);
+        await enforceOrderOperationThrottle(tx, ctx, "sendPaymentDetails", input.orderId);
 
         const [orderRow] = await tx
           .select()
@@ -771,6 +1260,7 @@ export const ordersRouter = router({
         }
 
         await lockWorkflowKey(tx, `${ctx.businessId}::order::${paymentRow.orderId}`);
+        await enforceOrderOperationThrottle(tx, ctx, "reviewPayment", paymentRow.orderId);
 
         const [orderRow] = await tx
           .select()
@@ -1030,6 +1520,7 @@ export const ordersRouter = router({
     .input(
       z.object({
         orderId: z.string().min(1),
+        expectedUpdatedAt: z.coerce.date().optional(),
         fulfillmentStatus: fulfillmentStatusSchema.optional(),
         recipientName: z.string().optional().nullable(),
         recipientPhone: z.string().optional().nullable(),
@@ -1054,6 +1545,7 @@ export const ordersRouter = router({
       const now = new Date();
       const result = await db.transaction(async (tx) => {
         await lockWorkflowKey(tx, `${ctx.businessId}::order::${input.orderId}`);
+        await enforceOrderOperationThrottle(tx, ctx, "updateFulfillment", input.orderId);
 
         const [orderRow] = await tx
           .select()
@@ -1063,6 +1555,11 @@ export const ordersRouter = router({
         if (!orderRow) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
         }
+        assertExpectedUpdatedAt({
+          entityLabel: "order",
+          expectedUpdatedAt: input.expectedUpdatedAt,
+          actualUpdatedAt: orderRow.updatedAt,
+        });
 
         const nextFulfillmentStatus = input.fulfillmentStatus
           ? normalizeOrderFulfillmentStatus(input.fulfillmentStatus)
@@ -1169,11 +1666,14 @@ export const ordersRouter = router({
             returnedAt: nextTimestamps.returnedAt,
             updatedAt: now,
           })
-          .where(eq(orders.id, orderRow.id))
+          .where(and(eq(orders.id, orderRow.id), eq(orders.updatedAt, orderRow.updatedAt)))
           .returning();
 
         if (!updatedOrder) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to update fulfilment." });
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This order was updated by another staff member. Refresh and try again.",
+          });
         }
 
         const shouldNotifyCustomer = Boolean(input.notifyCustomer) && statusChanged;
@@ -1373,6 +1873,7 @@ export const ordersRouter = router({
       const now = new Date();
       const result = await db.transaction(async (tx) => {
         await lockWorkflowKey(tx, `${ctx.businessId}::order::${input.orderId}`);
+        await enforceOrderOperationThrottle(tx, ctx, "captureManualPayment", input.orderId);
 
         const [orderRow] = await tx
           .select()
@@ -1542,6 +2043,7 @@ export const ordersRouter = router({
       const now = new Date();
       const result = await db.transaction(async (tx) => {
         await lockWorkflowKey(tx, `${ctx.businessId}::order::${input.orderId}`);
+        await enforceOrderOperationThrottle(tx, ctx, "updateRefundStatus", input.orderId);
 
         const [orderRow] = await tx
           .select()

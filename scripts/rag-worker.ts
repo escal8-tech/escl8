@@ -156,7 +156,10 @@ async function processJob(job: RagJobRow) {
       entity: "document",
       op: "upsert",
       entityId: indexingDoc.id,
-      payload: { document: toPortalDocumentPayload(indexingDoc as any) as any },
+      payload: {
+        document: toPortalDocumentPayload(indexingDoc as any) as any,
+        ragJobId: job.id as any,
+      },
       createdAt: indexingDoc.updatedAt ?? new Date(),
     });
   }
@@ -190,7 +193,10 @@ async function processJob(job: RagJobRow) {
       entity: "document",
       op: "upsert",
       entityId: indexedDoc.id,
-      payload: { document: toPortalDocumentPayload(indexedDoc as any) as any },
+      payload: {
+        document: toPortalDocumentPayload(indexedDoc as any) as any,
+        ragJobId: job.id as any,
+      },
       createdAt: indexedDoc.updatedAt ?? new Date(),
     });
   }
@@ -291,7 +297,10 @@ async function failJob(job: RagJobRow, err: unknown) {
         entity: "document",
         op: "upsert",
         entityId: failedDoc.id,
-        payload: { document: toPortalDocumentPayload(failedDoc as any) as any },
+        payload: {
+          document: toPortalDocumentPayload(failedDoc as any) as any,
+          ragJobId: job.id as any,
+        },
         createdAt: failedDoc.updatedAt ?? new Date(),
       });
     }
@@ -308,7 +317,10 @@ async function failJob(job: RagJobRow, err: unknown) {
         entity: "document",
         op: "upsert",
         entityId: failedDoc.id,
-        payload: { document: toPortalDocumentPayload(failedDoc as any) as any },
+        payload: {
+          document: toPortalDocumentPayload(failedDoc as any) as any,
+          ragJobId: job.id as any,
+        },
         createdAt: failedDoc.updatedAt ?? new Date(),
       });
     }

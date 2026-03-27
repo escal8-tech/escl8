@@ -11,6 +11,7 @@ import { MiniDonutChart } from "./components/MiniDonutChart";
 import { RecentRequestsCard } from "./components/RecentRequestsCard";
 import { RequestDrawer } from "./components/RequestDrawer";
 import { TicketCounterBarChart } from "./components/TicketCounterBarChart";
+import { getPortalTicketTypeLabel } from "@/app/portal/lib/ticketTypes";
 
 export default function DashboardPage() {
   const { selectedPhoneNumberId } = usePhoneFilter();
@@ -36,14 +37,14 @@ export default function DashboardPage() {
     requestStatsInput: statsInput,
     requestActivityInput: activityInput,
     customerListInput: customersInput,
-    ticketListInputs: [{ limit: 500 }],
+    refreshTicketTypeCounters: true,
   });
 
   const listQ = trpc.requests.list.useQuery(listInput);
   const statsQ = trpc.requests.stats.useQuery(statsInput);
   const activityQ = trpc.requests.activitySeries.useQuery(activityInput);
   const ticketTypesQ = trpc.tickets.listTypes.useQuery({ includeDisabled: true });
-  const ticketsQ = trpc.tickets.listTickets.useQuery({ limit: 500 });
+  const ticketCountersQ = trpc.tickets.getTypeCounters.useQuery();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
   const utils = trpc.useUtils();
@@ -151,21 +152,15 @@ export default function DashboardPage() {
   const positivePct = sentimentTotal > 0 ? Math.round((positiveValue / sentimentTotal) * 100) : 0;
 
   const ticketTypeCounters = useMemo(() => {
-    const counts = new Map<string, { openCount: number; inProgressCount: number }>();
-    for (const ticket of ticketsQ.data ?? []) {
-      const key = (ticket.ticketTypeKey || "").toLowerCase();
-      const status = String(ticket.status || "").toLowerCase();
-      const current = counts.get(key) ?? { openCount: 0, inProgressCount: 0 };
-      if (status === "open") {
-        current.openCount += 1;
-      } else if (status === "in_progress" || status === "pending") {
-        current.inProgressCount += 1;
-      }
-      counts.set(key, current);
-    }
+    const counts = new Map(
+      (ticketCountersQ.data ?? []).map((row) => [
+        row.key,
+        { openCount: row.openCount, inProgressCount: row.inProgressCount },
+      ]),
+    );
     return (ticketTypesQ.data ?? []).map((type) => {
       const counter = counts.get(type.key) ?? { openCount: 0, inProgressCount: 0 };
-      const label = type.key === "ordercreation" ? "Orders" : type.label;
+      const label = getPortalTicketTypeLabel(type.key) || type.label;
       return {
         key: type.key,
         label: label.length > 20 ? `${label.slice(0, 20)}...` : label,
@@ -175,7 +170,7 @@ export default function DashboardPage() {
         totalActive: counter.openCount + counter.inProgressCount,
       };
     });
-  }, [ticketTypesQ.data, ticketsQ.data]);
+  }, [ticketCountersQ.data, ticketTypesQ.data]);
 
   return (
     <div className="fade-in">

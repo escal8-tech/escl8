@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { getPortalTicketTypeLabel } from "@/app/portal/lib/ticketTypes";
 
 const routeLabels: Record<string, string> = {
   dashboard: "Dashboard",
@@ -16,17 +17,6 @@ const routeLabels: Record<string, string> = {
   revenue: "Revenue",
 };
 
-const ticketTypeLabels: Record<string, string> = {
-  ordercreation: "Orders",
-  orderstatus: "Order Status",
-  paymentstatus: "Payment Status",
-  complaint: "Complaint",
-  refund: "Refund",
-  cancellation: "Cancellation",
-  warrantyclaim: "Warranty Claim",
-  invoice: "Invoice",
-};
-
 export default function Breadcrumbs() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -37,7 +27,7 @@ export default function Breadcrumbs() {
   const sectionLabel = isTickets ? "Tickets" : "Menu";
   const ticketType = (searchParams?.get("type") || "").toLowerCase();
   const currentTitle = isTickets
-    ? ticketTypeLabels[ticketType] || "Tickets"
+    ? getPortalTicketTypeLabel(ticketType)
     : routeLabels[leaf] || leaf.charAt(0).toUpperCase() + leaf.slice(1);
 
   return (

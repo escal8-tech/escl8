@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { onAuthStateChanged } from "firebase/auth";
 import { trpc } from "@/utils/trpc";
+import { PORTAL_TICKET_TYPES } from "@/app/portal/lib/ticketTypes";
 
 // SVG Icons as components
 const Icons = {
@@ -99,16 +100,12 @@ const navItems = [
   { href: "/portal/bookings", label: "Bookings", icon: "calendar" },
   { href: "/portal/sync", label: "Sync", icon: "sync" },
 ];
-const ticketNavItems = [
-  { href: "/portal/tickets?type=ordercreation", label: "Order Tickets", icon: "tickets", typeKey: "ordercreation" },
-  { href: "/portal/tickets?type=orderstatus", label: "Order Status", icon: "tickets", typeKey: "orderstatus" },
-  { href: "/portal/tickets?type=paymentstatus", label: "Payment Status", icon: "tickets", typeKey: "paymentstatus" },
-  { href: "/portal/tickets?type=complaint", label: "Complaint", icon: "tickets", typeKey: "complaint" },
-  { href: "/portal/tickets?type=refund", label: "Refund", icon: "tickets", typeKey: "refund" },
-  { href: "/portal/tickets?type=cancellation", label: "Cancellation", icon: "tickets", typeKey: "cancellation" },
-  { href: "/portal/tickets?type=warrantyclaim", label: "Warranty Claim", icon: "tickets", typeKey: "warrantyclaim" },
-  { href: "/portal/tickets?type=invoice", label: "Invoice", icon: "tickets", typeKey: "invoice" },
-];
+const ticketNavItems = PORTAL_TICKET_TYPES.map((type) => ({
+  href: `/portal/tickets?type=${type.key}`,
+  label: type.navLabel,
+  icon: "tickets" as const,
+  typeKey: type.key,
+}));
 
 interface SidebarProps {
   collapsed: boolean;
@@ -182,23 +179,23 @@ export default function Sidebar({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-            height: collapsed ? "72px" : "96px", /* taller when expanded to fit larger logo */
-          padding: collapsed ? "8px 16px" : "10px 16px",
-          borderBottom: "1px solid rgba(184, 134, 11, 0.3)",
-          background: "linear-gradient(90deg, rgba(184, 134, 11, 0.1) 0%, transparent 100%)",
+          height: "72px",
+          padding: "12px 16px",
+          borderBottom: "1px solid var(--portal-border)",
+          background: "transparent",
           boxSizing: "border-box"
         }}
       >
         <Image
           src="/favikon.png"
           alt="Escl8"
-          width={collapsed ? 40 : 245}
-          height={collapsed ? 40 : 245}
+          width={collapsed ? 40 : 140}
+          height={collapsed ? 40 : 48}
           style={{ 
             objectFit: "contain",
             transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
-              maxHeight: collapsed ? "40px" : "92px", /* larger in expanded state (20% bigger) */
-            transform: collapsed ? "none" : "translateY(0px)" /* slight nudge */
+            maxHeight: collapsed ? "40px" : "44px",
+            transform: "none"
           }}
           priority
         />
@@ -270,9 +267,9 @@ export default function Sidebar({
               alignItems: "center",
               gap: 12,
               padding: "10px 12px",
-              borderRadius: 12,
-              background: "linear-gradient(135deg, rgba(184, 134, 11, 0.15) 0%, rgba(0, 51, 160, 0.1) 100%)",
-              border: "1px solid rgba(184, 134, 11, 0.2)",
+              borderRadius: 14,
+              background: "var(--portal-surface-muted)",
+              border: "1px solid var(--portal-border)",
               justifyContent: "space-between",
             }}
           >
@@ -282,8 +279,8 @@ export default function Sidebar({
                 <div
                   style={{
                     fontSize: 14,
-                    fontWeight: 500,
-                    color: "#f1f5f9",
+                    fontWeight: 600,
+                    color: "var(--portal-text)",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
@@ -293,12 +290,12 @@ export default function Sidebar({
                 </div>
                 {userEmail && (
                   <div
-                    style={{
-                      fontSize: 11,
-                      color: "#94a3b8",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                  style={{
+                    fontSize: 11,
+                    color: "var(--portal-text-muted)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                     }}
                   >
                     {userEmail}
@@ -318,14 +315,14 @@ export default function Sidebar({
                   justifyContent: "center",
                   width: 36,
                   height: 36,
-                  borderRadius: 10,
-                  color: isActive("/portal/settings") ? "#D4A84B" : "#94a3b8",
+                  borderRadius: 12,
+                  color: isActive("/portal/settings") ? "var(--gold)" : "var(--portal-text-muted)",
                   background: isActive("/portal/settings")
-                    ? "linear-gradient(135deg, rgba(184, 134, 11, 0.2) 0%, rgba(0, 51, 160, 0.15) 100%)"
-                    : "rgba(15, 23, 42, 0.6)",
+                    ? "var(--portal-card-plain)"
+                    : "var(--portal-surface-muted)",
                   border: isActive("/portal/settings")
-                    ? "1px solid rgba(184, 134, 11, 0.4)"
-                    : "1px solid rgba(255, 255, 255, 0.1)",
+                    ? "1px solid var(--portal-border-strong)"
+                    : "1px solid var(--portal-border)",
                   transition: "all 0.2s ease",
                   flexShrink: 0,
                 }}
@@ -341,10 +338,10 @@ export default function Sidebar({
                   justifyContent: "center",
                   width: 36,
                   height: 36,
-                  borderRadius: 10,
-                  color: "#94a3b8",
-                  background: "rgba(15, 23, 42, 0.6)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: 12,
+                  color: "var(--portal-text-muted)",
+                  background: "var(--portal-surface-muted)",
+                  border: "1px solid var(--portal-border)",
                   cursor: "pointer",
                   transition: "all 0.2s ease",
                   flexShrink: 0,

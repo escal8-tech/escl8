@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
+import { useToast } from "@/components/ToastProvider";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
+import { buildWebsiteWidgetSnippet, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
 import { trpc } from "@/utils/trpc";
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -31,7 +34,7 @@ const Icons = {
 /* ─────────────────────────────────────────────────────────────────────────────
    TYPES
 ───────────────────────────────────────────────────────────────────────────── */
-type CardKey = "whatsapp" | "telegram" | "shopee" | "lazada" | "tiktok" | "instagram";
+type CardKey = "whatsapp" | "website" | "telegram" | "shopee" | "lazada" | "tiktok" | "instagram";
 
 type Card = {
   key: CardKey;
@@ -53,6 +56,7 @@ type SyncState = Record<CardKey, "idle" | "synced">;
 ───────────────────────────────────────────────────────────────────────────── */
 const cards: Card[] = [
   { key: "whatsapp", name: "WhatsApp", desc: "Connect WhatsApp Business for messaging and syncing.", canSync: true, comingSoon: false, accent: "#22c55e", tint: "rgba(34,197,94,0.10)", glyph: "WA", logoSrc: "/whatsapp.svg" },
+  { key: "website", name: "Website Widget", desc: "Add a floating chat widget to your website with one snippet.", canSync: true, comingSoon: false, accent: "#2563eb", tint: "rgba(37,99,235,0.10)", glyph: "</>" },
   { key: "telegram", name: "Telegram", desc: "Sync Telegram bot conversations.", canSync: true, comingSoon: false, accent: "#229ed9", tint: "rgba(34,158,217,0.12)", glyph: "TG", logoSrc: "/telegram.png", logoSize: 51 },
   { key: "shopee", name: "Shopee", desc: "Sync orders and catalog from Shopee.", canSync: false, comingSoon: true, accent: "#f97316", tint: "rgba(249,115,22,0.08)", glyph: "SH", logoSrc: "/shopee.png", logoSize: 56 },
   { key: "lazada", name: "Lazada", desc: "Sync orders and catalog from Lazada.", canSync: false, comingSoon: true, accent: "#7c3aed", tint: "rgba(124,58,237,0.08)", glyph: "LZ", logoSrc: "/lazada.png" },
@@ -251,6 +255,103 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: "var(--muted)",
   },
+  modalBackdrop: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(7, 10, 24, 0.68)",
+    backdropFilter: "blur(8px)",
+    display: "grid",
+    placeItems: "center",
+    padding: 24,
+    zIndex: 5000,
+  },
+  modalCard: {
+    width: "min(760px, 100%)",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: 24,
+    boxShadow: "0 24px 80px rgba(0,0,0,0.35)",
+    padding: 28,
+    display: "grid",
+    gap: 18,
+  },
+  modalHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
+  },
+  modalTitleWrap: {
+    display: "grid",
+    gap: 6,
+  },
+  modalTitle: {
+    margin: 0,
+    fontSize: 22,
+    fontWeight: 700,
+    color: "var(--foreground)",
+    letterSpacing: "-0.02em",
+  },
+  modalDesc: {
+    margin: 0,
+    color: "var(--muted)",
+    fontSize: 14,
+    lineHeight: 1.6,
+  },
+  closeIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    border: "1px solid var(--border)",
+    background: "var(--card-muted)",
+    color: "var(--foreground)",
+    cursor: "pointer",
+    fontSize: 18,
+  },
+  codeLabel: {
+    margin: 0,
+    fontSize: 13,
+    fontWeight: 600,
+    color: "var(--foreground)",
+  },
+  codeBox: {
+    width: "100%",
+    minHeight: 110,
+    resize: "vertical",
+    borderRadius: 16,
+    border: "1px solid var(--border)",
+    background: "#071124",
+    color: "#dbeafe",
+    padding: 16,
+    fontSize: 13,
+    lineHeight: 1.6,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  },
+  modalActions: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  modalHint: {
+    color: "var(--muted)",
+    fontSize: 13,
+    lineHeight: 1.5,
+  },
+  secondaryButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "10px 16px",
+    borderRadius: 10,
+    border: "1px solid var(--border)",
+    background: "var(--card-muted)",
+    color: "var(--foreground)",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+  },
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -258,29 +359,89 @@ const styles: Record<string, React.CSSProperties> = {
 ───────────────────────────────────────────────────────────────────────────── */
 export default function SyncPage() {
   const [email] = useState<string | null>(() => getFirebaseAuth()?.currentUser?.email ?? null);
+  const [widgetModalOpen, setWidgetModalOpen] = useState(false);
+  const [widgetSnippet, setWidgetSnippet] = useState("");
   const [syncState, setSyncState] = useState<SyncState>({
     whatsapp: "idle",
+    website: "idle",
     telegram: "idle",
     shopee: "idle",
     lazada: "idle",
     tiktok: "idle",
     instagram: "idle",
   });
+  const toast = useToast();
   const phoneNumbersQuery = trpc.business.listPhoneNumbers.useQuery();
+  const businessQuery = trpc.business.getMine.useQuery(
+    { email: email ?? "" },
+    { enabled: Boolean(email) },
+  );
+  const ensureWebsiteWidget = trpc.business.ensureWebsiteWidget.useMutation();
   const whatsappConnected = (phoneNumbersQuery.data?.length ?? 0) > 0;
+  const websiteWidget = normalizeWebsiteWidgetSettings(businessQuery.data?.settings);
+  const websiteConnected = Boolean(websiteWidget.key);
 
   const markSynced = (key: CardKey) => setSyncState((s) => ({ ...s, [key]: "synced" }));
 
-  const syncedCount = Object.values(syncState).filter((s) => s === "synced").length;
-  const availableCount = cards.filter((c) => c.canSync).length;
+  const openWebsiteWidgetModal = async () => {
+    if (!email || !businessQuery.data?.id) {
+      toast.show({
+        type: "error",
+        title: "Unable to prepare widget",
+        message: "Your business session is missing. Refresh and try again.",
+        durationMs: 5000,
+      });
+      return;
+    }
+
+    try {
+      const result = await ensureWebsiteWidget.mutateAsync({
+        email,
+        businessId: businessQuery.data.id,
+      });
+      if (!result.key) {
+        throw new Error("Widget key was not generated");
+      }
+      setWidgetSnippet(buildWebsiteWidgetSnippet(window.location.origin, result.key));
+      setWidgetModalOpen(true);
+    } catch (error) {
+      toast.show({
+        type: "error",
+        title: "Widget setup failed",
+        message: error instanceof Error ? error.message : "Could not generate widget snippet.",
+        durationMs: 6000,
+      });
+    }
+  };
+
+  const copyWidgetSnippet = async () => {
+    try {
+      await navigator.clipboard.writeText(widgetSnippet);
+      toast.show({
+        type: "success",
+        title: "Snippet copied",
+        message: "Paste it into your website or Wix custom code block.",
+        durationMs: 3000,
+      });
+    } catch {
+      toast.show({
+        type: "error",
+        title: "Copy failed",
+        message: "Copy the snippet manually from the box.",
+        durationMs: 4000,
+      });
+    }
+  };
 
   const renderLogo = (card: Card) => {
     if (card.logoSrc) {
       return (
         <div style={{ ...styles.cardLogo, background: card.tint }}>
-          <img
+          <Image
             src={card.logoSrc}
             alt={`${card.name} logo`}
+            width={card.logoSize ?? 40}
+            height={card.logoSize ?? 40}
             style={{
               width: card.logoSize ?? 40,
               height: card.logoSize ?? 40,
@@ -305,7 +466,11 @@ export default function SyncPage() {
   };
 
   const renderAction = (card: Card) => {
-    const isSynced = card.key === "whatsapp" ? whatsappConnected : syncState[card.key] === "synced";
+    const isSynced = card.key === "whatsapp"
+      ? whatsappConnected
+      : card.key === "website"
+        ? websiteConnected
+        : syncState[card.key] === "synced";
 
     if (!card.canSync) {
       return (
@@ -336,6 +501,25 @@ export default function SyncPage() {
       );
     }
 
+    if (card.key === "website") {
+      return (
+        <button
+          onClick={() => {
+            void openWebsiteWidgetModal();
+          }}
+          disabled={ensureWebsiteWidget.isPending || !email}
+          style={{
+            ...styles.btnSync,
+            ...(isSynced ? styles.btnSynced : {}),
+            ...((ensureWebsiteWidget.isPending || !email) ? styles.btnDisabled : {}),
+          }}
+        >
+          {isSynced ? Icons.check : Icons.link}
+          {ensureWebsiteWidget.isPending ? "Preparing…" : isSynced ? "View Snippet" : "Connect"}
+        </button>
+      );
+    }
+
     if (card.key === "telegram") {
       return (
         <button
@@ -357,10 +541,69 @@ export default function SyncPage() {
 
   return (
     <div style={styles.page}>
+      {widgetModalOpen ? (
+        <div
+          style={styles.modalBackdrop}
+          onClick={() => setWidgetModalOpen(false)}
+        >
+          <div
+            style={styles.modalCard}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleWrap}>
+                <h2 style={styles.modalTitle}>Website Widget Snippet</h2>
+                <p style={styles.modalDesc}>
+                  Paste this one-line script into your website, Wix custom code, or before the closing
+                  <code> {"</body>"} </code>
+                  tag to load the floating AI chat widget.
+                </p>
+              </div>
+              <button
+                type="button"
+                style={styles.closeIconButton}
+                onClick={() => setWidgetModalOpen(false)}
+                aria-label="Close website widget modal"
+              >
+                ×
+              </button>
+            </div>
+
+            <p style={styles.codeLabel}>Script snippet</p>
+            <textarea
+              readOnly
+              value={widgetSnippet}
+              style={styles.codeBox}
+              aria-label="Website widget snippet"
+            />
+
+            <div style={styles.modalActions}>
+              <div style={styles.modalHint}>
+                This snippet injects a floating bubble and animated chat panel directly into the site.
+                No iframe setup is required by the customer.
+              </div>
+              <button
+                type="button"
+                style={styles.secondaryButton}
+                onClick={() => {
+                  void copyWidgetSnippet();
+                }}
+              >
+                Copy Snippet
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Cards Grid */}
       <div style={styles.grid}>
         {cards.map((card) => {
-          const isSynced = syncState[card.key] === "synced";
+          const isSynced = card.key === "whatsapp"
+            ? whatsappConnected
+            : card.key === "website"
+              ? websiteConnected
+              : syncState[card.key] === "synced";
 
           return (
             <div

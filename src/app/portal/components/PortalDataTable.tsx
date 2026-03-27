@@ -42,7 +42,7 @@ export function PortalDataTable({
         {(countText || endControls) && (
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
             {countText ? (
-              <p style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>{countText}</p>
+              <p className="portal-meta-text" style={{ whiteSpace: "nowrap" }}>{countText}</p>
             ) : null}
             {endControls}
           </div>
@@ -57,4 +57,3 @@ export function PortalDataTable({
     </main>
   );
 }
-

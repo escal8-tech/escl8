@@ -26,9 +26,40 @@ type TicketListInput = {
   limit?: number;
 };
 
+type TicketLedgerInput = {
+  typeKey?: string;
+  status?: "open" | "in_progress" | "resolved";
+  orderStage?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+};
+
+type TicketPerformanceInput = {
+  typeKey?: string;
+  windowDays?: number;
+};
+
 type OrderListInput = {
   limit?: number;
   status?: string;
+};
+
+type OrderLedgerInput = {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  activeFilter?: string;
+  dateField?: "updatedAt" | "createdAt";
+  rangeDays?: number;
+  methodFilter?: "all" | "manual" | "bank_qr" | "cod";
+};
+
+type OrderOverviewInput = {
+  dateField?: "updatedAt" | "createdAt";
+  rangeDays?: number;
+  methodFilter?: "all" | "manual" | "bank_qr" | "cod";
+  mode?: "orders" | "revenue";
 };
 
 type MessageRow = {
@@ -49,8 +80,14 @@ type LiveSyncOptions = {
   messagesThreadListInput?: ThreadListInput;
   bookingsListInput?: { businessId?: string };
   ticketListInputs?: Array<TicketListInput | undefined>;
+  ticketLedgerInput?: TicketLedgerInput;
+  ticketPerformanceInput?: TicketPerformanceInput;
+  refreshTicketTypeCounters?: boolean;
   orderListInput?: OrderListInput;
+  orderLedgerInput?: OrderLedgerInput;
+  orderOverviewInput?: OrderOverviewInput;
   activeOrderId?: string | null;
+  activeTicketId?: string | null;
   refreshOrderStats?: boolean;
   activeThreadId?: string | null;
   activeThreadPageSize?: number;
@@ -242,8 +279,16 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
   const messagesList = utils.messages.listMessages as any;
   const bookingsList = utils.bookings.list as any;
   const ticketsList = utils.tickets.listTickets as any;
+  const ticketsLedger = utils.tickets.listTicketLedger as any;
+  const ticketPerformance = utils.tickets.getPerformance as any;
+  const ticketTypeCounters = utils.tickets.getTypeCounters as any;
+  const ticketEvents = utils.tickets.listTicketEvents as any;
   const ticketTypesList = utils.tickets.listTypes as any;
+  const ticketById = utils.tickets.getTicketById as any;
   const ordersList = utils.orders.listOrders as any;
+  const ordersLedger = utils.orders.listOrdersPage as any;
+  const ordersOverview = utils.orders.getOverview as any;
+  const orderById = utils.orders.getOrderById as any;
   const ordersStats = utils.orders.getStats as any;
   const orderPayments = utils.orders.getOrderPayments as any;
   const orderEvents = utils.orders.getOrderEvents as any;
@@ -318,11 +363,21 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       if (currentOptions.ticketListInputs && currentOptions.ticketListInputs.length > 0) {
         for (const input of currentOptions.ticketListInputs) jobs.push(ticketsList.invalidate(input));
       }
+      if (currentOptions.ticketLedgerInput) jobs.push(ticketsLedger.invalidate(currentOptions.ticketLedgerInput));
+      if (currentOptions.ticketPerformanceInput) jobs.push(ticketPerformance.invalidate(currentOptions.ticketPerformanceInput));
+      if (currentOptions.refreshTicketTypeCounters) jobs.push(ticketTypeCounters.invalidate(undefined));
       if (currentOptions.orderListInput !== undefined) jobs.push(ordersList.invalidate(currentOptions.orderListInput));
+      if (currentOptions.orderLedgerInput) jobs.push(ordersLedger.invalidate(currentOptions.orderLedgerInput));
+      if (currentOptions.orderOverviewInput) jobs.push(ordersOverview.invalidate(currentOptions.orderOverviewInput));
       if (currentOptions.refreshOrderStats) jobs.push(ordersStats.invalidate(undefined));
       if (currentOptions.activeOrderId) {
+        jobs.push(orderById.invalidate({ orderId: currentOptions.activeOrderId }));
         jobs.push(orderPayments.invalidate({ orderId: currentOptions.activeOrderId }));
         jobs.push(orderEvents.invalidate({ orderId: currentOptions.activeOrderId }));
+      }
+      if (currentOptions.activeTicketId) {
+        jobs.push(ticketById.invalidate({ ticketId: currentOptions.activeTicketId }));
+        jobs.push(ticketEvents.invalidate({ ticketId: currentOptions.activeTicketId }));
       }
       jobs.push(ticketTypesList.invalidate({ includeDisabled: true }));
       if (currentOptions.activeThreadId) {
@@ -493,6 +548,12 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       }
 
       const maybeOrder = order;
+      if (event.entity === "order" && currentOptions.orderLedgerInput) {
+        void ordersLedger.invalidate(currentOptions.orderLedgerInput);
+      }
+      if (event.entity === "order" && currentOptions.orderOverviewInput) {
+        void ordersOverview.invalidate(currentOptions.orderOverviewInput);
+      }
       if (maybeOrder && currentOptions.orderListInput !== undefined) {
         const orderInput = currentOptions.orderListInput;
         const limit = orderInput.limit ?? 200;
@@ -541,12 +602,22 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         const activeOrderId = String(currentOptions.activeOrderId);
         const eventOrderId = String(event.entityId ?? maybeOrder?.id ?? "");
         if (activeOrderId && eventOrderId && activeOrderId === eventOrderId) {
+          void orderById.invalidate({ orderId: activeOrderId });
           void orderPayments.invalidate({ orderId: activeOrderId });
           void orderEvents.invalidate({ orderId: activeOrderId });
         }
       }
 
       const maybeTicket = ticket;
+      if (event.entity === "ticket" && currentOptions.ticketLedgerInput) {
+        void ticketsLedger.invalidate(currentOptions.ticketLedgerInput);
+      }
+      if (event.entity === "ticket" && currentOptions.ticketPerformanceInput) {
+        void ticketPerformance.invalidate(currentOptions.ticketPerformanceInput);
+      }
+      if (event.entity === "ticket" && currentOptions.refreshTicketTypeCounters) {
+        void ticketTypeCounters.invalidate(undefined);
+      }
       if (maybeTicket && currentOptions.ticketListInputs && currentOptions.ticketListInputs.length > 0) {
         for (const listInput of currentOptions.ticketListInputs) {
           const limit = listInput?.limit ?? 400;
@@ -570,6 +641,14 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       } else if (!maybeTicket && event.entity === "ticket" && currentOptions.ticketListInputs && currentOptions.ticketListInputs.length > 0) {
         for (const listInput of currentOptions.ticketListInputs) {
           void ticketsList.invalidate(listInput);
+        }
+      }
+      if (event.entity === "ticket" && currentOptions.activeTicketId) {
+        const activeTicketId = String(currentOptions.activeTicketId);
+        const eventTicketId = String(event.entityId ?? maybeTicket?.id ?? "");
+        if (activeTicketId && eventTicketId && activeTicketId === eventTicketId) {
+          void ticketById.invalidate({ ticketId: activeTicketId });
+          void ticketEvents.invalidate({ ticketId: activeTicketId });
         }
       }
 
@@ -726,8 +805,16 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     messagesList,
     bookingsList,
     ticketsList,
+    ticketsLedger,
+    ticketPerformance,
+    ticketTypeCounters,
+    ticketEvents,
     ticketTypesList,
+    ticketById,
     ordersList,
+    ordersLedger,
+    ordersOverview,
+    orderById,
     ordersStats,
     orderPayments,
     orderEvents,
