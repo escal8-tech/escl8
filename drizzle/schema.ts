@@ -444,6 +444,7 @@ export const threadMessages = pgTable(
   (t) => ({
     threadMessagesThreadIdx: index("thread_messages_thread_id_idx").on(t.threadId),
     threadMessagesCreatedIdx: index("thread_messages_created_at_idx").on(t.createdAt),
+    threadMessagesThreadDirectionCreatedIdx: index("thread_messages_thread_direction_created_idx").on(t.threadId, t.direction, t.createdAt),
     // Only enforce uniqueness when we actually have an external id.
     threadMessagesExternalUx: uniqueIndex("thread_messages_external_message_id_ux")
       .on(t.externalMessageId)
@@ -582,6 +583,9 @@ export const supportTickets = pgTable(
     supportTicketsTypeIdx: index("support_tickets_type_idx").on(t.businessId, t.ticketTypeKey),
     supportTicketsStatusIdx: index("support_tickets_status_idx").on(t.businessId, t.status),
     supportTicketsOutcomeIdx: index("support_tickets_outcome_idx").on(t.businessId, t.outcome),
+    supportTicketsTypeUpdatedCreatedIdx: index("support_tickets_type_updated_created_idx").on(t.businessId, t.ticketTypeKey, t.updatedAt, t.createdAt),
+    supportTicketsStatusUpdatedCreatedIdx: index("support_tickets_status_updated_created_idx").on(t.businessId, t.status, t.updatedAt, t.createdAt),
+    supportTicketsOutcomeUpdatedIdx: index("support_tickets_outcome_updated_idx").on(t.businessId, t.outcome, t.updatedAt),
     supportTicketsSlaDueIdx: index("support_tickets_sla_due_at_idx").on(t.slaDueAt),
     supportTicketsCreatedIdx: index("support_tickets_created_at_idx").on(t.createdAt),
     supportTicketsCustomerIdx: index("support_tickets_customer_id_idx").on(t.customerId),
@@ -643,6 +647,25 @@ export const messageOutbox = pgTable(
       columns: [t.whatsappIdentityId],
       foreignColumns: [whatsappIdentities.phoneNumberId],
     }).onDelete("set null").onUpdate("cascade"),
+  }),
+);
+
+export const operationThrottles = pgTable(
+  "operation_throttles",
+  {
+    scopeKey: text("scope_key").primaryKey().notNull(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    bucket: text("bucket").notNull(),
+    hitCount: integer("hit_count").notNull().default(0),
+    resetAt: timestamp("reset_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    operationThrottlesBusinessBucketIdx: index("operation_throttles_business_bucket_idx").on(t.businessId, t.bucket, t.resetAt),
+    operationThrottlesResetIdx: index("operation_throttles_reset_at_idx").on(t.resetAt),
   }),
 );
 
@@ -715,6 +738,10 @@ export const orders = pgTable(
     ordersBusinessIdx: index("orders_business_id_idx").on(t.businessId),
     ordersStatusIdx: index("orders_status_idx").on(t.businessId, t.status),
     ordersFulfillmentStatusIdx: index("orders_fulfillment_status_idx").on(t.businessId, t.fulfillmentStatus),
+    ordersBusinessUpdatedCreatedIdx: index("orders_business_updated_created_idx").on(t.businessId, t.updatedAt, t.createdAt),
+    ordersBusinessCreatedIdx: index("orders_business_created_idx").on(t.businessId, t.createdAt),
+    ordersBusinessMethodUpdatedCreatedIdx: index("orders_business_method_updated_created_idx").on(t.businessId, t.paymentMethod, t.updatedAt, t.createdAt),
+    ordersBusinessMethodCreatedIdx: index("orders_business_method_created_idx").on(t.businessId, t.paymentMethod, t.createdAt),
     ordersCustomerIdx: index("orders_customer_id_idx").on(t.customerId),
     ordersTicketUx: uniqueIndex("orders_support_ticket_id_ux").on(t.supportTicketId).where(sql`${t.supportTicketId} is not null`),
     ordersWhatsappIdentityFk: foreignKey({
@@ -766,6 +793,7 @@ export const orderPayments = pgTable(
     orderPaymentsOrderIdx: index("order_payments_order_id_idx").on(t.orderId),
     orderPaymentsStatusIdx: index("order_payments_status_idx").on(t.businessId, t.status),
     orderPaymentsCreatedIdx: index("order_payments_created_at_idx").on(t.createdAt),
+    orderPaymentsBusinessOrderCreatedIdx: index("order_payments_business_order_created_idx").on(t.businessId, t.orderId, t.createdAt),
     orderPaymentsWhatsappIdentityFk: foreignKey({
       name: "order_payments_whatsapp_identity_fk",
       columns: [t.whatsappIdentityId],

@@ -12,19 +12,7 @@ type TableSearchControlProps = {
 
 export function TableSearchControl({ value, onChange, placeholder, style }: TableSearchControlProps) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        height: 44,
-        padding: "0 10px",
-        margin: "8px 0",
-        borderRadius: 8,
-        background: "rgba(255,255,255,0.03)",
-        ...style,
-      }}
-    >
+    <div className="portal-search-clean" style={style}>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2">
         <circle cx="11" cy="11" r="8" />
         <path d="m21 21-4.3-4.3" />
@@ -35,16 +23,7 @@ export function TableSearchControl({ value, onChange, placeholder, style }: Tabl
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        style={{
-          flex: 1,
-          background: "transparent",
-          border: "none",
-          color: "var(--foreground)",
-          outline: "none",
-          boxShadow: "none",
-          fontSize: 14,
-          minWidth: 0,
-        }}
+        style={{ minWidth: 0 }}
       />
     </div>
   );

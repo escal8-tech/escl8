@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { randomBytes } from "node:crypto";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { businesses, users, whatsappIdentities, messageThreads, threadMessages } from "../../../drizzle/schema";
@@ -6,6 +7,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { mergeOrderFlowSettings, normalizeOrderFlowSettings } from "@/lib/order-settings";
+import { mergeWebsiteWidgetSettings, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
 
 export const businessRouter = router({
   listPhoneNumbers: businessProcedure.query(async ({ ctx }) => {
@@ -256,6 +258,71 @@ export const businessRouter = router({
       }
 
       return updated ?? null;
+    }),
+
+  ensureWebsiteWidget: businessProcedure
+    .input(
+      z.object({
+        email: z.string().email(),
+        businessId: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.userEmail && input.email !== ctx.userEmail) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
+      }
+      if (input.businessId !== ctx.businessId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
+      }
+
+      const [biz] = await db.select().from(businesses).where(eq(businesses.id, input.businessId)).limit(1);
+      if (!biz) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
+      }
+
+      const current = normalizeWebsiteWidgetSettings(biz.settings);
+      const key = current.key || `ww_${randomBytes(18).toString("base64url")}`;
+      const nextSettings = mergeWebsiteWidgetSettings(biz.settings, {
+        enabled: true,
+        key,
+        title: current.title,
+        accentColor: current.accentColor,
+      });
+
+      const [updated] = await db
+        .update(businesses)
+        .set({
+          settings: nextSettings,
+          updatedAt: new Date(),
+        })
+        .where(eq(businesses.id, input.businessId))
+        .returning();
+
+      if (!updated) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save website widget settings" });
+      }
+
+      const widget = normalizeWebsiteWidgetSettings(updated.settings);
+      recordBusinessEvent({
+        event: current.key ? "business.website_widget_accessed" : "business.website_widget_enabled",
+        action: "ensureWebsiteWidget",
+        area: "business",
+        businessId: ctx.businessId,
+        entity: "business",
+        entityId: updated.id,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: "success",
+        status: widget.enabled ? "enabled" : "disabled",
+      });
+
+      return {
+        enabled: widget.enabled,
+        key: widget.key,
+        title: widget.title,
+        accentColor: widget.accentColor,
+      };
     }),
 
   disconnectGmailConnection: businessProcedure

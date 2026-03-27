@@ -14,6 +14,7 @@ import {
   normalizeIndexingStatus,
 } from "@/lib/rag-documents";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
+import { rememberPendingDocumentTraining } from "@/app/portal/lib/documentTrainingRealtime";
 import type { DocType, ExistingMap } from "../types";
 import { DocumentCard } from "./DocumentCard";
 import { getEmailDomain, UploadIcons, uploadStyles } from "./UploadPageUI";
@@ -31,7 +32,6 @@ export function UploadContent() {
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [retrainBusy, setRetrainBusy] = useState<DocType | null>(null);
   const toast = useToast();
-  const retrainToastRef = useRef(new Map<DocType, string>());
   const observedStatusRef = useRef(new Map<DocType, string>());
   const pendingTrainingDocsRef = useRef(new Set<DocType>());
 
@@ -93,29 +93,6 @@ export function UploadContent() {
       }));
     },
   });
-
-  useEffect(() => {
-    for (const [docType, toastId] of retrainToastRef.current.entries()) {
-      const status = normalizeIndexingStatus(existing?.[docType]?.indexingStatus);
-      if (status === INDEXING_STATUS.INDEXED) {
-        toast.update(toastId, {
-          type: "success",
-          title: "Training complete",
-          message: `AI trained successfully on ${getDocTitle(docType)}`,
-          durationMs: 4000,
-        });
-        retrainToastRef.current.delete(docType);
-      } else if (status === INDEXING_STATUS.FAILED) {
-        toast.update(toastId, {
-          type: "error",
-          title: "Training failed",
-          message: existing?.[docType]?.lastError || "Training failed. Please try again.",
-          durationMs: 7000,
-        });
-        retrainToastRef.current.delete(docType);
-      }
-    }
-  }, [existing, toast]);
 
   useEffect(() => {
     for (const slot of DOC_SLOTS) {
@@ -257,17 +234,18 @@ export function UploadContent() {
       return { ...prev, [docType]: { ...cur, indexingStatus: INDEXING_STATUS.QUEUED, lastError: null } };
     });
 
-    const toastId = toast.show({
-      type: "progress",
-      title: "Training started",
-      message: `Training AI on ${DOC_SLOTS.find((slot) => slot.key === docType)?.title || docType}...`,
-    });
-    retrainToastRef.current.set(docType, toastId);
-
     try {
       if (!userEmail) throw new Error("Missing user email");
-      await retrainMutation.mutateAsync({ email: userEmail, docType });
+      const result = await retrainMutation.mutateAsync({ email: userEmail, docType });
       pendingTrainingDocsRef.current.add(docType);
+      if (businessId && result?.jobId) {
+        rememberPendingDocumentTraining({
+          businessId,
+          jobId: String(result.jobId),
+          docType,
+          documentName: existing?.[docType]?.name ?? null,
+        });
+      }
       recordClientBusinessEvent({
         event: "document.training_requested",
         action: "portal.upload.train",
@@ -282,10 +260,11 @@ export function UploadContent() {
           email_domain: emailDomain,
         },
       });
-      toast.update(toastId, {
-        type: "progress",
+      toast.show({
+        type: "info",
         title: "Training queued",
-        message: "Live updates enabled. Status will update automatically.",
+        message: `Live updates enabled for ${getDocTitle(docType)}. You will get a toast when it finishes.`,
+        durationMs: 3500,
       });
     } catch (error) {
       pendingTrainingDocsRef.current.delete(docType);
@@ -305,13 +284,12 @@ export function UploadContent() {
           email_domain: emailDomain,
         },
       });
-      toast.update(toastId, {
+      toast.show({
         type: "error",
         title: "Unable to start training",
         message: getErrorMessage(error, "Retrain failed"),
         durationMs: 7000,
       });
-      retrainToastRef.current.delete(docType);
     } finally {
       setRetrainBusy(null);
     }

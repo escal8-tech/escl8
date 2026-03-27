@@ -3,9 +3,15 @@ import { usePathname } from "next/navigation";
 import PortalNav from "@/components/PortalNav";
 import PortalAuthProvider from "@/components/PortalAuthProvider";
 import { PhoneFilterProvider } from "@/components/PhoneFilterContext";
+import PortalLiveDocumentToasts from "@/app/portal/components/PortalLiveDocumentToasts";
+import {
+  PortalThemeProvider,
+  usePortalTheme,
+} from "@/app/portal/components/PortalThemeProvider";
 
-export default function PortalLayout({ children }: { children: React.ReactNode }) {
+function PortalLayoutShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { theme } = usePortalTheme();
   const isAuthPage = pathname === "/portal" || pathname?.startsWith("/portal/signup");
   const isMessagesPage = pathname?.startsWith("/portal/messages");
   const isFlushPage =
@@ -23,7 +29,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   return (
     <PortalAuthProvider>
       <PhoneFilterProvider>
-        <div className="portal-layout">
+        <PortalLiveDocumentToasts />
+        <div className="portal-layout" data-theme={theme} suppressHydrationWarning>
           <PortalNav />
           <main className="portal-main" style={{ paddingTop: 72 }}>
             <div className={`portal-content${isFlushPage ? " portal-content--flush" : ""}${isMessagesPage ? " portal-content--flush-messages" : ""}`}>
@@ -33,5 +40,13 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </div>
       </PhoneFilterProvider>
     </PortalAuthProvider>
+  );
+}
+
+export default function PortalLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <PortalThemeProvider>
+      <PortalLayoutShell>{children}</PortalLayoutShell>
+    </PortalThemeProvider>
   );
 }

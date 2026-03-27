@@ -86,7 +86,7 @@ const styles: Record<string, React.CSSProperties> = {
   page: {
     display: "flex",
     flexDirection: "column",
-    gap: 16,
+    gap: 12,
     width: "100%",
     padding: 0,
   },
@@ -106,12 +106,8 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: 28,
     fontWeight: 700,
-    color: "#f1f5f9",
+    color: "var(--portal-text)",
     letterSpacing: "-0.025em",
-    background: "linear-gradient(135deg, #f1f5f9 0%, #D4A84B 100%)",
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
-    backgroundClip: "text",
   },
   subtitle: {
     color: "#94a3b8",
@@ -120,7 +116,8 @@ const styles: Record<string, React.CSSProperties> = {
   headerControls: {
     display: "flex",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
+    flexWrap: "wrap",
   },
   navBtn: {
     display: "flex",
@@ -128,10 +125,10 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
     width: 42,
     height: 42,
-    borderRadius: 12,
-    border: "1px solid rgba(184, 134, 11, 0.3)",
-    background: "linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(26, 31, 46, 0.8) 100%)",
-    color: "#f1f5f9",
+    borderRadius: 10,
+    border: "1px solid var(--portal-border)",
+    background: "var(--portal-card-plain)",
+    color: "var(--portal-text)",
     cursor: "pointer",
     transition: "all 0.2s ease",
     flexShrink: 0,
@@ -140,13 +137,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 10,
-    padding: "12px 18px",
-    borderRadius: 12,
-    background: "linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(26, 31, 46, 0.8) 100%)",
-    border: "1px solid rgba(184, 134, 11, 0.3)",
+    padding: "11px 16px",
+    borderRadius: 10,
+    background: "var(--portal-card-plain)",
+    border: "1px solid var(--portal-border)",
     fontSize: 14,
-    fontWeight: 500,
-    color: "#f1f5f9",
+    fontWeight: 600,
+    color: "var(--portal-text)",
     whiteSpace: "nowrap" as const,
     minWidth: "fit-content",
   },
@@ -154,25 +151,24 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    padding: "12px 18px",
-    borderRadius: 12,
-    border: "1px solid rgba(184, 134, 11, 0.5)",
-    background: "linear-gradient(135deg, #B8860B 0%, #8B6914 100%)",
-    color: "#fff",
+    padding: "11px 16px",
+    borderRadius: 10,
+    border: "1px solid transparent",
+    background: "#b59a5a",
+    color: "#162033",
     fontSize: 14,
     fontWeight: 600,
     cursor: "pointer",
     transition: "all 0.2s ease",
-    boxShadow: "0 0 20px rgba(184, 134, 11, 0.3)",
     flexShrink: 0,
   },
   dateInput: {
-    padding: "12px 16px",
-    borderRadius: 12,
-    border: "1px solid rgba(184, 134, 11, 0.3)",
-    background: "linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(26, 31, 46, 0.8) 100%)",
+    padding: "11px 16px",
+    borderRadius: 10,
+    border: "1px solid var(--portal-border)",
+    background: "var(--portal-card-plain)",
     fontSize: 14,
-    color: "#f1f5f9",
+    color: "var(--portal-text)",
     cursor: "pointer",
     outline: "none",
     minWidth: 140,
@@ -187,12 +183,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 16,
-    padding: 22,
-    borderRadius: 16,
-    background: "linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(26, 31, 46, 0.8) 100%)",
-    border: "1px solid rgba(184, 134, 11, 0.25)",
-    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.2)",
-    backdropFilter: "blur(10px)",
+    padding: 18,
+    borderRadius: 14,
+    background: "var(--portal-card-plain)",
+    border: "1px solid var(--portal-border)",
     transition: "all 0.2s ease",
   },
   statIcon: {
@@ -210,32 +204,32 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
   },
   statValue: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: 700,
-    color: "#f1f5f9",
+    color: "var(--portal-text)",
     letterSpacing: "-0.02em",
   },
   statLabel: {
-    fontSize: 13,
-    color: "#94a3b8",
+    fontSize: 12,
+    color: "var(--portal-text-muted)",
   },
   calendarContainer: {
-    background: "linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(26, 31, 46, 0.9) 100%)",
-    borderRadius: 20,
-    border: "1px solid rgba(184, 134, 11, 0.3)",
+    background: "var(--portal-card-plain)",
+    borderRadius: 14,
+    border: "1px solid var(--portal-border)",
     overflow: "hidden",
-    boxShadow: "0 8px 32px rgba(0, 0, 0, 0.3)",
+    boxShadow: "none",
   },
   calendarHeader: {
     display: "grid",
     gridTemplateColumns: "80px repeat(7, 1fr)",
-    borderBottom: "1px solid rgba(184, 134, 11, 0.2)",
-    background: "linear-gradient(90deg, rgba(184, 134, 11, 0.1) 0%, rgba(0, 51, 160, 0.1) 100%)",
+    borderBottom: "1px solid var(--portal-border-soft)",
+    background: "var(--portal-card-plain)",
   },
   calendarHeaderCell: {
     padding: "16px 10px",
     textAlign: "center" as const,
-    borderRight: "1px solid rgba(184, 134, 11, 0.15)",
+    borderRight: "1px solid var(--portal-border-soft)",
     display: "flex",
     flexDirection: "column",
     gap: 6,
@@ -244,14 +238,14 @@ const styles: Record<string, React.CSSProperties> = {
   dayName: {
     fontSize: 12,
     fontWeight: 600,
-    color: "#94a3b8",
+    color: "var(--portal-text-muted)",
     textTransform: "uppercase" as const,
     letterSpacing: "0.05em",
   },
   dayNumber: {
     fontSize: 18,
     fontWeight: 700,
-    color: "#f1f5f9",
+    color: "var(--portal-text)",
     width: 38,
     height: 38,
     borderRadius: "50%",
@@ -260,21 +254,20 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "center",
   },
   todayCircle: {
-    background: "linear-gradient(135deg, #B8860B 0%, #D4A84B 100%)",
-    color: "#fff",
-    boxShadow: "0 0 16px rgba(184, 134, 11, 0.5)",
+    background: "#b59a5a",
+    color: "#162033",
   },
   timeCell: {
     padding: "10px 12px",
-    borderRight: "1px solid rgba(184, 134, 11, 0.15)",
-    borderBottom: "1px solid rgba(184, 134, 11, 0.15)",
+    borderRight: "1px solid var(--portal-border-soft)",
+    borderBottom: "1px solid var(--portal-border-soft)",
     fontSize: 13,
     fontWeight: 500,
-    color: "#94a3b8",
+    color: "var(--portal-text-muted)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "rgba(15, 23, 42, 0.6)",
+    background: "var(--portal-surface)",
   },
   calendarBody: {
     maxHeight: "calc(100vh - 380px)",
@@ -285,8 +278,8 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateColumns: "80px repeat(7, 1fr)",
   },
   slotCell: {
-    borderRight: "1px solid rgba(184, 134, 11, 0.15)",
-    borderBottom: "1px solid rgba(184, 134, 11, 0.15)",
+    borderRight: "1px solid var(--portal-border-soft)",
+    borderBottom: "1px solid var(--portal-border-soft)",
     minHeight: 64,
     cursor: "pointer",
     transition: "all 0.15s ease",
@@ -297,7 +290,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
     padding: 10,
     position: "relative" as const,
-    background: "rgba(15, 23, 42, 0.4)",
+    background: "var(--portal-surface)",
   },
   slotCount: {
     fontSize: 17,
@@ -320,8 +313,8 @@ const styles: Record<string, React.CSSProperties> = {
   modalBackdrop: {
     position: "fixed" as const,
     inset: 0,
-    background: "rgba(0, 0, 0, 0.7)",
-    backdropFilter: "blur(8px)",
+    background: "rgba(0, 0, 0, 0.45)",
+    backdropFilter: "blur(1px)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -329,10 +322,10 @@ const styles: Record<string, React.CSSProperties> = {
     animation: "fadeIn 0.2s ease",
   },
   modal: {
-    background: "linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(26, 31, 46, 0.95) 100%)",
-    borderRadius: 24,
-    boxShadow: "0 25px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(184, 134, 11, 0.15)",
-    border: "1px solid rgba(184, 134, 11, 0.3)",
+    background: "var(--portal-card-plain)",
+    borderRadius: 18,
+    boxShadow: "0 18px 42px rgba(2, 8, 20, 0.26)",
+    border: "1px solid var(--portal-border)",
     width: "min(600px, 95vw)",
     maxHeight: "85vh",
     overflow: "hidden",
@@ -342,19 +335,19 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "22px 26px",
-    borderBottom: "1px solid rgba(184, 134, 11, 0.2)",
-    background: "linear-gradient(90deg, rgba(184, 134, 11, 0.1) 0%, rgba(0, 51, 160, 0.08) 100%)",
+    padding: "18px 20px",
+    borderBottom: "1px solid var(--portal-border)",
+    background: "var(--portal-card-plain)",
   },
   modalTitle: {
     margin: 0,
     fontSize: 20,
-    fontWeight: 700,
-    color: "#f1f5f9",
+    fontWeight: 600,
+    color: "var(--portal-text)",
   },
   modalSubtitle: {
     fontSize: 13,
-    color: "#94a3b8",
+    color: "var(--portal-text-muted)",
     marginTop: 4,
   },
   modalClose: {
@@ -364,9 +357,9 @@ const styles: Record<string, React.CSSProperties> = {
     width: 38,
     height: 38,
     borderRadius: 12,
-    border: "1px solid rgba(184, 134, 11, 0.3)",
-    background: "rgba(15, 23, 42, 0.8)",
-    color: "#94a3b8",
+    border: "1px solid var(--portal-border)",
+    background: "var(--portal-card-plain)",
+    color: "var(--portal-text-muted)",
     cursor: "pointer",
     transition: "all 0.2s ease",
   },
@@ -384,10 +377,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "flex-start",
     gap: 16,
-    padding: 18,
-    borderRadius: 14,
-    background: "linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(26, 31, 46, 0.7) 100%)",
-    border: "1px solid rgba(184, 134, 11, 0.2)",
+    padding: 16,
+    borderRadius: 16,
+    background: "var(--portal-surface)",
+    border: "1px solid var(--portal-border)",
     transition: "all 0.2s ease",
   },
   bookingAvatar: {
@@ -397,12 +390,11 @@ const styles: Record<string, React.CSSProperties> = {
     width: 48,
     height: 48,
     borderRadius: 14,
-    background: "linear-gradient(135deg, #B8860B 0%, #D4A84B 100%)",
-    color: "#fff",
+    background: "#b59a5a",
+    color: "#162033",
     fontWeight: 700,
     fontSize: 16,
     flexShrink: 0,
-    boxShadow: "0 0 20px rgba(184, 134, 11, 0.3)",
   },
   bookingInfo: {
     flex: 1,
@@ -415,10 +407,10 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 10,
     fontSize: 14,
-    color: "#f1f5f9",
+    color: "var(--portal-text)",
   },
   bookingLabel: {
-    color: "#94a3b8",
+    color: "var(--portal-text-muted)",
     minWidth: 80,
   },
   emptyState: {
@@ -433,33 +425,33 @@ const styles: Record<string, React.CSSProperties> = {
     width: 72,
     height: 72,
     borderRadius: 18,
-    background: "linear-gradient(135deg, rgba(184, 134, 11, 0.15) 0%, rgba(0, 51, 160, 0.1) 100%)",
+    background: "var(--portal-surface)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    color: "#D4A84B",
+    color: "#b59a5a",
     marginBottom: 20,
-    border: "1px solid rgba(184, 134, 11, 0.2)",
+    border: "1px solid var(--portal-border)",
   },
   emptyTitle: {
     fontSize: 17,
     fontWeight: 600,
-    color: "#f1f5f9",
+    color: "var(--portal-text)",
     marginBottom: 6,
   },
   emptyDesc: {
     fontSize: 14,
-    color: "#94a3b8",
+    color: "var(--portal-text-muted)",
   },
   legend: {
     display: "flex",
     alignItems: "center",
     gap: 24,
-    padding: "14px 22px",
-    background: "linear-gradient(90deg, rgba(184, 134, 11, 0.08) 0%, rgba(0, 51, 160, 0.05) 100%)",
-    borderTop: "1px solid rgba(184, 134, 11, 0.2)",
+    padding: "14px 18px",
+    background: "var(--portal-card-plain)",
+    borderTop: "1px solid var(--portal-border)",
     fontSize: 13,
-    color: "#94a3b8",
+    color: "var(--portal-text-muted)",
   },
   legendItem: {
     display: "flex",
@@ -488,22 +480,24 @@ function SlotCellComponent({
   const utilization = slot.capacity > 0 ? slot.count / slot.capacity : 0;
   
   let bgColor = "rgba(15, 23, 42, 0.4)";
-  let textColor = "#64748b";
+  let textColor = "var(--portal-text-soft)";
   let badgeColor = "transparent";
   
   if (slot.capacity > 0) {
     if (utilization === 0) {
-      bgColor = "rgba(16, 185, 129, 0.15)";
-      textColor = "#10b981";
+      bgColor = "rgba(16, 185, 129, 0.05)";
+      textColor = "#34d399";
     } else if (utilization < 1) {
-      bgColor = "rgba(184, 134, 11, 0.15)";
-      textColor = "#D4A84B";
-      badgeColor = "#D4A84B";
+      bgColor = "rgba(181, 154, 90, 0.12)";
+      textColor = "#b59a5a";
+      badgeColor = "#b59a5a";
     } else {
-      bgColor = "rgba(239, 68, 68, 0.15)";
-      textColor = "#ef4444";
-      badgeColor = "#ef4444";
+      bgColor = "rgba(239, 68, 68, 0.06)";
+      textColor = "#f87171";
+      badgeColor = "#f87171";
     }
+  } else {
+    bgColor = "var(--portal-surface)";
   }
   
   return (
@@ -516,7 +510,7 @@ function SlotCellComponent({
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = "scale(1.02)";
         e.currentTarget.style.zIndex = "10";
-        e.currentTarget.style.boxShadow = "0 0 20px rgba(184, 134, 11, 0.2)";
+        e.currentTarget.style.boxShadow = "0 8px 18px rgba(2, 8, 20, 0.18)";
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = "scale(1)";
@@ -589,7 +583,7 @@ function BookingModal({
             </div>
           ) : (
             <div style={styles.bookingsList}>
-              {bookings.map((b, idx) => (
+              {bookings.map((b) => (
                 <div key={b.id} style={styles.bookingCard}>
                   <div style={styles.bookingAvatar}>
                     {getInitials(b.phoneNumber)}
@@ -783,7 +777,6 @@ export default function BookingsPage() {
   const goToday = () => setSelectedDate(new Date().toISOString().slice(0, 10));
 
   const timeslotMinutes = biz.data?.bookingTimeslotMinutes ?? 60;
-  const bookingUnitCapacity = biz.data?.bookingUnitCapacity ?? 0;
 
   const getBookingsForSlot = useCallback(
     (slot: Slot) => {
@@ -825,7 +818,7 @@ export default function BookingsPage() {
           {Icons.chevronLeft}
         </button>
         <div style={styles.weekDisplay}>
-          <span style={{ color: "var(--accent)" }}>{Icons.calendar}</span>
+          <span style={{ color: "var(--portal-primary)" }}>{Icons.calendar}</span>
           {formatWeekRange()}
         </div>
         <button style={styles.navBtn} onClick={goNextWeek}>
@@ -849,8 +842,8 @@ export default function BookingsPage() {
           <div
             style={{
               ...styles.statIcon,
-              background: "rgba(0, 51, 160, 0.1)",
-              color: "var(--primary)",
+              background: "rgba(8, 55, 116, 0.12)",
+              color: "var(--portal-primary)",
             }}
           >
             {Icons.calendar}
@@ -864,8 +857,8 @@ export default function BookingsPage() {
           <div
             style={{
               ...styles.statIcon,
-              background: "rgba(0, 212, 255, 0.1)",
-              color: "var(--accent)",
+              background: "rgba(8, 55, 116, 0.12)",
+              color: "var(--portal-primary)",
             }}
           >
             {Icons.today}
@@ -894,8 +887,8 @@ export default function BookingsPage() {
           <div
             style={{
               ...styles.statIcon,
-              background: "rgba(139, 92, 246, 0.1)",
-              color: "#8b5cf6",
+              background: "rgba(181, 154, 90, 0.12)",
+              color: "#b59a5a",
             }}
           >
             {Icons.clock}
@@ -914,7 +907,7 @@ export default function BookingsPage() {
           <div
             style={{
               ...styles.calendarHeaderCell,
-              background: "var(--card-muted)",
+              background: "var(--portal-card-plain)",
               justifyContent: "center",
             }}
           >
@@ -966,7 +959,7 @@ export default function BookingsPage() {
             <div
               style={{
                 ...styles.legendDot,
-                background: "rgba(16, 185, 129, 0.3)",
+                background: "rgba(16, 185, 129, 0.24)",
               }}
             />
             <span>Available</span>
@@ -975,7 +968,7 @@ export default function BookingsPage() {
             <div
               style={{
                 ...styles.legendDot,
-                background: "rgba(0, 212, 255, 0.3)",
+                background: "rgba(181, 154, 90, 0.24)",
               }}
             />
             <span>Partially Booked</span>
@@ -1001,4 +994,3 @@ export default function BookingsPage() {
     </div>
   );
 }
-

@@ -10,6 +10,18 @@ export type BotSendResult = {
   providerResponse: unknown;
 };
 
+export type BotWebChatMessage =
+  | { type: "text"; text: string }
+  | { type: "image"; imageUrl: string; caption?: string };
+
+export type BotWebChatResult = {
+  success: boolean;
+  botPaused?: boolean;
+  customerId?: string | null;
+  threadId?: string | null;
+  messages?: BotWebChatMessage[];
+};
+
 function getBotBaseUrl(): string {
   return String(process.env.BOT_INTERNAL_BASE_URL || "").trim().replace(/\/+$/, "");
 }
@@ -69,4 +81,45 @@ export async function sendWhatsAppMessagesViaBot(input: {
   }
 
   return (Array.isArray(payload?.results) ? payload.results : []) as BotSendResult[];
+}
+
+export async function sendWebChatMessageViaBot(input: {
+  businessId: string;
+  visitorId: string;
+  text: string;
+  customerName?: string | null;
+}) {
+  const baseUrl = getBotBaseUrl();
+  const apiKey = getBotApiKey();
+  if (!baseUrl) {
+    throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_BASE_URL." });
+  }
+  if (!apiKey) {
+    throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_API_KEY." });
+  }
+
+  const response = await fetch(`${baseUrl}/internal/webchat/reply`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      businessId: input.businessId,
+      visitorId: input.visitorId,
+      text: input.text,
+      customerName: input.customerName ?? null,
+    }),
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as BotWebChatResult & { error?: string; message?: string };
+  if (!response.ok) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: String(payload?.error || payload?.message || "Bot web chat reply failed."),
+    });
+  }
+
+  return payload;
 }

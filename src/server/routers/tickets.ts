@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { and, desc, eq, getTableColumns, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, ilike, or, sql } from "drizzle-orm";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import {
@@ -20,6 +20,7 @@ import { DEFAULT_TICKET_TYPE_KEYS, ensureDefaultTicketTypes } from "../services/
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { drainBusinessOutbox, enqueueWhatsAppOutboxMessages } from "@/server/services/messageOutbox";
+import { assertExpectedUpdatedAt, assertOperationThrottle, getStaffActorKey } from "@/server/operationalHardening";
 import { type BotSendMessage } from "../services/botApi";
 import {
   buildOrderApprovalMessages,
@@ -33,6 +34,37 @@ import {
 const ticketStatusSchema = z.enum(["open", "in_progress", "resolved"]);
 const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const ticketOutcomeSchema = z.enum(["pending", "won", "lost"]);
+const orderStageSchema = z.enum([
+  "pending_approval",
+  "approved",
+  "awaiting_payment",
+  "payment_submitted",
+  "payment_rejected",
+  "paid",
+  "refund_pending",
+  "refunded",
+  "denied",
+]);
+const ORDER_TICKET_OPERATION_LIMITS = {
+  approve: {
+    actorMax: Number(process.env.TICKET_APPROVE_ORDER_ACTOR_MAX ?? "30"),
+    actorWindowMs: Number(process.env.TICKET_APPROVE_ORDER_ACTOR_WINDOW_MS ?? String(5 * 60 * 1000)),
+    businessMax: Number(process.env.TICKET_APPROVE_ORDER_BUSINESS_MAX ?? "180"),
+    businessWindowMs: Number(process.env.TICKET_APPROVE_ORDER_BUSINESS_WINDOW_MS ?? String(5 * 60 * 1000)),
+    entityMax: Number(process.env.TICKET_APPROVE_ORDER_ENTITY_MAX ?? "2"),
+    entityWindowMs: Number(process.env.TICKET_APPROVE_ORDER_ENTITY_WINDOW_MS ?? String(10 * 60 * 1000)),
+    message: "This ticket is being actioned too frequently. Please wait a moment and try again.",
+  },
+  deny: {
+    actorMax: Number(process.env.TICKET_DENY_ORDER_ACTOR_MAX ?? "30"),
+    actorWindowMs: Number(process.env.TICKET_DENY_ORDER_ACTOR_WINDOW_MS ?? String(5 * 60 * 1000)),
+    businessMax: Number(process.env.TICKET_DENY_ORDER_BUSINESS_MAX ?? "180"),
+    businessWindowMs: Number(process.env.TICKET_DENY_ORDER_BUSINESS_WINDOW_MS ?? String(5 * 60 * 1000)),
+    entityMax: Number(process.env.TICKET_DENY_ORDER_ENTITY_MAX ?? "2"),
+    entityWindowMs: Number(process.env.TICKET_DENY_ORDER_ENTITY_WINDOW_MS ?? String(10 * 60 * 1000)),
+    message: "This ticket is being actioned too frequently. Please wait a moment and try again.",
+  },
+} as const;
 
 function normalizeKey(input: string): string {
   return input.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -308,6 +340,45 @@ async function flushBusinessOutbox(businessId: string) {
   await drainBusinessOutbox({ businessId, limit: 25 });
 }
 
+async function enforceOrderTicketOperationThrottle(
+  tx: any,
+  ctx: {
+    businessId: string;
+    userId?: string | null;
+    firebaseUid?: string | null;
+    userEmail?: string | null;
+  },
+  action: keyof typeof ORDER_TICKET_OPERATION_LIMITS,
+  ticketId: string,
+) {
+  const limits = ORDER_TICKET_OPERATION_LIMITS[action];
+  const actorKey = getStaffActorKey(ctx);
+  await assertOperationThrottle(tx, {
+    businessId: ctx.businessId,
+    bucket: `ticket.${action}.actor`,
+    scope: `${ctx.businessId}:${actorKey}`,
+    max: limits.actorMax,
+    windowMs: limits.actorWindowMs,
+    message: limits.message,
+  });
+  await assertOperationThrottle(tx, {
+    businessId: ctx.businessId,
+    bucket: `ticket.${action}.business`,
+    scope: ctx.businessId,
+    max: limits.businessMax,
+    windowMs: limits.businessWindowMs,
+    message: limits.message,
+  });
+  await assertOperationThrottle(tx, {
+    businessId: ctx.businessId,
+    bucket: `ticket.${action}.entity`,
+    scope: `${ctx.businessId}:${ticketId}`,
+    max: limits.entityMax,
+    windowMs: limits.entityWindowMs,
+    message: limits.message,
+  });
+}
+
 async function getHydratedTicketRow(businessId: string, ticketId: string) {
   const [row] = await db
     .select({
@@ -464,6 +535,88 @@ export const ticketsRouter = router({
         .limit(input?.limit ?? 200);
     }),
 
+  listTicketLedger: businessProcedure
+    .input(
+      z.object({
+        typeKey: z.string().optional(),
+        status: ticketStatusSchema.optional(),
+        orderStage: orderStageSchema.optional(),
+        search: z.string().optional(),
+        limit: z.number().int().min(1).max(100).default(20),
+        offset: z.number().int().min(0).default(0),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const conditions: any[] = [eq(supportTickets.businessId, ctx.businessId)];
+      const normalizedStatusExpr = sql<string>`case when lower(coalesce(${supportTickets.status}, '')) = 'closed' then 'resolved' else lower(coalesce(${supportTickets.status}, '')) end`;
+      const orderStageExpr = sql<string>`case
+        when lower(coalesce(${orders.status}, '')) in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'paid', 'refund_pending', 'refunded', 'denied')
+          then lower(coalesce(${orders.status}, ''))
+        when lower(coalesce(${supportTickets.outcome}, '')) = 'lost' then 'denied'
+        when lower(coalesce(${supportTickets.outcome}, '')) = 'won' then 'approved'
+        else 'pending_approval'
+      end`;
+      if (input.typeKey) {
+        conditions.push(eq(supportTickets.ticketTypeKey, normalizeKey(input.typeKey)));
+      }
+      if (input.status) {
+        conditions.push(sql<boolean>`${normalizedStatusExpr} = ${input.status}`);
+      }
+      if (input.orderStage) {
+        conditions.push(sql<boolean>`${orderStageExpr} = ${input.orderStage}`);
+      }
+
+      const searchPattern = String(input.search ?? "").trim().replace(/^#/, "");
+      if (searchPattern) {
+        const pattern = `%${searchPattern}%`;
+        conditions.push(
+          or(
+            ilike(supportTickets.id, pattern),
+            ilike(supportTickets.title, pattern),
+            ilike(supportTickets.summary, pattern),
+            ilike(supportTickets.notes, pattern),
+            ilike(supportTickets.customerName, pattern),
+            ilike(supportTickets.customerPhone, pattern),
+            ilike(orders.id, pattern),
+          ),
+        );
+      }
+
+      const [countRow] = await db
+        .select({
+          count: sql<number>`count(*)::int`,
+        })
+        .from(supportTickets)
+        .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
+        .where(and(...conditions));
+
+      const rows = await db
+        .select({
+          ...getTableColumns(supportTickets),
+          orderId: orders.id,
+          orderStatus: orders.status,
+          orderPaymentMethod: orders.paymentMethod,
+          orderUpdatedAt: orders.updatedAt,
+        })
+        .from(supportTickets)
+        .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
+        .where(and(...conditions))
+        .orderBy(desc(supportTickets.updatedAt), desc(supportTickets.createdAt))
+        .limit(input.limit)
+        .offset(input.offset);
+
+      return {
+        totalCount: countRow?.count ?? 0,
+        items: rows,
+      };
+    }),
+
+  getTicketById: businessProcedure
+    .input(z.object({ ticketId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      return getHydratedTicketRow(ctx.businessId, input.ticketId);
+    }),
+
   createTicket: businessProcedure
     .input(
       z.object({
@@ -581,6 +734,7 @@ export const ticketsRouter = router({
     .input(
       z.object({
         id: z.string().min(1),
+        expectedUpdatedAt: z.coerce.date().optional(),
         title: z.string().nullish(),
         summary: z.string().nullish(),
         notes: z.string().nullish(),
@@ -599,6 +753,11 @@ export const ticketsRouter = router({
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
       }
+      assertExpectedUpdatedAt({
+        entityLabel: "ticket",
+        expectedUpdatedAt: input.expectedUpdatedAt,
+        actualUpdatedAt: existing.updatedAt,
+      });
 
       const nextFields = input.fields ?? asRecord(existing.fields);
       const [updated] = await db
@@ -615,53 +774,65 @@ export const ticketsRouter = router({
           fields: nextFields,
           updatedAt: new Date(),
         })
-        .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
+        .where(
+          and(
+            eq(supportTickets.id, input.id),
+            eq(supportTickets.businessId, ctx.businessId),
+            eq(supportTickets.updatedAt, existing.updatedAt),
+          ),
+        )
         .returning();
 
-      if (updated) {
-        await logTicketEvent({
-          businessId: ctx.businessId,
-          ticketId: updated.id,
-          eventType: "edited",
-          actorType: "user",
-          actorId: ctx.userId ?? ctx.firebaseUid ?? null,
-          actorLabel: ctx.userEmail ?? "user",
-          payload: {
-            fieldsUpdated: input.fields ? Object.keys(input.fields) : [],
-            priority: updated.priority,
-          },
-        });
-        await publishHydratedTicketUpsert({
-          businessId: ctx.businessId,
-          ticketId: updated.id,
-          createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
-        });
-        recordBusinessEvent({
-          event: "ticket.updated",
-          action: "updateTicket",
-          area: "ticket",
-          businessId: ctx.businessId,
-          entity: "ticket",
-          entityId: updated.id,
-          userId: ctx.userId,
-          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-          actorType: "user",
-          outcome: "success",
-          status: updated.status,
-          attributes: {
-            priority: updated.priority,
-            ticket_type_key: updated.ticketTypeKey,
-          },
+      if (!updated) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "This ticket was updated by another staff member. Refresh and try again.",
         });
       }
 
-      return updated ?? null;
+      await logTicketEvent({
+        businessId: ctx.businessId,
+        ticketId: updated.id,
+        eventType: "edited",
+        actorType: "user",
+        actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+        actorLabel: ctx.userEmail ?? "user",
+        payload: {
+          fieldsUpdated: input.fields ? Object.keys(input.fields) : [],
+          priority: updated.priority,
+        },
+      });
+      await publishHydratedTicketUpsert({
+        businessId: ctx.businessId,
+        ticketId: updated.id,
+        createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
+      });
+      recordBusinessEvent({
+        event: "ticket.updated",
+        action: "updateTicket",
+        area: "ticket",
+        businessId: ctx.businessId,
+        entity: "ticket",
+        entityId: updated.id,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: "success",
+        status: updated.status,
+        attributes: {
+          priority: updated.priority,
+          ticket_type_key: updated.ticketTypeKey,
+        },
+      });
+
+      return updated;
     }),
 
   updateTicketStatus: businessProcedure
     .input(
       z.object({
         id: z.string().min(1),
+        expectedUpdatedAt: z.coerce.date().optional(),
         status: ticketStatusSchema,
         notes: z.string().optional(),
       }),
@@ -675,6 +846,7 @@ export const ticketsRouter = router({
           resolvedAt: supportTickets.resolvedAt,
           outcome: supportTickets.outcome,
           lossReason: supportTickets.lossReason,
+          updatedAt: supportTickets.updatedAt,
         })
         .from(supportTickets)
         .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
@@ -682,6 +854,11 @@ export const ticketsRouter = router({
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
       }
+      assertExpectedUpdatedAt({
+        entityLabel: "ticket",
+        expectedUpdatedAt: input.expectedUpdatedAt,
+        actualUpdatedAt: existing.updatedAt,
+      });
       const [updated] = await db
         .update(supportTickets)
         .set({
@@ -693,56 +870,67 @@ export const ticketsRouter = router({
           closedAt: null,
           updatedAt: now,
         })
-        .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
+        .where(
+          and(
+            eq(supportTickets.id, input.id),
+            eq(supportTickets.businessId, ctx.businessId),
+            eq(supportTickets.updatedAt, existing.updatedAt),
+          ),
+        )
         .returning();
-      if (updated) {
-        if (existing.status !== updated.status) {
-          await logTicketEvent({
-            businessId: ctx.businessId,
-            ticketId: updated.id,
-            eventType: "status_changed",
-            actorType: "user",
-            actorId: ctx.userId ?? ctx.firebaseUid ?? null,
-            actorLabel: ctx.userEmail ?? "user",
-            payload: {
-              from: existing.status,
-              to: updated.status,
-              resolvedAt: updated.resolvedAt ? new Date(updated.resolvedAt).toISOString() : null,
-            },
-          });
-        }
-        await publishHydratedTicketUpsert({
+      if (!updated) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "This ticket was updated by another staff member. Refresh and try again.",
+        });
+      }
+      if (existing.status !== updated.status) {
+        await logTicketEvent({
           businessId: ctx.businessId,
           ticketId: updated.id,
-          createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
+          eventType: "status_changed",
+          actorType: "user",
+          actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+          actorLabel: ctx.userEmail ?? "user",
+          payload: {
+            from: existing.status,
+            to: updated.status,
+            resolvedAt: updated.resolvedAt ? new Date(updated.resolvedAt).toISOString() : null,
+          },
         });
-        if (existing.status !== updated.status) {
-          recordBusinessEvent({
-            event: "ticket.status_updated",
-            action: "updateTicketStatus",
-            area: "ticket",
-            businessId: ctx.businessId,
-            entity: "ticket",
-            entityId: updated.id,
-            userId: ctx.userId,
-            actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-            actorType: "user",
-            outcome: "success",
-            status: updated.status,
-            attributes: {
-              from_status: existing.status,
-              to_status: updated.status,
-            },
-          });
-        }
       }
-      return updated ?? null;
+      await publishHydratedTicketUpsert({
+        businessId: ctx.businessId,
+        ticketId: updated.id,
+        createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
+      });
+      if (existing.status !== updated.status) {
+        recordBusinessEvent({
+          event: "ticket.status_updated",
+          action: "updateTicketStatus",
+          area: "ticket",
+          businessId: ctx.businessId,
+          entity: "ticket",
+          entityId: updated.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          status: updated.status,
+          attributes: {
+            from_status: existing.status,
+            to_status: updated.status,
+          },
+        });
+      }
+      return updated;
     }),
 
   updateTicketOutcome: businessProcedure
     .input(
       z.object({
         id: z.string().min(1),
+        expectedUpdatedAt: z.coerce.date().optional(),
         outcome: ticketOutcomeSchema,
         lossReason: z.string().optional(),
       }),
@@ -753,6 +941,7 @@ export const ticketsRouter = router({
           status: supportTickets.status,
           outcome: supportTickets.outcome,
           lossReason: supportTickets.lossReason,
+          updatedAt: supportTickets.updatedAt,
         })
         .from(supportTickets)
         .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
@@ -764,6 +953,11 @@ export const ticketsRouter = router({
       if (existing.status !== "resolved" && input.outcome !== "pending") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Only resolved tickets can be marked won/lost." });
       }
+      assertExpectedUpdatedAt({
+        entityLabel: "ticket",
+        expectedUpdatedAt: input.expectedUpdatedAt,
+        actualUpdatedAt: existing.updatedAt,
+      });
 
       const normalizedLossReason = input.lossReason?.trim() || null;
       if (input.outcome === "lost" && !normalizedLossReason) {
@@ -777,71 +971,87 @@ export const ticketsRouter = router({
           lossReason: input.outcome === "lost" ? normalizedLossReason : null,
           updatedAt: new Date(),
         })
-        .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
+        .where(
+          and(
+            eq(supportTickets.id, input.id),
+            eq(supportTickets.businessId, ctx.businessId),
+            eq(supportTickets.updatedAt, existing.updatedAt),
+          ),
+        )
         .returning();
+      if (!updated) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "This ticket was updated by another staff member. Refresh and try again.",
+        });
+      }
 
-      if (updated) {
-        if (existing.outcome !== updated.outcome || (existing.lossReason ?? "") !== (updated.lossReason ?? "")) {
-          await logTicketEvent({
-            businessId: ctx.businessId,
-            ticketId: updated.id,
-            eventType: "outcome_changed",
-            actorType: "user",
-            actorId: ctx.userId ?? ctx.firebaseUid ?? null,
-            actorLabel: ctx.userEmail ?? "user",
-            payload: {
-              from: existing.outcome,
-              to: input.outcome,
-              previousLossReason: existing.lossReason ?? null,
-              lossReason: input.outcome === "lost" ? normalizedLossReason : null,
-            },
-          });
-        }
-        await publishHydratedTicketUpsert({
+      if (existing.outcome !== updated.outcome || (existing.lossReason ?? "") !== (updated.lossReason ?? "")) {
+        await logTicketEvent({
           businessId: ctx.businessId,
           ticketId: updated.id,
-          createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
+          eventType: "outcome_changed",
+          actorType: "user",
+          actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+          actorLabel: ctx.userEmail ?? "user",
+          payload: {
+            from: existing.outcome,
+            to: input.outcome,
+            previousLossReason: existing.lossReason ?? null,
+            lossReason: input.outcome === "lost" ? normalizedLossReason : null,
+          },
         });
-        if (existing.outcome !== updated.outcome || (existing.lossReason ?? "") !== (updated.lossReason ?? "")) {
-          recordBusinessEvent({
-            event: "ticket.outcome_updated",
-            action: "updateTicketOutcome",
-            area: "ticket",
-            businessId: ctx.businessId,
-            entity: "ticket",
-            entityId: updated.id,
-            userId: ctx.userId,
-            actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-            actorType: "user",
-            outcome: "success",
-            status: updated.outcome,
-            attributes: {
-              from_outcome: existing.outcome,
-              loss_reason: updated.lossReason,
-              to_outcome: updated.outcome,
-            },
-          });
-        }
       }
-      return updated ?? null;
+      await publishHydratedTicketUpsert({
+        businessId: ctx.businessId,
+        ticketId: updated.id,
+        createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
+      });
+      if (existing.outcome !== updated.outcome || (existing.lossReason ?? "") !== (updated.lossReason ?? "")) {
+        recordBusinessEvent({
+          event: "ticket.outcome_updated",
+          action: "updateTicketOutcome",
+          area: "ticket",
+          businessId: ctx.businessId,
+          entity: "ticket",
+          entityId: updated.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          status: updated.outcome,
+          attributes: {
+            from_outcome: existing.outcome,
+            loss_reason: updated.lossReason,
+            to_outcome: updated.outcome,
+          },
+        });
+      }
+      return updated;
     }),
 
   updateTicketSlaDueAt: businessProcedure
     .input(
       z.object({
         id: z.string().min(1),
+        expectedUpdatedAt: z.coerce.date().optional(),
         slaDueAt: z.coerce.date().nullable(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const [existing] = await db
-        .select({ slaDueAt: supportTickets.slaDueAt })
+        .select({ slaDueAt: supportTickets.slaDueAt, updatedAt: supportTickets.updatedAt })
         .from(supportTickets)
         .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
         .limit(1);
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
       }
+      assertExpectedUpdatedAt({
+        entityLabel: "ticket",
+        expectedUpdatedAt: input.expectedUpdatedAt,
+        actualUpdatedAt: existing.updatedAt,
+      });
 
       const [updated] = await db
         .update(supportTickets)
@@ -849,55 +1059,65 @@ export const ticketsRouter = router({
           slaDueAt: input.slaDueAt,
           updatedAt: new Date(),
         })
-        .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
+        .where(
+          and(
+            eq(supportTickets.id, input.id),
+            eq(supportTickets.businessId, ctx.businessId),
+            eq(supportTickets.updatedAt, existing.updatedAt),
+          ),
+        )
         .returning();
+      if (!updated) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "This ticket was updated by another staff member. Refresh and try again.",
+        });
+      }
 
-      if (updated) {
-        const fromIso = existing.slaDueAt ? new Date(existing.slaDueAt).toISOString() : null;
-        const toIso = updated.slaDueAt ? new Date(updated.slaDueAt).toISOString() : null;
-        if (fromIso !== toIso) {
-          await logTicketEvent({
-            businessId: ctx.businessId,
-            ticketId: updated.id,
-            eventType: "sla_changed",
-            actorType: "user",
-            actorId: ctx.userId ?? ctx.firebaseUid ?? null,
-            actorLabel: ctx.userEmail ?? "user",
-            payload: {
-              from: fromIso,
-              to: toIso,
-            },
-          });
-        }
-        await publishHydratedTicketUpsert({
+      const fromIso = existing.slaDueAt ? new Date(existing.slaDueAt).toISOString() : null;
+      const toIso = updated.slaDueAt ? new Date(updated.slaDueAt).toISOString() : null;
+      if (fromIso !== toIso) {
+        await logTicketEvent({
           businessId: ctx.businessId,
           ticketId: updated.id,
-          createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
+          eventType: "sla_changed",
+          actorType: "user",
+          actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+          actorLabel: ctx.userEmail ?? "user",
+          payload: {
+            from: fromIso,
+            to: toIso,
+          },
         });
-        if (fromIso !== toIso) {
-          recordBusinessEvent({
-            event: "ticket.sla_updated",
-            action: "updateTicketSlaDueAt",
-            area: "ticket",
-            businessId: ctx.businessId,
-            entity: "ticket",
-            entityId: updated.id,
-            userId: ctx.userId,
-            actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-            actorType: "user",
-            outcome: "success",
-            attributes: {
-              from_sla_due_at: fromIso,
-              to_sla_due_at: toIso,
-            },
-          });
-        }
       }
-      return updated ?? null;
+      await publishHydratedTicketUpsert({
+        businessId: ctx.businessId,
+        ticketId: updated.id,
+        createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
+      });
+      if (fromIso !== toIso) {
+        recordBusinessEvent({
+          event: "ticket.sla_updated",
+          action: "updateTicketSlaDueAt",
+          area: "ticket",
+          businessId: ctx.businessId,
+          entity: "ticket",
+          entityId: updated.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          attributes: {
+            from_sla_due_at: fromIso,
+            to_sla_due_at: toIso,
+          },
+        });
+      }
+      return updated;
     }),
 
   approveOrderTicket: businessProcedure
-    .input(z.object({ id: z.string().min(1) }))
+    .input(z.object({ id: z.string().min(1), expectedUpdatedAt: z.coerce.date().optional() }))
     .mutation(async ({ ctx, input }) => {
       const [biz] = await db
         .select({ settings: businesses.settings })
@@ -935,6 +1155,11 @@ export const ticketsRouter = router({
       if (!ticket) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
       }
+      assertExpectedUpdatedAt({
+        entityLabel: "ticket",
+        expectedUpdatedAt: input.expectedUpdatedAt,
+        actualUpdatedAt: ticket.updatedAt,
+      });
       validateTicketOrderFlow({
         ticketTypeKey: ticket.ticketTypeKey,
         ticketFlowEnabled: orderSettings.ticketToOrderEnabled,
@@ -1007,6 +1232,7 @@ export const ticketsRouter = router({
 
       const result = await db.transaction(async (tx) => {
         await lockWorkflowKey(tx, `${ctx.businessId}::ticket::${ticket.id}`);
+        await enforceOrderTicketOperationThrottle(tx, ctx, "approve", ticket.id);
 
         const [existingOrder] = await tx
           .select({
@@ -1091,8 +1317,21 @@ export const ticketsRouter = router({
             closedAt: null,
             updatedAt: now,
           })
-          .where(and(eq(supportTickets.id, ticket.id), eq(supportTickets.businessId, ctx.businessId)))
+          .where(
+            and(
+              eq(supportTickets.id, ticket.id),
+              eq(supportTickets.businessId, ctx.businessId),
+              eq(supportTickets.updatedAt, ticket.updatedAt),
+            ),
+          )
           .returning();
+
+        if (!ticketRow) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This ticket was updated by another staff member. Refresh and try again.",
+          });
+        }
 
         const approvalMessages = buildOrderApprovalMessages({
           orderId: orderRow?.id ?? orderId,
@@ -1255,6 +1494,7 @@ export const ticketsRouter = router({
     .input(
       z.object({
         id: z.string().min(1),
+        expectedUpdatedAt: z.coerce.date().optional(),
         reason: z.string().optional(),
       }),
     )
@@ -1280,6 +1520,7 @@ export const ticketsRouter = router({
           customerName: supportTickets.customerName,
           customerPhone: supportTickets.customerPhone,
           notes: supportTickets.notes,
+          updatedAt: supportTickets.updatedAt,
         })
         .from(supportTickets)
         .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
@@ -1287,6 +1528,11 @@ export const ticketsRouter = router({
       if (!ticket) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
       }
+      assertExpectedUpdatedAt({
+        entityLabel: "ticket",
+        expectedUpdatedAt: input.expectedUpdatedAt,
+        actualUpdatedAt: ticket.updatedAt,
+      });
       validateTicketOrderFlow({
         ticketTypeKey: ticket.ticketTypeKey,
         ticketFlowEnabled: orderSettings.ticketToOrderEnabled,
@@ -1308,6 +1554,7 @@ export const ticketsRouter = router({
       });
       const result = await db.transaction(async (tx) => {
         await lockWorkflowKey(tx, `${ctx.businessId}::ticket::${input.id}`);
+        await enforceOrderTicketOperationThrottle(tx, ctx, "deny", input.id);
 
         const [existingOrder] = await tx
           .select({
@@ -1334,8 +1581,21 @@ export const ticketsRouter = router({
             closedAt: null,
             updatedAt: now,
           })
-          .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
+          .where(
+            and(
+              eq(supportTickets.id, input.id),
+              eq(supportTickets.businessId, ctx.businessId),
+              eq(supportTickets.updatedAt, ticket.updatedAt),
+            ),
+          )
           .returning();
+
+        if (!ticketRow) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This ticket was updated by another staff member. Refresh and try again.",
+          });
+        }
 
         const notification = await enqueueWhatsAppOutboxMessages(tx, {
           businessId: ctx.businessId,
@@ -1473,6 +1733,24 @@ export const ticketsRouter = router({
         .orderBy(desc(supportTicketEvents.createdAt))
         .limit(input.limit ?? 100);
     }),
+
+  getTypeCounters: businessProcedure.query(async ({ ctx }) => {
+    const rows = await db
+      .select({
+        key: supportTickets.ticketTypeKey,
+        openCount: sql<number>`count(*) filter (where lower(coalesce(${supportTickets.status}, '')) = 'open')::int`,
+        inProgressCount: sql<number>`count(*) filter (where lower(coalesce(${supportTickets.status}, '')) in ('in_progress', 'pending'))::int`,
+      })
+      .from(supportTickets)
+      .where(eq(supportTickets.businessId, ctx.businessId))
+      .groupBy(supportTickets.ticketTypeKey);
+
+    return rows.map((row) => ({
+      key: row.key,
+      openCount: Number(row.openCount ?? 0),
+      inProgressCount: Number(row.inProgressCount ?? 0),
+    }));
+  }),
 
   getPerformance: businessProcedure
     .input(
