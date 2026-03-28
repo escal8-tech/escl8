@@ -11,7 +11,7 @@ import { MiniDonutChart } from "./components/MiniDonutChart";
 import { RecentRequestsCard, type RequestSortKey, RECENT_REQUESTS_PAGE_SIZE } from "./components/RecentRequestsCard";
 import { RequestDrawer } from "./components/RequestDrawer";
 import { TicketCounterBarChart } from "./components/TicketCounterBarChart";
-import { getPortalTicketTypeLabel } from "@/app/portal/lib/ticketTypes";
+import { getPortalTicketTypeChartLabel } from "@/app/portal/lib/ticketTypes";
 
 export default function DashboardPage() {
   const { selectedPhoneNumberId } = usePhoneFilter();
@@ -192,10 +192,10 @@ export default function DashboardPage() {
     );
     return (ticketTypesQ.data ?? []).map((type) => {
       const counter = counts.get(type.key) ?? { openCount: 0, inProgressCount: 0 };
-      const label = getPortalTicketTypeLabel(type.key) || type.label;
+      const label = getPortalTicketTypeChartLabel(type.key) || type.label;
       return {
         key: type.key,
-        label: label.length > 20 ? `${label.slice(0, 20)}...` : label,
+        label,
         enabled: type.enabled,
         openCount: counter.openCount,
         inProgressCount: counter.inProgressCount,
