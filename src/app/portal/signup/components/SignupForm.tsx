@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent } from "react";
 
 type Props = {
@@ -34,9 +35,9 @@ export function SignupForm({ busy, error, onSubmit }: Props) {
         <button type="submit" className="btn btn-primary" style={{ paddingInline: 18, paddingBlock: 12, minWidth: 180, fontSize: 15 }} disabled={busy}>
           {busy ? "Please wait…" : "Create account"}
         </button>
-        <a href="/portal" className="btn" style={{ paddingInline: 18, paddingBlock: 12, minWidth: 160, fontSize: 15 }}>
+        <Link href="/" className="btn" style={{ paddingInline: 18, paddingBlock: 12, minWidth: 160, fontSize: 15 }}>
           Back to login
-        </a>
+        </Link>
       </div>
     </form>
   );

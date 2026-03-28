@@ -12,6 +12,40 @@ const nextConfig: NextConfig = {
   // Produce a standalone build so we can deploy minimal artifacts
   output: "standalone",
 
+  async redirects() {
+    return [
+      {
+        source: "/portal",
+        destination: "/",
+        permanent: true,
+      },
+      {
+        source: "/portal/:path*",
+        destination: "/:path*",
+        permanent: true,
+      },
+    ];
+  },
+
+  async rewrites() {
+    return {
+      beforeFiles: [
+        { source: "/signup", destination: "/portal/signup" },
+        { source: "/dashboard", destination: "/portal/dashboard" },
+        { source: "/requests", destination: "/portal/requests" },
+        { source: "/customers", destination: "/portal/customers" },
+        { source: "/messages", destination: "/portal/messages" },
+        { source: "/upload", destination: "/portal/upload" },
+        { source: "/bookings", destination: "/portal/bookings" },
+        { source: "/sync", destination: "/portal/sync" },
+        { source: "/settings", destination: "/portal/settings" },
+        { source: "/tickets", destination: "/portal/tickets" },
+        { source: "/orders", destination: "/portal/orders" },
+        { source: "/revenue", destination: "/portal/revenue" },
+      ],
+    };
+  },
+
   async headers() {
     const securityHeaders = [
       { key: "X-Content-Type-Options", value: "nosniff" },

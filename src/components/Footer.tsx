@@ -89,7 +89,7 @@ export default function Footer() {
               <Link href="/upload" className="footer-link">
                 Upload
               </Link>
-              <Link href="/portal" className="footer-link">
+              <Link href="/" className="footer-link">
                 Portal
               </Link>
             </nav>

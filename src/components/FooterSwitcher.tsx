@@ -1,14 +1,14 @@
 ﻿"use client";
 
 import Footer from "@/components/Footer";
+import { isAppPath } from "@/lib/app-routes";
 import { usePathname } from "next/navigation";
 
 export default function FooterSwitcher() {
   const pathname = usePathname();
   if (
     !pathname ||
-    pathname === "/" ||
-    pathname.startsWith("/portal") ||
+    isAppPath(pathname) ||
     pathname === "/pricing" ||
     pathname === "/faq" ||
     pathname === "/privacy" ||
@@ -19,4 +19,3 @@ export default function FooterSwitcher() {
   }
   return <Footer />;
 }
-

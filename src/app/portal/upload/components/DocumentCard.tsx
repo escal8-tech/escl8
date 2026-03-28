@@ -8,6 +8,7 @@ import { DOC_SLOT_ICONS, UploadIcons, uploadStyles } from "./UploadPageUI";
 type Props = {
   slot: DocSlot;
   current: ExistingDoc | null | undefined;
+  compact: boolean;
   busy: boolean;
   retrainBusy: boolean;
   onUpload: (file: File | null) => void;
@@ -18,6 +19,7 @@ type Props = {
 export function DocumentCard({
   slot,
   current,
+  compact,
   busy,
   retrainBusy,
   onUpload,
@@ -78,19 +80,38 @@ export function DocumentCard({
 
   return (
     <div style={uploadStyles.card}>
-      <div style={uploadStyles.cardHeader}>
+      <div
+        style={{
+          ...uploadStyles.cardHeader,
+          padding: compact ? "18px" : uploadStyles.cardHeader.padding,
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+        }}
+      >
         <div style={uploadStyles.cardIcon}>{DOC_SLOT_ICONS[slot.key]}</div>
-        <div style={uploadStyles.cardInfo}>
+        <div style={{ ...uploadStyles.cardInfo, minWidth: 0, flex: "1 1 180px" }}>
           <h3 style={uploadStyles.cardTitle}>{slot.title}</h3>
           <p style={uploadStyles.cardHint}>{slot.hint}</p>
         </div>
-        <div style={{ ...uploadStyles.cardStatus, background: statusBadge.bg, color: statusBadge.color }}>
+        <div
+          style={{
+            ...uploadStyles.cardStatus,
+            background: statusBadge.bg,
+            color: statusBadge.color,
+            marginLeft: "auto",
+          }}
+        >
           {statusBadge.icon}
           {statusBadge.text}
         </div>
       </div>
 
-      <div style={uploadStyles.cardBody}>
+      <div
+        style={{
+          ...uploadStyles.cardBody,
+          padding: compact ? 18 : uploadStyles.cardBody.padding,
+        }}
+      >
         <div
           onDragEnter={(e) => handleDrag(e, true)}
           onDragOver={(e) => handleDrag(e, true)}
@@ -114,7 +135,7 @@ export function DocumentCard({
 
         <div style={uploadStyles.statusArea}>
           {current ? (
-            <div style={uploadStyles.fileInfo}>
+            <div style={{ ...uploadStyles.fileInfo, alignItems: "flex-start" }}>
               <div style={uploadStyles.fileIcon}>{UploadIcons.file}</div>
               <div style={uploadStyles.fileDetails}>
                 <span style={uploadStyles.fileName}>{current.name}</span>
@@ -125,7 +146,7 @@ export function DocumentCard({
               </div>
             </div>
           ) : (
-            <div style={{ ...uploadStyles.fileInfo, visibility: "hidden" }}>
+            <div style={{ ...uploadStyles.fileInfo, alignItems: "flex-start", visibility: "hidden" }}>
               <div style={uploadStyles.fileIcon}>{UploadIcons.file}</div>
               <div style={uploadStyles.fileDetails}>
                 <span style={uploadStyles.fileName}>Placeholder</span>
@@ -155,9 +176,19 @@ export function DocumentCard({
         </div>
       </div>
 
-      <div style={uploadStyles.cardActions}>
+      <div
+        style={{
+          ...uploadStyles.cardActions,
+          flexDirection: compact ? "column" : "row",
+          padding: compact ? "0 18px 18px" : uploadStyles.cardActions.padding,
+        }}
+      >
         <button
-          style={{ ...uploadStyles.btnSecondary, ...(disabled || busy ? uploadStyles.btnDisabled : {}) }}
+          style={{
+            ...uploadStyles.btnSecondary,
+            ...(disabled || busy ? uploadStyles.btnDisabled : {}),
+            width: compact ? "100%" : undefined,
+          }}
           disabled={disabled || busy}
           onClick={(e) => {
             e.stopPropagation();
@@ -171,6 +202,7 @@ export function DocumentCard({
           style={{
             ...(isIndexed ? uploadStyles.btnSuccess : uploadStyles.btnPrimary),
             ...(!canRetrain ? uploadStyles.btnDisabled : {}),
+            width: compact ? "100%" : undefined,
           }}
           disabled={!canRetrain}
           onClick={(e) => {

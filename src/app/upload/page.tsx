@@ -1,5 +1,1 @@
-import { redirect } from "next/navigation";
-
-export default function LegacyUploadRedirect() {
-  redirect("/portal");
-}
+export { default } from "../portal/upload/page";

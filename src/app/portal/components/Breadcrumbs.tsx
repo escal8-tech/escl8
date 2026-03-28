@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { getPortalTicketTypeLabel } from "@/app/portal/lib/ticketTypes";
+import { normalizeAppPath } from "@/lib/app-routes";
 
 const routeLabels: Record<string, string> = {
   dashboard: "Dashboard",
@@ -20,9 +21,10 @@ const routeLabels: Record<string, string> = {
 export default function Breadcrumbs() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const segments = (pathname || "").split("/").filter(Boolean);
+  const appPath = normalizeAppPath(pathname);
+  const segments = appPath.split("/").filter(Boolean);
   const leaf = segments[segments.length - 1] || "dashboard";
-  const isTickets = pathname?.startsWith("/portal/tickets");
+  const isTickets = appPath === "/tickets" || appPath.startsWith("/tickets/");
 
   const sectionLabel = isTickets ? "Tickets" : "Menu";
   const ticketType = (searchParams?.get("type") || "").toLowerCase();
@@ -34,7 +36,7 @@ export default function Breadcrumbs() {
     <nav className="breadcrumbs" aria-label="Breadcrumb">
       <ol className="breadcrumbs-list">
         <li className="breadcrumbs-item">
-          <Link href="/portal/dashboard" className="breadcrumbs-link">
+          <Link href="/dashboard" className="breadcrumbs-link">
             Portal
           </Link>
         </li>

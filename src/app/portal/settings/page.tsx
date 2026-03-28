@@ -714,9 +714,9 @@ export default function SettingsPage() {
         error: new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars."),
         level: "error",
         outcome: "config_missing",
-        route: "/portal/settings",
+        route: "/settings",
       });
-      window.location.href = "/portal";
+      window.location.href = "/";
       return;
     }
     try {
@@ -726,9 +726,9 @@ export default function SettingsPage() {
         action: "portal-logout",
         area: "auth",
         outcome: "success",
-        route: "/portal/settings",
+        route: "/settings",
       });
-      window.location.href = "/portal";
+      window.location.href = "/";
     } catch (err: unknown) {
       const captureInSentry = shouldCaptureUnexpectedClientError(err);
       recordClientBusinessEvent({
@@ -739,7 +739,7 @@ export default function SettingsPage() {
         error: err,
         level: captureInSentry ? "error" : "warn",
         outcome: captureInSentry ? "unexpected_failure" : "handled_failure",
-        route: "/portal/settings",
+        route: "/settings",
       });
       throw err;
     }
@@ -860,11 +860,11 @@ export default function SettingsPage() {
       const idToken = await getFirebaseIdTokenOrThrow({
         action: "settings-connect-gmail",
         area: "business",
-        route: "/portal/settings",
+        route: "/settings",
       });
       const nextUrl = new URL("/api/auth/gmail/connect", window.location.origin);
       nextUrl.searchParams.set("idToken", idToken);
-      nextUrl.searchParams.set("returnTo", "/portal/settings");
+      nextUrl.searchParams.set("returnTo", "/settings");
       window.location.assign(nextUrl.toString());
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not start Gmail connection.";
@@ -1367,7 +1367,7 @@ export default function SettingsPage() {
               </div>
               <button 
                 style={isConnected ? styles.btnSecondary : styles.btnPrimary}
-                onClick={() => window.location.href = "/portal/sync"}
+                onClick={() => window.location.href = "/sync"}
               >
                 {isConnected ? "Manage" : "Connect"}
               </button>

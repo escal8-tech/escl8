@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { onAuthStateChanged } from "firebase/auth";
+import { normalizeAppPath } from "@/lib/app-routes";
 import { trpc } from "@/utils/trpc";
 import { PORTAL_TICKET_TYPES } from "@/app/portal/lib/ticketTypes";
 
@@ -92,16 +93,16 @@ const Icons = {
 
 // Nav items without settings (moved to footer)
 const navItems = [
-  { href: "/portal/dashboard", label: "Dashboard", icon: "dashboard" },
-  { href: "/portal/requests", label: "Requests", icon: "requests" },
-  { href: "/portal/customers", label: "Customers", icon: "customers" },
-  { href: "/portal/messages", label: "Messages", icon: "messages" },
-  { href: "/portal/upload", label: "Documents", icon: "upload" },
-  { href: "/portal/bookings", label: "Bookings", icon: "calendar" },
-  { href: "/portal/sync", label: "Sync", icon: "sync" },
+  { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
+  { href: "/requests", label: "Requests", icon: "requests" },
+  { href: "/customers", label: "Customers", icon: "customers" },
+  { href: "/messages", label: "Messages", icon: "messages" },
+  { href: "/upload", label: "Documents", icon: "upload" },
+  { href: "/bookings", label: "Bookings", icon: "calendar" },
+  { href: "/sync", label: "Sync", icon: "sync" },
 ];
 const ticketNavItems = PORTAL_TICKET_TYPES.map((type) => ({
-  href: `/portal/tickets?type=${type.key}`,
+  href: `/tickets?type=${type.key}`,
   label: type.navLabel,
   icon: "tickets" as const,
   typeKey: type.key,
@@ -133,7 +134,8 @@ export default function Sidebar({
   onCollapsedChange, 
   onMobileClose 
 }: SidebarProps) {
-  const pathname = usePathname();
+  const rawPathname = usePathname();
+  const pathname = normalizeAppPath(rawPathname);
   const searchParams = useSearchParams();
   const [userEmail, setUserEmail] = useState<string | null>(() => {
     const auth = getFirebaseAuth();
@@ -163,7 +165,7 @@ export default function Sidebar({
   const mainNavItems = [
     ...navItems,
     ...(businessQuery.data?.orderSettings?.ticketToOrderEnabled
-      ? [{ href: "/portal/revenue", label: "Revenue", icon: "revenue" as const }]
+      ? [{ href: "/revenue", label: "Revenue", icon: "revenue" as const }]
       : []),
   ];
 
@@ -226,7 +228,7 @@ export default function Sidebar({
             <Link
               key={item.href}
               href={item.href}
-              className={`sidebar-nav-item ${pathname === "/portal/tickets" && activeTicketType === item.typeKey ? "active" : ""}`}
+              className={`sidebar-nav-item ${pathname === "/tickets" && activeTicketType === item.typeKey ? "active" : ""}`}
               title={collapsed ? item.label : undefined}
               onClick={onMobileClose}
               style={{ position: "relative" }}
@@ -251,8 +253,8 @@ export default function Sidebar({
               {userInitials}
             </div>
             <Link
-              href="/portal/settings"
-              className={`sidebar-footer-icon-link ${isActive("/portal/settings") ? "active" : ""}`}
+              href="/settings"
+              className={`sidebar-footer-icon-link ${isActive("/settings") ? "active" : ""}`}
               title="Settings"
               onClick={onMobileClose}
             >
@@ -295,8 +297,8 @@ export default function Sidebar({
             </div>
             <div className="sidebar-footer-actions">
               <Link
-                href="/portal/settings"
-                className={`sidebar-footer-icon-link sidebar-settings-btn ${isActive("/portal/settings") ? "active" : ""}`}
+                href="/settings"
+                className={`sidebar-footer-icon-link sidebar-settings-btn ${isActive("/settings") ? "active" : ""}`}
                 title="Settings"
                 onClick={onMobileClose}
               >

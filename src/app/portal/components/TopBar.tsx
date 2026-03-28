@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Breadcrumbs from "@/app/portal/components/Breadcrumbs";
+import { useIsMobileViewport } from "@/app/portal/hooks/useIsMobileViewport";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { trpc } from "@/utils/trpc";
 import { PortalSelect } from "./PortalSelect";
@@ -51,44 +52,6 @@ const Icons = {
     </svg>
   ),
 };
-
-function PhoneNumberFilter() {
-  const { selectedPhoneNumberId, setSelectedPhoneNumberId } = usePhoneFilter();
-  const phoneNumbersQuery = trpc.business.listPhoneNumbers.useQuery();
-
-  const phoneNumbers = phoneNumbersQuery.data ?? [];
-  
-  if (phoneNumbersQuery.isLoading) {
-    return (
-      <div style={{ fontSize: 12, color: "var(--muted)", padding: "8px 12px" }}>
-        Loading...
-      </div>
-    );
-  }
-
-  // If no phone numbers, don't show filter
-  if (phoneNumbers.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="portal-topbar-control">
-      <PortalSelect
-        value={selectedPhoneNumberId ?? "all"}
-        onValueChange={(value) => setSelectedPhoneNumberId(value === "all" ? null : value)}
-        options={[
-          { value: "all", label: "All Numbers" },
-          ...phoneNumbers.map((phone) => ({
-            value: phone.phoneNumberId,
-            label: phone.displayPhoneNumber || phone.phoneNumberId.slice(-8),
-          })),
-        ]}
-        style={{ minWidth: 168 }}
-        ariaLabel="Filter by phone number"
-      />
-    </div>
-  );
-}
 
 function ThemeToggle() {
   const { theme, setTheme } = usePortalTheme();
@@ -146,9 +109,38 @@ function TimeChip() {
 }
 
 export default function TopBar({ sidebarWidth, onMobileMenuOpen }: TopBarProps) {
+  const isMobile = useIsMobileViewport();
+  const { selectedPhoneNumberId, setSelectedPhoneNumberId } = usePhoneFilter();
+  const phoneNumbersQuery = trpc.business.listPhoneNumbers.useQuery();
+  const phoneNumbers = phoneNumbersQuery.data ?? [];
+  const hasPhoneFilter = phoneNumbers.length > 0 || phoneNumbersQuery.isLoading;
+
+  const phoneFilterControl = phoneNumbersQuery.isLoading ? (
+    <div style={{ fontSize: 12, color: "var(--muted)", padding: "8px 12px" }}>
+      Loading...
+    </div>
+  ) : phoneNumbers.length > 0 ? (
+    <div className="portal-topbar-control portal-topbar-control--filter">
+      <PortalSelect
+        value={selectedPhoneNumberId ?? "all"}
+        onValueChange={(value) => setSelectedPhoneNumberId(value === "all" ? null : value)}
+        options={[
+          { value: "all", label: "All Numbers" },
+          ...phoneNumbers.map((phone) => ({
+            value: phone.phoneNumberId,
+            label: phone.displayPhoneNumber || phone.phoneNumberId.slice(-8),
+          })),
+        ]}
+        style={{ minWidth: 168, width: "100%" }}
+        ariaLabel="Filter by phone number"
+      />
+    </div>
+  ) : null;
+
   return (
     <header
       className="portal-topbar"
+      data-mobile-has-filter={isMobile && hasPhoneFilter ? "true" : "false"}
       style={{
         marginLeft: sidebarWidth,
         width: `calc(100% - ${sidebarWidth}px)`,
@@ -169,14 +161,23 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: TopBarProps) 
         </button>
         
         <Breadcrumbs />
+
+        <div className="topbar-mobile-inline">
+          <ThemeToggle />
+          <TimeChip />
+        </div>
       </div>
 
       {/* Right side: Phone number filter */}
-      <div className="topbar-right" style={{ marginLeft: "auto", paddingRight: 16 }}>
-        <ThemeToggle />
-        <PhoneNumberFilter />
-        <TimeChip />
-      </div>
+      {!isMobile || hasPhoneFilter ? (
+        <div className={`topbar-right${hasPhoneFilter ? " has-filter" : ""}`}>
+          <div className="topbar-secondary">
+            <ThemeToggle />
+            <TimeChip />
+          </div>
+          {phoneFilterControl}
+        </div>
+      ) : null}
     </header>
   );
 }

@@ -181,7 +181,7 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
     if (row.id) params.set("customerId", row.id);
     else if (row.phone) params.set("phone", row.phone);
     const query = params.toString();
-    return query ? `/portal/messages?${query}` : "/portal/messages";
+    return query ? `/messages?${query}` : "/messages";
   };
 
   return (
@@ -237,10 +237,11 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
               onLoadMore();
             }
           }}
+          onPageChange={setPage}
         />
       )}
     >
-      <table className="table table-clickable portal-modern-table">
+      <table className="table table-clickable portal-modern-table portal-mobile-cards">
         <thead>
           <tr>
             <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("source")}>
@@ -259,12 +260,12 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
         <tbody>
           {pageRows.map((row) => (
             <tr key={row.id} onClick={() => onSelect(row.id)}>
-              <td style={{ paddingTop: 14, paddingBottom: 14 }}>
+              <td data-label="Source" style={{ paddingTop: 14, paddingBottom: 14 }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
                   <SourceBadge source={row.source} />
                 </div>
               </td>
-              <td>
+              <td data-label="Customer">
                 <div>
                   <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
                     {row.name || row.externalId}
@@ -282,7 +283,7 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
                   )}
                 </div>
               </td>
-              <td>
+              <td data-label="Bot">
                 {(() => {
                   const isPending = Boolean(pendingIds[row.id]);
                   return (
@@ -303,12 +304,13 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
                   );
                 })()}
               </td>
-              <td style={{ color: "var(--muted)" }}>
+              <td data-label="Last Active" style={{ color: "var(--muted)" }}>
                 {row.lastMessageAt
                   ? new Date(row.lastMessageAt).toLocaleDateString()
                   : "-"}
               </td>
               <td
+                data-label="Actions"
                 style={{ textAlign: "center" }}
                 onClick={(e) => e.stopPropagation()}
               >

@@ -164,7 +164,7 @@ export default function RequestsPage() {
     if (row.customerId) params.set("customerId", row.customerId);
     else if (row.customerNumber) params.set("phone", row.customerNumber.replace(/[^\d]/g, ""));
     const query = params.toString();
-    return query ? `/portal/messages?${query}` : "/portal/messages";
+    return query ? `/messages?${query}` : "/messages";
   };
 
   return (
@@ -203,10 +203,11 @@ export default function RequestsPage() {
           canNext={safePage < totalPages - 1}
           onPrev={() => setPage((p) => Math.max(0, p - 1))}
           onNext={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+          onPageChange={setPage}
         />
       )}
     >
-      <table className="table table-clickable portal-modern-table">
+      <table className="table table-clickable portal-modern-table portal-mobile-cards">
         <thead>
           <tr>
             <th
@@ -295,25 +296,25 @@ export default function RequestsPage() {
           ) : (
             pageRows.map((r) => (
               <tr key={r.id} onClick={() => setSelectedId(r.id)} style={{ cursor: "pointer" }}>
-                <td>
+                <td data-label="Customer">
                   <div style={{ fontWeight: 500 }}>{r.customerNumber}</div>
                   <div className="text-muted" style={{ fontSize: 12 }}>
                     {(r.source || "whatsapp").toUpperCase()} - #{r.id.slice(0, 8)}
                   </div>
                 </td>
-                <td>
+                <td data-label="Sentiment">
                   <span className={`badge badge-${r.sentiment === "positive" ? "success" : r.sentiment === "negative" ? "error" : "default"}`}>
                     {(r.sentiment || "neutral").toUpperCase()}
                   </span>
                 </td>
-                <td>
+                <td data-label="Status">
                   <span className="badge badge-default">{(r.status || "ongoing").replace(/_/g, " ").toUpperCase()}</span>
                 </td>
-                <td>
+                <td data-label="Type">
                   <span className="badge badge-default">{(r.type || "browsing").replace(/_/g, " ").toUpperCase()}</span>
                 </td>
-                <td>{r.paid ? "Yes" : "No"}</td>
-                <td>
+                <td data-label="Paid">{r.paid ? "Yes" : "No"}</td>
+                <td data-label="Bot">
                   {(() => {
                     if (!r.customerId) return <span className="text-muted" style={{ fontSize: 12 }}>-</span>;
                     const createdAt = new Date(r.createdAt);
@@ -353,10 +354,11 @@ export default function RequestsPage() {
                     );
                   })()}
                 </td>
-                <td className="text-muted" style={{ fontSize: 12 }}>
+                <td data-label="Created" className="text-muted" style={{ fontSize: 12 }}>
                   {new Date(r.createdAt).toLocaleDateString()}
                 </td>
                 <td
+                  data-label="Actions"
                   style={{ textAlign: "center" }}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -373,7 +375,7 @@ export default function RequestsPage() {
                         disabled: !r.customerId,
                         onSelect: () => {
                           if (!r.customerId) return;
-                          router.push(`/portal/customers?customerId=${encodeURIComponent(r.customerId)}`);
+                          router.push(`/customers?customerId=${encodeURIComponent(r.customerId)}`);
                         },
                       },
                     ]}
@@ -405,10 +407,10 @@ function RequestDrawer({
     if (request.customerId) params.set("customerId", request.customerId);
     else if (request.customerNumber) params.set("phone", request.customerNumber.replace(/[^\d]/g, ""));
     const query = params.toString();
-    return query ? `/portal/messages?${query}` : "/portal/messages";
+    return query ? `/messages?${query}` : "/messages";
   })();
   const customerHref = request.customerId
-    ? `/portal/customers?customerId=${encodeURIComponent(request.customerId)}`
+    ? `/customers?customerId=${encodeURIComponent(request.customerId)}`
     : null;
 
   return (
@@ -505,4 +507,3 @@ function RequestDrawer({
     </>
   );
 }
-

@@ -16,7 +16,7 @@ export function ProfileCard({ email, onLogout }: Props) {
       </div>
       <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
         <button className="btn" onClick={onLogout}>Log out</button>
-        <Link className="btn" href="/portal/dashboard">Back to Dashboard</Link>
+        <Link className="btn" href="/dashboard">Back to Dashboard</Link>
       </div>
     </div>
   );

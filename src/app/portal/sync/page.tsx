@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
+import { useIsMobileViewport } from "@/app/portal/hooks/useIsMobileViewport";
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
 import { useToast } from "@/components/ToastProvider";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
@@ -114,6 +115,7 @@ const styles: Record<string, React.CSSProperties> = {
     transition: "all 0.3s ease",
     display: "flex",
     flexDirection: "column",
+    minWidth: 0,
   },
   cardSynced: {
     borderColor: "rgba(16, 185, 129, 0.4)",
@@ -151,6 +153,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 8,
+    minWidth: 0,
   },
   cardTitleRow: {
     display: "flex",
@@ -358,6 +361,7 @@ const styles: Record<string, React.CSSProperties> = {
    MAIN PAGE
 ───────────────────────────────────────────────────────────────────────────── */
 export default function SyncPage() {
+  const isMobile = useIsMobileViewport();
   const [email] = useState<string | null>(() => getFirebaseAuth()?.currentUser?.email ?? null);
   const [widgetModalOpen, setWidgetModalOpen] = useState(false);
   const [widgetSnippet, setWidgetSnippet] = useState("");
@@ -380,6 +384,31 @@ export default function SyncPage() {
   const whatsappConnected = (phoneNumbersQuery.data?.length ?? 0) > 0;
   const websiteWidget = normalizeWebsiteWidgetSettings(businessQuery.data?.settings);
   const websiteConnected = Boolean(websiteWidget.key);
+
+  const pageStyle = useMemo(
+    () => ({
+      ...styles.page,
+      padding: isMobile ? "0 12px" : styles.page.padding,
+      gap: isMobile ? 16 : styles.page.gap,
+    }),
+    [isMobile],
+  );
+  const gridStyle = useMemo(
+    () => ({
+      ...styles.grid,
+      gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : styles.grid.gridTemplateColumns,
+      gap: isMobile ? 16 : styles.grid.gap,
+    }),
+    [isMobile],
+  );
+  const modalCardStyle = useMemo(
+    () => ({
+      ...styles.modalCard,
+      padding: isMobile ? 20 : styles.modalCard.padding,
+      borderRadius: isMobile ? 20 : styles.modalCard.borderRadius,
+    }),
+    [isMobile],
+  );
 
   const markSynced = (key: CardKey) => setSyncState((s) => ({ ...s, [key]: "synced" }));
 
@@ -471,10 +500,14 @@ export default function SyncPage() {
       : card.key === "website"
         ? websiteConnected
         : syncState[card.key] === "synced";
+    const actionStyle = {
+      width: isMobile ? "100%" : undefined,
+      justifyContent: "center" as const,
+    };
 
     if (!card.canSync) {
       return (
-        <button style={{ ...styles.btnSync, ...styles.btnDisabled }} disabled>
+        <button style={{ ...styles.btnSync, ...styles.btnDisabled, ...actionStyle }} disabled>
           {Icons.clock}
           Coming Soon
         </button>
@@ -496,6 +529,7 @@ export default function SyncPage() {
           style={{
             ...styles.btnSync,
             ...(isSynced ? styles.btnSynced : {}),
+            ...actionStyle,
           }}
         />
       );
@@ -512,6 +546,7 @@ export default function SyncPage() {
             ...styles.btnSync,
             ...(isSynced ? styles.btnSynced : {}),
             ...((ensureWebsiteWidget.isPending || !email) ? styles.btnDisabled : {}),
+            ...actionStyle,
           }}
         >
           {isSynced ? Icons.check : Icons.link}
@@ -528,6 +563,7 @@ export default function SyncPage() {
           style={{
             ...styles.btnSync,
             ...(isSynced ? styles.btnSynced : {}),
+            ...actionStyle,
           }}
         >
           {isSynced ? Icons.check : Icons.link}
@@ -540,14 +576,14 @@ export default function SyncPage() {
   };
 
   return (
-    <div style={styles.page}>
+    <div style={pageStyle}>
       {widgetModalOpen ? (
         <div
           style={styles.modalBackdrop}
           onClick={() => setWidgetModalOpen(false)}
         >
           <div
-            style={styles.modalCard}
+            style={modalCardStyle}
             onClick={(event) => event.stopPropagation()}
           >
             <div style={styles.modalHeader}>
@@ -597,7 +633,7 @@ export default function SyncPage() {
       ) : null}
 
       {/* Cards Grid */}
-      <div style={styles.grid}>
+      <div style={gridStyle}>
         {cards.map((card) => {
           const isSynced = card.key === "whatsapp"
             ? whatsappConnected
@@ -613,10 +649,16 @@ export default function SyncPage() {
                 ...(isSynced ? styles.cardSynced : {}),
               }}
             >
-              <div style={styles.cardHeader}>
+              <div
+                style={{
+                  ...styles.cardHeader,
+                  padding: isMobile ? "18px" : styles.cardHeader.padding,
+                  alignItems: "flex-start",
+                }}
+              >
                 {renderLogo(card)}
-                <div style={styles.cardInfo}>
-                  <div style={styles.cardTitleRow}>
+                <div style={{ ...styles.cardInfo, minWidth: 0 }}>
+                  <div style={{ ...styles.cardTitleRow, flexWrap: "wrap" }}>
                     <h3 style={styles.cardTitle}>{card.name}</h3>
                     {isSynced && (
                       <span style={{ ...styles.badge, ...styles.badgeSynced }}>
@@ -634,7 +676,13 @@ export default function SyncPage() {
                   <p style={styles.cardDesc}>{card.desc}</p>
                 </div>
               </div>
-              <div style={styles.cardActions}>
+              <div
+                style={{
+                  ...styles.cardActions,
+                  padding: isMobile ? "14px 18px 18px" : styles.cardActions.padding,
+                  justifyContent: "stretch",
+                }}
+              >
                 {renderAction(card)}
               </div>
             </div>

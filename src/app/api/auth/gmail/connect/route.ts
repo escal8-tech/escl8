@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   const baseUrl = resolveBaseUrl(req);
   const idToken = String(req.nextUrl.searchParams.get("idToken") || "").trim();
   if (!idToken) {
-    return NextResponse.redirect(new URL("/portal/settings?gmail=auth_required", baseUrl));
+    return NextResponse.redirect(new URL("/settings?gmail=auth_required", baseUrl));
   }
 
   let resolvedUserId = "";
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     if (firebaseUid) matchers.push(eq(users.firebaseUid, firebaseUid));
     if (email) matchers.push(eq(users.email, email));
     if (!matchers.length) {
-      return NextResponse.redirect(new URL("/portal/settings?gmail=auth_required", baseUrl));
+      return NextResponse.redirect(new URL("/settings?gmail=auth_required", baseUrl));
     }
     const [user] = await db
       .select({ id: users.id, businessId: users.businessId })
@@ -54,11 +54,11 @@ export async function GET(req: NextRequest) {
     resolvedUserId = String(user?.id || "").trim();
     resolvedBusinessId = String(user?.businessId || "").trim();
   } catch {
-    return NextResponse.redirect(new URL("/portal/settings?gmail=auth_required", baseUrl));
+    return NextResponse.redirect(new URL("/settings?gmail=auth_required", baseUrl));
   }
 
   if (!resolvedUserId || !resolvedBusinessId) {
-    return NextResponse.redirect(new URL("/portal/settings?gmail=forbidden", baseUrl));
+    return NextResponse.redirect(new URL("/settings?gmail=forbidden", baseUrl));
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
   const redirectUri =
     process.env.GOOGLE_OAUTH_REDIRECT_URI ||
     `${baseUrl}/api/auth/gmail/callback`;
-  const returnTo = req.nextUrl.searchParams.get("returnTo") || "/portal/settings";
+  const returnTo = req.nextUrl.searchParams.get("returnTo") || "/settings";
 
   const [business] = await db
     .select({ id: businesses.id })

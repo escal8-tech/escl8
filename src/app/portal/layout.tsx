@@ -4,6 +4,7 @@ import PortalNav from "@/components/PortalNav";
 import PortalAuthProvider from "@/components/PortalAuthProvider";
 import { PhoneFilterProvider } from "@/components/PhoneFilterContext";
 import PortalLiveDocumentToasts from "@/app/portal/components/PortalLiveDocumentToasts";
+import { isAppAuthPath, isAppFlushPath, normalizeAppPath } from "@/lib/app-routes";
 import {
   PortalThemeProvider,
   usePortalTheme,
@@ -12,13 +13,10 @@ import {
 function PortalLayoutShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { theme } = usePortalTheme();
-  const isAuthPage = pathname === "/portal" || pathname?.startsWith("/portal/signup");
-  const isMessagesPage = pathname?.startsWith("/portal/messages");
-  const isFlushPage =
-    pathname?.startsWith("/portal/customers") ||
-    pathname?.startsWith("/portal/messages") ||
-    pathname?.startsWith("/portal/tickets") ||
-    pathname?.startsWith("/portal/requests");
+  const appPath = normalizeAppPath(pathname);
+  const isAuthPage = isAppAuthPath(appPath);
+  const isMessagesPage = appPath === "/messages" || appPath.startsWith("/messages/");
+  const isFlushPage = isAppFlushPath(appPath);
 
   if (isAuthPage) {
     // Login/Signup should not be guarded and typically shouldn't show PortalNav
@@ -32,7 +30,7 @@ function PortalLayoutShell({ children }: { children: React.ReactNode }) {
         <PortalLiveDocumentToasts />
         <div className="portal-layout" data-theme={theme} suppressHydrationWarning>
           <PortalNav />
-          <main className="portal-main" style={{ paddingTop: 72 }}>
+          <main className="portal-main portal-main--with-topbar">
             <div className={`portal-content${isFlushPage ? " portal-content--flush" : ""}${isMessagesPage ? " portal-content--flush-messages" : ""}`}>
               {children}
             </div>

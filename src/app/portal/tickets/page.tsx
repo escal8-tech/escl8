@@ -301,7 +301,7 @@ export default function TicketsPage() {
     else if (ticket.customerId) params.set("customerId", ticket.customerId);
     else if (ticket.customerPhone) params.set("phone", ticket.customerPhone);
     const query = params.toString();
-    return query ? `/portal/messages?${query}` : "/portal/messages";
+    return query ? `/messages?${query}` : "/messages";
   }, []);
   const pageTitle = effectiveTypeKey ? getTicketTypeLabel(effectiveTypeKey) : "Tickets";
   const pageDescription = isOrderTicketView
@@ -448,7 +448,7 @@ export default function TicketsPage() {
             ) : activeGroup ? (
               <div className="portal-ledger-table-wrap">
                 <div className="portal-table-scroll">
-                  <table className="table table-clickable portal-modern-table portal-ledger-table" style={{ width: "100%", tableLayout: "fixed" }}>
+                  <table className="table table-clickable portal-modern-table portal-ledger-table portal-mobile-cards" style={{ width: "100%", tableLayout: "fixed" }}>
                     <thead>
                       {isOrderTicketView ? (
                         <tr>
@@ -501,7 +501,7 @@ export default function TicketsPage() {
                 const paused = customerId ? (botPausedOverrides[customerId] ?? Boolean(customerBotPausedMapQuery.data?.[customerId])) : false;
                 const isBotPending = customerId ? Boolean(pendingBotCustomerIds[customerId]) : false;
                 const ticketCell = (
-                  <td>
+                  <td data-label="Ticket">
                     <div className="portal-entity-stack">
                       <div className="portal-ledger-table__ref" title={ticket.id}>
                         #{shortId(ticket.id)}
@@ -511,7 +511,7 @@ export default function TicketsPage() {
                   </td>
                 );
                 const customerCell = (
-                  <td>
+                  <td data-label="Customer">
                     <div className="portal-entity-stack">
                       <div className="portal-body-text">{customerPrimary}</div>
                       {customerSecondary ? <div className="portal-meta-text">{customerSecondary}</div> : null}
@@ -519,21 +519,21 @@ export default function TicketsPage() {
                   </td>
                 );
                 const itemsCell = (
-                  <td>
+                  <td data-label="Items">
                     <span className="portal-body-text" title={itemsLabel}>
                       {itemsLabel}
                     </span>
                   </td>
                 );
                 const priorityCell = (
-                  <td>
+                  <td data-label="Priority">
                     <span className={priorityPillClass(getTicketString(ticket, "priority") || "normal")}>
                       {(getTicketString(ticket, "priority") || "normal")}
                     </span>
                   </td>
                 );
                 const slaCell = (
-                  <td>
+                  <td data-label="SLA">
                     {(() => {
                       const sla = formatSlaCountdown(
                         getTicketValue(ticket, "slaDueAt", "sla_due_at") as Date | string | null | undefined,
@@ -546,7 +546,7 @@ export default function TicketsPage() {
                   </td>
                 );
                 const botCell = (
-                  <td style={{ textAlign: "center" }}>
+                  <td data-label="Bot" style={{ textAlign: "center" }}>
                     {customerId ? (
                       <button
                         type="button"
@@ -571,7 +571,7 @@ export default function TicketsPage() {
                   </td>
                 );
                 const actionCell = (
-                  <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+                  <td data-label="Actions" style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
                     <div className="portal-ledger-actions">
                       <button
                         type="button"
@@ -613,7 +613,7 @@ export default function TicketsPage() {
                               disabled: !customerId,
                               onSelect: () => {
                                 if (!customerId) return;
-                                router.push(`/portal/customers?customerId=${encodeURIComponent(customerId)}`);
+                                router.push(`/customers?customerId=${encodeURIComponent(customerId)}`);
                               },
                             },
                           ]
@@ -643,7 +643,7 @@ export default function TicketsPage() {
                         {itemsCell}
                         {priorityCell}
                         {slaCell}
-                        <td>
+                        <td data-label="Stage">
                           <span className={orderStagePillClass(orderStage)}>{formatOrderStage(orderStage)}</span>
                         </td>
                         {actionCell}
@@ -656,7 +656,7 @@ export default function TicketsPage() {
                         {priorityCell}
                         {slaCell}
                         {botCell}
-                        <td style={{ textAlign: "right" }}>
+                        <td data-label="Status" style={{ textAlign: "right" }}>
                           <TableSelect
                             style={{ width: "100%" }}
                             value={(ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus}
@@ -679,7 +679,7 @@ export default function TicketsPage() {
                             ))}
                           </TableSelect>
                         </td>
-                        <td>
+                        <td data-label="Outcome">
                           <TableSelect
                             style={{ width: "100%" }}
                             value={(getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome}
@@ -743,7 +743,7 @@ export default function TicketsPage() {
         key={selectedTicket ? `${selectedTicket.id}:${String(getTicketValue(selectedTicket, "updatedAt", "updated_at") ?? "")}` : "ticket-details"}
         ticket={selectedTicket}
         onClose={() => setSelectedTicketId(null)}
-        threadHref={selectedTicket ? getThreadHref(selectedTicket) : "/portal/messages"}
+        threadHref={selectedTicket ? getThreadHref(selectedTicket) : "/messages"}
         nowMs={nowMs}
         onApproveOrderTicket={handleApproveTicket}
         onDenyOrderTicket={openDenyDialog}
@@ -974,7 +974,7 @@ function TicketDetailsDrawer({
   const customerName = initialCustomerName;
   const customerPhone = initialCustomerPhone;
   const customerId = getTicketString(ticket, "customerId", "customer_id");
-  const customerHref = customerId ? `/portal/customers?customerId=${encodeURIComponent(customerId)}` : null;
+  const customerHref = customerId ? `/customers?customerId=${encodeURIComponent(customerId)}` : null;
   const createdAt = getTicketValue(ticket, "createdAt", "created_at") as Date | string | null | undefined;
   const updatedAt = getTicketValue(ticket, "updatedAt", "updated_at") as Date | string | null | undefined;
   const resolvedAt = getTicketValue(ticket, "resolvedAt", "resolved_at") as Date | string | null | undefined;

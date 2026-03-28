@@ -48,7 +48,7 @@ export default function HomeHeroNav() {
         </Link>
       </nav>
 
-      <Link href="/portal" className={styles.navCta}>
+      <Link href="/signup" className={styles.navCta}>
         Sign Up
       </Link>
     </header>

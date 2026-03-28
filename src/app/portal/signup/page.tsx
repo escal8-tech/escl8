@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
 import { isClientErrorReported, recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
+import { APP_DEFAULT_AUTH_REDIRECT, APP_SIGNUP_ROUTE } from "@/lib/app-routes";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { trpc } from "@/utils/trpc";
 import { useRouter } from "next/navigation";
@@ -28,7 +29,7 @@ export default function SignupPage() {
       // redirect away from the signup page.
       // Important: during signup, Firebase signs in immediately after account creation;
       // redirecting here can interrupt the DB upsert that persists phone_number.
-      if (u && !busy) router.replace("/portal/upload");
+      if (u && !busy) router.replace(APP_DEFAULT_AUTH_REDIRECT);
     });
     return () => { if (typeof unsub === "function") unsub(); };
   }, [auth, router, busy]);
@@ -47,7 +48,7 @@ export default function SignupPage() {
           error,
           level: "error",
           outcome: "config_missing",
-          route: "/portal/signup",
+          route: APP_SIGNUP_ROUTE,
           attributes: {
             auth_provider: "password",
           },
@@ -65,7 +66,7 @@ export default function SignupPage() {
         freshToken: true,
         missingConfigEvent: "auth.signup_failed",
         missingSessionEvent: "auth.signup_failed",
-        route: "/portal/signup",
+        route: APP_SIGNUP_ROUTE,
         tokenFailureEvent: "auth.signup_failed",
       });
       await upsertUser.mutateAsync({ email, whatsappConnected: false });
@@ -74,13 +75,13 @@ export default function SignupPage() {
         action: "portal-signup",
         area: "auth",
         outcome: "success",
-        route: "/portal/signup",
+        route: APP_SIGNUP_ROUTE,
         attributes: {
           auth_provider: "password",
           email_domain: email.split("@")[1] || null,
         },
       });
-      router.push("/portal/upload");
+      router.push(APP_DEFAULT_AUTH_REDIRECT);
     } catch (err: any) {
       console.error(err);
       if (!isClientErrorReported(err)) {
@@ -93,7 +94,7 @@ export default function SignupPage() {
           error: err,
           level: captureInSentry ? "error" : "warn",
           outcome: captureInSentry ? "unexpected_failure" : "handled_failure",
-          route: "/portal/signup",
+          route: APP_SIGNUP_ROUTE,
           attributes: {
             auth_provider: "password",
           },

@@ -42,15 +42,27 @@ export function TablePagination({
   onPageChange,
 }: TablePaginationProps) {
   const pageItems = buildPageItems(page, totalPages);
+  const safeTotalPages = Math.max(totalPages, 1);
+  const mobileStatusLabel = `${page + 1} / ${safeTotalPages}`;
 
   return (
     <div className="portal-pagination">
-      <button className="portal-pagination__button portal-pagination__button--prev" onClick={onPrev} disabled={!canPrev}>
+      <div className="portal-pagination__meta">
+        <span className="portal-pagination__summary">
+          Showing {shownCount} of {totalCount}
+          {pageLabelSuffix ? ` • ${pageLabelSuffix}` : ""}
+        </span>
+        <span className="portal-pagination__status">Page {page + 1} of {safeTotalPages}</span>
+      </div>
+      <button type="button" className="portal-pagination__button portal-pagination__button--prev" onClick={onPrev} disabled={!canPrev}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
           <path d="m15 18-6-6 6-6" />
         </svg>
-        Previous
+        <span className="portal-pagination__button-label">Previous</span>
       </button>
+      <div className="portal-pagination__mobile-status" aria-label={`Page ${page + 1} of ${safeTotalPages}`}>
+        {mobileStatusLabel}
+      </div>
       <div className="portal-pagination__pages" aria-label="Pagination">
         {pageItems.map((item, index) =>
           item === "..." ? (
@@ -79,16 +91,12 @@ export function TablePagination({
           ),
         )}
       </div>
-      <button className="portal-pagination__button portal-pagination__button--next" onClick={onNext} disabled={!canNext}>
-        Next
+      <button type="button" className="portal-pagination__button portal-pagination__button--next" onClick={onNext} disabled={!canNext}>
+        <span className="portal-pagination__button-label">Next</span>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
           <path d="m9 18 6-6-6-6" />
         </svg>
       </button>
-      <span className="portal-pagination__summary" aria-hidden="true">
-        Showing {shownCount} of {totalCount}
-        {pageLabelSuffix ? ` • ${pageLabelSuffix}` : ""}
-      </span>
     </div>
   );
 }

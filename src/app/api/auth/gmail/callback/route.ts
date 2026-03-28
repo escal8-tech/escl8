@@ -23,7 +23,7 @@ function safeDecodeState(raw: string | null): { userId: string; businessId: stri
     const stateAgeMs = Date.now() - ts;
     if (!Number.isFinite(ts) || stateAgeMs < 0 || stateAgeMs > 15 * 60 * 1000) return null;
     if (!userId || !businessId) return null;
-    return { userId, businessId, returnTo: returnTo.startsWith("/") ? returnTo : "/portal/settings" };
+    return { userId, businessId, returnTo: returnTo.startsWith("/") ? returnTo : "/settings" };
   } catch {
     return null;
   }
@@ -40,10 +40,10 @@ export async function GET(req: NextRequest) {
   const state = safeDecodeState(req.nextUrl.searchParams.get("state"));
   const code = req.nextUrl.searchParams.get("code");
   if (!state || !code) {
-    return NextResponse.redirect(new URL("/portal/settings?gmail=error", baseUrl));
+    return NextResponse.redirect(new URL("/settings?gmail=error", baseUrl));
   }
 
-  const stateReturnTo = state.returnTo || "/portal/settings";
+  const stateReturnTo = state.returnTo || "/settings";
   const [stateUser] = await db
     .select({
       id: users.id,

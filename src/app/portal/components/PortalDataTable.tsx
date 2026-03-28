@@ -27,29 +27,31 @@ export function PortalDataTable({
 }: PortalDataTableProps) {
   return (
     <main className="portal-table-surface">
-      <div className="portal-table-toolbar" style={toolbarNoWrap ? { flexWrap: "nowrap" } : undefined}>
+      <div className={`portal-table-toolbar${toolbarNoWrap ? " portal-table-toolbar--nowrap" : ""}`}>
         {search ? (
-          <TableSearchControl
-            value={search.value}
-            onChange={search.onChange}
-            placeholder={search.placeholder}
-            style={search.style}
-          />
+          <div className="portal-table-toolbar__search">
+            <TableSearchControl
+              value={search.value}
+              onChange={search.onChange}
+              placeholder={search.placeholder}
+              style={search.style}
+            />
+          </div>
         ) : (
-          <div style={{ marginRight: "auto" }} />
+          <div className="portal-table-toolbar__spacer" />
         )}
 
         {(countText || endControls) && (
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          <div className="portal-table-toolbar__end">
             {countText ? (
-              <p className="portal-meta-text" style={{ whiteSpace: "nowrap" }}>{countText}</p>
+              <p className="portal-meta-text portal-table-toolbar__count">{countText}</p>
             ) : null}
             {endControls}
           </div>
         )}
       </div>
 
-      <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
+      <div className="portal-table-body">
         {children}
       </div>
 
