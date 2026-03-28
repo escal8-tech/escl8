@@ -115,17 +115,46 @@ const styles: Record<string, React.CSSProperties> = {
   },
   headerControls: {
     display: "flex",
+    alignItems: "stretch",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    padding: 12,
+    borderRadius: 14,
+    border: "1px solid var(--portal-border)",
+    background: "var(--portal-card-plain)",
+  },
+  headerControlsPrimary: {
+    display: "flex",
     alignItems: "center",
     gap: 10,
+    flex: "0 1 auto",
+    minWidth: 0,
+  },
+  headerControlsSecondary: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+    flex: "0 1 auto",
+    minWidth: 0,
     flexWrap: "wrap",
+    marginLeft: "auto",
+  },
+  weekNavGroup: {
+    display: "flex",
+    alignItems: "stretch",
+    gap: 10,
+    minWidth: 0,
+    flex: "0 1 auto",
   },
   navBtn: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 42,
-    height: 42,
-    borderRadius: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     border: "1px solid var(--portal-border)",
     background: "var(--portal-card-plain)",
     color: "var(--portal-text)",
@@ -137,22 +166,28 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: 10,
-    padding: "11px 16px",
-    borderRadius: 10,
-    background: "var(--portal-card-plain)",
+    padding: "0 16px",
+    minHeight: 44,
+    borderRadius: 12,
+    background: "rgba(255, 255, 255, 0.02)",
     border: "1px solid var(--portal-border)",
     fontSize: 14,
     fontWeight: 600,
     color: "var(--portal-text)",
     whiteSpace: "nowrap" as const,
-    minWidth: "fit-content",
+    minWidth: 0,
+    flex: "0 1 auto",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   todayBtn: {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    padding: "11px 16px",
-    borderRadius: 10,
+    justifyContent: "center",
+    minHeight: 44,
+    padding: "0 16px",
+    borderRadius: 12,
     border: "1px solid transparent",
     background: "#b59a5a",
     color: "#162033",
@@ -162,16 +197,36 @@ const styles: Record<string, React.CSSProperties> = {
     transition: "all 0.2s ease",
     flexShrink: 0,
   },
-  dateInput: {
-    padding: "11px 16px",
-    borderRadius: 10,
+  dateControl: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 44,
+    padding: "0 14px",
+    borderRadius: 12,
     border: "1px solid var(--portal-border)",
-    background: "var(--portal-card-plain)",
+    background: "rgba(255, 255, 255, 0.02)",
+    minWidth: 0,
+  },
+  dateControlLabel: {
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase" as const,
+    color: "var(--portal-text-muted)",
+    whiteSpace: "nowrap" as const,
+  },
+  dateInput: {
+    height: 42,
+    padding: "0 0 0 2px",
+    borderRadius: 10,
+    border: "none",
+    background: "transparent",
     fontSize: 14,
     color: "var(--portal-text)",
     cursor: "pointer",
     outline: "none",
-    minWidth: 140,
+    minWidth: 132,
     colorScheme: "dark",
   },
   stats: {
@@ -814,26 +869,36 @@ export default function BookingsPage() {
     <div style={styles.page}>
       {/* Date Controls */}
       <div style={styles.headerControls}>
-        <button style={styles.navBtn} onClick={goPrevWeek}>
-          {Icons.chevronLeft}
-        </button>
-        <div style={styles.weekDisplay}>
-          <span style={{ color: "var(--portal-primary)" }}>{Icons.calendar}</span>
-          {formatWeekRange()}
+        <div style={styles.headerControlsPrimary}>
+          <div style={styles.weekNavGroup}>
+            <button style={styles.navBtn} onClick={goPrevWeek} aria-label="Previous week">
+              {Icons.chevronLeft}
+            </button>
+            <div style={styles.weekDisplay}>
+              <span style={{ color: "var(--portal-primary)", display: "flex" }}>{Icons.calendar}</span>
+              {formatWeekRange()}
+            </div>
+            <button style={styles.navBtn} onClick={goNextWeek} aria-label="Next week">
+              {Icons.chevronRight}
+            </button>
+          </div>
         </div>
-        <button style={styles.navBtn} onClick={goNextWeek}>
-          {Icons.chevronRight}
-        </button>
-        <input
-          type="date"
-          style={styles.dateInput}
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-        />
-        <button style={styles.todayBtn} onClick={goToday}>
-          {Icons.today}
-          Today
-        </button>
+        <div style={styles.headerControlsSecondary}>
+          <div style={styles.dateControl}>
+            <span style={styles.dateControlLabel}>Jump to</span>
+            <input
+              type="date"
+              style={styles.dateInput}
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              aria-label="Select booking date"
+            />
+          </div>
+          <button style={styles.todayBtn} onClick={goToday}>
+            {Icons.today}
+            Today
+          </button>
+        </div>
       </div>
 
       {/* Stats */}

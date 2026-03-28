@@ -3058,7 +3058,7 @@ html.portal-theme-light {
 
 .portal-layout {
   --portal-nav-rail-height: 72px;
-  --portal-content-inset-top: 4px;
+  --portal-content-inset-top: 12px;
   --portal-content-inset-x: 16px;
   --portal-content-inset-bottom: 16px;
   --background: var(--portal-page-bg-flat);
