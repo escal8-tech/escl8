@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
@@ -13,6 +13,17 @@ import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
 
 type RequestSortKey = "customer" | "status" | "type" | "sentiment" | "created" | "bot";
 const PAGE_SIZE = 20;
+const REQUEST_STATUS_OPTIONS = [
+  "ongoing",
+  "completed",
+  "failed",
+  "assistance_required",
+  "resolved",
+  "pending",
+  "escalated",
+  "in_progress",
+  "needs_followup",
+] as const;
 
 type RequestRow = {
   id: string;
@@ -71,30 +82,43 @@ export default function RequestsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const utils = trpc.useUtils();
 
-  const listInput = useMemo(
-    () => ({ limit: 200, ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}) }),
-    [selectedPhoneNumberId],
+  const pageInput = useMemo(
+    () => ({
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
+      search: searchQuery.trim() || undefined,
+      status: statusFilter !== "all" ? statusFilter : undefined,
+      sortKey,
+      sortDir,
+      ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
+    }),
+    [page, searchQuery, selectedPhoneNumberId, sortDir, sortKey, statusFilter],
   );
 
-  useLivePortalEvents({ requestListInput: listInput });
-  const listQ = trpc.requests.list.useQuery(listInput);
+  useLivePortalEvents({ requestPageInput: pageInput });
+  const pageQ = trpc.requests.listPage.useQuery(pageInput);
   const togglePause = trpc.customers.setBotPaused.useMutation({
     onMutate: async (vars) => {
       setPendingIds((prev) => ({ ...prev, [vars.customerId]: true }));
       await Promise.all([
-        utils.requests.list.cancel(listInput),
+        utils.requests.listPage.cancel(pageInput),
         utils.customers.list.cancel(),
+        utils.customers.listPage.cancel(),
       ]);
-      const prevRows = utils.requests.list.getData(listInput);
-      utils.requests.list.setData(listInput, (old) =>
-        old?.map((row) =>
-          row.customerId === vars.customerId ? { ...row, botPaused: vars.botPaused } : row,
-        ),
-      );
+      const prevRows = utils.requests.listPage.getData(pageInput);
+      utils.requests.listPage.setData(pageInput, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          items: old.items.map((row) =>
+            row.customerId === vars.customerId ? { ...row, botPaused: vars.botPaused } : row,
+          ),
+        };
+      });
       return { prevRows };
     },
     onError: (_err, vars, ctx) => {
-      if (ctx?.prevRows) utils.requests.list.setData(listInput, ctx.prevRows);
+      if (ctx?.prevRows) utils.requests.listPage.setData(pageInput, ctx.prevRows);
       setPendingIds((prev) => {
         const next = { ...prev };
         delete next[vars.customerId];
@@ -109,57 +133,43 @@ export default function RequestsPage() {
           return next;
         });
       }
-      utils.requests.list.invalidate(listInput);
+      utils.requests.listPage.invalidate(pageInput);
       utils.customers.list.invalidate();
+      utils.customers.listPage.invalidate();
     },
   });
 
-  const rows = useMemo(() => normalizeRequests(listQ.data || []), [listQ.data]);
-  const statusOptions = useMemo(
-    () => Array.from(new Set(rows.map((r) => (r.status || "ongoing").toLowerCase()))).sort(),
-    [rows],
+  const rows = useMemo(
+    () => normalizeRequests((pageQ.data?.items ?? []) as Record<string, unknown>[]),
+    [pageQ.data?.items],
   );
-
-  const filtered = useMemo(
-    () =>
-      statusFilter === "all"
-        ? rows
-        : rows.filter((r) => (r.status || "ongoing").toLowerCase() === statusFilter.toLowerCase()),
-    [rows, statusFilter],
-  );
-  const searched = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return filtered;
-    return filtered.filter((r) =>
-      r.id.toLowerCase().includes(q) ||
-      r.customerNumber.toLowerCase().includes(q) ||
-      (r.status || "").toLowerCase().includes(q) ||
-      (r.type || "").toLowerCase().includes(q) ||
-      (r.sentiment || "").toLowerCase().includes(q) ||
-      (r.source || "").toLowerCase().includes(q),
-    );
-  }, [filtered, searchQuery]);
-
-  const sorted = useMemo(() => {
-    const direction = sortDir === "asc" ? 1 : -1;
-    return [...searched].sort((a, b) => {
-      if (sortKey === "customer") return a.customerNumber.localeCompare(b.customerNumber) * direction;
-      if (sortKey === "status") return (a.status || "").localeCompare(b.status || "") * direction;
-      if (sortKey === "type") return (a.type || "").localeCompare(b.type || "") * direction;
-      if (sortKey === "sentiment") return (a.sentiment || "").localeCompare(b.sentiment || "") * direction;
-      if (sortKey === "created") return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * direction;
-      if (sortKey === "bot") return ((a.botPaused ? 1 : 0) - (b.botPaused ? 1 : 0)) * direction;
-      return 0;
-    });
-  }, [searched, sortKey, sortDir]);
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const totalCount = pageQ.data?.totalCount ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
-  const pageRows = useMemo(() => sorted.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE), [sorted, safePage]);
+  const pageRows = rows;
+  const statusOptions = useMemo(() => {
+    const values = new Set<string>(REQUEST_STATUS_OPTIONS);
+    if (statusFilter !== "all") values.add(statusFilter);
+    return Array.from(values);
+  }, [statusFilter]);
+  useEffect(() => {
+    if (safePage !== page) {
+      queueMicrotask(() => setPage(safePage));
+    }
+  }, [page, safePage]);
   const selectedRequest = useMemo(() => {
     if (!selectedId) return null;
     return rows.find((r) => r.id === selectedId) ?? null;
   }, [rows, selectedId]);
+  const toggleSort = (key: RequestSortKey, initialDir: "asc" | "desc" = "asc") => {
+    setPage(0);
+    if (sortKey === key) {
+      setSortDir((dir) => (dir === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(initialDir);
+  };
   const getThreadHref = (row: RequestRow) => {
     const params = new URLSearchParams();
     if (row.customerId) params.set("customerId", row.customerId);
@@ -172,11 +182,14 @@ export default function RequestsPage() {
     <PortalDataTable
       search={{
         value: searchQuery,
-        onChange: setSearchQuery,
+        onChange: (value) => {
+          setSearchQuery(value);
+          setPage(0);
+        },
         placeholder: "Search requests...",
         style: { width: "min(520px, 52vw)", minWidth: 220, flex: "0 1 520px" },
       }}
-      countText={`${sorted.length} request${sorted.length !== 1 ? "s" : ""}`}
+      countText={`${totalCount} request${totalCount !== 1 ? "s" : ""}`}
       endControls={(
         <TableSelect
           value={statusFilter}
@@ -199,7 +212,7 @@ export default function RequestsPage() {
           page={safePage}
           totalPages={totalPages}
           shownCount={pageRows.length}
-          totalCount={sorted.length}
+          totalCount={totalCount}
           canPrev={safePage > 0}
           canNext={safePage < totalPages - 1}
           onPrev={() => setPage((p) => Math.max(0, p - 1))}
@@ -213,74 +226,38 @@ export default function RequestsPage() {
           <tr>
             <th
               style={{ cursor: "pointer", userSelect: "none" }}
-              onClick={() => {
-                if (sortKey === "customer") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                else {
-                  setSortKey("customer");
-                  setSortDir("asc");
-                }
-              }}
+              onClick={() => toggleSort("customer")}
             >
               Customer
             </th>
             <th
               style={{ cursor: "pointer", userSelect: "none", textAlign: "center", width: 72 }}
-              onClick={() => {
-                if (sortKey === "bot") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                else {
-                  setSortKey("bot");
-                  setSortDir("asc");
-                }
-              }}
+              onClick={() => toggleSort("bot")}
             >
               Bot
             </th>
             <th
               style={{ cursor: "pointer", userSelect: "none" }}
-              onClick={() => {
-                if (sortKey === "sentiment") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                else {
-                  setSortKey("sentiment");
-                  setSortDir("asc");
-                }
-              }}
+              onClick={() => toggleSort("sentiment")}
             >
               Sentiment
             </th>
             <th
               style={{ cursor: "pointer", userSelect: "none" }}
-              onClick={() => {
-                if (sortKey === "status") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                else {
-                  setSortKey("status");
-                  setSortDir("asc");
-                }
-              }}
+              onClick={() => toggleSort("status")}
             >
               Status
             </th>
             <th
               style={{ cursor: "pointer", userSelect: "none" }}
-              onClick={() => {
-                if (sortKey === "type") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                else {
-                  setSortKey("type");
-                  setSortDir("asc");
-                }
-              }}
+              onClick={() => toggleSort("type")}
             >
               Type
             </th>
             <th>Paid</th>
             <th
               style={{ cursor: "pointer", userSelect: "none" }}
-              onClick={() => {
-                if (sortKey === "created") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                else {
-                  setSortKey("created");
-                  setSortDir("desc");
-                }
-              }}
+              onClick={() => toggleSort("created", "desc")}
             >
               Created
             </th>

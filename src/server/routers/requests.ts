@@ -2,9 +2,11 @@ import { z } from "zod";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { requests, customers, SUPPORTED_SOURCES } from "../../../drizzle/schema";
-import { desc, eq, and, sql, isNull, inArray } from "drizzle-orm";
+import { desc, eq, and, sql, isNull, inArray, asc, ilike, or } from "drizzle-orm";
 
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
+const requestSortKeySchema = z.enum(["customer", "status", "type", "sentiment", "created", "bot"]);
+const sortDirectionSchema = z.enum(["asc", "desc"]);
 
 export const requestsRouter = router({
   list: businessProcedure
@@ -64,6 +66,108 @@ export const requestsRouter = router({
         ...row.requests,
         botPaused: row.customers?.botPaused ?? false,
       }));
+    }),
+
+  listPage: businessProcedure
+    .input(
+      z.object({
+        limit: z.number().int().min(1).max(100).default(20),
+        offset: z.number().int().min(0).default(0),
+        search: z.string().optional(),
+        status: z.string().optional(),
+        source: sourceSchema.optional(),
+        sortKey: requestSortKeySchema.default("created"),
+        sortDir: sortDirectionSchema.default("desc"),
+        whatsappIdentityId: z.string().nullish(),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      let customerIdsForPhone: string[] | null = null;
+      if (input.whatsappIdentityId) {
+        const matchingCustomers = await db
+          .select({ id: customers.id })
+          .from(customers)
+          .where(
+            and(
+              eq(customers.businessId, ctx.businessId),
+              eq(customers.whatsappIdentityId, input.whatsappIdentityId),
+            ),
+          );
+        customerIdsForPhone = matchingCustomers.map((customer) => customer.id);
+      }
+
+      const conditions = [eq(requests.businessId, ctx.businessId), isNull(requests.deletedAt)];
+      if (input.source) {
+        conditions.push(eq(requests.source, input.source));
+      }
+      if (input.status) {
+        conditions.push(sql<boolean>`lower(coalesce(${requests.status}, '')) = ${String(input.status).trim().toLowerCase()}`);
+      }
+      if (customerIdsForPhone !== null) {
+        if (customerIdsForPhone.length === 0) {
+          return { totalCount: 0, items: [] as Array<Record<string, unknown>> };
+        }
+        conditions.push(inArray(requests.customerId, customerIdsForPhone));
+      }
+
+      const searchPattern = String(input.search ?? "").trim();
+      if (searchPattern) {
+        const pattern = `%${searchPattern.replace(/^#/, "")}%`;
+        conditions.push(
+          or(
+            ilike(requests.id, pattern),
+            ilike(requests.customerNumber, pattern),
+            ilike(requests.status, pattern),
+            ilike(requests.type, pattern),
+            ilike(requests.sentiment, pattern),
+            ilike(requests.source, pattern),
+          )!,
+        );
+      }
+
+      const sortDirection = input.sortDir === "asc" ? asc : desc;
+      const customerSortExpr = sql<string>`lower(coalesce(${requests.customerNumber}, ''))`;
+      const statusSortExpr = sql<string>`lower(coalesce(${requests.status}, ''))`;
+      const typeSortExpr = sql<string>`lower(coalesce(${requests.type}, ''))`;
+      const sentimentSortExpr = sql<string>`lower(coalesce(${requests.sentiment}, ''))`;
+      const botSortExpr = sql<number>`case when coalesce(${customers.botPaused}, false) then 1 else 0 end`;
+      const orderBy =
+        input.sortKey === "customer"
+          ? [sortDirection(customerSortExpr), desc(requests.createdAt), desc(requests.id)]
+          : input.sortKey === "status"
+            ? [sortDirection(statusSortExpr), desc(requests.createdAt), desc(requests.id)]
+            : input.sortKey === "type"
+              ? [sortDirection(typeSortExpr), desc(requests.createdAt), desc(requests.id)]
+              : input.sortKey === "sentiment"
+                ? [sortDirection(sentimentSortExpr), desc(requests.createdAt), desc(requests.id)]
+                : input.sortKey === "bot"
+                  ? [sortDirection(botSortExpr), desc(requests.createdAt), desc(requests.id)]
+                  : [sortDirection(requests.createdAt), desc(requests.id)];
+
+      const [countRow] = await db
+        .select({
+          count: sql<number>`count(*)::int`,
+        })
+        .from(requests)
+        .leftJoin(customers, eq(requests.customerId, customers.id))
+        .where(and(...conditions));
+
+      const rows = await db
+        .select()
+        .from(requests)
+        .leftJoin(customers, eq(requests.customerId, customers.id))
+        .where(and(...conditions))
+        .orderBy(...orderBy)
+        .limit(input.limit)
+        .offset(input.offset);
+
+      return {
+        totalCount: countRow?.count ?? 0,
+        items: rows.map((row) => ({
+          ...row.requests,
+          botPaused: row.customers?.botPaused ?? false,
+        })),
+      };
     }),
 
   activitySeries: businessProcedure

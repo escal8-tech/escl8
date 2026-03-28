@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { PortalSelect } from "@/app/portal/components/PortalSelect";
 import { PortalBotToggleButton } from "@/app/portal/components/PortalBotToggleButton";
@@ -8,8 +8,19 @@ import { TablePagination } from "@/app/portal/components/TablePagination";
 import { DashboardIcons } from "./dashboard-icons";
 import type { RequestRow } from "./types";
 
-const RECENT_REQUESTS_PAGE_SIZE = 20;
-type RequestSortKey = "customer" | "status" | "type" | "bot";
+export const RECENT_REQUESTS_PAGE_SIZE = 20;
+export type RequestSortKey = "customer" | "status" | "type" | "bot";
+const REQUEST_STATUS_OPTIONS = [
+  "ongoing",
+  "completed",
+  "failed",
+  "assistance_required",
+  "resolved",
+  "pending",
+  "escalated",
+  "in_progress",
+  "needs_followup",
+] as const;
 
 function formatRelativeRequestDate(value: string | Date) {
   const createdAt = new Date(value);
@@ -110,62 +121,39 @@ function RequestRowItem({
 
 export function RecentRequestsCard({
   rows,
+  totalCount,
+  page,
+  totalPages,
+  statusFilter,
+  sortKey,
+  sortDir,
   pendingIds,
+  onStatusFilterChange,
+  onToggleSort,
+  onPageChange,
   onSelectRequest,
   onToggleBot,
 }: {
   rows: RequestRow[];
+  totalCount: number;
+  page: number;
+  totalPages: number;
+  statusFilter: string;
+  sortKey: RequestSortKey;
+  sortDir: "asc" | "desc";
   pendingIds: Record<string, boolean>;
+  onStatusFilterChange: (value: string) => void;
+  onToggleSort: (key: RequestSortKey) => void;
+  onPageChange: (page: number) => void;
   onSelectRequest: (requestId: string) => void;
   onToggleBot: (customerId: string, botPaused: boolean) => void;
 }) {
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [sortKey, setSortKey] = useState<RequestSortKey>("status");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [page, setPage] = useState(0);
-
   const statusOptions = useMemo(() => {
-    const unique = new Set(
-      rows
-        .map((r) => (r.status || "").trim())
-        .filter((value) => value.length > 0),
-    );
-    return Array.from(unique).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
-
-  const filteredAndSortedRows = useMemo(() => {
-    const filtered =
-      statusFilter === "all"
-        ? rows
-        : rows.filter((request) => (request.status || "").toLowerCase() === statusFilter.toLowerCase());
-
-    return [...filtered].sort((a, b) => {
-      const direction = sortDir === "asc" ? 1 : -1;
-      if (sortKey === "customer") return (a.customerNumber || "").localeCompare(b.customerNumber || "") * direction;
-      if (sortKey === "status") return (a.status || "").localeCompare(b.status || "") * direction;
-      if (sortKey === "type") return (a.type || "").localeCompare(b.type || "") * direction;
-      const botA = a.botPaused ? 1 : 0;
-      const botB = b.botPaused ? 1 : 0;
-      return (botA - botB) * direction;
-    });
-  }, [rows, statusFilter, sortDir, sortKey]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredAndSortedRows.length / RECENT_REQUESTS_PAGE_SIZE));
-  const safePage = Math.min(page, totalPages - 1);
-  const paginatedRows = useMemo(() => {
-    const start = safePage * RECENT_REQUESTS_PAGE_SIZE;
-    return filteredAndSortedRows.slice(start, start + RECENT_REQUESTS_PAGE_SIZE);
-  }, [filteredAndSortedRows, safePage]);
-
-  const toggleSort = (key: RequestSortKey) => {
-    if (sortKey === key) {
-      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
-    setPage(0);
-  };
+    const values = new Set<string>(REQUEST_STATUS_OPTIONS);
+    if (statusFilter !== "all") values.add(statusFilter);
+    return Array.from(values);
+  }, [statusFilter]);
+  const safePage = Math.min(page, Math.max(totalPages, 1) - 1);
 
   return (
     <div className="card portal-dashboard-card portal-dashboard-card--requests portal-dashboard-requests-card" style={{ height: 520, display: "flex", flexDirection: "column" }}>
@@ -179,8 +167,7 @@ export function RecentRequestsCard({
           <PortalSelect
             value={statusFilter}
             onValueChange={(value) => {
-              setStatusFilter(value);
-              setPage(0);
+              onStatusFilterChange(value);
             }}
             options={[
               { value: "all", label: "All statuses" },
@@ -205,22 +192,22 @@ export function RecentRequestsCard({
         <table className="table table-clickable portal-modern-table portal-mobile-cards portal-dashboard-requests-table">
           <thead>
             <tr>
-              <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleSort("customer")}>
+              <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onToggleSort("customer")}>
                 Customer {sortKey === "customer" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
               </th>
-              <th style={{ cursor: "pointer", userSelect: "none", textAlign: "center", width: 72 }} onClick={() => toggleSort("bot")}>
+              <th style={{ cursor: "pointer", userSelect: "none", textAlign: "center", width: 72 }} onClick={() => onToggleSort("bot")}>
                 Bot {sortKey === "bot" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
               </th>
-              <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleSort("status")}>
+              <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onToggleSort("status")}>
                 Status {sortKey === "status" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
               </th>
-              <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleSort("type")}>
+              <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onToggleSort("type")}>
                 Type {sortKey === "type" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
               </th>
             </tr>
           </thead>
           <tbody>
-            {filteredAndSortedRows.length === 0 ? (
+            {totalCount === 0 ? (
               <tr>
                 <td colSpan={4}>
                   <div className="empty-state" style={{ padding: "var(--space-8)" }}>
@@ -233,7 +220,7 @@ export function RecentRequestsCard({
                 </td>
               </tr>
             ) : (
-              paginatedRows.map((request) => (
+              rows.map((request) => (
                 <RequestRowItem
                   key={request.id}
                   request={request}
@@ -249,13 +236,13 @@ export function RecentRequestsCard({
       <TablePagination
         page={safePage}
         totalPages={totalPages}
-        shownCount={paginatedRows.length}
-        totalCount={filteredAndSortedRows.length}
+        shownCount={rows.length}
+        totalCount={totalCount}
         canPrev={safePage > 0}
         canNext={safePage < totalPages - 1}
-        onPrev={() => setPage((p) => Math.max(0, p - 1))}
-        onNext={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-        onPageChange={setPage}
+        onPrev={() => onPageChange(Math.max(0, safePage - 1))}
+        onNext={() => onPageChange(Math.min(totalPages - 1, safePage + 1))}
+        onPageChange={onPageChange}
       />
     </div>
   );

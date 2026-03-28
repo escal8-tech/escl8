@@ -2,7 +2,7 @@ import { z } from "zod";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { customers, requests, SUPPORTED_SOURCES } from "@/../drizzle/schema";
-import { eq, and, desc, sql, isNull, lt, or, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, isNull, lt, or, inArray, asc, ilike } from "drizzle-orm";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 
@@ -10,6 +10,8 @@ type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]:
 
 // Source validation
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
+const customerSortKeySchema = z.enum(["source", "name", "lastMessageAt"]);
+const sortDirectionSchema = z.enum(["asc", "desc"]);
 
 export const customersRouter = router({
   /**
@@ -73,6 +75,88 @@ export const customersRouter = router({
         tags: (row.tags as string[]) ?? [],
         platformMeta: row.platformMeta as Record<string, unknown> | null,
       }));
+    }),
+
+  listPage: businessProcedure
+    .input(
+      z.object({
+        source: sourceSchema.optional(),
+        includeDeleted: z.boolean().optional(),
+        whatsappIdentityId: z.string().nullish(),
+        limit: z.number().int().min(1).max(100).default(20),
+        offset: z.number().int().min(0).default(0),
+        search: z.string().optional(),
+        sortKey: customerSortKeySchema.default("lastMessageAt"),
+        sortDir: sortDirectionSchema.default("desc"),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const conditions = [eq(customers.businessId, ctx.businessId)];
+
+      if (input.source) {
+        conditions.push(eq(customers.source, input.source));
+      }
+
+      if (!input.includeDeleted) {
+        conditions.push(isNull(customers.deletedAt));
+      }
+
+      if (input.whatsappIdentityId) {
+        conditions.push(eq(customers.whatsappIdentityId, input.whatsappIdentityId));
+      }
+
+      const searchPattern = String(input.search ?? "").trim().toLowerCase();
+      if (searchPattern) {
+        const pattern = `%${searchPattern}%`;
+        conditions.push(
+          or(
+            ilike(customers.name, pattern),
+            ilike(customers.externalId, pattern),
+            ilike(customers.email, pattern),
+            ilike(customers.phone, pattern),
+          )!,
+        );
+      }
+
+      const sortDirection = input.sortDir === "asc" ? asc : desc;
+      const nameSortExpr = sql<string>`lower(coalesce(${customers.name}, ${customers.externalId}, ''))`;
+      const sourceSortExpr = sql<string>`lower(coalesce(${customers.source}, ''))`;
+      const lastMessageSortExpr = sql<Date>`coalesce(${customers.lastMessageAt}, ${customers.updatedAt}, ${customers.createdAt})`;
+      const orderBy =
+        input.sortKey === "source"
+          ? [sortDirection(sourceSortExpr), desc(customers.updatedAt), desc(customers.id)]
+          : input.sortKey === "name"
+            ? [sortDirection(nameSortExpr), desc(customers.updatedAt), desc(customers.id)]
+            : [sortDirection(lastMessageSortExpr), desc(customers.updatedAt), desc(customers.id)];
+
+      const [countRow] = await db
+        .select({
+          count: sql<number>`count(*)::int`,
+        })
+        .from(customers)
+        .where(and(...conditions));
+
+      const rows = await db
+        .select()
+        .from(customers)
+        .where(and(...conditions))
+        .orderBy(...orderBy)
+        .limit(input.limit)
+        .offset(input.offset);
+
+      return {
+        totalCount: countRow?.count ?? 0,
+        items: rows.map((row) => ({
+          ...row,
+          totalRequests: row.totalRequests ?? 0,
+          totalRevenue: row.totalRevenue ?? "0",
+          successfulRequests: row.successfulRequests ?? 0,
+          leadScore: row.leadScore ?? 0,
+          isHighIntent: row.isHighIntent ?? false,
+          tags: (row.tags as string[]) ?? [],
+          platformMeta: row.platformMeta as Record<string, unknown> | null,
+        })),
+      };
     }),
 
   /**
@@ -448,25 +532,36 @@ export const customersRouter = router({
   /**
    * Get customer counts per source for the filter dropdown
    */
-  getSourceCounts: businessProcedure.query(async ({ ctx }) => {
-    const rows = await db
-      .select({
-        source: customers.source,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(customers)
-      .where(and(
+  getSourceCounts: businessProcedure
+    .input(
+      z.object({
+        whatsappIdentityId: z.string().nullish(),
+      }).optional(),
+    )
+    .query(async ({ ctx, input }) => {
+      const conditions = [
         eq(customers.businessId, ctx.businessId),
-        isNull(customers.deletedAt)
-      ))
-      .groupBy(customers.source);
+        isNull(customers.deletedAt),
+      ];
+      if (input?.whatsappIdentityId) {
+        conditions.push(eq(customers.whatsappIdentityId, input.whatsappIdentityId));
+      }
 
-    const counts: Record<string, number> = {};
-    for (const row of rows) {
-      counts[row.source] = row.count;
-    }
-    return counts;
-  }),
+      const rows = await db
+        .select({
+          source: customers.source,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(customers)
+        .where(and(...conditions))
+        .groupBy(customers.source);
+
+      const counts: Record<string, number> = {};
+      for (const row of rows) {
+        counts[row.source] = row.count;
+      }
+      return counts;
+    }),
 
   getBotPausedByIds: businessProcedure
     .input(z.object({ ids: z.array(z.string()).max(500) }))

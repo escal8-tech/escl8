@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { CustomerRow, Source, SOURCE_CONFIG } from "../types";
 import { SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { trpc } from "@/utils/trpc";
@@ -13,13 +13,29 @@ import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
 
 interface Props {
   rows: CustomerRow[];
+  totalCount: number;
+  page: number;
+  totalPages: number;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  sourceFilter: Source | "all";
+  onSourceFilterChange: (value: Source | "all") => void;
+  sortKey: "source" | "name" | "lastMessageAt";
+  sortDir: "asc" | "desc";
+  onSortChange: (key: "source" | "name" | "lastMessageAt") => void;
+  onPageChange: (page: number) => void;
   onSelect: (id: string) => void;
-  listInput?: { whatsappIdentityId?: string };
-  hasMore?: boolean;
-  isLoadingMore?: boolean;
-  onLoadMore?: () => void;
+  pageInput: {
+    whatsappIdentityId?: string;
+    limit: number;
+    offset: number;
+    search?: string;
+    source?: Source;
+    sortKey: "source" | "name" | "lastMessageAt";
+    sortDir: "asc" | "desc";
+  };
+  countsInput?: { whatsappIdentityId?: string };
 }
-const PAGE_SIZE = 20;
 
 function SourceBadge({ source }: { source: Source }) {
   const config = SOURCE_CONFIG[source];
@@ -43,15 +59,26 @@ function SourceBadge({ source }: { source: Source }) {
   );
 }
 
-export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMore, onLoadMore }: Props) {
+export function CustomersTable({
+  rows,
+  totalCount,
+  page,
+  totalPages,
+  searchQuery,
+  onSearchQueryChange,
+  sourceFilter,
+  onSourceFilterChange,
+  sortKey,
+  sortDir,
+  onSortChange,
+  onPageChange,
+  onSelect,
+  pageInput,
+  countsInput,
+}: Props) {
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sourceFilter, setSourceFilter] = useState<Source | "all">("all");
-  const [sortKey, setSortKey] = useState<keyof CustomerRow>("lastMessageAt");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
   const [botPausedOverrides, setBotPausedOverrides] = useState<Record<string, boolean>>({});
-  const [page, setPage] = useState(0);
 
   const utils = trpc.useUtils();
   const togglePause = trpc.customers.setBotPaused.useMutation({
@@ -59,21 +86,25 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
       setPendingIds((prev) => ({ ...prev, [vars.customerId]: true }));
       setBotPausedOverrides((prev) => ({ ...prev, [vars.customerId]: vars.botPaused }));
       await Promise.all([
-        utils.customers.list.cancel(listInput),
-        utils.requests.list.cancel(),
+        utils.customers.listPage.cancel(pageInput),
+        utils.requests.listPage.cancel(),
       ]);
 
-      const prevCustomers = utils.customers.list.getData(listInput);
-      utils.customers.list.setData(listInput, (old) =>
-        old?.map((item) =>
-          item.id === vars.customerId ? { ...item, botPaused: vars.botPaused } : item,
-        ),
-      );
+      const prevCustomers = utils.customers.listPage.getData(pageInput);
+      utils.customers.listPage.setData(pageInput, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          items: old.items.map((item) =>
+            item.id === vars.customerId ? { ...item, botPaused: vars.botPaused } : item,
+          ),
+        };
+      });
 
       return { prevCustomers };
     },
     onError: (_err, vars, ctx) => {
-      if (ctx?.prevCustomers) utils.customers.list.setData(listInput, ctx.prevCustomers);
+      if (ctx?.prevCustomers) utils.customers.listPage.setData(pageInput, ctx.prevCustomers);
       setBotPausedOverrides((prev) => {
         if (!(vars.customerId in prev)) return prev;
         const next = { ...prev };
@@ -103,76 +134,17 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
         });
       }
       utils.customers.list.invalidate();
+      utils.customers.listPage.invalidate();
       utils.requests.list.invalidate();
+      utils.requests.listPage.invalidate();
       utils.requests.stats.invalidate();
     },
   });
 
-  const { data: sourceCounts } = trpc.customers.getSourceCounts.useQuery();
+  const { data: sourceCounts } = trpc.customers.getSourceCounts.useQuery(countsInput);
+  const safePage = Math.min(page, Math.max(totalPages, 1) - 1);
 
-  const filteredRows = useMemo(() => {
-    let result = [...rows];
-
-    if (sourceFilter !== "all") {
-      result = result.filter((r) => r.source === sourceFilter);
-    }
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (r) =>
-          r.name?.toLowerCase().includes(q) ||
-          r.externalId.toLowerCase().includes(q) ||
-          r.email?.toLowerCase().includes(q) ||
-          r.phone?.toLowerCase().includes(q)
-      );
-    }
-
-    result.sort((a, b) => {
-      const aVal = a[sortKey];
-      const bVal = b[sortKey];
-
-      if (aVal == null && bVal == null) return 0;
-      if (aVal == null) return sortDir === "asc" ? -1 : 1;
-      if (bVal == null) return sortDir === "asc" ? 1 : -1;
-
-      if (aVal instanceof Date && bVal instanceof Date) {
-        return sortDir === "asc"
-          ? aVal.getTime() - bVal.getTime()
-          : bVal.getTime() - aVal.getTime();
-      }
-
-      if (typeof aVal === "number" && typeof bVal === "number") {
-        return sortDir === "asc" ? aVal - bVal : bVal - aVal;
-      }
-
-      const aStr = String(aVal);
-      const bStr = String(bVal);
-      return sortDir === "asc"
-        ? aStr.localeCompare(bStr)
-        : bStr.localeCompare(aStr);
-    });
-
-    return result;
-  }, [rows, sourceFilter, searchQuery, sortKey, sortDir]);
-  const totalPagesLoaded = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPagesLoaded - 1);
-  const pageRows = useMemo(
-    () => filteredRows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
-    [filteredRows, safePage],
-  );
-
-  const handleSort = (key: keyof CustomerRow) => {
-    setPage(0);
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("desc");
-    }
-  };
-
-  const sortIndicator = (column: keyof CustomerRow) => {
+  const sortIndicator = (column: "source" | "name" | "lastMessageAt") => {
     if (sortKey !== column) return null;
     return <span className="ml-1">{sortDir === "asc" ? "^" : "v"}</span>;
   };
@@ -191,19 +163,17 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
       search={{
         value: searchQuery,
         onChange: (value) => {
-          setSearchQuery(value);
-          setPage(0);
+          onSearchQueryChange(value);
         },
         placeholder: "Search customers...",
         style: { width: "min(520px, 52vw)", minWidth: 220, flex: "0 1 520px" },
       }}
-      countText={`${filteredRows.length} customer${filteredRows.length !== 1 ? "s" : ""}${sourceFilter !== "all" ? ` from ${SOURCE_CONFIG[sourceFilter].label}` : ""}`}
+      countText={`${totalCount} customer${totalCount !== 1 ? "s" : ""}${sourceFilter !== "all" ? ` from ${SOURCE_CONFIG[sourceFilter].label}` : ""}`}
       endControls={(
         <TableSelect
           value={sourceFilter}
           onChange={(e) => {
-            setSourceFilter(e.target.value as Source | "all");
-            setPage(0);
+            onSourceFilterChange(e.target.value as Source | "all");
           }}
           style={{ width: 132 }}
         >
@@ -222,44 +192,35 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
       footer={(
         <TablePagination
           page={safePage}
-          totalPages={totalPagesLoaded}
-          shownCount={pageRows.length}
-          totalCount={filteredRows.length}
+          totalPages={totalPages}
+          shownCount={rows.length}
+          totalCount={totalCount}
           canPrev={safePage > 0}
-          canNext={safePage < totalPagesLoaded - 1 || Boolean(hasMore)}
-          pageLabelSuffix={hasMore ? "+" : undefined}
-          onPrev={() => setPage((p) => Math.max(0, p - 1))}
-          onNext={() => {
-            if (safePage < totalPagesLoaded - 1) {
-              setPage((p) => p + 1);
-              return;
-            }
-            if (hasMore && onLoadMore && !isLoadingMore) {
-              onLoadMore();
-            }
-          }}
-          onPageChange={setPage}
+          canNext={safePage < totalPages - 1}
+          onPrev={() => onPageChange(Math.max(0, safePage - 1))}
+          onNext={() => onPageChange(Math.min(totalPages - 1, safePage + 1))}
+          onPageChange={onPageChange}
         />
       )}
     >
       <table className="table table-clickable portal-modern-table portal-mobile-cards">
         <thead>
           <tr>
-            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("source")}>
+            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSortChange("source")}>
               Source {sortIndicator("source")}
             </th>
             <th style={{ width: 72, textAlign: "center" }}>Bot</th>
-            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("name")}>
+            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSortChange("name")}>
               Customer {sortIndicator("name")}
             </th>
-            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("lastMessageAt")}>
+            <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => onSortChange("lastMessageAt")}>
               Last active {sortIndicator("lastMessageAt")}
             </th>
             <th style={{ width: 56 }} />
           </tr>
         </thead>
         <tbody>
-          {pageRows.map((row) => (
+          {rows.map((row) => (
             <tr key={row.id} onClick={() => onSelect(row.id)}>
               <td data-label="Source" style={{ paddingTop: 14, paddingBottom: 14 }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
@@ -321,7 +282,7 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
             </tr>
           ))}
 
-          {pageRows.length === 0 && (
+          {rows.length === 0 && (
             <tr>
               <td colSpan={5} style={{ textAlign: "center", color: "var(--muted)", padding: "24px 10px" }}>
                 {searchQuery || sourceFilter !== "all"

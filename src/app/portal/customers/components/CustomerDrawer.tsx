@@ -26,6 +26,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
   const updateMutation = trpc.customers.update.useMutation({
     onSuccess: () => {
       utils.customers.list.invalidate();
+      utils.customers.listPage.invalidate();
     },
   });
 
