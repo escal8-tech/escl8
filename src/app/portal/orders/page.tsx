@@ -636,13 +636,13 @@ export function OrdersPageScreen({ mode }: { mode: OperationsPageMode }) {
                     {isRevenueRoute ? (
                       <tr>
                         <th style={{ textAlign: "left", width: "8%" }}>Ref</th>
-                        <th style={{ textAlign: "left", width: "22%" }}>Guest</th>
+                        <th style={{ textAlign: "left", width: "21%" }}>Guest</th>
                         <th style={{ textAlign: "left", width: "16%" }}>Status</th>
                         <th style={{ textAlign: "left", width: "16%" }}>Timing</th>
-                        <th style={{ textAlign: "left", width: "12%" }}>Booked</th>
-                        <th style={{ textAlign: "left", width: "12%" }}>Net Realized</th>
-                        <th style={{ textAlign: "left", width: "10%" }}>Pending</th>
-                        <th style={{ textAlign: "right", width: "8%" }}>Action</th>
+                        <th style={{ textAlign: "left", width: "11%" }}>Booked</th>
+                        <th style={{ textAlign: "left", width: "11%" }}>Net Realized</th>
+                        <th style={{ textAlign: "left", width: "7%" }}>Pending</th>
+                        <th style={{ textAlign: "right", width: "10%" }}>Action</th>
                       </tr>
                     ) : (
                       <tr>
@@ -689,7 +689,7 @@ export function OrdersPageScreen({ mode }: { mode: OperationsPageMode }) {
                               <td>
                                 <div className="portal-entity-stack">
                                   <span className={financeToneClass(order)}>{describeFinanceState(order, latestPayment)}</span>
-                                  <span className={fulfillmentToneClass(fulfillment)}>{formatOrderFulfillmentStatus(fulfillment)}</span>
+                                  <div className="portal-ledger-status-note">Fulfilment · {formatOrderFulfillmentStatus(fulfillment)}</div>
                                 </div>
                               </td>
                               <td>
@@ -978,7 +978,7 @@ function OrderDetailsDrawer({
   return (
     <>
       <div className="drawer-backdrop open" onClick={onClose} />
-      <div className="drawer open">
+      <div className="drawer open portal-drawer-shell">
         <div className="drawer-header">
           <div className="portal-drawer-heading">
             <div>

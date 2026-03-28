@@ -450,21 +450,30 @@ export default function TicketsPage() {
                 <div className="portal-table-scroll">
                   <table className="table table-clickable portal-modern-table portal-ledger-table" style={{ width: "100%", tableLayout: "fixed" }}>
                     <thead>
-                      <tr>
-                        <th style={{ textAlign: "left", width: "14%" }}>Ticket</th>
-                        <th style={{ textAlign: "left", width: "19%" }}>Customer</th>
-                        <th style={{ textAlign: "left", width: "24%" }}>Items</th>
-                        <th style={{ textAlign: "left", width: "10%" }}>Priority</th>
-                        <th style={{ textAlign: "left", width: "11%" }}>SLA</th>
-                        <th style={{ textAlign: "center", width: "8%" }}>Bot</th>
-                        <th style={{ textAlign: "left", width: isOrderTicketView ? "14%" : "10%" }}>
-                          {isOrderTicketView ? "Stage" : "Status"}
-                        </th>
-                        {!isOrderTicketView ? (
+                      {isOrderTicketView ? (
+                        <tr>
+                          <th style={{ textAlign: "left", width: "14%" }}>Ticket</th>
+                          <th style={{ textAlign: "center", width: "8%" }}>Bot</th>
+                          <th style={{ textAlign: "left", width: "18%" }}>Customer</th>
+                          <th style={{ textAlign: "left", width: "21%" }}>Items</th>
+                          <th style={{ textAlign: "left", width: "10%" }}>Priority</th>
+                          <th style={{ textAlign: "left", width: "8%" }}>SLA</th>
+                          <th style={{ textAlign: "left", width: "10%" }}>Stage</th>
+                          <th style={{ textAlign: "right", width: "11%" }}>Action</th>
+                        </tr>
+                      ) : (
+                        <tr>
+                          <th style={{ textAlign: "left", width: "14%" }}>Ticket</th>
+                          <th style={{ textAlign: "left", width: "19%" }}>Customer</th>
+                          <th style={{ textAlign: "left", width: "24%" }}>Items</th>
+                          <th style={{ textAlign: "left", width: "10%" }}>Priority</th>
+                          <th style={{ textAlign: "left", width: "11%" }}>SLA</th>
+                          <th style={{ textAlign: "center", width: "8%" }}>Bot</th>
+                          <th style={{ textAlign: "left", width: "10%" }}>Status</th>
                           <th style={{ textAlign: "left", width: "10%" }}>Outcome</th>
-                        ) : null}
-                        <th style={{ textAlign: "right", width: isOrderTicketView ? "10%" : "8%" }}>Action</th>
-                      </tr>
+                          <th style={{ textAlign: "right", width: "8%" }}>Action</th>
+                        </tr>
+                      )}
                     </thead>
                     <tbody>
               {pageRows.map((ticket) => {
@@ -488,6 +497,131 @@ export default function TicketsPage() {
                 const ticketDate = formatDate(
                   (getTicketValue(ticket as TicketRow, "updatedAt", "updated_at") as Date | string | null | undefined) ?? ticket.createdAt,
                 );
+                const customerId = getTicketString(ticket, "customerId", "customer_id");
+                const paused = customerId ? (botPausedOverrides[customerId] ?? Boolean(customerBotPausedMapQuery.data?.[customerId])) : false;
+                const isBotPending = customerId ? Boolean(pendingBotCustomerIds[customerId]) : false;
+                const ticketCell = (
+                  <td>
+                    <div className="portal-entity-stack">
+                      <div className="portal-ledger-table__ref" title={ticket.id}>
+                        #{shortId(ticket.id)}
+                      </div>
+                      <div className="portal-meta-text">{ticketDate}</div>
+                    </div>
+                  </td>
+                );
+                const customerCell = (
+                  <td>
+                    <div className="portal-entity-stack">
+                      <div className="portal-body-text">{customerPrimary}</div>
+                      {customerSecondary ? <div className="portal-meta-text">{customerSecondary}</div> : null}
+                    </div>
+                  </td>
+                );
+                const itemsCell = (
+                  <td>
+                    <span className="portal-body-text" title={itemsLabel}>
+                      {itemsLabel}
+                    </span>
+                  </td>
+                );
+                const priorityCell = (
+                  <td>
+                    <span className={priorityPillClass(getTicketString(ticket, "priority") || "normal")}>
+                      {(getTicketString(ticket, "priority") || "normal")}
+                    </span>
+                  </td>
+                );
+                const slaCell = (
+                  <td>
+                    {(() => {
+                      const sla = formatSlaCountdown(
+                        getTicketValue(ticket, "slaDueAt", "sla_due_at") as Date | string | null | undefined,
+                        nowMs,
+                      );
+                      const toneColor =
+                        sla.tone === "danger" ? "#fca5a5" : sla.tone === "warn" ? "#fdba74" : sla.tone === "ok" ? "#86efac" : "var(--muted)";
+                      return <span style={{ fontSize: 12, color: toneColor }}>{sla.label}</span>;
+                    })()}
+                  </td>
+                );
+                const botCell = (
+                  <td style={{ textAlign: "center" }}>
+                    {customerId ? (
+                      <button
+                        type="button"
+                        className={isOrderTicketView ? `portal-bot-control ${paused ? "is-paused" : "is-active"}` : "btn btn-ghost btn-sm"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isBotPending) return;
+                          toggleBot.mutate({ customerId, botPaused: !paused });
+                        }}
+                        disabled={isBotPending}
+                        aria-label={paused ? "Resume bot" : "Pause bot"}
+                        title={paused ? "Resume bot" : "Pause bot"}
+                        style={isOrderTicketView ? undefined : { width: "100%", justifyContent: "center", opacity: isBotPending ? 0.6 : 1 }}
+                      >
+                        {isOrderTicketView ? (paused ? <PlayIcon /> : <PauseIcon />) : paused ? "Resume" : "Pause"}
+                      </button>
+                    ) : isOrderTicketView ? (
+                      <span className="portal-bot-control__fallback">-</span>
+                    ) : (
+                      <span className="text-muted" style={{ fontSize: 12 }}>-</span>
+                    )}
+                  </td>
+                );
+                const actionCell = (
+                  <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+                    <div className="portal-ledger-actions">
+                      <button
+                        type="button"
+                        className={`portal-ledger-action portal-ledger-action--approve${isOrderRow && canApproveOrderStage(orderStage) ? "" : " is-hidden"}`}
+                        disabled={!isOrderRow || orderActionTicketId !== null || !canApproveOrderStage(orderStage)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleApproveTicket(ticket as TicketRow);
+                        }}
+                        aria-label={isOrderRow && canApproveOrderStage(orderStage) ? "Approve order ticket" : undefined}
+                      >
+                        <TicketCheckIcon />
+                      </button>
+                      <button
+                        type="button"
+                        className={`portal-ledger-action portal-ledger-action--reject${isOrderRow && canDenyOrderStage(orderStage) ? "" : " is-hidden"}`}
+                        disabled={!isOrderRow || orderActionTicketId !== null || !canDenyOrderStage(orderStage)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDenyDialog(ticket as TicketRow);
+                        }}
+                        aria-label={isOrderRow && canDenyOrderStage(orderStage) ? "Deny order ticket" : undefined}
+                      >
+                        <TicketCloseIcon />
+                      </button>
+                      <RowActionsMenu
+                        items={
+                          [
+                            {
+                              label: "Open Details",
+                              onSelect: () => setSelectedTicketId(ticket.id),
+                            },
+                            {
+                              label: "Open Thread",
+                              onSelect: () => router.push(getThreadHref(ticket as TicketRow)),
+                            },
+                            {
+                              label: "Customer Details",
+                              disabled: !customerId,
+                              onSelect: () => {
+                                if (!customerId) return;
+                                router.push(`/portal/customers?customerId=${encodeURIComponent(customerId)}`);
+                              },
+                            },
+                          ]
+                        }
+                      />
+                    </div>
+                  </td>
+                );
                 return (
                   <tr
                     key={ticket.id}
@@ -501,204 +635,80 @@ export default function TicketsPage() {
                     }}
                     style={{ cursor: "pointer" }}
                   >
-                    <td>
-                      <div className="portal-entity-stack">
-                        <div className="portal-ledger-table__ref" title={ticket.id}>
-                          #{shortId(ticket.id)}
-                        </div>
-                        <div className="portal-meta-text">
-                          {ticketDate}
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="portal-entity-stack">
-                        <div className="portal-body-text">{customerPrimary}</div>
-                        {customerSecondary ? (
-                          <div className="portal-meta-text">
-                            {customerSecondary}
-                          </div>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td>
-                      <span className="portal-body-text" title={itemsLabel}>
-                        {itemsLabel}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={priorityPillClass(getTicketString(ticket, "priority") || "normal")}>
-                        {(getTicketString(ticket, "priority") || "normal")}
-                      </span>
-                    </td>
-                    <td>
-                      {(() => {
-                        const sla = formatSlaCountdown(
-                          getTicketValue(ticket, "slaDueAt", "sla_due_at") as Date | string | null | undefined,
-                          nowMs,
-                        );
-                        const toneColor =
-                          sla.tone === "danger" ? "#fca5a5" : sla.tone === "warn" ? "#fdba74" : sla.tone === "ok" ? "#86efac" : "var(--muted)";
-                        return <span style={{ fontSize: 12, color: toneColor }}>{sla.label}</span>;
-                      })()}
-                    </td>
-                    <td style={{ textAlign: "center" }}>
-                      {getTicketString(ticket, "customerId", "customer_id") ? (
-                        (() => {
-                          const customerId = getTicketString(ticket, "customerId", "customer_id");
-                          const paused = botPausedOverrides[customerId] ?? Boolean(customerBotPausedMapQuery.data?.[customerId]);
-                          const isPending = Boolean(pendingBotCustomerIds[customerId]);
-                          return (
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (isPending) return;
-                                toggleBot.mutate({ customerId, botPaused: !paused });
-                              }}
-                              disabled={isPending}
-                              style={{ width: "100%", justifyContent: "center", opacity: isPending ? 0.6 : 1 }}
-                            >
-                              {paused ? "Resume" : "Pause"}
-                            </button>
-                          );
-                        })()
-                      ) : (
-                        <span className="text-muted" style={{ fontSize: 12 }}>-</span>
-                      )}
-                    </td>
-                    <td style={{ textAlign: isOrderRow ? "left" : "right" }}>
-                      {isOrderRow ? (
-                        <div className="portal-entity-stack">
-                          <span className={orderStagePillClass(orderStage)}>
-                            {formatOrderStage(orderStage)}
-                          </span>
-                        </div>
-                      ) : (
-                        <TableSelect
-                          style={{ width: "100%" }}
-                          value={(ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus}
-                          disabled={updatingId === ticket.id}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => {
-                            const nextStatus = e.target.value as TicketStatus;
-                            setUpdatingId(ticket.id);
-                            updateStatus.mutate({
-                              id: ticket.id,
-                              expectedUpdatedAt: toMutationDate(getTicketValue(ticket, "updatedAt", "updated_at")),
-                              status: nextStatus,
-                            });
-                          }}
-                        >
-                          {STATUS_OPTIONS.map((status) => (
-                            <option key={status} value={status}>
-                              {status}
-                            </option>
-                          ))}
-                        </TableSelect>
-                      )}
-                    </td>
-                    {!isOrderTicketView ? (
-                      <td>
-                        <TableSelect
-                          style={{ width: "100%" }}
-                          value={(getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome}
-                          disabled={updatingOutcomeId === ticket.id || ticket.status !== "resolved"}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => {
-                            const nextOutcome = e.target.value as TicketOutcome;
-                            setUpdatingOutcomeId(ticket.id);
-                            updateOutcome.mutate({
-                              id: ticket.id,
-                              expectedUpdatedAt: toMutationDate(getTicketValue(ticket, "updatedAt", "updated_at")),
-                              outcome: nextOutcome,
-                              lossReason:
-                                nextOutcome === "lost"
-                                  ? getTicketString(ticket, "lossReason", "loss_reason") || "Other"
-                                  : undefined,
-                            });
-                          }}
-                        >
-                          {OUTCOME_OPTIONS.map((outcome) => (
-                            <option key={outcome} value={outcome}>
-                              {outcome}
-                            </option>
-                          ))}
-                        </TableSelect>
-                      </td>
-                    ) : null}
-                    <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
-                      <div className="portal-ledger-actions">
-                        <button
-                          type="button"
-                          className={`portal-ledger-action portal-ledger-action--approve${isOrderRow && canApproveOrderStage(orderStage) ? "" : " is-hidden"}`}
-                          disabled={!isOrderRow || orderActionTicketId !== null || !canApproveOrderStage(orderStage)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleApproveTicket(ticket as TicketRow);
-                          }}
-                          aria-label={isOrderRow && canApproveOrderStage(orderStage) ? "Approve order ticket" : undefined}
-                        >
-                          <TicketCheckIcon />
-                        </button>
-                        <button
-                          type="button"
-                          className={`portal-ledger-action portal-ledger-action--reject${isOrderRow && canDenyOrderStage(orderStage) ? "" : " is-hidden"}`}
-                          disabled={!isOrderRow || orderActionTicketId !== null || !canDenyOrderStage(orderStage)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openDenyDialog(ticket as TicketRow);
-                          }}
-                          aria-label={isOrderRow && canDenyOrderStage(orderStage) ? "Deny order ticket" : undefined}
-                        >
-                          <TicketCloseIcon />
-                        </button>
-                        <RowActionsMenu
-                          items={
-                            isOrderRow
-                              ? [
-                                  {
-                                    label: "Open Details",
-                                    onSelect: () => setSelectedTicketId(ticket.id),
-                                  },
-                                  {
-                                    label: "Open Thread",
-                                    onSelect: () => router.push(getThreadHref(ticket as TicketRow)),
-                                  },
-                                  {
-                                    label: "Customer Details",
-                                    disabled: !getTicketString(ticket as TicketRow, "customerId", "customer_id"),
-                                    onSelect: () => {
-                                      const customerId = getTicketString(ticket as TicketRow, "customerId", "customer_id");
-                                      if (!customerId) return;
-                                      router.push(`/portal/customers?customerId=${encodeURIComponent(customerId)}`);
-                                    },
-                                  },
-                                ]
-                              : [
-                                  {
-                                    label: "Open Details",
-                                    onSelect: () => setSelectedTicketId(ticket.id),
-                                  },
-                                  {
-                                    label: "Open Thread",
-                                    onSelect: () => router.push(getThreadHref(ticket as TicketRow)),
-                                  },
-                                  {
-                                    label: "Customer Details",
-                                    disabled: !getTicketString(ticket as TicketRow, "customerId", "customer_id"),
-                                    onSelect: () => {
-                                      const customerId = getTicketString(ticket as TicketRow, "customerId", "customer_id");
-                                      if (!customerId) return;
-                                      router.push(`/portal/customers?customerId=${encodeURIComponent(customerId)}`);
-                                    },
-                                  },
-                                ]
-                          }
-                        />
-                      </div>
-                    </td>
+                    {isOrderTicketView ? (
+                      <>
+                        {ticketCell}
+                        {botCell}
+                        {customerCell}
+                        {itemsCell}
+                        {priorityCell}
+                        {slaCell}
+                        <td>
+                          <span className={orderStagePillClass(orderStage)}>{formatOrderStage(orderStage)}</span>
+                        </td>
+                        {actionCell}
+                      </>
+                    ) : (
+                      <>
+                        {ticketCell}
+                        {customerCell}
+                        {itemsCell}
+                        {priorityCell}
+                        {slaCell}
+                        {botCell}
+                        <td style={{ textAlign: "right" }}>
+                          <TableSelect
+                            style={{ width: "100%" }}
+                            value={(ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus}
+                            disabled={updatingId === ticket.id}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              const nextStatus = e.target.value as TicketStatus;
+                              setUpdatingId(ticket.id);
+                              updateStatus.mutate({
+                                id: ticket.id,
+                                expectedUpdatedAt: toMutationDate(getTicketValue(ticket, "updatedAt", "updated_at")),
+                                status: nextStatus,
+                              });
+                            }}
+                          >
+                            {STATUS_OPTIONS.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </TableSelect>
+                        </td>
+                        <td>
+                          <TableSelect
+                            style={{ width: "100%" }}
+                            value={(getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome}
+                            disabled={updatingOutcomeId === ticket.id || ticket.status !== "resolved"}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              const nextOutcome = e.target.value as TicketOutcome;
+                              setUpdatingOutcomeId(ticket.id);
+                              updateOutcome.mutate({
+                                id: ticket.id,
+                                expectedUpdatedAt: toMutationDate(getTicketValue(ticket, "updatedAt", "updated_at")),
+                                outcome: nextOutcome,
+                                lossReason:
+                                  nextOutcome === "lost"
+                                    ? getTicketString(ticket, "lossReason", "loss_reason") || "Other"
+                                    : undefined,
+                              });
+                            }}
+                          >
+                            {OUTCOME_OPTIONS.map((outcome) => (
+                              <option key={outcome} value={outcome}>
+                                {outcome}
+                              </option>
+                            ))}
+                          </TableSelect>
+                        </td>
+                        {actionCell}
+                      </>
+                    )}
                   </tr>
                 );
               })}
@@ -730,11 +740,14 @@ export default function TicketsPage() {
         </div>
       </div>
       <TicketDetailsDrawer
-        key={selectedTicket?.id ?? "ticket-details"}
+        key={selectedTicket ? `${selectedTicket.id}:${String(getTicketValue(selectedTicket, "updatedAt", "updated_at") ?? "")}` : "ticket-details"}
         ticket={selectedTicket}
         onClose={() => setSelectedTicketId(null)}
         threadHref={selectedTicket ? getThreadHref(selectedTicket) : "/portal/messages"}
         nowMs={nowMs}
+        onApproveOrderTicket={handleApproveTicket}
+        onDenyOrderTicket={openDenyDialog}
+        orderActionPending={orderActionTicketId !== null}
       />
     {denyDialogTicket ? (
       <>
@@ -809,16 +822,39 @@ function TicketCloseIcon() {
   );
 }
 
+function PauseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <rect x="6" y="5" width="4" height="14" rx="1.4" />
+      <rect x="14" y="5" width="4" height="14" rx="1.4" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5.8a1 1 0 0 1 1.53-.85l8.2 5.2a1 1 0 0 1 0 1.7l-8.2 5.2A1 1 0 0 1 8 16.2z" />
+    </svg>
+  );
+}
+
 function TicketDetailsDrawer({
   ticket,
   onClose,
   threadHref,
   nowMs,
+  onApproveOrderTicket,
+  onDenyOrderTicket,
+  orderActionPending,
 }: {
   ticket: TicketRow | null;
   onClose: () => void;
   threadHref: string;
   nowMs: number;
+  onApproveOrderTicket: (ticket: TicketRow) => Promise<void>;
+  onDenyOrderTicket: (ticket: TicketRow) => void;
+  orderActionPending: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -944,6 +980,8 @@ function TicketDetailsDrawer({
   const resolvedAt = getTicketValue(ticket, "resolvedAt", "resolved_at") as Date | string | null | undefined;
   const closedAt = getTicketValue(ticket, "closedAt", "closed_at") as Date | string | null | undefined;
   const expectedUpdatedAt = toMutationDate(updatedAt);
+  const canApproveOrder = isOrderTicket && canApproveOrderStage(orderStage);
+  const canDenyOrder = isOrderTicket && canDenyOrderStage(orderStage);
 
   const handleSaveTicket = () => {
     let parsedFields: Record<string, unknown>;
@@ -975,7 +1013,7 @@ function TicketDetailsDrawer({
   return (
     <>
       <div className="drawer-backdrop open" onClick={onClose} />
-      <div className="drawer open">
+      <div className="drawer open portal-drawer-shell">
         <div className="drawer-header">
           <div className="portal-drawer-heading">
             <div>
@@ -1418,11 +1456,31 @@ function TicketDetailsDrawer({
           </div>
         </div>
         <div className="portal-drawer-footer">
-          <div className="portal-drawer-footer__label">Quick Actions</div>
+          <div className="portal-drawer-footer__label">{isOrderTicket ? "Order Actions" : "Quick Actions"}</div>
           <div className="portal-drawer-footer__actions">
+            {isOrderTicket ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={orderActionPending || !canApproveOrder}
+                  onClick={() => void onApproveOrderTicket(ticket)}
+                >
+                  Approve Order
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary portal-button--danger"
+                  disabled={orderActionPending || !canDenyOrder}
+                  onClick={() => onDenyOrderTicket(ticket)}
+                >
+                  Deny Order
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
-              className="btn btn-primary"
+              className={isOrderTicket ? "btn btn-secondary" : "btn btn-primary"}
               onClick={() => {
                 onClose();
                 router.push(threadHref);
