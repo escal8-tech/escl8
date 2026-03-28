@@ -42,9 +42,7 @@ export function TablePagination({
   onPageChange,
 }: TablePaginationProps) {
   const safeTotalPages = Math.max(totalPages, 1);
-  if (safeTotalPages <= 1) return null;
-
-  const pageItems = buildPageItems(page, totalPages);
+  const pageItems = buildPageItems(page, safeTotalPages);
   const mobileStatusLabel = `${page + 1} / ${safeTotalPages}`;
   const paginationAriaLabel = pageLabelSuffix
     ? `Pagination ${shownCount} of ${totalCount} ${pageLabelSuffix}`
