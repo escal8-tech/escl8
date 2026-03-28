@@ -181,7 +181,7 @@ export default function Sidebar({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          height: "72px",
+          height: "var(--portal-nav-rail-height)",
           padding: "12px 16px",
           borderBottom: "1px solid var(--portal-border)",
           background: "transparent",

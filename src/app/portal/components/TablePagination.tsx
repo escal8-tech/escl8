@@ -41,19 +41,17 @@ export function TablePagination({
   pageLabelSuffix,
   onPageChange,
 }: TablePaginationProps) {
-  const pageItems = buildPageItems(page, totalPages);
   const safeTotalPages = Math.max(totalPages, 1);
+  if (safeTotalPages <= 1) return null;
+
+  const pageItems = buildPageItems(page, totalPages);
   const mobileStatusLabel = `${page + 1} / ${safeTotalPages}`;
+  const paginationAriaLabel = pageLabelSuffix
+    ? `Pagination ${shownCount} of ${totalCount} ${pageLabelSuffix}`
+    : `Pagination ${shownCount} of ${totalCount}`;
 
   return (
     <div className="portal-pagination">
-      <div className="portal-pagination__meta">
-        <span className="portal-pagination__summary">
-          Showing {shownCount} of {totalCount}
-          {pageLabelSuffix ? ` • ${pageLabelSuffix}` : ""}
-        </span>
-        <span className="portal-pagination__status">Page {page + 1} of {safeTotalPages}</span>
-      </div>
       <button type="button" className="portal-pagination__button portal-pagination__button--prev" onClick={onPrev} disabled={!canPrev}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
           <path d="m15 18-6-6 6-6" />
@@ -63,7 +61,7 @@ export function TablePagination({
       <div className="portal-pagination__mobile-status" aria-label={`Page ${page + 1} of ${safeTotalPages}`}>
         {mobileStatusLabel}
       </div>
-      <div className="portal-pagination__pages" aria-label="Pagination">
+      <div className="portal-pagination__pages" aria-label={paginationAriaLabel}>
         {pageItems.map((item, index) =>
           item === "..." ? (
             <span key={`ellipsis-${index}`} className="portal-pagination__ellipsis">

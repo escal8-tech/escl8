@@ -131,7 +131,7 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: TopBarProps) 
             label: phone.displayPhoneNumber || phone.phoneNumberId.slice(-8),
           })),
         ]}
-        style={{ minWidth: 168, width: "100%" }}
+        style={{ minWidth: 0, width: "100%" }}
         ariaLabel="Filter by phone number"
       />
     </div>
