@@ -1,28 +1,15 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { CustomerRow, Source, SOURCE_CONFIG } from "../types";
 import { SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { trpc } from "@/utils/trpc";
 import { TableSelect } from "@/app/portal/components/TableToolbarControls";
 import { PortalDataTable } from "@/app/portal/components/PortalDataTable";
 import { TablePagination } from "@/app/portal/components/TablePagination";
+import { PortalBotToggleButton } from "@/app/portal/components/PortalBotToggleButton";
 import { useRouter } from "next/navigation";
 import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
-
-const Icons = {
-  pause: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="6" y="4" width="4" height="16" rx="1" />
-      <rect x="14" y="4" width="4" height="16" rx="1" />
-    </svg>
-  ),
-  play: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="6 4 20 12 6 20 6 4" />
-    </svg>
-  ),
-};
 
 interface Props {
   rows: CustomerRow[];
@@ -63,12 +50,14 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
   const [sortKey, setSortKey] = useState<keyof CustomerRow>("lastMessageAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
+  const [botPausedOverrides, setBotPausedOverrides] = useState<Record<string, boolean>>({});
   const [page, setPage] = useState(0);
 
   const utils = trpc.useUtils();
   const togglePause = trpc.customers.setBotPaused.useMutation({
     onMutate: async (vars) => {
       setPendingIds((prev) => ({ ...prev, [vars.customerId]: true }));
+      setBotPausedOverrides((prev) => ({ ...prev, [vars.customerId]: vars.botPaused }));
       await Promise.all([
         utils.customers.list.cancel(listInput),
         utils.requests.list.cancel(),
@@ -85,6 +74,12 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
     },
     onError: (_err, vars, ctx) => {
       if (ctx?.prevCustomers) utils.customers.list.setData(listInput, ctx.prevCustomers);
+      setBotPausedOverrides((prev) => {
+        if (!(vars.customerId in prev)) return prev;
+        const next = { ...prev };
+        delete next[vars.customerId];
+        return next;
+      });
       setPendingIds((prev) => {
         if (!prev[vars.customerId]) return prev;
         const next = { ...prev };
@@ -100,8 +95,14 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
           delete next[vars.customerId];
           return next;
         });
+        setBotPausedOverrides((prev) => {
+          if (!(vars.customerId in prev)) return prev;
+          const next = { ...prev };
+          delete next[vars.customerId];
+          return next;
+        });
       }
-      utils.customers.list.invalidate(listInput);
+      utils.customers.list.invalidate();
       utils.requests.list.invalidate();
       utils.requests.stats.invalidate();
     },
@@ -247,10 +248,10 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
             <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("source")}>
               Source {sortIndicator("source")}
             </th>
+            <th style={{ width: 72, textAlign: "center" }}>Bot</th>
             <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("name")}>
               Customer {sortIndicator("name")}
             </th>
-            <th>Bot</th>
             <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("lastMessageAt")}>
               Last active {sortIndicator("lastMessageAt")}
             </th>
@@ -264,6 +265,19 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
                 <div style={{ display: "flex", alignItems: "center" }}>
                   <SourceBadge source={row.source} />
                 </div>
+              </td>
+              <td data-label="Bot" style={{ textAlign: "center" }}>
+                {(() => {
+                  const isPending = Boolean(pendingIds[row.id]);
+                  const paused = botPausedOverrides[row.id] ?? Boolean(row.botPaused);
+                  return (
+                    <PortalBotToggleButton
+                      paused={paused}
+                      pending={isPending}
+                      onToggle={() => togglePause.mutate({ customerId: row.id, botPaused: !paused })}
+                    />
+                  );
+                })()}
               </td>
               <td data-label="Customer">
                 <div>
@@ -282,27 +296,6 @@ export function CustomersTable({ rows, onSelect, listInput, hasMore, isLoadingMo
                     <div style={{ fontSize: 12, color: "var(--muted)" }}>{row.email}</div>
                   )}
                 </div>
-              </td>
-              <td data-label="Bot">
-                {(() => {
-                  const isPending = Boolean(pendingIds[row.id]);
-                  return (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isPending) return;
-                        togglePause.mutate({ customerId: row.id, botPaused: !row.botPaused });
-                      }}
-                      disabled={isPending}
-                      style={{ opacity: isPending ? 0.6 : 1, width: 112, justifyContent: "center" }}
-                    >
-                      <span style={{ width: 16, height: 16 }}>{row.botPaused ? Icons.play : Icons.pause}</span>
-                      {row.botPaused ? "Resume" : "Pause"}
-                    </button>
-                  );
-                })()}
               </td>
               <td data-label="Last Active" style={{ color: "var(--muted)" }}>
                 {row.lastMessageAt

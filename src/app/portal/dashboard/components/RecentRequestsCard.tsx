@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { PortalSelect } from "@/app/portal/components/PortalSelect";
+import { PortalBotToggleButton } from "@/app/portal/components/PortalBotToggleButton";
 import { TablePagination } from "@/app/portal/components/TablePagination";
 import { DashboardIcons } from "./dashboard-icons";
 import type { RequestRow } from "./types";
@@ -70,26 +71,12 @@ function RequestRowItem({
           </div>
         </div>
       </td>
-      <td data-label="Status">
-        <span className={`badge ${statusColors[statusValue] || "badge-default"}`}>
-          {statusValue.replace(/_/g, " ").toUpperCase()}
-        </span>
-      </td>
-      <td data-label="Type">
-        <span className="badge badge-default">
-          {(request.type ?? "BROWSING").replace(/_/g, " ").toUpperCase()}
-        </span>
-      </td>
-      <td data-label="Bot">
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!canToggle || isPending || !request.customerId) return;
-            onToggleBot(request.customerId, !paused);
-          }}
-          disabled={!canToggle || isPending}
+      <td data-label="Bot" style={{ textAlign: "center" }}>
+        <PortalBotToggleButton
+          available={Boolean(request.customerId)}
+          paused={paused}
+          pending={isPending}
+          disabled={!canToggle}
           title={
             !request.customerId
               ? "No customer linked"
@@ -101,11 +88,21 @@ function RequestRowItem({
               ? "Resume bot"
               : "Pause bot"
           }
-          style={{ opacity: !canToggle || isPending ? 0.5 : 1, width: 112, justifyContent: "center" }}
-        >
-          <span style={{ width: 16, height: 16 }}>{paused ? DashboardIcons.play : DashboardIcons.pause}</span>
-          {paused ? "Resume" : "Pause"}
-        </button>
+          onToggle={() => {
+            if (!request.customerId) return;
+            onToggleBot(request.customerId, !paused);
+          }}
+        />
+      </td>
+      <td data-label="Status">
+        <span className={`badge ${statusColors[statusValue] || "badge-default"}`}>
+          {statusValue.replace(/_/g, " ").toUpperCase()}
+        </span>
+      </td>
+      <td data-label="Type">
+        <span className="badge badge-default">
+          {(request.type ?? "BROWSING").replace(/_/g, " ").toUpperCase()}
+        </span>
       </td>
     </tr>
   );
@@ -211,14 +208,14 @@ export function RecentRequestsCard({
               <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleSort("customer")}>
                 Customer {sortKey === "customer" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
               </th>
+              <th style={{ cursor: "pointer", userSelect: "none", textAlign: "center", width: 72 }} onClick={() => toggleSort("bot")}>
+                Bot {sortKey === "bot" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+              </th>
               <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleSort("status")}>
                 Status {sortKey === "status" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
               </th>
               <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleSort("type")}>
                 Type {sortKey === "type" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
-              </th>
-              <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleSort("bot")}>
-                Bot {sortKey === "bot" ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
               </th>
             </tr>
           </thead>

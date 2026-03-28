@@ -4338,6 +4338,11 @@ html.portal-theme-light {
   color: var(--portal-text-soft);
 }
 
+.portal-ticket-row-select {
+  width: 100%;
+  max-width: 136px;
+}
+
 .portal-dropdown-item[data-highlighted] {
   background: var(--portal-hover);
 }

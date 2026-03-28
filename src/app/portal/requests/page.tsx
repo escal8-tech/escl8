@@ -7,6 +7,7 @@ import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import { TableSelect } from "@/app/portal/components/TableToolbarControls";
 import { PortalDataTable } from "@/app/portal/components/PortalDataTable";
 import { TablePagination } from "@/app/portal/components/TablePagination";
+import { PortalBotToggleButton } from "@/app/portal/components/PortalBotToggleButton";
 import { useRouter } from "next/navigation";
 import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
 
@@ -223,6 +224,18 @@ export default function RequestsPage() {
               Customer
             </th>
             <th
+              style={{ cursor: "pointer", userSelect: "none", textAlign: "center", width: 72 }}
+              onClick={() => {
+                if (sortKey === "bot") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                else {
+                  setSortKey("bot");
+                  setSortDir("asc");
+                }
+              }}
+            >
+              Bot
+            </th>
+            <th
               style={{ cursor: "pointer", userSelect: "none" }}
               onClick={() => {
                 if (sortKey === "sentiment") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -262,18 +275,6 @@ export default function RequestsPage() {
             <th
               style={{ cursor: "pointer", userSelect: "none" }}
               onClick={() => {
-                if (sortKey === "bot") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                else {
-                  setSortKey("bot");
-                  setSortDir("asc");
-                }
-              }}
-            >
-              Bot
-            </th>
-            <th
-              style={{ cursor: "pointer", userSelect: "none" }}
-              onClick={() => {
                 if (sortKey === "created") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
                 else {
                   setSortKey("created");
@@ -302,6 +303,43 @@ export default function RequestsPage() {
                     {(r.source || "whatsapp").toUpperCase()} - #{r.id.slice(0, 8)}
                   </div>
                 </td>
+                <td data-label="Bot" style={{ textAlign: "center" }}>
+                  {(() => {
+                    const createdAt = new Date(r.createdAt);
+                    const today = new Date();
+                    const isToday =
+                      createdAt.getDate() === today.getDate() &&
+                      createdAt.getMonth() === today.getMonth() &&
+                      createdAt.getFullYear() === today.getFullYear();
+                    const status = String(r.status || "").toLowerCase();
+                    const isCompleted = status === "completed" || status === "resolved";
+                    const canToggle = Boolean(r.customerId) && isToday && !isCompleted;
+                    const isPending = r.customerId ? Boolean(pendingIds[r.customerId]) : false;
+                    const title = !r.customerId
+                      ? "No customer linked"
+                      : !isToday
+                      ? "Only today's conversation can be paused"
+                      : isCompleted
+                      ? "Completed conversations cannot be paused"
+                      : r.botPaused
+                      ? "Resume bot"
+                      : "Pause bot";
+
+                    return (
+                      <PortalBotToggleButton
+                        available={Boolean(r.customerId)}
+                        paused={Boolean(r.botPaused)}
+                        pending={isPending}
+                        disabled={!canToggle}
+                        title={title}
+                        onToggle={() => {
+                          if (!r.customerId) return;
+                          togglePause.mutate({ customerId: r.customerId, botPaused: !Boolean(r.botPaused) });
+                        }}
+                      />
+                    );
+                  })()}
+                </td>
                 <td data-label="Sentiment">
                   <span className={`badge badge-${r.sentiment === "positive" ? "success" : r.sentiment === "negative" ? "error" : "default"}`}>
                     {(r.sentiment || "neutral").toUpperCase()}
@@ -314,46 +352,6 @@ export default function RequestsPage() {
                   <span className="badge badge-default">{(r.type || "browsing").replace(/_/g, " ").toUpperCase()}</span>
                 </td>
                 <td data-label="Paid">{r.paid ? "Yes" : "No"}</td>
-                <td data-label="Bot">
-                  {(() => {
-                    if (!r.customerId) return <span className="text-muted" style={{ fontSize: 12 }}>-</span>;
-                    const createdAt = new Date(r.createdAt);
-                    const today = new Date();
-                    const isToday =
-                      createdAt.getDate() === today.getDate() &&
-                      createdAt.getMonth() === today.getMonth() &&
-                      createdAt.getFullYear() === today.getFullYear();
-                    const status = String(r.status || "").toLowerCase();
-                    const isCompleted = status === "completed" || status === "resolved";
-                    const canToggle = isToday && !isCompleted;
-                    const isPending = Boolean(pendingIds[r.customerId]);
-
-                    return (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm"
-                        disabled={!canToggle || isPending}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!canToggle || isPending) return;
-                          togglePause.mutate({ customerId: r.customerId!, botPaused: !Boolean(r.botPaused) });
-                        }}
-                        title={
-                          !isToday
-                            ? "Only today's conversation can be paused"
-                            : isCompleted
-                            ? "Completed conversations cannot be paused"
-                            : r.botPaused
-                            ? "Resume bot"
-                            : "Pause bot"
-                        }
-                        style={{ width: 104, justifyContent: "center", opacity: !canToggle || isPending ? 0.5 : 1 }}
-                      >
-                        {r.botPaused ? "Resume" : "Pause"}
-                      </button>
-                    );
-                  })()}
-                </td>
                 <td data-label="Created" className="text-muted" style={{ fontSize: 12 }}>
                   {new Date(r.createdAt).toLocaleDateString()}
                 </td>
