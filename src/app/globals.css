@@ -4363,7 +4363,8 @@ html.portal-theme-light {
 
 .portal-dashboard-shell {
   display: grid;
-  gap: 16px;
+  gap: 12px;
+  padding-top: 8px;
   min-width: 0;
 }
 
