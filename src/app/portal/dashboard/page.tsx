@@ -174,7 +174,7 @@ export default function DashboardPage() {
 
   return (
     <div className="fade-in portal-dashboard-shell">
-      <div className="portal-dashboard-grid portal-dashboard-grid--analytics" style={{ marginBottom: "var(--space-6)" }}>
+      <div className="portal-dashboard-grid portal-dashboard-grid--analytics">
         <div className="chart-card portal-dashboard-card portal-dashboard-card--activity" style={{ minHeight: 360, display: "flex", flexDirection: "column" }}>
           <div className="chart-header" style={{ marginBottom: "var(--space-2)" }}>
             <h3 className="chart-title">Request Activity</h3>
