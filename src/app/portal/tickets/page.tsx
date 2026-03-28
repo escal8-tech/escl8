@@ -9,6 +9,7 @@ import { TableSearchControl, TableSelect } from "@/app/portal/components/TableTo
 import { TablePagination } from "@/app/portal/components/TablePagination";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
+import { PortalBotToggleButton } from "@/app/portal/components/PortalBotToggleButton";
 import { PortalHeaderCard, PortalMetricCard } from "@/app/portal/components/PortalSurfacePrimitives";
 import {
   LOSS_REASON_OPTIONS,
@@ -142,12 +143,6 @@ export default function TicketsPage() {
     ]);
   }, [utils]);
 
-  useLivePortalEvents({
-    ticketLedgerInput,
-    ticketPerformanceInput: performanceInput,
-    activeTicketId: selectedTicketId,
-    onCatchup: invalidateTickets,
-  });
   const toggleBot = trpc.customers.setBotPaused.useMutation({
     onMutate: async (vars) => {
       setPendingBotCustomerIds((prev) => ({ ...prev, [vars.customerId]: true }));
@@ -289,6 +284,26 @@ export default function TicketsPage() {
     { ids: customerIdsOnPage },
     { enabled: customerIdsOnPage.length > 0 },
   );
+  const syncCustomerBotPausedState = useCallback((event: { entity: string; payload?: Record<string, unknown> }) => {
+    if (event.entity !== "customer" || !customerIdsOnPage.length) return;
+    const customer = event.payload?.customer as Record<string, unknown> | undefined;
+    const customerId = String(customer?.id ?? "");
+    if (!customerId || !customerIdsOnPage.includes(customerId)) return;
+    const nextPaused = Boolean(customer?.botPaused ?? customer?.bot_paused);
+
+    setBotPausedOverrides((prev) => ({ ...prev, [customerId]: nextPaused }));
+    utils.customers.getBotPausedByIds.setData({ ids: customerIdsOnPage }, (old) => ({
+      ...(old ?? {}),
+      [customerId]: nextPaused,
+    }));
+  }, [customerIdsOnPage, utils.customers.getBotPausedByIds]);
+  useLivePortalEvents({
+    ticketLedgerInput,
+    ticketPerformanceInput: performanceInput,
+    activeTicketId: selectedTicketId,
+    onCatchup: invalidateTickets,
+    onEvent: syncCustomerBotPausedState,
+  });
   const selectedTicketQuery = trpc.tickets.getTicketById.useQuery(
     { ticketId: selectedTicketId ?? "" },
     { enabled: Boolean(selectedTicketId) },
@@ -464,11 +479,11 @@ export default function TicketsPage() {
                       ) : (
                         <tr>
                           <th style={{ textAlign: "left", width: "14%" }}>Ticket</th>
-                          <th style={{ textAlign: "left", width: "19%" }}>Customer</th>
-                          <th style={{ textAlign: "left", width: "24%" }}>Items</th>
+                          <th style={{ textAlign: "center", width: "7%" }}>Bot</th>
+                          <th style={{ textAlign: "left", width: "18%" }}>Customer</th>
+                          <th style={{ textAlign: "left", width: "23%" }}>Items</th>
                           <th style={{ textAlign: "left", width: "10%" }}>Priority</th>
-                          <th style={{ textAlign: "left", width: "11%" }}>SLA</th>
-                          <th style={{ textAlign: "center", width: "8%" }}>Bot</th>
+                          <th style={{ textAlign: "left", width: "10%" }}>SLA</th>
                           <th style={{ textAlign: "left", width: "10%" }}>Status</th>
                           <th style={{ textAlign: "left", width: "10%" }}>Outcome</th>
                           <th style={{ textAlign: "right", width: "8%" }}>Action</th>
@@ -547,27 +562,15 @@ export default function TicketsPage() {
                 );
                 const botCell = (
                   <td data-label="Bot" style={{ textAlign: "center" }}>
-                    {customerId ? (
-                      <button
-                        type="button"
-                        className={isOrderTicketView ? `portal-bot-control ${paused ? "is-paused" : "is-active"}` : "btn btn-ghost btn-sm"}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (isBotPending) return;
-                          toggleBot.mutate({ customerId, botPaused: !paused });
-                        }}
-                        disabled={isBotPending}
-                        aria-label={paused ? "Resume bot" : "Pause bot"}
-                        title={paused ? "Resume bot" : "Pause bot"}
-                        style={isOrderTicketView ? undefined : { width: "100%", justifyContent: "center", opacity: isBotPending ? 0.6 : 1 }}
-                      >
-                        {isOrderTicketView ? (paused ? <PlayIcon /> : <PauseIcon />) : paused ? "Resume" : "Pause"}
-                      </button>
-                    ) : isOrderTicketView ? (
-                      <span className="portal-bot-control__fallback">-</span>
-                    ) : (
-                      <span className="text-muted" style={{ fontSize: 12 }}>-</span>
-                    )}
+                    <PortalBotToggleButton
+                      available={Boolean(customerId)}
+                      paused={paused}
+                      pending={isBotPending}
+                      onToggle={() => {
+                        if (!customerId) return;
+                        toggleBot.mutate({ customerId, botPaused: !paused });
+                      }}
+                    />
                   </td>
                 );
                 const actionCell = (
@@ -651,14 +654,15 @@ export default function TicketsPage() {
                     ) : (
                       <>
                         {ticketCell}
+                        {botCell}
                         {customerCell}
                         {itemsCell}
                         {priorityCell}
                         {slaCell}
-                        {botCell}
                         <td data-label="Status" style={{ textAlign: "right" }}>
                           <TableSelect
-                            style={{ width: "100%" }}
+                            className="portal-ticket-row-select"
+                            style={{ width: "100%", maxWidth: 136 }}
                             value={(ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus}
                             disabled={updatingId === ticket.id}
                             onClick={(e) => e.stopPropagation()}
@@ -681,7 +685,8 @@ export default function TicketsPage() {
                         </td>
                         <td data-label="Outcome">
                           <TableSelect
-                            style={{ width: "100%" }}
+                            className="portal-ticket-row-select"
+                            style={{ width: "100%", maxWidth: 136 }}
                             value={(getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome}
                             disabled={updatingOutcomeId === ticket.id || ticket.status !== "resolved"}
                             onClick={(e) => e.stopPropagation()}
@@ -818,23 +823,6 @@ function TicketCloseIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 6 6 18" />
       <path d="m6 6 12 12" />
-    </svg>
-  );
-}
-
-function PauseIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <rect x="6" y="5" width="4" height="14" rx="1.4" />
-      <rect x="14" y="5" width="4" height="14" rx="1.4" />
-    </svg>
-  );
-}
-
-function PlayIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M8 5.8a1 1 0 0 1 1.53-.85l8.2 5.2a1 1 0 0 1 0 1.7l-8.2 5.2A1 1 0 0 1 8 16.2z" />
     </svg>
   );
 }

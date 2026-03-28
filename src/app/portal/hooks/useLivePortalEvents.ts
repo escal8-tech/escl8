@@ -456,6 +456,25 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         if (!customerInput) {
           customersStats.setData(undefined, computeCustomerStats(nextCustomers));
         }
+
+        if (currentOptions.requestListInput) {
+          const customerId = String(maybeCustomer.id ?? "");
+          const nextBotPaused = maybeCustomer.botPaused ?? maybeCustomer.bot_paused;
+          if (customerId && typeof nextBotPaused !== "undefined") {
+            requestsList.setData(currentOptions.requestListInput, (old: Array<Record<string, unknown>> | undefined) => {
+              if (!old?.length) return old;
+              let changed = false;
+              const nextRows = old.map((row) => {
+                const rowCustomerId = String(row.customerId ?? row.customer_id ?? "");
+                if (rowCustomerId !== customerId) return row;
+                if (Boolean(row.botPaused ?? row.bot_paused) === Boolean(nextBotPaused)) return row;
+                changed = true;
+                return { ...row, botPaused: Boolean(nextBotPaused) };
+              });
+              return changed ? nextRows : old;
+            });
+          }
+        }
       }
 
       const maybeRequest = request;
