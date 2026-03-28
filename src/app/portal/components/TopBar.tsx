@@ -114,6 +114,18 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: TopBarProps) 
   const phoneNumbersQuery = trpc.business.listPhoneNumbers.useQuery();
   const phoneNumbers = phoneNumbersQuery.data ?? [];
   const hasPhoneFilter = phoneNumbers.length > 0 || phoneNumbersQuery.isLoading;
+  const phoneFilterOptions = [
+    { value: "all", label: "All Numbers" },
+    ...phoneNumbers.map((phone) => ({
+      value: phone.phoneNumberId,
+      label: phone.displayPhoneNumber || phone.phoneNumberId.slice(-8),
+    })),
+  ];
+  const phoneFilterWidthCh = Math.min(
+    Math.max(...phoneFilterOptions.map((option) => option.label.length), "All Numbers".length) + 4,
+    22,
+  );
+  const phoneFilterWidth = `min(100%, calc(${phoneFilterWidthCh}ch + 2.75rem))`;
 
   const phoneFilterControl = phoneNumbersQuery.isLoading ? (
     <div style={{ fontSize: 12, color: "var(--muted)", padding: "8px 12px" }}>
@@ -124,14 +136,8 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: TopBarProps) 
       <PortalSelect
         value={selectedPhoneNumberId ?? "all"}
         onValueChange={(value) => setSelectedPhoneNumberId(value === "all" ? null : value)}
-        options={[
-          { value: "all", label: "All Numbers" },
-          ...phoneNumbers.map((phone) => ({
-            value: phone.phoneNumberId,
-            label: phone.displayPhoneNumber || phone.phoneNumberId.slice(-8),
-          })),
-        ]}
-        style={{ minWidth: 0, width: "100%" }}
+        options={phoneFilterOptions}
+        style={{ minWidth: 0, width: phoneFilterWidth }}
         ariaLabel="Filter by phone number"
       />
     </div>
@@ -171,11 +177,11 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: TopBarProps) 
       {/* Right side: Phone number filter */}
       {!isMobile || hasPhoneFilter ? (
         <div className={`topbar-right${hasPhoneFilter ? " has-filter" : ""}`}>
+          {phoneFilterControl}
           <div className="topbar-secondary">
             <ThemeToggle />
             <TimeChip />
           </div>
-          {phoneFilterControl}
         </div>
       ) : null}
     </header>
