@@ -252,26 +252,16 @@ export default function Sidebar({
             </div>
             <Link
               href="/portal/settings"
-              className={`sidebar-nav-item ${isActive("/portal/settings") ? "active" : ""}`}
+              className={`sidebar-footer-icon-link ${isActive("/portal/settings") ? "active" : ""}`}
               title="Settings"
               onClick={onMobileClose}
-              style={{ justifyContent: "center", width: "100%" }}
             >
               <span className="sidebar-nav-icon">{Icons.settings}</span>
             </Link>
           </div>
         ) : (
           <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "10px 12px",
-              borderRadius: 14,
-              background: "var(--portal-surface-muted)",
-              border: "1px solid var(--portal-border)",
-              justifyContent: "space-between",
-            }}
+            className="sidebar-footer-card"
           >
             <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
               <div className="avatar avatar-sm">{userInitials}</div>
@@ -303,49 +293,19 @@ export default function Sidebar({
                 )}
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div className="sidebar-footer-actions">
               <Link
                 href="/portal/settings"
-                className={`sidebar-settings-btn ${isActive("/portal/settings") ? "active" : ""}`}
+                className={`sidebar-footer-icon-link sidebar-settings-btn ${isActive("/portal/settings") ? "active" : ""}`}
                 title="Settings"
                 onClick={onMobileClose}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 36,
-                  height: 36,
-                  borderRadius: 12,
-                  color: isActive("/portal/settings") ? "var(--gold)" : "var(--portal-text-muted)",
-                  background: isActive("/portal/settings")
-                    ? "var(--portal-card-plain)"
-                    : "var(--portal-surface-muted)",
-                  border: isActive("/portal/settings")
-                    ? "1px solid var(--portal-border-strong)"
-                    : "1px solid var(--portal-border)",
-                  transition: "all 0.2s ease",
-                  flexShrink: 0,
-                }}
               >
                 {Icons.settings}
               </Link>
               <button
                 onClick={() => onCollapsedChange(true)}
                 title="Collapse sidebar"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 36,
-                  height: 36,
-                  borderRadius: 12,
-                  color: "var(--portal-text-muted)",
-                  background: "var(--portal-surface-muted)",
-                  border: "1px solid var(--portal-border)",
-                  cursor: "pointer",
-                  transition: "all 0.2s ease",
-                  flexShrink: 0,
-                }}
+                className="sidebar-footer-icon-button"
                 aria-label="Collapse sidebar"
               >
                 {Icons.chevronLeft}
@@ -362,7 +322,6 @@ export default function Sidebar({
             style={{
               width: "100%",
               marginTop: 8,
-              transform: "rotate(180deg)",
             }}
             aria-label="Expand sidebar"
           >
