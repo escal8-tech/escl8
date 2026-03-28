@@ -15,6 +15,28 @@ type MaybePhoneFilter = {
   cursorId?: string;
 };
 
+type RequestPageInput = {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  status?: string;
+  source?: string;
+  sortKey?: "customer" | "status" | "type" | "sentiment" | "created" | "bot";
+  sortDir?: "asc" | "desc";
+  whatsappIdentityId?: string | null;
+};
+
+type CustomerPageInput = {
+  source?: string;
+  includeDeleted?: boolean;
+  whatsappIdentityId?: string | null;
+  limit?: number;
+  offset?: number;
+  search?: string;
+  sortKey?: "source" | "name" | "lastMessageAt";
+  sortDir?: "asc" | "desc";
+};
+
 type ThreadListInput = {
   limit?: number;
   whatsappIdentityId?: string;
@@ -74,9 +96,11 @@ type MessageRow = {
 
 type LiveSyncOptions = {
   requestListInput?: { limit?: number; whatsappIdentityId?: string };
+  requestPageInput?: RequestPageInput;
   requestStatsInput?: MaybePhoneFilter;
   requestActivityInput?: { days?: number; whatsappIdentityId?: string };
   customerListInput?: MaybePhoneFilter;
+  customerPageInput?: CustomerPageInput;
   messagesThreadListInput?: ThreadListInput;
   bookingsListInput?: { businessId?: string };
   ticketListInputs?: Array<TicketListInput | undefined>;
@@ -271,8 +295,10 @@ function orderMatchesFilter(order: Record<string, unknown>, input?: OrderListInp
 export function useLivePortalEvents(options: LiveSyncOptions = {}) {
   const utils = trpc.useUtils();
   const customersList = utils.customers.list as any;
+  const customersPage = utils.customers.listPage as any;
   const customersStats = utils.customers.getStats as any;
   const requestsList = utils.requests.list as any;
+  const requestsPage = utils.requests.listPage as any;
   const requestsStats = utils.requests.stats as any;
   const requestsActivity = utils.requests.activitySeries as any;
   const threadsList = utils.messages.listRecentThreads as any;
@@ -354,9 +380,11 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
 
       const jobs: Array<Promise<unknown>> = [];
       if (currentOptions.requestListInput) jobs.push(requestsList.invalidate(currentOptions.requestListInput));
+      if (currentOptions.requestPageInput) jobs.push(requestsPage.invalidate(currentOptions.requestPageInput));
       if (currentOptions.requestStatsInput !== undefined) jobs.push(requestsStats.invalidate(currentOptions.requestStatsInput));
       if (currentOptions.requestActivityInput) jobs.push(requestsActivity.invalidate(currentOptions.requestActivityInput));
       if (currentOptions.customerListInput !== undefined) jobs.push(customersList.invalidate(currentOptions.customerListInput));
+      if (currentOptions.customerPageInput) jobs.push(customersPage.invalidate(currentOptions.customerPageInput));
       jobs.push(customersStats.invalidate(undefined));
       if (currentOptions.messagesThreadListInput) jobs.push(threadsList.invalidate(currentOptions.messagesThreadListInput));
       if (currentOptions.bookingsListInput !== undefined) jobs.push(bookingsList.invalidate(currentOptions.bookingsListInput));
@@ -431,8 +459,12 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
 
       const phoneIdentityId = eventPhoneIdentity(payload);
 
-      const customerFilter = currentOptions.customerListInput?.whatsappIdentityId;
-      const requestFilter = currentOptions.requestListInput?.whatsappIdentityId;
+      const customerFilter =
+        currentOptions.customerListInput?.whatsappIdentityId
+        ?? currentOptions.customerPageInput?.whatsappIdentityId;
+      const requestFilter =
+        currentOptions.requestListInput?.whatsappIdentityId
+        ?? currentOptions.requestPageInput?.whatsappIdentityId;
       const threadFilter = currentOptions.messagesThreadListInput?.whatsappIdentityId;
 
       const customerMatchesFilter = !customerFilter || customerFilter === phoneIdentityId;
@@ -457,6 +489,10 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
           customersStats.setData(undefined, computeCustomerStats(nextCustomers));
         }
 
+        if (currentOptions.customerPageInput) {
+          void customersPage.invalidate(currentOptions.customerPageInput);
+        }
+
         if (currentOptions.requestListInput) {
           const customerId = String(maybeCustomer.id ?? "");
           const nextBotPaused = maybeCustomer.botPaused ?? maybeCustomer.bot_paused;
@@ -475,9 +511,25 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
             });
           }
         }
+        if (currentOptions.requestPageInput) {
+          void requestsPage.invalidate(currentOptions.requestPageInput);
+        }
       }
 
       const maybeRequest = request;
+      if (maybeRequest && requestMatchesFilter && currentOptions.requestPageInput) {
+        void requestsPage.invalidate(currentOptions.requestPageInput);
+        if (currentOptions.requestStatsInput !== undefined) {
+          void requestsStats.invalidate(currentOptions.requestStatsInput);
+        }
+        if (currentOptions.requestActivityInput) {
+          const now = Date.now();
+          if (now - lastActivityInvalidateAt > 1500) {
+            lastActivityInvalidateAt = now;
+            void requestsActivity.invalidate(currentOptions.requestActivityInput);
+          }
+        }
+      }
       if (maybeRequest && requestMatchesFilter && currentOptions.requestListInput) {
         const limit = currentOptions.requestListInput.limit ?? 100;
         let nextRequests: Array<Record<string, unknown>> = [];
@@ -493,6 +545,13 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
             lastActivityInvalidateAt = now;
             void requestsActivity.invalidate(currentOptions.requestActivityInput);
           }
+        }
+      }
+      if (!maybeRequest && event.entity === "request" && currentOptions.requestPageInput) {
+        void requestsPage.invalidate(currentOptions.requestPageInput);
+        void requestsStats.invalidate(currentOptions.requestStatsInput);
+        if (currentOptions.requestActivityInput) {
+          void requestsActivity.invalidate(currentOptions.requestActivityInput);
         }
       }
       if (!maybeRequest && event.entity === "request" && currentOptions.requestListInput) {
@@ -816,8 +875,10 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     };
   }, [
     customersList,
+    customersPage,
     customersStats,
     requestsList,
+    requestsPage,
     requestsStats,
     requestsActivity,
     threadsList,

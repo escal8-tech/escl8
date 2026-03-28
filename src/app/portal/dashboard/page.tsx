@@ -1,26 +1,34 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
-import type { DonutDatum } from "./components/types";
+import type { DonutDatum, RequestRow } from "./components/types";
 import { normalizeRequests } from "./components/utils";
 import { ActivityAreaChart } from "./components/ActivityAreaChart";
 import { MiniDonutChart } from "./components/MiniDonutChart";
-import { RecentRequestsCard } from "./components/RecentRequestsCard";
+import { RecentRequestsCard, type RequestSortKey, RECENT_REQUESTS_PAGE_SIZE } from "./components/RecentRequestsCard";
 import { RequestDrawer } from "./components/RequestDrawer";
 import { TicketCounterBarChart } from "./components/TicketCounterBarChart";
 import { getPortalTicketTypeLabel } from "@/app/portal/lib/ticketTypes";
 
 export default function DashboardPage() {
   const { selectedPhoneNumberId } = usePhoneFilter();
+  const [recentStatusFilter, setRecentStatusFilter] = useState("all");
+  const [recentSortKey, setRecentSortKey] = useState<RequestSortKey>("status");
+  const [recentSortDir, setRecentSortDir] = useState<"asc" | "desc">("desc");
+  const [recentPage, setRecentPage] = useState(0);
   const listInput = useMemo(
     () => ({
-      limit: 100,
+      limit: RECENT_REQUESTS_PAGE_SIZE,
+      offset: recentPage * RECENT_REQUESTS_PAGE_SIZE,
+      status: recentStatusFilter !== "all" ? recentStatusFilter : undefined,
+      sortKey: recentSortKey,
+      sortDir: recentSortDir,
       ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
     }),
-    [selectedPhoneNumberId],
+    [recentPage, recentSortDir, recentSortKey, recentStatusFilter, selectedPhoneNumberId],
   );
   const statsInput = useMemo(
     () => (selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : undefined),
@@ -33,14 +41,14 @@ export default function DashboardPage() {
   const customersInput = statsInput;
 
   useLivePortalEvents({
-    requestListInput: listInput,
+    requestPageInput: listInput,
     requestStatsInput: statsInput,
     requestActivityInput: activityInput,
     customerListInput: customersInput,
     refreshTicketTypeCounters: true,
   });
 
-  const listQ = trpc.requests.list.useQuery(listInput);
+  const listQ = trpc.requests.listPage.useQuery(listInput);
   const statsQ = trpc.requests.stats.useQuery(statsInput);
   const activityQ = trpc.requests.activitySeries.useQuery(activityInput);
   const ticketTypesQ = trpc.tickets.listTypes.useQuery({ includeDisabled: true });
@@ -63,18 +71,22 @@ export default function DashboardPage() {
     onMutate: async (vars) => {
       markPending(vars.customerId, true);
       await Promise.all([
-        utils.requests.list.cancel(listInput),
+        utils.requests.listPage.cancel(listInput),
         utils.customers.list.cancel(customersInput),
       ]);
 
-      const prevList = utils.requests.list.getData(listInput);
+      const prevList = utils.requests.listPage.getData(listInput);
       const prevCustomers = utils.customers.list.getData(customersInput);
 
-      utils.requests.list.setData(listInput, (old) =>
-        old?.map((item) =>
-          item.customerId === vars.customerId ? { ...item, botPaused: vars.botPaused } : item,
-        ),
-      );
+      utils.requests.listPage.setData(listInput, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          items: old.items.map((item) =>
+            item.customerId === vars.customerId ? { ...item, botPaused: vars.botPaused } : item,
+          ),
+        };
+      });
       utils.customers.list.setData(customersInput, (old) =>
         old?.map((item) =>
           item.id === vars.customerId ? { ...item, botPaused: vars.botPaused } : item,
@@ -84,24 +96,44 @@ export default function DashboardPage() {
       return { prevList, prevCustomers };
     },
     onError: (_err, vars, ctx) => {
-      if (ctx?.prevList) utils.requests.list.setData(listInput, ctx.prevList);
+      if (ctx?.prevList) utils.requests.listPage.setData(listInput, ctx.prevList);
       if (ctx?.prevCustomers) utils.customers.list.setData(customersInput, ctx.prevCustomers);
       markPending(vars.customerId, false);
     },
     onSettled: (_data, _err, vars) => {
       if (vars?.customerId) markPending(vars.customerId, false);
-      utils.requests.list.invalidate(listInput);
+      utils.requests.listPage.invalidate(listInput);
       utils.requests.stats.invalidate(statsInput);
       utils.customers.list.invalidate(customersInput);
       utils.customers.getStats.invalidate();
     },
   });
 
-  const rows = useMemo(() => normalizeRequests(listQ.data || []), [listQ.data]);
+  const rows = useMemo(
+    () => normalizeRequests((listQ.data?.items ?? []) as RequestRow[]),
+    [listQ.data?.items],
+  );
+  const recentTotalCount = listQ.data?.totalCount ?? 0;
+  const recentTotalPages = Math.max(1, Math.ceil(recentTotalCount / RECENT_REQUESTS_PAGE_SIZE));
+  const safeRecentPage = Math.min(recentPage, recentTotalPages - 1);
+  useEffect(() => {
+    if (safeRecentPage !== recentPage) {
+      queueMicrotask(() => setRecentPage(safeRecentPage));
+    }
+  }, [recentPage, safeRecentPage]);
   const selectedRequest = useMemo(() => {
     if (!selectedId) return null;
     return rows.find((request) => request.id === selectedId) ?? null;
   }, [rows, selectedId]);
+  const toggleRecentSort = (key: RequestSortKey) => {
+    setRecentPage(0);
+    if (recentSortKey === key) {
+      setRecentSortDir((direction) => (direction === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setRecentSortKey(key);
+    setRecentSortDir("asc");
+  };
 
   const timeSeries = useMemo(() => {
     if (activityQ.data?.length) {
@@ -223,7 +255,19 @@ export default function DashboardPage() {
       <div className="portal-dashboard-grid portal-dashboard-grid--secondary">
         <RecentRequestsCard
           rows={rows}
+          totalCount={recentTotalCount}
+          page={safeRecentPage}
+          totalPages={recentTotalPages}
+          statusFilter={recentStatusFilter}
+          sortKey={recentSortKey}
+          sortDir={recentSortDir}
           pendingIds={pendingIds}
+          onStatusFilterChange={(value) => {
+            setRecentStatusFilter(value);
+            setRecentPage(0);
+          }}
+          onToggleSort={toggleRecentSort}
+          onPageChange={setRecentPage}
           onSelectRequest={setSelectedId}
           onToggleBot={(customerId, botPaused) => togglePause.mutate({ customerId, botPaused })}
         />

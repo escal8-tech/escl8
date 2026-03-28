@@ -9,98 +9,69 @@ import { CustomersTable } from "./components/CustomersTable";
 import { CustomerDrawer } from "./components/CustomerDrawer";
 import type { CustomerRow, Source } from "./types";
 
-const PAGE_SIZE = 200;
+const PAGE_SIZE = 20;
+type CustomerSortKey = "source" | "name" | "lastMessageAt";
 
 function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId: string | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
-  const [cursor, setCursor] = useState<{ updatedAt: string; id: string } | null>(null);
-  const [extraRows, setExtraRows] = useState<CustomerRow[]>([]);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [lastPageHadMore, setLastPageHadMore] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sourceFilter, setSourceFilter] = useState<Source | "all">("all");
+  const [sortKey, setSortKey] = useState<CustomerSortKey>("lastMessageAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [page, setPage] = useState(0);
 
   const baseFilter = useMemo(
     () => (selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
     [selectedPhoneNumberId],
   );
-  const firstInput = useMemo(
-    () => ({ ...baseFilter, limit: PAGE_SIZE }),
-    [baseFilter],
-  );
-
-  useLivePortalEvents({ customerListInput: firstInput });
-  const { data: customers, isFetching } = trpc.customers.list.useQuery(firstInput);
-
   const pageInput = useMemo(
-    () =>
-      cursor
-        ? {
-            ...baseFilter,
-            limit: PAGE_SIZE,
-            cursorUpdatedAt: cursor.updatedAt,
-            cursorId: cursor.id,
-          }
-        : undefined,
-    [baseFilter, cursor],
+    () => ({
+      ...baseFilter,
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
+      search: searchQuery.trim() || undefined,
+      source: sourceFilter !== "all" ? sourceFilter : undefined,
+      sortKey,
+      sortDir,
+    }),
+    [baseFilter, page, searchQuery, sortDir, sortKey, sourceFilter],
   );
 
-  const pagedCustomersQuery = trpc.customers.list.useQuery(pageInput, {
-    enabled: Boolean(pageInput),
-  });
-
-  useEffect(() => {
-    const data = pagedCustomersQuery.data as CustomerRow[] | undefined;
-    if (!isLoadingMore || !data) return;
-    queueMicrotask(() => {
-      setExtraRows((prev) => {
-        const map = new Map<string, CustomerRow>();
-        for (const row of prev) map.set(row.id, row);
-        for (const row of data) map.set(row.id, row);
-        return Array.from(map.values());
-      });
-      setLastPageHadMore(data.length === PAGE_SIZE);
-      setIsLoadingMore(false);
-    });
-  }, [isLoadingMore, pagedCustomersQuery.data]);
-
-  const listRows = useMemo(() => {
-    const first = (customers ?? []) as CustomerRow[];
-    if (!extraRows.length) return first;
-    const map = new Map<string, CustomerRow>();
-    for (const row of first) map.set(row.id, row);
-    for (const row of extraRows) if (!map.has(row.id)) map.set(row.id, row);
-    return Array.from(map.values());
-  }, [customers, extraRows]);
+  useLivePortalEvents({ customerPageInput: pageInput });
+  const customersPageQuery = trpc.customers.listPage.useQuery(pageInput);
 
   const typedCustomers = useMemo(
     () =>
-      listRows.map((c) => ({
+      ((customersPageQuery.data?.items ?? []) as CustomerRow[]).map((c) => ({
         ...c,
         source: c.source as Source,
       })) as CustomerRow[],
-    [listRows],
+    [customersPageQuery.data?.items],
   );
-
-  const hasMore = useMemo(() => {
-    const firstPageHasMore = (customers?.length ?? 0) === PAGE_SIZE;
-    if (!cursor) return firstPageHasMore;
-    if (isLoadingMore) return true;
-    return lastPageHadMore;
-  }, [customers, cursor, isLoadingMore, lastPageHadMore]);
+  const totalCount = customersPageQuery.data?.totalCount ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  useEffect(() => {
+    if (safePage !== page) {
+      queueMicrotask(() => setPage(safePage));
+    }
+  }, [page, safePage]);
 
   const queryCustomerId = String(searchParams?.get("customerId") || "").trim();
   const effectiveSelectedCustomerId = selectedCustomerId || queryCustomerId || null;
-  const customer = typedCustomers.find((c) => c.id === effectiveSelectedCustomerId);
-
-  const handleLoadMore = () => {
-    if (isLoadingMore || !typedCustomers.length) return;
-    const last = typedCustomers[typedCustomers.length - 1];
-    if (!last?.updatedAt || !last?.id) return;
-    const updatedAtIso = new Date(last.updatedAt as unknown as string).toISOString();
-    setCursor({ updatedAt: updatedAtIso, id: last.id });
-    setIsLoadingMore(true);
-  };
+  const selectedCustomerQuery = trpc.customers.get.useQuery(
+    { id: effectiveSelectedCustomerId ?? "" },
+    {
+      enabled: Boolean(effectiveSelectedCustomerId) && !typedCustomers.some((customer) => customer.id === effectiveSelectedCustomerId),
+    },
+  );
+  const customer = typedCustomers.find((c) => c.id === effectiveSelectedCustomerId)
+    ?? ((selectedCustomerQuery.data ? {
+      ...selectedCustomerQuery.data,
+      source: selectedCustomerQuery.data.source as Source,
+    } : null) as CustomerRow | null);
 
   return (
     <main
@@ -111,7 +82,7 @@ function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId
         flexDirection: "column",
       }}
     >
-      {!typedCustomers.length ? (
+      {totalCount === 0 ? (
         <div
           style={{
             flex: 1,
@@ -132,11 +103,34 @@ function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId
       ) : (
         <CustomersTable
           rows={typedCustomers}
+          totalCount={totalCount}
+          page={safePage}
+          totalPages={totalPages}
+          searchQuery={searchQuery}
+          onSearchQueryChange={(value) => {
+            setSearchQuery(value);
+            setPage(0);
+          }}
+          sourceFilter={sourceFilter}
+          onSourceFilterChange={(value) => {
+            setSourceFilter(value);
+            setPage(0);
+          }}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSortChange={(nextKey) => {
+            setPage(0);
+            if (sortKey === nextKey) {
+              setSortDir((direction) => (direction === "asc" ? "desc" : "asc"));
+              return;
+            }
+            setSortKey(nextKey);
+            setSortDir("desc");
+          }}
+          onPageChange={setPage}
           onSelect={(id) => setSelectedCustomerId(id)}
-          listInput={firstInput}
-          hasMore={hasMore}
-          isLoadingMore={isLoadingMore || isFetching}
-          onLoadMore={handleLoadMore}
+          pageInput={pageInput}
+          countsInput={baseFilter}
         />
       )}
 
