@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { PortalSelect } from "@/app/portal/components/PortalSelect";
+import { TablePagination } from "@/app/portal/components/TablePagination";
 import { DashboardIcons } from "./dashboard-icons";
 import type { RequestRow } from "./types";
 
@@ -58,7 +59,7 @@ function RequestRowItem({
 
   return (
     <tr onClick={onSelect} style={{ cursor: "pointer" }}>
-      <td>
+      <td data-label="Customer">
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
           <div className="avatar avatar-sm">{initials}</div>
           <div>
@@ -69,17 +70,17 @@ function RequestRowItem({
           </div>
         </div>
       </td>
-      <td>
+      <td data-label="Status">
         <span className={`badge ${statusColors[statusValue] || "badge-default"}`}>
           {statusValue.replace(/_/g, " ").toUpperCase()}
         </span>
       </td>
-      <td>
+      <td data-label="Type">
         <span className="badge badge-default">
           {(request.type ?? "BROWSING").replace(/_/g, " ").toUpperCase()}
         </span>
       </td>
-      <td>
+      <td data-label="Bot">
         <button
           type="button"
           className="btn btn-ghost btn-sm"
@@ -170,13 +171,13 @@ export function RecentRequestsCard({
   };
 
   return (
-    <div className="card" style={{ gridColumn: "span 2", height: 520, display: "flex", flexDirection: "column" }}>
+    <div className="card portal-dashboard-card portal-dashboard-card--requests portal-dashboard-requests-card" style={{ height: 520, display: "flex", flexDirection: "column" }}>
       <div className="card-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <h3 className="card-title">Recent Requests</h3>
           <p className="card-description">Your latest customer interactions</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="portal-dashboard-requests-card__controls" style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span className="text-muted" style={{ fontSize: 12 }}>Status:</span>
           <PortalSelect
             value={statusFilter}
@@ -195,7 +196,7 @@ export function RecentRequestsCard({
             ariaLabel="Filter recent requests by status"
           />
           <Link
-            href="/portal/requests"
+            href="/requests"
             className="btn btn-ghost btn-sm"
             style={{ height: 34, display: "inline-flex", alignItems: "center" }}
           >
@@ -204,7 +205,7 @@ export function RecentRequestsCard({
         </div>
       </div>
       <div className="table-container" style={{ border: "none", borderRadius: 0, flex: 1, minHeight: 0, overflow: "auto" }}>
-        <table className="table table-clickable">
+        <table className="table table-clickable portal-modern-table portal-mobile-cards portal-dashboard-requests-table">
           <thead>
             <tr>
               <th style={{ cursor: "pointer", userSelect: "none" }} onClick={() => toggleSort("customer")}>
@@ -248,35 +249,17 @@ export function RecentRequestsCard({
           </tbody>
         </table>
       </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "12px 18px",
-          borderTop: "1px solid var(--border)",
-          marginTop: "auto",
-        }}
-      >
-        <span className="text-muted" style={{ fontSize: 12 }}>
-          Showing {paginatedRows.length} of {filteredAndSortedRows.length}
-        </span>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={safePage <= 0}>
-            Prev
-          </button>
-          <span className="text-muted" style={{ minWidth: 88, textAlign: "center", fontSize: 12 }}>
-            Page {safePage + 1} / {totalPages}
-          </span>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-            disabled={safePage >= totalPages - 1}
-          >
-            Next
-          </button>
-        </div>
-      </div>
+      <TablePagination
+        page={safePage}
+        totalPages={totalPages}
+        shownCount={paginatedRows.length}
+        totalCount={filteredAndSortedRows.length}
+        canPrev={safePage > 0}
+        canNext={safePage < totalPages - 1}
+        onPrev={() => setPage((p) => Math.max(0, p - 1))}
+        onNext={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+        onPageChange={setPage}
+      />
     </div>
   );
 }

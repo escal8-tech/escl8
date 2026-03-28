@@ -69,7 +69,7 @@ export default function Nav() {
           </nav>
 
           {/* CTA Button */}
-          <Link href="/portal" className={styles.navCta}>
+          <Link href="/signup" className={styles.navCta}>
             Sign Up
           </Link>
 
@@ -111,7 +111,7 @@ export default function Nav() {
               {link.label}
             </Link>
           ))}
-          <Link href="/portal" className={styles.mobileCta}>
+          <Link href="/signup" className={styles.mobileCta}>
             Sign Up
           </Link>
         </div>

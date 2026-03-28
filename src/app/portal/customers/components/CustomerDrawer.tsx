@@ -43,7 +43,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
     if (customer.id) params.set("customerId", customer.id);
     else if (customer.phone) params.set("phone", customer.phone);
     const query = params.toString();
-    return query ? `/portal/messages?${query}` : "/portal/messages";
+    return query ? `/messages?${query}` : "/messages";
   })();
 
   const formatDate = (date: Date | null) => {

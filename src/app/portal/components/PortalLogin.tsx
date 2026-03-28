@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
 import { isClientErrorReported, recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
+import { APP_DEFAULT_AUTH_REDIRECT, APP_LOGIN_ROUTE } from "@/lib/app-routes";
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "firebase/auth";
 import { trpc } from "@/utils/trpc";
 import { useRouter } from "next/navigation";
@@ -23,7 +24,7 @@ export function PortalLogin() {
   useEffect(() => {
     if (!auth) return;
     const unsub = onAuthStateChanged(auth, (u) => {
-      if (u) router.replace("/portal/upload");
+      if (u) router.replace(APP_DEFAULT_AUTH_REDIRECT);
     });
     return () => unsub();
   }, [auth, router]);
@@ -40,7 +41,7 @@ export function PortalLogin() {
         error: new Error("Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars."),
         level: "error",
         outcome: "config_missing",
-        route: "/portal",
+        route: APP_LOGIN_ROUTE,
         attributes: {
           auth_provider: "password",
         },
@@ -75,7 +76,7 @@ export function PortalLogin() {
         freshToken: true,
         missingConfigEvent: "auth.email_login_failed",
         missingSessionEvent: "auth.email_login_failed",
-        route: "/portal",
+        route: APP_LOGIN_ROUTE,
         tokenFailureEvent: "auth.email_login_failed",
       });
       recordClientBusinessEvent({
@@ -83,13 +84,13 @@ export function PortalLogin() {
         action: "portal-email-login",
         area: "auth",
         outcome: "success",
-        route: "/portal",
+        route: APP_LOGIN_ROUTE,
         attributes: {
           auth_provider: "password",
           email_domain: email.split("@")[1] || null,
         },
       });
-      router.push("/portal/upload");
+      router.push(APP_DEFAULT_AUTH_REDIRECT);
     } catch (err: any) {
       console.error(err);
       if (!isClientErrorReported(err)) {
@@ -102,7 +103,7 @@ export function PortalLogin() {
           error: err,
           level: captureInSentry ? "error" : "warn",
           outcome: captureInSentry ? "unexpected_failure" : "handled_failure",
-          route: "/portal",
+          route: APP_LOGIN_ROUTE,
           attributes: {
             auth_provider: "password",
             email_domain: emailOrUsername.includes("@") ? emailOrUsername.split("@")[1] || null : null,
@@ -128,7 +129,7 @@ export function PortalLogin() {
           error,
           level: "error",
           outcome: "config_missing",
-          route: "/portal",
+          route: APP_LOGIN_ROUTE,
           attributes: {
             auth_provider: "google",
           },
@@ -149,7 +150,7 @@ export function PortalLogin() {
         freshToken: true,
         missingConfigEvent: "auth.google_login_failed",
         missingSessionEvent: "auth.google_login_failed",
-        route: "/portal",
+        route: APP_LOGIN_ROUTE,
         tokenFailureEvent: "auth.google_login_failed",
       });
       await upsertUser.mutateAsync({ email: googleEmail, whatsappConnected: false });
@@ -158,13 +159,13 @@ export function PortalLogin() {
         action: "portal-google-login",
         area: "auth",
         outcome: "success",
-        route: "/portal",
+        route: APP_LOGIN_ROUTE,
         attributes: {
           auth_provider: "google",
           email_domain: googleEmail.split("@")[1] || null,
         },
       });
-      router.push("/portal/upload");
+      router.push(APP_DEFAULT_AUTH_REDIRECT);
     } catch (err: any) {
       console.error(err);
       if (!isClientErrorReported(err)) {
@@ -177,7 +178,7 @@ export function PortalLogin() {
           error: err,
           level: captureInSentry ? "error" : "warn",
           outcome: captureInSentry ? "unexpected_failure" : "handled_failure",
-          route: "/portal",
+          route: APP_LOGIN_ROUTE,
           attributes: {
             auth_provider: "google",
           },

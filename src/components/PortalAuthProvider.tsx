@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
 import { isClientErrorReported } from "@/lib/client-business-monitoring";
+import { APP_LOGIN_ROUTE, isAppPath } from "@/lib/app-routes";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { usePathname, useRouter } from "next/navigation";
 import { trpc } from "@/utils/trpc";
@@ -42,7 +43,7 @@ export default function PortalAuthProvider({ children }: Props) {
   useEffect(() => {
     updateSentryScope({
       route: pathname || null,
-      surface: pathname?.startsWith("/portal") ? "portal" : "site",
+      surface: isAppPath(pathname) ? "portal" : "site",
       user: user
         ? {
             email: user.email ?? null,
@@ -58,7 +59,7 @@ export default function PortalAuthProvider({ children }: Props) {
     setError(null);
 
     if (user === null) {
-      router.replace("/portal");
+      router.replace(APP_LOGIN_ROUTE);
       return;
     }
     if (!user) return;
@@ -74,12 +75,12 @@ export default function PortalAuthProvider({ children }: Props) {
           attributes: {
             firebase_uid: user.uid ?? undefined,
           },
-          freshToken: true,
-          missingConfigEvent: "auth.user_bootstrap_failed",
-          missingSessionEvent: "auth.user_bootstrap_session_missing",
-          route: pathnameRef.current ?? "/portal",
-          tokenFailureEvent: "auth.user_bootstrap_failed",
-        });
+        freshToken: true,
+        missingConfigEvent: "auth.user_bootstrap_failed",
+        missingSessionEvent: "auth.user_bootstrap_session_missing",
+        route: pathnameRef.current ?? APP_LOGIN_ROUTE,
+        tokenFailureEvent: "auth.user_bootstrap_failed",
+      });
         const email = user.email;
         if (!email) throw new Error("Signed-in account is missing email.");
         await ensureUser({ email });

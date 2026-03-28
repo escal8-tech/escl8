@@ -132,7 +132,7 @@ export default function PricingPage() {
                     {plan.price}
                     {plan.cadence ? <span>{plan.cadence}</span> : null}
                   </p>
-                  <Link href={plan.name === "Scale" ? "/#contact" : "/portal"} className={styles.planButton}>
+                  <Link href={plan.name === "Scale" ? "/#contact" : "/signup"} className={styles.planButton}>
                     {plan.cta}
                   </Link>
                   {plan.notes ? <p className={styles.planNote}>{plan.notes}</p> : null}

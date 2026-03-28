@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useIsMobileViewport } from "@/app/portal/hooks/useIsMobileViewport";
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/components/ToastProvider";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
@@ -24,6 +25,7 @@ function getErrorMessage(error: unknown, fallback: string) {
 }
 
 export function UploadContent() {
+  const isMobile = useIsMobileViewport();
   const pathname = usePathname();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +38,7 @@ export function UploadContent() {
   const pendingTrainingDocsRef = useRef(new Set<DocType>());
 
   const retrainMutation = trpc.rag.enqueueRetrain.useMutation();
-  const route = pathname || "/portal/upload";
+  const route = pathname || "/upload";
   const emailDomain = getEmailDomain(userEmail);
 
   const fetchExisting = useCallback(async () => {
@@ -296,8 +298,21 @@ export function UploadContent() {
   }, [businessId, emailDomain, existing, retrainMutation, route, toast, userEmail]);
 
   return (
-    <div style={uploadStyles.page}>
-      <div style={uploadStyles.tipCard}>
+    <div
+      style={{
+        ...uploadStyles.page,
+        padding: isMobile ? "0 12px" : uploadStyles.page.padding,
+        gap: isMobile ? 16 : uploadStyles.page.gap,
+      }}
+    >
+      <div
+        style={{
+          ...uploadStyles.tipCard,
+          flexDirection: isMobile ? "column" : "row",
+          alignItems: isMobile ? "flex-start" : "center",
+          padding: isMobile ? "18px" : uploadStyles.tipCard.padding,
+        }}
+      >
         <div style={uploadStyles.tipIcon}>{UploadIcons.bot}</div>
         <div style={uploadStyles.tipContent}>
           <p style={uploadStyles.tipTitle}>Pro Tip: Better documents = smarter AI</p>
@@ -316,12 +331,19 @@ export function UploadContent() {
         </div>
       ) : null}
 
-      <div style={uploadStyles.grid}>
+      <div
+        style={{
+          ...uploadStyles.grid,
+          gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : uploadStyles.grid.gridTemplateColumns,
+          gap: isMobile ? 16 : uploadStyles.grid.gap,
+        }}
+      >
         {DOC_SLOTS.map((slot) => (
           <DocumentCard
             key={slot.key}
             slot={slot}
             current={existing[slot.key]}
+            compact={isMobile}
             busy={busy && retrainBusy !== slot.key}
             retrainBusy={retrainBusy === slot.key}
             onUpload={(file) => onUpload(slot.key, file)}

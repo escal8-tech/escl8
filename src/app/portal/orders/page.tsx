@@ -631,7 +631,7 @@ export function OrdersPageScreen({ mode }: { mode: OperationsPageMode }) {
 
             <div className="portal-ledger-table-wrap">
               <div className="portal-table-scroll">
-                <table className="table table-clickable portal-modern-table portal-ledger-table" style={{ width: "100%", tableLayout: "fixed" }}>
+                <table className="table table-clickable portal-modern-table portal-ledger-table portal-mobile-cards" style={{ width: "100%", tableLayout: "fixed" }}>
                   <thead>
                     {isRevenueRoute ? (
                       <tr>
@@ -673,10 +673,10 @@ export function OrdersPageScreen({ mode }: { mode: OperationsPageMode }) {
                         <tr key={order.id} onClick={() => setSelectedOrderId(order.id)} style={{ cursor: "pointer" }}>
                           {isRevenueRoute ? (
                             <>
-                              <td className="portal-ledger-table__ref">
+                              <td data-label="Ref" className="portal-ledger-table__ref">
                                 {order.id.startsWith("ord_") ? shortId(order.id) : `#${shortId(order.id)}`}
                               </td>
-                              <td>
+                              <td data-label="Guest">
                                 <div className="portal-entity-stack">
                                   <div className="portal-body-text">{order.customerName || order.recipientName || order.customerPhone || "-"}</div>
                                   <div className="portal-meta-text">
@@ -686,13 +686,13 @@ export function OrdersPageScreen({ mode }: { mode: OperationsPageMode }) {
                                   <div className="portal-meta-text">{formatOrderItems(snapshot)}</div>
                                 </div>
                               </td>
-                              <td>
+                              <td data-label="Status">
                                 <div className="portal-entity-stack">
                                   <span className={financeToneClass(order)}>{describeFinanceState(order, latestPayment)}</span>
                                   <div className="portal-ledger-status-note">Fulfilment · {formatOrderFulfillmentStatus(fulfillment)}</div>
                                 </div>
                               </td>
-                              <td>
+                              <td data-label="Timing">
                                 <div className="portal-entity-stack">
                                   <div className="portal-body-text">
                                     {formatDate(dateField === "createdAt" ? order.createdAt : order.updatedAt)}
@@ -700,49 +700,49 @@ export function OrdersPageScreen({ mode }: { mode: OperationsPageMode }) {
                                   <div className="portal-meta-text">Booked {formatDate(order.createdAt)}</div>
                                 </div>
                               </td>
-                              <td className="portal-ledger-table__money">{formatMoney(order.currency, expectedAmount)}</td>
-                              <td className="portal-ledger-table__money">{formatMoney(order.currency, collectedAmount)}</td>
-                              <td className="portal-meta-text">{formatMoney(order.currency, pendingAmount)}</td>
+                              <td data-label="Booked" className="portal-ledger-table__money">{formatMoney(order.currency, expectedAmount)}</td>
+                              <td data-label="Net Realized" className="portal-ledger-table__money">{formatMoney(order.currency, collectedAmount)}</td>
+                              <td data-label="Pending" className="portal-meta-text">{formatMoney(order.currency, pendingAmount)}</td>
                             </>
                           ) : (
                             <>
-                              <td>
+                              <td data-label="Order">
                                 <div className="portal-entity-stack">
                                   <div className="portal-id">#{shortId(order.id)}</div>
                                   <div className="portal-meta-text">{order.paymentReference || "-"}</div>
                                 </div>
                               </td>
-                              <td>
+                              <td data-label="Customer">
                                 <div className="portal-entity-stack">
                                   <div className="portal-body-text">{order.customerName || order.recipientName || order.customerPhone || "-"}</div>
                                   <div className="portal-meta-text">{order.recipientPhone || order.customerPhone || "No phone"}</div>
                                 </div>
                               </td>
-                              <td>
+                              <td data-label="Items">
                                 <span className="portal-body-text">{formatOrderItems(snapshot)}</span>
                               </td>
-                              <td>
+                              <td data-label="Finance">
                                 <div className="portal-entity-stack">
                                   <span className="portal-ledger-table__money">{formatMoney(order.currency, expectedAmount)}</span>
                                   <span className={financeToneClass(order)}>{describeFinanceState(order, latestPayment)}</span>
                                 </div>
                               </td>
-                              <td>
+                              <td data-label="Fulfilment">
                                 <div className="portal-entity-stack">
                                   <span className={fulfillmentToneClass(fulfillment)}>{formatOrderFulfillmentStatus(fulfillment)}</span>
                                   <div className="portal-meta-text">{describeOrderFulfillmentNextAction(fulfillment)}</div>
                                 </div>
                               </td>
-                              <td>
+                              <td data-label="Delivery">
                                 <div className="portal-entity-stack">
                                   <div className="portal-body-text">{getDeliverySummary(order)}</div>
                                   <div className="portal-meta-text">{getDeliveryHint(order)}</div>
                                 </div>
                               </td>
-                              <td className="portal-meta-text">{formatDate(order.updatedAt)}</td>
+                              <td data-label="Updated" className="portal-meta-text">{formatDate(order.updatedAt)}</td>
                             </>
                           )}
-                          <td onClick={(e) => e.stopPropagation()}>
+                          <td data-label="Actions" onClick={(e) => e.stopPropagation()}>
                             <div className="portal-ledger-actions">
                               <button
                                 type="button"

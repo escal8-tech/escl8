@@ -50,7 +50,7 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
   const sentRef = useRef(false);
 
   const canLaunch = useMemo(() => sdkReady && !busy, [sdkReady, busy]);
-  const route = pathname || "/portal/settings";
+  const route = pathname || "/settings";
   const emailDomain = useMemo(() => {
     const normalized = String(email || "").trim().toLowerCase();
     const atIndex = normalized.lastIndexOf("@");

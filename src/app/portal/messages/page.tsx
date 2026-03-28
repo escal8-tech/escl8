@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
+import { useIsMobileViewport } from "@/app/portal/hooks/useIsMobileViewport";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -93,9 +94,11 @@ function ProfileIcon({ name, size = 40 }: { name?: string | null; size?: number 
 }
 
 export default function MessagesPage() {
+  const isMobile = useIsMobileViewport();
   const { selectedPhoneNumberId } = usePhoneFilter();
   const searchParams = useSearchParams();
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [mobileView, setMobileView] = useState<"list" | "thread" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
@@ -174,6 +177,8 @@ export default function MessagesPage() {
     if (!activeThreadId) return null;
     return filteredThreads.find((t) => t.threadId === activeThreadId) ?? null;
   }, [activeThreadId, filteredThreads]);
+  const showThreadPanel = !isMobile || (mobileView === "thread" && Boolean(activeThreadId)) || (mobileView === null && Boolean(deepLinkThreadId));
+  const showThreadList = !isMobile || !showThreadPanel;
 
   const sessionWindowQuery = trpc.messages.getThreadSessionWindow.useQuery(
     { threadId: activeThreadId ?? "" },
@@ -261,14 +266,16 @@ export default function MessagesPage() {
   useEffect(() => {
     const data = messagesQuery.data;
     if (!data || cursor) return;
-    setAllMessages(data.messages);
-    setHasMore(data.hasMore);
-    setCursor(null);
-    setTimeout(() => {
-      if (messagesContainerRef.current) {
-        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-      }
-    }, 50);
+    queueMicrotask(() => {
+      setAllMessages(data.messages);
+      setHasMore(data.hasMore);
+      setCursor(null);
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      }, 50);
+    });
   }, [messagesQuery.data, cursor]);
 
   useEffect(() => {
@@ -278,15 +285,17 @@ export default function MessagesPage() {
     if (container) {
       prevScrollHeightRef.current = container.scrollHeight;
     }
-    setAllMessages((prev) => [...data.messages, ...prev]);
-    setHasMore(data.hasMore);
-    setIsLoadingMore(false);
-    setTimeout(() => {
-      if (container) {
-        const newScrollHeight = container.scrollHeight;
-        container.scrollTop = newScrollHeight - prevScrollHeightRef.current;
-      }
-    }, 10);
+    queueMicrotask(() => {
+      setAllMessages((prev) => [...data.messages, ...prev]);
+      setHasMore(data.hasMore);
+      setIsLoadingMore(false);
+      setTimeout(() => {
+        if (container) {
+          const newScrollHeight = container.scrollHeight;
+          container.scrollTop = newScrollHeight - prevScrollHeightRef.current;
+        }
+      }, 10);
+    });
   }, [olderMessagesQuery.data, isLoadingMore]);
 
   useEffect(() => {
@@ -306,6 +315,12 @@ export default function MessagesPage() {
       setCursor(allMessages[0].id);
     }
   }, [isLoadingMore, hasMore, allMessages]);
+
+  const handleSelectThread = useCallback((threadId: string) => {
+    resetActiveThreadState();
+    setSelectedThreadId(threadId);
+    setMobileView("thread");
+  }, [resetActiveThreadState]);
 
   const sessionWindow = useMemo(() => {
     const data = sessionWindowQuery.data;
@@ -364,23 +379,23 @@ export default function MessagesPage() {
     <main
       style={{
         height: "100%",
-        minHeight: 520,
-        display: "flex",
+        minHeight: isMobile ? 0 : 520,
+        display: isMobile ? "block" : "flex",
         background: "var(--background)",
       }}
     >
       {/* Left: Contact list */}
       <div
         style={{
-          width: 380,
-          borderRight: "1px solid var(--border)",
-          display: "flex",
+          width: isMobile ? "100%" : 380,
+          borderRight: isMobile ? "none" : "1px solid var(--border)",
+          display: showThreadList ? "flex" : "none",
           flexDirection: "column",
           minHeight: 0,
         }}
       >
         {/* Search */}
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
+        <div style={{ padding: isMobile ? "12px" : "12px 16px", borderBottom: "1px solid var(--border)" }}>
           <div
             style={{
               display: "flex",
@@ -399,7 +414,7 @@ export default function MessagesPage() {
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search or start new chat"
+              placeholder={isMobile ? "Search conversations" : "Search or start new chat"}
               style={{
                 flex: 1,
                 background: "transparent",
@@ -431,15 +446,12 @@ export default function MessagesPage() {
               return (
                 <div
                   key={t.threadId}
-                  onClick={() => {
-                    resetActiveThreadState();
-                    setSelectedThreadId(t.threadId);
-                  }}
+                  onClick={() => handleSelectThread(t.threadId)}
                   style={{
                     display: "flex",
                     alignItems: "center",
                     gap: 12,
-                    padding: "12px 16px",
+                    padding: isMobile ? "12px" : "12px 16px",
                     cursor: "pointer",
                     background: isSelected ? "rgba(255,255,255,0.05)" : "transparent",
                     borderBottom: "1px solid var(--border)",
@@ -457,7 +469,7 @@ export default function MessagesPage() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
                       <div
                         style={{
-                          fontSize: 15,
+                          fontSize: isMobile ? 14 : 15,
                           fontWeight: 500,
                           color: displayName ? "#c9a962" : "var(--foreground)",
                           whiteSpace: "nowrap",
@@ -497,7 +509,7 @@ export default function MessagesPage() {
       <div
         style={{
           flex: 1,
-          display: "flex",
+          display: showThreadPanel ? "flex" : "none",
           flexDirection: "column",
           minHeight: 0,
           background: "var(--background)",
@@ -568,18 +580,45 @@ export default function MessagesPage() {
                 display: "flex",
                 alignItems: "center",
                 gap: 12,
-                padding: "10px 16px",
+                padding: isMobile ? "12px" : "10px 16px",
                 borderBottom: "1px solid var(--border)",
                 background: "rgba(255,255,255,0.02)",
               }}
             >
+              {isMobile ? (
+                <button
+                  type="button"
+                  onClick={() => setMobileView("list")}
+                  aria-label="Back to conversations"
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "rgba(255,255,255,0.03)",
+                    color: "var(--foreground)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    cursor: "pointer",
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m15 18-6-6 6-6" />
+                  </svg>
+                </button>
+              ) : null}
               <ProfileIcon name={selectedThread?.customerName} size={40} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
                   style={{
-                    fontSize: 15,
+                    fontSize: isMobile ? 14 : 15,
                     fontWeight: 500,
                     color: selectedThread?.customerName ? "#c9a962" : "var(--foreground)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                   }}
                 >
                   {selectedThread?.customerName ||
@@ -612,10 +651,11 @@ export default function MessagesPage() {
               <div
                 style={{
                   display: "flex",
-                  alignItems: "center",
+                  alignItems: isMobile ? "flex-start" : "center",
                   justifyContent: "space-between",
+                  flexDirection: isMobile ? "column" : "row",
                   gap: 12,
-                  padding: "10px 16px",
+                  padding: isMobile ? "10px 12px" : "10px 16px",
                   borderBottom: "1px solid var(--border)",
                   background: "rgba(201, 169, 98, 0.10)",
                 }}
@@ -627,7 +667,7 @@ export default function MessagesPage() {
                   {latestTicketNotice.summary ? ` ${latestTicketNotice.summary}` : ""}
                 </div>
                 <Link
-                  href={`/portal/tickets?type=${encodeURIComponent(latestTicketNotice.typeKey)}`}
+                  href={`/tickets?type=${encodeURIComponent(latestTicketNotice.typeKey)}`}
                   style={{
                     flexShrink: 0,
                     fontSize: 12,
@@ -648,7 +688,7 @@ export default function MessagesPage() {
               style={{
                 flex: 1,
                 overflow: "auto",
-                padding: "16px 60px",
+                padding: isMobile ? "12px" : "16px 60px",
                 minHeight: 0,
                 background: "linear-gradient(180deg, rgba(0,0,0,0.1) 0%, transparent 100%)",
               }}
@@ -704,7 +744,7 @@ export default function MessagesPage() {
                       >
                         <div
                           style={{
-                            maxWidth: 520,
+                            maxWidth: isMobile ? "86%" : 520,
                             padding: "8px 12px",
                             borderRadius: inbound ? "0 8px 8px 8px" : "8px 0 8px 8px",
                             background: inbound
@@ -739,7 +779,7 @@ export default function MessagesPage() {
             <div
               style={{
                 borderTop: "1px solid var(--border)",
-                padding: "10px 14px",
+                padding: isMobile ? "10px 12px 14px" : "10px 14px",
                 background: "rgba(255,255,255,0.02)",
               }}
             >
@@ -782,6 +822,7 @@ export default function MessagesPage() {
                     color: "var(--foreground)",
                     padding: "0 12px",
                     outline: "none",
+                    minWidth: 0,
                   }}
                 />
                 <button

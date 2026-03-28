@@ -52,14 +52,16 @@ function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId
   useEffect(() => {
     const data = pagedCustomersQuery.data as CustomerRow[] | undefined;
     if (!isLoadingMore || !data) return;
-    setExtraRows((prev) => {
-      const map = new Map<string, CustomerRow>();
-      for (const row of prev) map.set(row.id, row);
-      for (const row of data) map.set(row.id, row);
-      return Array.from(map.values());
+    queueMicrotask(() => {
+      setExtraRows((prev) => {
+        const map = new Map<string, CustomerRow>();
+        for (const row of prev) map.set(row.id, row);
+        for (const row of data) map.set(row.id, row);
+        return Array.from(map.values());
+      });
+      setLastPageHadMore(data.length === PAGE_SIZE);
+      setIsLoadingMore(false);
     });
-    setLastPageHadMore(data.length === PAGE_SIZE);
-    setIsLoadingMore(false);
   }, [isLoadingMore, pagedCustomersQuery.data]);
 
   const listRows = useMemo(() => {
@@ -143,7 +145,7 @@ function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId
         onClose={() => {
           setSelectedCustomerId(null);
           if (queryCustomerId) {
-            router.replace("/portal/customers");
+            router.replace("/customers");
           }
         }}
       />

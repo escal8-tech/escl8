@@ -173,23 +173,23 @@ export default function DashboardPage() {
   }, [ticketCountersQ.data, ticketTypesQ.data]);
 
   return (
-    <div className="fade-in">
-      <div className="grid grid-cols-4 gap-4" style={{ marginBottom: "var(--space-6)" }}>
-        <div className="chart-card" style={{ gridColumn: "span 2", minHeight: 360, display: "flex", flexDirection: "column" }}>
+    <div className="fade-in portal-dashboard-shell">
+      <div className="portal-dashboard-grid portal-dashboard-grid--analytics" style={{ marginBottom: "var(--space-6)" }}>
+        <div className="chart-card portal-dashboard-card portal-dashboard-card--activity" style={{ minHeight: 360, display: "flex", flexDirection: "column" }}>
           <div className="chart-header" style={{ marginBottom: "var(--space-2)" }}>
             <h3 className="chart-title">Request Activity</h3>
             <div className="badge badge-default">Last 30 days</div>
           </div>
-          <div style={{ flex: 1, minHeight: 0 }}>
+          <div className="portal-dashboard-chart-panel" style={{ flex: 1, minHeight: 0 }}>
             <ActivityAreaChart data={timeSeries.slice(-30)} />
           </div>
         </div>
 
-        <div className="chart-card" style={{ minHeight: 420, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+        <div className="chart-card portal-dashboard-card" style={{ minHeight: 420, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
           <div className="chart-header" style={{ marginBottom: "var(--space-2)" }}>
             <h3 className="chart-title">Status Breakdown</h3>
           </div>
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+          <div className="portal-dashboard-chart-panel" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
             <MiniDonutChart data={statusBreakdown} size={220} centerTop={`${successPct}%`} centerBottom="SUCCESS" />
           </div>
           <div className="chart-legend" style={{ justifyContent: "center" }}>
@@ -202,11 +202,11 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="chart-card" style={{ minHeight: 420, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+        <div className="chart-card portal-dashboard-card" style={{ minHeight: 420, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
           <div className="chart-header" style={{ marginBottom: "var(--space-2)" }}>
             <h3 className="chart-title">Sentiment Breakdown</h3>
           </div>
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+          <div className="portal-dashboard-chart-panel" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
             <MiniDonutChart data={sentimentSeries} size={220} centerTop={`${positivePct}%`} centerBottom="POSITIVE" />
           </div>
           <div className="chart-legend" style={{ justifyContent: "center" }}>
@@ -220,7 +220,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="portal-dashboard-grid portal-dashboard-grid--secondary">
         <RecentRequestsCard
           rows={rows}
           pendingIds={pendingIds}
@@ -228,12 +228,12 @@ export default function DashboardPage() {
           onToggleBot={(customerId, botPaused) => togglePause.mutate({ customerId, botPaused })}
         />
 
-        <div className="card" style={{ gridColumn: "span 2", height: 520, display: "flex", flexDirection: "column" }}>
+        <div className="card portal-dashboard-card portal-dashboard-card--counters" style={{ height: 520, display: "flex", flexDirection: "column" }}>
           <div className="card-header">
             <h3 className="card-title">Ticket Counters</h3>
             <p className="card-description">Open + in-progress tickets by type (resolved/closed excluded)</p>
           </div>
-          <div className="card-body" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <div className="card-body portal-dashboard-chart-panel" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
             {ticketTypeCounters.length === 0 ? (
               <div className="text-muted">No ticket types available.</div>
             ) : (

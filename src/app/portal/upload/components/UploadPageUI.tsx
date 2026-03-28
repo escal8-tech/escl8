@@ -121,6 +121,7 @@ export const uploadStyles: Record<string, CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     height: "100%",
+    minWidth: 0,
   },
   cardHeader: { display: "flex", alignItems: "center", gap: 14, padding: "20px 24px", borderBottom: "1px solid var(--border)" },
   cardIcon: {
@@ -134,7 +135,7 @@ export const uploadStyles: Record<string, CSSProperties> = {
     background: "rgba(184, 134, 11, 0.2)",
     flexShrink: 0,
   },
-  cardInfo: { flex: 1, display: "flex", flexDirection: "column", gap: 4 },
+  cardInfo: { flex: 1, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 },
   cardTitle: { margin: 0, fontSize: 16, fontWeight: 600, color: "var(--foreground)" },
   cardHint: { fontSize: 13, color: "var(--muted)", lineHeight: 1.4 },
   cardStatus: { display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600 },
