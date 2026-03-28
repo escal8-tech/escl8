@@ -659,7 +659,7 @@ export default function TicketsPage() {
                         {itemsCell}
                         {priorityCell}
                         {slaCell}
-                        <td data-label="Status" style={{ textAlign: "right" }}>
+                        <td data-label="Status" style={{ textAlign: "right", paddingRight: 12 }}>
                           <TableSelect
                             className="portal-ticket-row-select"
                             style={{ width: "100%", maxWidth: 136 }}
@@ -683,7 +683,7 @@ export default function TicketsPage() {
                             ))}
                           </TableSelect>
                         </td>
-                        <td data-label="Outcome">
+                        <td data-label="Outcome" style={{ paddingLeft: 12 }}>
                           <TableSelect
                             className="portal-ticket-row-select"
                             style={{ width: "100%", maxWidth: 136 }}

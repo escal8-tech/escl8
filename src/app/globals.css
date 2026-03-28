@@ -3323,8 +3323,8 @@ html.portal-theme-light {
 
 .portal-topbar-control--filter {
   min-width: 0;
-  flex: 0 1 clamp(148px, 20vw, 240px);
-  max-width: min(240px, 100%);
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 
 .portal-topbar-control--filter .portal-select-trigger {
