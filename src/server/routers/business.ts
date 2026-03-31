@@ -195,7 +195,6 @@ export const businessRouter = router({
         paymentMethod: z.enum(["manual", "cod", "bank_qr"]),
         currency: z.string().min(1).max(10),
         bankQr: z.object({
-          enabled: z.boolean(),
           showQr: z.boolean(),
           showBankDetails: z.boolean(),
           qrImageUrl: z.string().optional(),
