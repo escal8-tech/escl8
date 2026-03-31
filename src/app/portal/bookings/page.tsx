@@ -5,7 +5,15 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { trpc } from "@/utils/trpc";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { onAuthStateChanged } from "firebase/auth";
-import { generateSlots } from "./components/slotUtils";
+import {
+  addDaysToDateKey,
+  formatDateKey,
+  formatTimeInTimeZone,
+  generateSlots,
+  getDateKeyInTimeZone,
+  getTodayDateKeyInTimeZone,
+  getWeekDateKeys,
+} from "./components/slotUtils";
 import type { Booking, Slot } from "./components/types";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 
@@ -595,18 +603,24 @@ function BookingModal({
   slot,
   bookings,
   timeslotMinutes,
+  timeZone,
   onClose,
 }: {
   slot: Slot;
   bookings: Booking[];
   timeslotMinutes: number;
+  timeZone: string;
   onClose: () => void;
 }) {
   const formatTime = (date: Date) =>
-    date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+    formatTimeInTimeZone(date, timeZone, true);
 
   const formatDate = (date: Date) =>
-    date.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+    formatDateKey(getDateKeyInTimeZone(date, timeZone), {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    });
 
   const getInitials = (phone: string | null | undefined) => {
     if (!phone) return "?";
@@ -648,6 +662,7 @@ function BookingModal({
                       <span style={styles.bookingLabel}>{Icons.clock}</span>
                       <span>
                         {new Date(b.startTime).toLocaleTimeString([], {
+                          timeZone,
                           hour: "2-digit",
                           minute: "2-digit",
                         })}{" "}
@@ -686,7 +701,7 @@ function BookingModal({
 ───────────────────────────────────────────────────────────────────────────── */
 export default function BookingsPage() {
   const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().slice(0, 10)
+    getTodayDateKeyInTimeZone("UTC")
   );
   const [email, setEmail] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
@@ -739,6 +754,11 @@ export default function BookingsPage() {
     [bookings.data, normalizeBookings]
   );
 
+  const businessTimezone = useMemo(() => {
+    const tz = (biz.data?.settings as Record<string, unknown> | null | undefined)?.timezone;
+    return typeof tz === "string" && tz.trim() ? tz.trim() : "UTC";
+  }, [biz.data?.settings]);
+
   const slots = useMemo(() => {
     return generateSlots(
       selectedDate,
@@ -748,21 +768,16 @@ export default function BookingsPage() {
         minutes: biz.data?.bookingTimeslotMinutes ?? 60,
         capacity: biz.data?.bookingUnitCapacity,
       },
-      normalizedBookings
+      normalizedBookings,
+      businessTimezone,
     );
-  }, [normalizedBookings, biz.data, selectedDate]);
+  }, [normalizedBookings, biz.data, selectedDate, businessTimezone]);
 
   // Group slots by time label
   const slotsByLabel = useMemo(() => {
     const m = new Map<string, Slot[]>();
-    const fmt = (d: Date) =>
-      d.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      });
     for (const s of slots) {
-      const label = fmt(s.start);
+      const label = s.label;
       const arr = m.get(label) || [];
       arr.push(s);
       m.set(label, arr);
@@ -781,26 +796,15 @@ export default function BookingsPage() {
 
   // Get week days for header
   const weekDays = useMemo(() => {
-    if (slots.length === 0) return [];
-    const first = slots[0].start;
-    const monday = new Date(first);
-    const dayIdx = monday.getDay();
-    const diffToMonday = dayIdx === 0 ? -6 : 1 - dayIdx;
-    monday.setDate(monday.getDate() + diffToMonday);
-
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      return d;
-    });
-  }, [slots]);
+    return getWeekDateKeys(selectedDate);
+  }, [selectedDate]);
 
   // Stats
   const stats = useMemo(() => {
     const total = normalizedBookings.length;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayDateKeyInTimeZone(businessTimezone);
     const todayBookings = normalizedBookings.filter(
-      (b) => new Date(b.startTime).toISOString().slice(0, 10) === today
+      (b) => getDateKeyInTimeZone(b.startTime, businessTimezone) === today
     ).length;
     const totalUnits = normalizedBookings.reduce(
       (sum, b) => sum + (b.unitsBooked || 1),
@@ -815,21 +819,13 @@ export default function BookingsPage() {
           )
         : 0;
     return { total, todayBookings, totalUnits, avgUtilization };
-  }, [normalizedBookings, slots, biz.data?.bookingUnitCapacity]);
+  }, [normalizedBookings, slots, biz.data?.bookingUnitCapacity, businessTimezone]);
 
   const goPrevWeek = () =>
-    setSelectedDate(
-      new Date(new Date(selectedDate).getTime() - 7 * 86400000)
-        .toISOString()
-        .slice(0, 10)
-    );
+    setSelectedDate(addDaysToDateKey(selectedDate, -7));
   const goNextWeek = () =>
-    setSelectedDate(
-      new Date(new Date(selectedDate).getTime() + 7 * 86400000)
-        .toISOString()
-        .slice(0, 10)
-    );
-  const goToday = () => setSelectedDate(new Date().toISOString().slice(0, 10));
+    setSelectedDate(addDaysToDateKey(selectedDate, 7));
+  const goToday = () => setSelectedDate(getTodayDateKeyInTimeZone(businessTimezone));
 
   const timeslotMinutes = biz.data?.bookingTimeslotMinutes ?? 60;
 
@@ -848,21 +844,13 @@ export default function BookingsPage() {
     [normalizedBookings, timeslotMinutes]
   );
 
-  const isToday = (date: Date) => {
-    const today = new Date();
-    return (
-      date.getDate() === today.getDate() &&
-      date.getMonth() === today.getMonth() &&
-      date.getFullYear() === today.getFullYear()
-    );
-  };
+  const isToday = (dateKey: string) => dateKey === getTodayDateKeyInTimeZone(businessTimezone);
 
   const formatWeekRange = () => {
     if (weekDays.length === 0) return "";
     const first = weekDays[0];
     const last = weekDays[6];
-    const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-    return `${first.toLocaleDateString(undefined, opts)} - ${last.toLocaleDateString(undefined, opts)}, ${last.getFullYear()}`;
+    return `${formatDateKey(first, { month: "short", day: "numeric" })} - ${formatDateKey(last, { month: "short", day: "numeric" })}, ${last.slice(0, 4)}`;
   };
 
   return (
@@ -978,10 +966,10 @@ export default function BookingsPage() {
           >
             <span style={styles.dayName}>Time</span>
           </div>
-          {weekDays.map((day, i) => (
-            <div key={i} style={styles.calendarHeaderCell}>
+          {weekDays.map((day) => (
+            <div key={day} style={styles.calendarHeaderCell}>
               <span style={styles.dayName}>
-                {day.toLocaleDateString(undefined, { weekday: "short" })}
+                {formatDateKey(day, { weekday: "short" })}
               </span>
               <span
                 style={{
@@ -989,7 +977,7 @@ export default function BookingsPage() {
                   ...(isToday(day) ? styles.todayCircle : {}),
                 }}
               >
-                {day.getDate()}
+                {String(Number(day.slice(-2)))}
               </span>
             </div>
           ))}
@@ -1053,6 +1041,7 @@ export default function BookingsPage() {
           slot={selectedSlot}
           bookings={getBookingsForSlot(selectedSlot)}
           timeslotMinutes={timeslotMinutes}
+          timeZone={businessTimezone}
           onClose={() => setSelectedSlot(null)}
         />
       )}
