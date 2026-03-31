@@ -17,6 +17,7 @@ import { businessProcedure, router } from "../trpc";
 import { businesses, customers, messageThreads, orderEvents, orderPayments, orders, threadMessages, whatsappIdentities } from "../../../drizzle/schema";
 import { type BotSendMessage } from "../services/botApi";
 import {
+  buildOrderApprovalEmail,
   buildOrderApprovalMessages,
   buildFulfillmentStatusMessages,
   buildManualCollectionMessages,
@@ -238,6 +239,38 @@ function whatsappWindowState(lastInboundAt: Date | string | null | undefined) {
     whatsappWindowExpiresAt: expiresAt,
     whatsappWindowOpen: expiresAt.getTime() > Date.now(),
   };
+}
+
+function parseThreadTimestamp(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
+async function getThreadWhatsappWindowState(tx: any, threadId: string | null | undefined) {
+  const normalizedThreadId = String(threadId ?? "").trim();
+  if (!normalizedThreadId) return whatsappWindowState(null);
+
+  const [agg] = await tx
+    .select({
+      lastInboundAt: sql<Date | null>`
+        max(${threadMessages.createdAt})
+        filter (
+          where lower(coalesce(${threadMessages.direction}, '')) in ('inbound', 'incoming', 'customer', 'user')
+        )
+      `,
+      lastMessageAt: sql<Date | null>`max(${threadMessages.createdAt})`,
+    })
+    .from(threadMessages)
+    .where(eq(threadMessages.threadId, normalizedThreadId));
+
+  const lastInboundAt = parseThreadTimestamp(agg?.lastInboundAt);
+  const lastMessageAt = parseThreadTimestamp(agg?.lastMessageAt);
+  return whatsappWindowState(lastInboundAt ?? lastMessageAt);
 }
 
 type OrderAnalyticsDateField = "updatedAt" | "createdAt";
@@ -1105,19 +1138,7 @@ export const ordersRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "Payment details can only be resent while the order is awaiting payment." });
         }
 
-        const lastInboundRows = orderRow.threadId
-          ? await tx
-              .select({ createdAt: threadMessages.createdAt })
-              .from(threadMessages)
-              .where(and(eq(threadMessages.threadId, orderRow.threadId), eq(threadMessages.direction, "inbound")))
-              .orderBy(desc(threadMessages.createdAt))
-              .limit(1)
-          : [];
-        const lastInboundAt = lastInboundRows[0]?.createdAt ?? null;
-        const windowState = whatsappWindowState(lastInboundAt);
-        if (!windowState.whatsappWindowOpen) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "The WhatsApp 24-hour window is closed for this customer." });
-        }
+        const windowState = await getThreadWhatsappWindowState(tx, orderRow.threadId);
 
         const contactContext = await resolveOrderNotificationContext({
           businessId: ctx.businessId,
@@ -1128,8 +1149,16 @@ export const ordersRouter = router({
           customerEmail: orderRow.customerEmail ?? null,
           customerPhone: orderRow.customerPhone ?? null,
         });
-        if (!contactContext.whatsappIdentityId || !sanitizePhoneDigits(contactContext.approvalRecipient)) {
+        const shouldSendViaWhatsapp = windowState.whatsappWindowOpen;
+        const recipient = sanitizePhoneDigits(contactContext.approvalRecipient);
+        if (shouldSendViaWhatsapp && (!contactContext.whatsappIdentityId || !recipient)) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "This order is missing WhatsApp routing details." });
+        }
+        if (!shouldSendViaWhatsapp && !contactContext.customerEmail) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Payment details require the customer's email after the WhatsApp window closes.",
+          });
         }
 
         const orderSettings = buildStoredOrderFlowSettings(orderRow);
@@ -1142,24 +1171,59 @@ export const ordersRouter = router({
           paymentReference: orderRow.paymentReference,
           orderSettings,
         });
-        const notification = await enqueueWhatsAppOutboxMessages(tx, {
-          businessId: ctx.businessId,
-          entityType: "order",
-          entityId: orderRow.id,
-          customerId: orderRow.customerId ?? null,
-          threadId: contactContext.threadId ?? null,
-          whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
-          recipient: contactContext.approvalRecipient,
-          recipientSource: contactContext.recipientSource,
-          whatsappIdentitySource: contactContext.whatsappIdentitySource,
-          source: "order_payment_details_manual_send",
-          idempotencyBaseKey: `order:${orderRow.id}:payment_details_manual_send:${now.toISOString()}`,
-          messages,
+        const emailMessage = buildOrderApprovalEmail({
+          orderId: orderRow.id,
+          customerName: contactContext.customerName ?? orderRow.customerName,
+          itemsSummary: formatOrderItemsSummary(snapshot),
+          expectedAmount: orderRow.expectedAmount?.toString() ?? null,
+          paymentReference: orderRow.paymentReference,
+          orderSettings,
         });
+        const notification = shouldSendViaWhatsapp
+          ? await enqueueWhatsAppOutboxMessages(tx, {
+              businessId: ctx.businessId,
+              entityType: "order",
+              entityId: orderRow.id,
+              customerId: orderRow.customerId ?? null,
+              threadId: contactContext.threadId ?? null,
+              whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
+              recipient: contactContext.approvalRecipient,
+              recipientSource: contactContext.recipientSource,
+              whatsappIdentitySource: contactContext.whatsappIdentitySource,
+              source: "order_payment_details_manual_send",
+              idempotencyBaseKey: `order:${orderRow.id}:payment_details_manual_send:${now.toISOString()}`,
+              messages,
+            })
+          : {
+              ok: true as const,
+              error: null,
+              recipientSource: null,
+              whatsappIdentitySource: null,
+              idempotencyKeys: [] as string[],
+            };
+        const emailNotification = shouldSendViaWhatsapp
+          ? {
+              ok: true as const,
+              error: null,
+              idempotencyKeys: [] as string[],
+            }
+          : await enqueueEmailOutboxMessages(tx, {
+              businessId: ctx.businessId,
+              entityType: "order",
+              entityId: orderRow.id,
+              customerId: orderRow.customerId ?? null,
+              recipientEmail: contactContext.customerEmail,
+              source: "order_payment_details_manual_send_email",
+              idempotencyBaseKey: `order:${orderRow.id}:payment_details_manual_send_email:${now.toISOString()}`,
+              messages: [emailMessage],
+            });
+        const deliveryChannel: "whatsapp" | "email" = shouldSendViaWhatsapp ? "whatsapp" : "email";
 
         return {
           orderRow,
           notification,
+          emailNotification,
+          deliveryChannel,
           windowState,
           botDisplayPhoneNumber: contactContext.whatsappIdentityId,
         };
@@ -1168,28 +1232,46 @@ export const ordersRouter = router({
       let delivery = {
         ok: true,
         error: null as string | null,
+        channel: result.deliveryChannel as "whatsapp" | "email",
         recipientSource: result.notification.recipientSource,
         whatsappIdentitySource: result.notification.whatsappIdentitySource,
       };
-      if (!result.notification.ok) {
+      if (result.deliveryChannel === "whatsapp" && !result.notification.ok) {
         delivery = {
           ok: false,
           error: result.notification.error,
+          channel: "whatsapp" as const,
           recipientSource: result.notification.recipientSource,
           whatsappIdentitySource: result.notification.whatsappIdentitySource,
         };
-      } else if (result.notification.idempotencyKeys.length) {
-        const drained = await drainBusinessOutbox({
-          businessId: ctx.businessId,
-          idempotencyKeys: result.notification.idempotencyKeys,
-          limit: result.notification.idempotencyKeys.length,
-        });
+      } else if (result.deliveryChannel === "email" && !result.emailNotification.ok) {
         delivery = {
-          ok: drained.ok,
-          error: drained.error,
-          recipientSource: result.notification.recipientSource,
-          whatsappIdentitySource: result.notification.whatsappIdentitySource,
+          ok: false,
+          error: result.emailNotification.error,
+          channel: "email" as const,
+          recipientSource: null,
+          whatsappIdentitySource: null,
         };
+      } else {
+        const idempotencyKeys =
+          result.deliveryChannel === "whatsapp"
+            ? result.notification.idempotencyKeys
+            : result.emailNotification.idempotencyKeys;
+        if (idempotencyKeys.length) {
+          const drained = await drainBusinessOutbox({
+            businessId: ctx.businessId,
+            idempotencyKeys,
+            limit: idempotencyKeys.length,
+          });
+          delivery = {
+            ok: drained.ok,
+            error: drained.error,
+            channel: result.deliveryChannel,
+            recipientSource: result.deliveryChannel === "whatsapp" ? result.notification.recipientSource : null,
+            whatsappIdentitySource:
+              result.deliveryChannel === "whatsapp" ? result.notification.whatsappIdentitySource : null,
+          };
+        }
       }
       await flushBusinessOutbox(ctx.businessId);
 
@@ -1202,6 +1284,7 @@ export const ordersRouter = router({
         actorLabel: ctx.userEmail ?? "user",
         payload: {
           recipient: maskPhoneNumber(result.orderRow.customerPhone ?? null),
+          deliveryChannel: delivery.channel,
           recipientSource: delivery.recipientSource,
           whatsappIdentitySource: delivery.whatsappIdentitySource,
           windowExpiresAt: result.windowState.whatsappWindowExpiresAt?.toISOString() ?? null,
@@ -1222,6 +1305,7 @@ export const ordersRouter = router({
         status: result.orderRow.status,
         attributes: {
           delivery_ok: delivery.ok,
+          delivery_channel: delivery.channel,
           delivery_phone_source: delivery.recipientSource,
           delivery_identity_source: delivery.whatsappIdentitySource,
         },
@@ -1230,6 +1314,7 @@ export const ordersRouter = router({
       return {
         ok: delivery.ok,
         error: delivery.error,
+        deliveryChannel: delivery.channel,
         orderId: result.orderRow.id,
         windowExpiresAt: result.windowState.whatsappWindowExpiresAt,
       };

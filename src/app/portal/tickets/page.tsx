@@ -199,7 +199,9 @@ export default function TicketsPage() {
         title: "Ticket approved",
         message:
           String(result.order?.paymentMethod || "").toLowerCase() === "bank_qr"
-            ? "Ticket was approved and payment instructions were sent to the customer."
+            ? result.delivery?.channel === "email"
+              ? "Ticket was approved and payment instructions were emailed to the customer."
+              : "Ticket was approved and payment instructions were sent to the customer."
             : "Ticket was approved successfully.",
       });
     },
