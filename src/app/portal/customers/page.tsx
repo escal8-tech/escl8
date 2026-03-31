@@ -135,6 +135,7 @@ function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId
       )}
 
       <CustomerDrawer
+        key={customer?.id ?? "none"}
         customer={customer ?? null}
         onClose={() => {
           setSelectedCustomerId(null);

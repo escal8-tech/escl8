@@ -12,6 +12,7 @@ import {
   supportTicketEvents,
   supportTicketTypes,
   supportTickets,
+  threadMessages,
 } from "../../../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 import { normalizeOrderFlowSettings } from "@/lib/order-settings";
@@ -65,6 +66,7 @@ const ORDER_TICKET_OPERATION_LIMITS = {
     message: "This ticket is being actioned too frequently. Please wait a moment and try again.",
   },
 } as const;
+const WHATSAPP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function normalizeKey(input: string): string {
   return input.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -170,6 +172,23 @@ function maskPhoneNumber(value: string | null | undefined): string | null {
   if (!digits) return null;
   if (digits.length <= 4) return digits;
   return `${"*".repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
+}
+
+function whatsappWindowState(lastInboundAt: Date | string | null | undefined) {
+  const parsed = lastInboundAt ? new Date(lastInboundAt) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) {
+    return {
+      lastInboundAt: null as Date | null,
+      whatsappWindowExpiresAt: null as Date | null,
+      whatsappWindowOpen: false,
+    };
+  }
+  const expiresAt = new Date(parsed.getTime() + WHATSAPP_WINDOW_MS);
+  return {
+    lastInboundAt: parsed,
+    whatsappWindowExpiresAt: expiresAt,
+    whatsappWindowOpen: expiresAt.getTime() > Date.now(),
+  };
 }
 
 type CustomerContext = {
@@ -1193,15 +1212,28 @@ export const ticketsRouter = router({
         customerName: ticket.customerName,
         customerPhone: ticket.customerPhone,
       });
+      const lastInboundRows = contactContext.threadId
+        ? await db
+            .select({ createdAt: threadMessages.createdAt })
+            .from(threadMessages)
+            .where(and(eq(threadMessages.threadId, contactContext.threadId), eq(threadMessages.direction, "inbound")))
+            .orderBy(desc(threadMessages.createdAt))
+            .limit(1)
+        : [];
+      const lastInboundAt = lastInboundRows[0]?.createdAt ?? null;
+      const windowState = whatsappWindowState(lastInboundAt);
+      const approvalRecipient = sanitizePhoneDigits(contactContext.approvalRecipient);
+      const hasImmediateWhatsAppDeliveryPath = Boolean(
+        contactContext.whatsappIdentityId && approvalRecipient && windowState.whatsappWindowOpen,
+      );
       const customerEmail = coalesceText(requestedCustomerEmail, contactContext.customerEmail);
-      if (!customerEmail) {
+      if (!customerEmail && !hasImmediateWhatsAppDeliveryPath) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Order approval requires the customer's email. Add it to the ticket fields before approving.",
+          message:
+            "Order approval requires the customer's email when the WhatsApp 24-hour window is closed or WhatsApp routing is unavailable.",
         });
       }
-      const approvalRecipient =
-        orderSettings.paymentMethod === "bank_qr" ? sanitizePhoneDigits(contactContext.approvalRecipient) : "";
       if (orderSettings.paymentMethod === "bank_qr" && (!contactContext.whatsappIdentityId || !approvalRecipient)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
