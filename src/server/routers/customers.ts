@@ -272,13 +272,18 @@ export const customersRouter = router({
       const { id, ...updates } = input;
 
       const updateData: Record<string, unknown> = { updatedAt: new Date() };
+      const normalizeOptionalText = (value: string | undefined) => {
+        if (value === undefined) return undefined;
+        const normalized = String(value ?? "").trim();
+        return normalized || null;
+      };
 
       if (updates.notes !== undefined) updateData.notes = updates.notes;
       if (updates.tags !== undefined) updateData.tags = updates.tags;
       if (updates.status !== undefined) updateData.status = updates.status;
-      if (updates.name !== undefined) updateData.name = updates.name;
-      if (updates.email !== undefined) updateData.email = updates.email;
-      if (updates.phone !== undefined) updateData.phone = updates.phone;
+      if (updates.name !== undefined) updateData.name = normalizeOptionalText(updates.name);
+      if (updates.email !== undefined) updateData.email = normalizeOptionalText(updates.email)?.toLowerCase() ?? null;
+      if (updates.phone !== undefined) updateData.phone = normalizeOptionalText(updates.phone);
       if (updates.isHighIntent !== undefined) updateData.isHighIntent = updates.isHighIntent;
 
       const [row] = await db

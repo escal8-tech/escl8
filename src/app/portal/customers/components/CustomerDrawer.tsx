@@ -17,6 +17,11 @@ export function CustomerDrawer({ customer, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<"overview" | "requests" | "notes">(
     "overview"
   );
+  const [profileName, setProfileName] = useState(customer?.name ?? "");
+  const [profileEmail, setProfileEmail] = useState(customer?.email ?? "");
+  const [profilePhone, setProfilePhone] = useState(customer?.phone ?? "");
+  const [profileStatus, setProfileStatus] = useState(customer?.status ?? "active");
+  const [profileHighIntent, setProfileHighIntent] = useState(Boolean(customer?.isHighIntent));
   const [notes, setNotes] = useState(customer?.notes ?? "");
   const [tags, setTags] = useState<string[]>(customer?.tags ?? []);
   const [newTag, setNewTag] = useState("");
@@ -27,6 +32,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
     onSuccess: () => {
       utils.customers.list.invalidate();
       utils.customers.listPage.invalidate();
+      utils.customers.get.invalidate();
     },
   });
 
@@ -39,6 +45,9 @@ export function CustomerDrawer({ customer, onClose }: Props) {
   if (!customer) return null;
 
   const sourceConfig = SOURCE_CONFIG[customer.source as Source];
+  const displayName = profileName.trim() || customer.name || "Unknown Customer";
+  const displayPhone = profilePhone.trim() || customer.phone || "";
+  const displayEmail = profileEmail.trim() || customer.email;
   const threadHref = (() => {
     const params = new URLSearchParams();
     if (customer.id) params.set("customerId", customer.id);
@@ -147,10 +156,47 @@ export function CustomerDrawer({ customer, onClose }: Props) {
   };
 
   const handleStatusChange = (status: string) => {
+    setProfileStatus(status);
+  };
+
+  const handleSaveProfile = () => {
     updateMutation.mutate({
       id: customer.id,
-      status,
+      name: profileName,
+      email: profileEmail,
+      phone: profilePhone,
+      status: profileStatus,
+      isHighIntent: profileHighIntent,
     });
+  };
+
+  const normalizedProfileName = profileName.trim();
+  const normalizedProfileEmail = profileEmail.trim().toLowerCase();
+  const normalizedProfilePhone = profilePhone.trim();
+  const isProfileDirty =
+    normalizedProfileName !== (customer.name ?? "") ||
+    normalizedProfileEmail !== (customer.email ?? "") ||
+    normalizedProfilePhone !== (customer.phone ?? "") ||
+    profileStatus !== customer.status ||
+    profileHighIntent !== Boolean(customer.isHighIntent);
+
+  const sectionLabelStyle: React.CSSProperties = {
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    color: "var(--muted)",
+    display: "block",
+    marginBottom: 8,
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 8,
+    border: "1px solid var(--border)",
+    background: "rgba(0, 0, 0, 0.2)",
+    color: "var(--foreground)",
+    fontSize: 14,
   };
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
@@ -221,12 +267,12 @@ export function CustomerDrawer({ customer, onClose }: Props) {
               flexShrink: 0,
             }}
           >
-            {customer.name?.[0]?.toUpperCase() ?? customer.externalId.slice(-2)}
+            {displayName?.[0]?.toUpperCase() ?? customer.externalId.slice(-2)}
           </div>
           <div style={{ flex: 1 }}>
             <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 2 }}>
-              {customer.name || "Unknown Customer"}
-              {customer.isHighIntent && (
+              {displayName}
+              {profileHighIntent && (
                 <span
                   style={{
                     marginLeft: 8,
@@ -243,9 +289,9 @@ export function CustomerDrawer({ customer, onClose }: Props) {
               )}
             </h2>
             <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 6 }}>
-              {customer.phone ? `+${customer.phone}` : customer.externalId}
-              {customer.email && (
-                <span style={{ marginLeft: 8 }}>• {customer.email}</span>
+              {displayPhone ? `+${displayPhone}` : customer.externalId}
+              {displayEmail && (
+                <span style={{ marginLeft: 8 }}>• {displayEmail}</span>
               )}
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -321,32 +367,109 @@ export function CustomerDrawer({ customer, onClose }: Props) {
         <div style={{ flex: 1, overflow: "auto", padding: 24 }}>
           {activeTab === "overview" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              {/* Status Selector */}
               <div>
-                <label
+                <label style={sectionLabelStyle}>Customer Details</label>
+                <div
                   style={{
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    color: "var(--muted)",
-                    display: "block",
-                    marginBottom: 8,
+                    background: "rgba(0, 0, 0, 0.2)",
+                    borderRadius: 12,
+                    padding: 14,
+                    display: "grid",
+                    gap: 12,
                   }}
                 >
-                  Status
-                </label>
-                <PortalSelect
-                  value={customer.status}
-                  onValueChange={handleStatusChange}
-                  options={[
-                    { value: "active", label: "Active" },
-                    { value: "vip", label: "VIP" },
-                    { value: "blocked", label: "Blocked" },
-                    { value: "archived", label: "Archived" },
-                  ]}
-                  style={{ width: "100%" }}
-                  ariaLabel="Customer status"
-                />
+                  <div>
+                    <label style={sectionLabelStyle}>Name</label>
+                    <input
+                      type="text"
+                      value={profileName}
+                      onChange={(e) => setProfileName(e.target.value)}
+                      placeholder="Customer name"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={sectionLabelStyle}>Email</label>
+                    <input
+                      type="email"
+                      value={profileEmail}
+                      onChange={(e) => setProfileEmail(e.target.value)}
+                      placeholder="customer@example.com"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={sectionLabelStyle}>Phone</label>
+                    <input
+                      type="text"
+                      value={profilePhone}
+                      onChange={(e) => setProfilePhone(e.target.value)}
+                      placeholder="60123456789"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) auto",
+                      gap: 12,
+                      alignItems: "end",
+                    }}
+                  >
+                    <div>
+                      <label style={sectionLabelStyle}>Status</label>
+                      <PortalSelect
+                        value={profileStatus}
+                        onValueChange={handleStatusChange}
+                        options={[
+                          { value: "active", label: "Active" },
+                          { value: "vip", label: "VIP" },
+                          { value: "blocked", label: "Blocked" },
+                          { value: "archived", label: "Archived" },
+                        ]}
+                        style={{ width: "100%" }}
+                        ariaLabel="Customer status"
+                      />
+                    </div>
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        color: "var(--foreground)",
+                        fontSize: 13,
+                        fontWeight: 500,
+                        paddingBottom: 10,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={profileHighIntent}
+                        onChange={(e) => setProfileHighIntent(e.target.checked)}
+                      />
+                      High intent
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <button
+                      onClick={handleSaveProfile}
+                      disabled={!isProfileDirty || updateMutation.isPending}
+                      style={{
+                        padding: "10px 18px",
+                        borderRadius: 8,
+                        border: "none",
+                        background: "var(--gold)",
+                        color: "#000",
+                        cursor: !isProfileDirty || updateMutation.isPending ? "not-allowed" : "pointer",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        opacity: !isProfileDirty || updateMutation.isPending ? 0.6 : 1,
+                      }}
+                    >
+                      {updateMutation.isPending ? "Saving..." : "Save Customer"}
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Stats Grid */}
@@ -386,18 +509,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
 
               {/* Activity */}
               <div>
-                <label
-                  style={{
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    color: "var(--muted)",
-                    display: "block",
-                    marginBottom: 8,
-                  }}
-                >
-                  Activity
-                </label>
+                <label style={sectionLabelStyle}>Activity</label>
                 <div
                   style={{
                     background: "rgba(0, 0, 0, 0.2)",
@@ -425,18 +537,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
 
               {/* Last Sentiment */}
               <div>
-                <label
-                  style={{
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    color: "var(--muted)",
-                    display: "block",
-                    marginBottom: 8,
-                  }}
-                >
-                  Last Sentiment
-                </label>
+                <label style={sectionLabelStyle}>Last Sentiment</label>
                 <span
                   style={{
                     color: getSentimentColor(customer.lastSentiment),
@@ -560,18 +661,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               {/* Tags */}
               <div>
-                <label
-                  style={{
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    color: "var(--muted)",
-                    display: "block",
-                    marginBottom: 8,
-                  }}
-                >
-                  Tags
-                </label>
+                <label style={sectionLabelStyle}>Tags</label>
                 <div
                   style={{
                     display: "flex",
@@ -649,18 +739,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
 
               {/* Notes */}
               <div>
-                <label
-                  style={{
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    color: "var(--muted)",
-                    display: "block",
-                    marginBottom: 8,
-                  }}
-                >
-                  Notes
-                </label>
+                <label style={sectionLabelStyle}>Notes</label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
