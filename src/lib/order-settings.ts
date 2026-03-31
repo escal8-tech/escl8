@@ -5,7 +5,6 @@ export type OrderFlowSettings = {
   paymentMethod: OrderPaymentMethod;
   currency: string;
   bankQr: {
-    enabled: boolean;
     showQr: boolean;
     showBankDetails: boolean;
     qrImageUrl: string;
@@ -21,7 +20,6 @@ export const DEFAULT_ORDER_FLOW_SETTINGS: OrderFlowSettings = {
   paymentMethod: "manual",
   currency: "LKR",
   bankQr: {
-    enabled: false,
     showQr: true,
     showBankDetails: true,
     qrImageUrl: "",
@@ -69,14 +67,12 @@ export function normalizeOrderFlowSettings(raw: unknown): OrderFlowSettings {
       : asObject(root.orders);
   const bankQrRaw = asObject(nested.bankQr);
   const paymentMethod = asPaymentMethod(nested.paymentMethod);
-  const bankQrEnabled = asBool(bankQrRaw.enabled, paymentMethod === "bank_qr");
 
   return {
     ticketToOrderEnabled: asBool(nested.ticketToOrderEnabled, DEFAULT_ORDER_FLOW_SETTINGS.ticketToOrderEnabled),
     paymentMethod,
     currency: asString(nested.currency, DEFAULT_ORDER_FLOW_SETTINGS.currency).toUpperCase().slice(0, 10),
     bankQr: {
-      enabled: bankQrEnabled,
       showQr: asBool(bankQrRaw.showQr, DEFAULT_ORDER_FLOW_SETTINGS.bankQr.showQr),
       showBankDetails: asBool(bankQrRaw.showBankDetails, DEFAULT_ORDER_FLOW_SETTINGS.bankQr.showBankDetails),
       qrImageUrl: asString(bankQrRaw.qrImageUrl),
@@ -99,7 +95,6 @@ export function mergeOrderFlowSettings(
       paymentMethod: nextOrderFlow.paymentMethod,
       currency: nextOrderFlow.currency,
       bankQr: {
-        enabled: nextOrderFlow.bankQr.enabled,
         showQr: nextOrderFlow.bankQr.showQr,
         showBankDetails: nextOrderFlow.bankQr.showBankDetails,
         qrImageUrl: nextOrderFlow.bankQr.qrImageUrl,

@@ -136,15 +136,6 @@ function assertTicketAwaitingOrderDecision(input: {
   }
 }
 
-function bankQrMessagingConfigured(settings: ReturnType<typeof normalizeOrderFlowSettings>): boolean {
-  if (settings.paymentMethod !== "bank_qr") return true;
-  const bankQr = settings.bankQr;
-  const hasQr = bankQr.showQr && Boolean(bankQr.qrImageUrl);
-  const hasBankDetails =
-    bankQr.showBankDetails && Boolean(bankQr.bankName || bankQr.accountName || bankQr.accountNumber || bankQr.accountInstructions);
-  return hasQr || hasBankDetails;
-}
-
 function coalesceText(...values: Array<string | null | undefined>): string | null {
   for (const value of values) {
     const normalized = String(value ?? "").trim();
@@ -1215,12 +1206,6 @@ export const ticketsRouter = router({
         status: ticket.status,
         outcome: ticket.outcome,
       });
-      if (orderSettings.paymentMethod === "bank_qr" && !bankQrMessagingConfigured(orderSettings)) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Bank or QR payment details are not configured in General settings.",
-        });
-      }
 
       const fields = asRecord(ticket.fields);
       const requestedCustomerEmail = extractCustomerEmail(fields);

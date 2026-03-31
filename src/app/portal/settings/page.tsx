@@ -584,7 +584,6 @@ export default function SettingsPage() {
   const [ticketToOrderEnabled, setTicketToOrderEnabled] = useState(false);
   const [orderPaymentMethod, setOrderPaymentMethod] = useState<OrderPaymentMethod>("manual");
   const [orderCurrency, setOrderCurrency] = useState("LKR");
-  const [bankQrEnabled, setBankQrEnabled] = useState(false);
   const [bankQrShowQr, setBankQrShowQr] = useState(true);
   const [bankQrShowBankDetails, setBankQrShowBankDetails] = useState(true);
   const [bankQrImageUrl, setBankQrImageUrl] = useState("");
@@ -663,7 +662,6 @@ export default function SettingsPage() {
       setTicketToOrderEnabled(Boolean(orderSettings?.ticketToOrderEnabled));
       setOrderPaymentMethod((orderSettings?.paymentMethod as OrderPaymentMethod | undefined) ?? "manual");
       setOrderCurrency(orderSettings?.currency ?? "LKR");
-      setBankQrEnabled(Boolean(orderSettings?.bankQr?.enabled));
       setBankQrShowQr(Boolean(orderSettings?.bankQr?.showQr));
       setBankQrShowBankDetails(Boolean(orderSettings?.bankQr?.showBankDetails));
       setBankQrImageUrl(orderSettings?.bankQr?.qrImageUrl ?? "");
@@ -841,7 +839,6 @@ export default function SettingsPage() {
       paymentMethod: orderPaymentMethod,
       currency: orderCurrency.trim() || "LKR",
       bankQr: {
-        enabled: bankQrEnabled,
         showQr: bankQrShowQr,
         showBankDetails: bankQrShowBankDetails,
         qrImageUrl: bankQrImageUrl.trim(),
@@ -1240,14 +1237,6 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div style={styles.toggleRow}>
-            <div style={styles.toggleInfo}>
-              <span style={styles.toggleLabel}>Bank / QR Payment Block</span>
-              <span style={styles.toggleDescription}>Required when payment method is Bank / QR.</span>
-            </div>
-            <Toggle checked={bankQrEnabled} onChange={setBankQrEnabled} />
-          </div>
-
           <div style={styles.formGrid}>
             <div style={styles.formGroup}>
               <label style={styles.label}>QR Image URL</label>
@@ -1295,14 +1284,14 @@ export default function SettingsPage() {
             <div style={styles.toggleRow}>
               <div style={styles.toggleInfo}>
                 <span style={styles.toggleLabel}>Show QR</span>
-                <span style={styles.toggleDescription}>Send the QR image when the order is approved.</span>
+                <span style={styles.toggleDescription}>Send the QR image when a QR URL is configured.</span>
               </div>
               <Toggle checked={bankQrShowQr} onChange={setBankQrShowQr} />
             </div>
             <div style={styles.toggleRow}>
               <div style={styles.toggleInfo}>
                 <span style={styles.toggleLabel}>Show Bank Details</span>
-                <span style={styles.toggleDescription}>Send bank transfer details in WhatsApp.</span>
+                <span style={styles.toggleDescription}>Send bank transfer details when any bank fields are configured.</span>
               </div>
               <Toggle checked={bankQrShowBankDetails} onChange={setBankQrShowBankDetails} />
             </div>
