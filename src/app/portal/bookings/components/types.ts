@@ -13,4 +13,6 @@ export type Slot = {
   end: Date;
   count: number;
   capacity: number;
+  label: string;
+  minutesStart: number;
 };
