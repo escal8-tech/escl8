@@ -353,7 +353,6 @@ export default function TicketsPage() {
     try {
       await approveOrderTicket.mutateAsync({
         id: ticket.id,
-        expectedUpdatedAt: toMutationDate(getTicketValue(ticket, "updatedAt", "updated_at")),
       });
     } catch {
       // Toast is handled by the mutation onError path.
@@ -372,7 +371,6 @@ export default function TicketsPage() {
     try {
       await denyOrderTicket.mutateAsync({
         id: denyDialogTicket.id,
-        expectedUpdatedAt: toMutationDate(getTicketValue(denyDialogTicket, "updatedAt", "updated_at")),
         reason: normalizedReason,
       });
     } catch {

@@ -1174,11 +1174,6 @@ export const ticketsRouter = router({
       if (!ticket) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
       }
-      assertExpectedUpdatedAt({
-        entityLabel: "ticket",
-        expectedUpdatedAt: input.expectedUpdatedAt,
-        actualUpdatedAt: ticket.updatedAt,
-      });
       validateTicketOrderFlow({
         ticketTypeKey: ticket.ticketTypeKey,
         ticketFlowEnabled: orderSettings.ticketToOrderEnabled,
@@ -1560,11 +1555,6 @@ export const ticketsRouter = router({
       if (!ticket) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
       }
-      assertExpectedUpdatedAt({
-        entityLabel: "ticket",
-        expectedUpdatedAt: input.expectedUpdatedAt,
-        actualUpdatedAt: ticket.updatedAt,
-      });
       validateTicketOrderFlow({
         ticketTypeKey: ticket.ticketTypeKey,
         ticketFlowEnabled: orderSettings.ticketToOrderEnabled,
