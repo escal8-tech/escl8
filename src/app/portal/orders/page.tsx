@@ -381,10 +381,13 @@ export function OrdersPageScreen({ mode }: { mode: OperationsPageMode }) {
 
   const handleSendPaymentDetails = async (order: OrderRow) => {
     try {
-      await sendPaymentDetails.mutateAsync({ orderId: order.id });
+      const result = await sendPaymentDetails.mutateAsync({ orderId: order.id });
       showSuccessToast(toast, {
         title: "Payment details sent",
-        message: "The bot sent the payment instructions in the active WhatsApp thread.",
+        message:
+          result.deliveryChannel === "email"
+            ? "Payment instructions were emailed to the customer."
+            : "The bot sent the payment instructions in the active WhatsApp thread.",
       });
     } catch (error) {
       showErrorToast(toast, {

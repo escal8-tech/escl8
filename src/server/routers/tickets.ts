@@ -20,10 +20,11 @@ import { resolveInitialFulfillmentStatus } from "@/lib/order-operations";
 import { DEFAULT_TICKET_TYPE_KEYS, ensureDefaultTicketTypes } from "../services/ticketDefaults";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
-import { drainBusinessOutbox, enqueueWhatsAppOutboxMessages } from "@/server/services/messageOutbox";
+import { drainBusinessOutbox, enqueueEmailOutboxMessages, enqueueWhatsAppOutboxMessages } from "@/server/services/messageOutbox";
 import { assertExpectedUpdatedAt, assertOperationThrottle, getStaffActorKey } from "@/server/operationalHardening";
 import { type BotSendMessage } from "../services/botApi";
 import {
+  buildOrderApprovalEmail,
   buildOrderApprovalMessages,
   computeOrderExpectedAmount,
   extractOrderFulfillmentSeed,
@@ -189,6 +190,38 @@ function whatsappWindowState(lastInboundAt: Date | string | null | undefined) {
     whatsappWindowExpiresAt: expiresAt,
     whatsappWindowOpen: expiresAt.getTime() > Date.now(),
   };
+}
+
+function parseThreadTimestamp(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
+async function getThreadWhatsappWindowState(tx: any, threadId: string | null | undefined) {
+  const normalizedThreadId = String(threadId ?? "").trim();
+  if (!normalizedThreadId) return whatsappWindowState(null);
+
+  const [agg] = await tx
+    .select({
+      lastInboundAt: sql<Date | null>`
+        max(${threadMessages.createdAt})
+        filter (
+          where lower(coalesce(${threadMessages.direction}, '')) in ('inbound', 'incoming', 'customer', 'user')
+        )
+      `,
+      lastMessageAt: sql<Date | null>`max(${threadMessages.createdAt})`,
+    })
+    .from(threadMessages)
+    .where(eq(threadMessages.threadId, normalizedThreadId));
+
+  const lastInboundAt = parseThreadTimestamp(agg?.lastInboundAt);
+  const lastMessageAt = parseThreadTimestamp(agg?.lastMessageAt);
+  return whatsappWindowState(lastInboundAt ?? lastMessageAt);
 }
 
 type CustomerContext = {
@@ -1207,34 +1240,8 @@ export const ticketsRouter = router({
         customerName: ticket.customerName,
         customerPhone: ticket.customerPhone,
       });
-      const lastInboundRows = contactContext.threadId
-        ? await db
-            .select({ createdAt: threadMessages.createdAt })
-            .from(threadMessages)
-            .where(and(eq(threadMessages.threadId, contactContext.threadId), eq(threadMessages.direction, "inbound")))
-            .orderBy(desc(threadMessages.createdAt))
-            .limit(1)
-        : [];
-      const lastInboundAt = lastInboundRows[0]?.createdAt ?? null;
-      const windowState = whatsappWindowState(lastInboundAt);
-      const approvalRecipient = sanitizePhoneDigits(contactContext.approvalRecipient);
-      const hasImmediateWhatsAppDeliveryPath = Boolean(
-        contactContext.whatsappIdentityId && approvalRecipient && windowState.whatsappWindowOpen,
-      );
       const customerEmail = coalesceText(requestedCustomerEmail, contactContext.customerEmail);
-      if (!customerEmail && !hasImmediateWhatsAppDeliveryPath) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message:
-            "Order approval requires the customer's email when the WhatsApp 24-hour window is closed or WhatsApp routing is unavailable.",
-        });
-      }
-      if (orderSettings.paymentMethod === "bank_qr" && (!contactContext.whatsappIdentityId || !approvalRecipient)) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Ticket is missing WhatsApp routing details for payment delivery.",
-        });
-      }
+      const approvalRecipient = sanitizePhoneDigits(contactContext.approvalRecipient);
       const now = new Date();
       const nextOrderStatus = orderSettings.paymentMethod === "bank_qr" ? "awaiting_payment" : "approved";
       const initialFulfillmentStatus = resolveInitialFulfillmentStatus(orderSettings.paymentMethod);
@@ -1260,6 +1267,42 @@ export const ticketsRouter = router({
       const result = await db.transaction(async (tx) => {
         await lockWorkflowKey(tx, `${ctx.businessId}::ticket::${ticket.id}`);
         await enforceOrderTicketOperationThrottle(tx, ctx, "approve", ticket.id);
+
+        const [currentTicket] = await tx
+          .select({
+            id: supportTickets.id,
+            ticketTypeKey: supportTickets.ticketTypeKey,
+            status: supportTickets.status,
+            outcome: supportTickets.outcome,
+          })
+          .from(supportTickets)
+          .where(and(eq(supportTickets.id, ticket.id), eq(supportTickets.businessId, ctx.businessId)))
+          .limit(1);
+        if (!currentTicket) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
+        }
+        validateTicketOrderFlow({
+          ticketTypeKey: currentTicket.ticketTypeKey,
+          ticketFlowEnabled: orderSettings.ticketToOrderEnabled,
+        });
+        assertTicketAwaitingOrderDecision({
+          status: currentTicket.status,
+          outcome: currentTicket.outcome,
+        });
+        const windowState = await getThreadWhatsappWindowState(tx, contactContext.threadId);
+        const shouldSendApprovalViaWhatsapp = windowState.whatsappWindowOpen;
+        if (shouldSendApprovalViaWhatsapp && (!contactContext.whatsappIdentityId || !approvalRecipient)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Ticket is missing WhatsApp routing details for payment delivery.",
+          });
+        }
+        if (!shouldSendApprovalViaWhatsapp && !customerEmail) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Order approval requires the customer's email after the WhatsApp window closes.",
+          });
+        }
 
         const [existingOrder] = await tx
           .select({
@@ -1348,15 +1391,14 @@ export const ticketsRouter = router({
             and(
               eq(supportTickets.id, ticket.id),
               eq(supportTickets.businessId, ctx.businessId),
-              eq(supportTickets.updatedAt, ticket.updatedAt),
             ),
           )
           .returning();
 
         if (!ticketRow) {
           throw new TRPCError({
-            code: "CONFLICT",
-            message: "This ticket was updated by another staff member. Refresh and try again.",
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to approve order ticket.",
           });
         }
 
@@ -1368,25 +1410,61 @@ export const ticketsRouter = router({
           paymentReference: orderRow?.paymentReference ?? paymentReference,
           orderSettings,
         });
-        const notification = await enqueueWhatsAppOutboxMessages(tx, {
-          businessId: ctx.businessId,
-          entityType: "order",
-          entityId: orderRow?.id ?? orderId,
-          customerId: contactContext.customerId,
-          threadId: contactContext.threadId,
-          whatsappIdentityId: contactContext.whatsappIdentityId,
-          recipient: contactContext.approvalRecipient,
-          recipientSource: contactContext.recipientSource,
-          whatsappIdentitySource: contactContext.whatsappIdentitySource,
-          source: "order_ticket_approval",
-          idempotencyBaseKey: `order_ticket:${ticket.id}:approval:${orderRow?.id ?? orderId}`,
-          messages: approvalMessages,
+        const approvalEmail = buildOrderApprovalEmail({
+          orderId: orderRow?.id ?? orderId,
+          customerName: contactContext.customerName ?? ticket.customerName,
+          itemsSummary,
+          expectedAmount,
+          paymentReference: orderRow?.paymentReference ?? paymentReference,
+          orderSettings,
         });
+        const notification = shouldSendApprovalViaWhatsapp
+          ? await enqueueWhatsAppOutboxMessages(tx, {
+              businessId: ctx.businessId,
+              entityType: "order",
+              entityId: orderRow?.id ?? orderId,
+              customerId: contactContext.customerId,
+              threadId: contactContext.threadId,
+              whatsappIdentityId: contactContext.whatsappIdentityId,
+              recipient: contactContext.approvalRecipient,
+              recipientSource: contactContext.recipientSource,
+              whatsappIdentitySource: contactContext.whatsappIdentitySource,
+              source: "order_ticket_approval",
+              idempotencyBaseKey: `order_ticket:${ticket.id}:approval:${orderRow?.id ?? orderId}`,
+              messages: approvalMessages,
+            })
+          : {
+              ok: true as const,
+              error: null,
+              recipientSource: null,
+              whatsappIdentitySource: null,
+              idempotencyKeys: [] as string[],
+            };
+        const emailNotification = shouldSendApprovalViaWhatsapp
+          ? {
+              ok: true as const,
+              error: null,
+              idempotencyKeys: [] as string[],
+            }
+          : await enqueueEmailOutboxMessages(tx, {
+              businessId: ctx.businessId,
+              entityType: "order",
+              entityId: orderRow?.id ?? orderId,
+              customerId: contactContext.customerId,
+              recipientEmail: customerEmail,
+              source: "order_ticket_approval_email",
+              idempotencyBaseKey: `order_ticket:${ticket.id}:approval_email:${orderRow?.id ?? orderId}`,
+              messages: [approvalEmail],
+            });
+        const deliveryChannel: "whatsapp" | "email" = shouldSendApprovalViaWhatsapp ? "whatsapp" : "email";
 
         return {
           order: orderRow ?? null,
           ticket: ticketRow ?? null,
           notification,
+          emailNotification,
+          deliveryChannel,
+          windowState,
         };
       });
 
@@ -1429,33 +1507,52 @@ export const ticketsRouter = router({
       let delivery: {
         ok: boolean;
         error: string | null;
+        channel: "whatsapp" | "email";
         recipientSource: string | null;
         whatsappIdentitySource: string | null;
       } = {
         ok: true,
         error: null,
+        channel: result.deliveryChannel,
         recipientSource: result.notification.recipientSource,
         whatsappIdentitySource: result.notification.whatsappIdentitySource,
       };
-      if (!result.notification.ok) {
+      if (result.deliveryChannel === "whatsapp" && !result.notification.ok) {
         delivery = {
           ok: false,
           error: result.notification.error,
+          channel: "whatsapp",
           recipientSource: result.notification.recipientSource,
           whatsappIdentitySource: result.notification.whatsappIdentitySource,
         };
-      } else if (result.notification.idempotencyKeys.length) {
-        const drained = await drainBusinessOutbox({
-          businessId: ctx.businessId,
-          idempotencyKeys: result.notification.idempotencyKeys,
-          limit: result.notification.idempotencyKeys.length,
-        });
+      } else if (result.deliveryChannel === "email" && !result.emailNotification.ok) {
         delivery = {
-          ok: drained.ok,
-          error: drained.error,
-          recipientSource: result.notification.recipientSource,
-          whatsappIdentitySource: result.notification.whatsappIdentitySource,
+          ok: false,
+          error: result.emailNotification.error,
+          channel: "email",
+          recipientSource: null,
+          whatsappIdentitySource: null,
         };
+      } else {
+        const idempotencyKeys =
+          result.deliveryChannel === "whatsapp"
+            ? result.notification.idempotencyKeys
+            : result.emailNotification.idempotencyKeys;
+        if (idempotencyKeys.length) {
+          const drained = await drainBusinessOutbox({
+            businessId: ctx.businessId,
+            idempotencyKeys,
+            limit: idempotencyKeys.length,
+          });
+          delivery = {
+            ok: drained.ok,
+            error: drained.error,
+            channel: result.deliveryChannel,
+            recipientSource: result.deliveryChannel === "whatsapp" ? result.notification.recipientSource : null,
+            whatsappIdentitySource:
+              result.deliveryChannel === "whatsapp" ? result.notification.whatsappIdentitySource : null,
+          };
+        }
       }
       await flushBusinessOutbox(ctx.businessId);
       if (!delivery.ok) {
@@ -1503,6 +1600,7 @@ export const ticketsRouter = router({
         status: result.order.status,
         attributes: {
           delivery_ok: delivery.ok,
+          delivery_channel: delivery.channel,
           order_id: result.order.id,
           payment_method: result.order.paymentMethod,
           delivery_phone_source: delivery.recipientSource,
@@ -1578,6 +1676,28 @@ export const ticketsRouter = router({
         await lockWorkflowKey(tx, `${ctx.businessId}::ticket::${input.id}`);
         await enforceOrderTicketOperationThrottle(tx, ctx, "deny", input.id);
 
+        const [currentTicket] = await tx
+          .select({
+            id: supportTickets.id,
+            ticketTypeKey: supportTickets.ticketTypeKey,
+            status: supportTickets.status,
+            outcome: supportTickets.outcome,
+          })
+          .from(supportTickets)
+          .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
+          .limit(1);
+        if (!currentTicket) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
+        }
+        validateTicketOrderFlow({
+          ticketTypeKey: currentTicket.ticketTypeKey,
+          ticketFlowEnabled: orderSettings.ticketToOrderEnabled,
+        });
+        assertTicketAwaitingOrderDecision({
+          status: currentTicket.status,
+          outcome: currentTicket.outcome,
+        });
+
         const [existingOrder] = await tx
           .select({
             id: orders.id,
@@ -1607,15 +1727,14 @@ export const ticketsRouter = router({
             and(
               eq(supportTickets.id, input.id),
               eq(supportTickets.businessId, ctx.businessId),
-              eq(supportTickets.updatedAt, ticket.updatedAt),
             ),
           )
           .returning();
 
         if (!ticketRow) {
           throw new TRPCError({
-            code: "CONFLICT",
-            message: "This ticket was updated by another staff member. Refresh and try again.",
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to deny order ticket.",
           });
         }
 
