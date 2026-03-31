@@ -16,15 +16,190 @@ type MetaPhoneNumberLookup = {
   id?: string;
   display_phone_number?: string;
   verified_name?: string;
-  waba_id?: string | { id?: string | null } | null;
+  status?: string;
+  code_verification_status?: string;
+  last_onboarded_time?: string;
 };
 
-function normalizeWabaId(value: MetaPhoneNumberLookup["waba_id"] | string | undefined): string | null {
+type MetaPhoneNumberEdge = {
+  data?: Array<{
+    id?: string;
+    display_phone_number?: string;
+    verified_name?: string;
+  }>;
+  paging?: {
+    next?: string | null;
+  };
+};
+
+type MetaWabaList = {
+  data?: Array<{
+    id?: string;
+    name?: string;
+    phone_numbers?: MetaPhoneNumberEdge;
+  }>;
+  paging?: {
+    next?: string | null;
+  };
+};
+
+function normalizeGraphId(value: string | null | undefined): string | null {
   if (typeof value === "string" && value.trim()) return value.trim();
-  if (value && typeof value === "object" && typeof value.id === "string" && value.id.trim()) {
-    return value.id.trim();
-  }
   return null;
+}
+
+function hasPhoneNumber(edge: MetaPhoneNumberEdge | null | undefined, phoneNumberId: string) {
+  return Boolean(edge?.data?.some((item) => item.id?.trim() === phoneNumberId));
+}
+
+function nextPagingUrl(
+  paging: { next?: string | null } | null | undefined,
+): string | null {
+  return typeof paging?.next === "string" && paging.next.trim() ? paging.next.trim() : null;
+}
+
+async function wabaOwnsPhoneNumber(args: {
+  wabaId: string | null | undefined;
+  phoneNumberId: string;
+  metaGraphApiVersion: string;
+  accessTokens: Array<string | undefined>;
+}) {
+  const normalizedWabaId = normalizeGraphId(args.wabaId);
+  if (!normalizedWabaId) return false;
+
+  for (const accessToken of args.accessTokens) {
+    if (!accessToken) continue;
+    let endpoint: string | null = graphEndpoint(args.metaGraphApiVersion, `/${normalizedWabaId}/phone_numbers`);
+
+    while (endpoint) {
+      try {
+        const page = await graphJson<MetaPhoneNumberEdge>({
+          endpoint,
+          method: "GET",
+          accessToken,
+          query: endpoint.includes("?")
+            ? undefined
+            : {
+                fields: "id,display_phone_number,verified_name",
+                limit: 200,
+              },
+        });
+
+        if (hasPhoneNumber(page, args.phoneNumberId)) {
+          return true;
+        }
+
+        endpoint = nextPagingUrl(page.paging);
+      } catch (error) {
+        if (error instanceof MetaGraphError) {
+          endpoint = null;
+          break;
+        }
+        throw error;
+      }
+    }
+  }
+
+  return false;
+}
+
+async function discoverWabaIdForPhoneNumber(args: {
+  phoneNumberId: string;
+  metaGraphApiVersion: string;
+  accessTokens: Array<string | undefined>;
+}) {
+  const edges = [
+    "client_whatsapp_business_accounts",
+    "owned_whatsapp_business_accounts",
+    "assigned_whatsapp_business_accounts",
+  ] as const;
+
+  for (const accessToken of args.accessTokens) {
+    if (!accessToken) continue;
+
+    for (const edge of edges) {
+      let endpoint: string | null = graphEndpoint(args.metaGraphApiVersion, `/me/${edge}`);
+
+      while (endpoint) {
+        try {
+          const page = await graphJson<MetaWabaList>({
+            endpoint,
+            method: "GET",
+            accessToken,
+            query: endpoint.includes("?")
+              ? undefined
+              : {
+                  fields: "id,name,phone_numbers{id,display_phone_number,verified_name}",
+                  limit: 200,
+                },
+          });
+
+          const match = page.data?.find((waba) => hasPhoneNumber(waba.phone_numbers, args.phoneNumberId));
+          const normalizedMatchId = normalizeGraphId(match?.id);
+          if (normalizedMatchId) {
+            return normalizedMatchId;
+          }
+
+          endpoint = nextPagingUrl(page.paging);
+        } catch (error) {
+          if (error instanceof MetaGraphError) {
+            endpoint = null;
+            break;
+          }
+          throw error;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+async function resolveAuthoritativeWabaId(args: {
+  requestedWabaId?: string;
+  requestedWabaIds?: string[];
+  phoneNumberId: string;
+  metaGraphApiVersion: string;
+  systemUserToken: string;
+  businessToken: string;
+}) {
+  const accessTokens = [args.systemUserToken, args.businessToken];
+  const requestedWabaIds = Array.from(
+    new Set(
+      [args.requestedWabaId, ...(args.requestedWabaIds || [])]
+        .map((value) => normalizeGraphId(value))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  for (const requestedWabaId of requestedWabaIds) {
+    if (
+      await wabaOwnsPhoneNumber({
+        wabaId: requestedWabaId,
+        phoneNumberId: args.phoneNumberId,
+        metaGraphApiVersion: args.metaGraphApiVersion,
+        accessTokens,
+      })
+    ) {
+      return requestedWabaId;
+    }
+  }
+
+  return discoverWabaIdForPhoneNumber({
+    phoneNumberId: args.phoneNumberId,
+    metaGraphApiVersion: args.metaGraphApiVersion,
+    accessTokens: [args.businessToken, args.systemUserToken],
+  });
+}
+
+function normalizeRequestedWabaIds(values: string[] | undefined): string[] {
+  return Array.from(
+    new Set(
+      (values || [])
+        .map((value) => normalizeGraphId(value))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
 }
 
 // This endpoint receives the authorization code from Facebook Embedded Signup
@@ -36,6 +211,12 @@ function normalizeWabaId(value: MetaPhoneNumberLookup["waba_id"] | string | unde
 // - Persist the connection against the authenticated user
 
 export async function POST(req: Request) {
+  let requestedWabaIdForLogs: string | undefined;
+  let requestedWabaIdsForLogs: string[] | undefined;
+  let phoneNumberIdForLogs: string | undefined;
+  let metaBusinessPortfolioIdForLogs: string | undefined;
+  let embeddedSignupEventForLogs: string | undefined;
+
   try {
     const rl = checkRateLimit(req, {
       name: "whatsapp_sync",
@@ -68,16 +249,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const { code, wabaId, phoneNumberId, email, wabaCurrency } = (await req.json()) as {
+    const { code, wabaId, wabaIds, phoneNumberId, email, wabaCurrency, metaBusinessPortfolioId, embeddedSignupEvent } = (await req.json()) as {
       code?: string;
       wabaId?: string;
+      wabaIds?: string[];
       phoneNumberId?: string;
       email?: string;
       wabaCurrency?: string;
+      metaBusinessPortfolioId?: string;
+      embeddedSignupEvent?: string;
     };
 
-    if (!code || !wabaId || !phoneNumberId) {
-      return NextResponse.json({ ok: false, error: "Missing code, wabaId or phoneNumberId" }, { status: 400 });
+    requestedWabaIdForLogs = wabaId;
+    requestedWabaIdsForLogs = wabaIds;
+    phoneNumberIdForLogs = phoneNumberId;
+    metaBusinessPortfolioIdForLogs = metaBusinessPortfolioId;
+    embeddedSignupEventForLogs = embeddedSignupEvent;
+
+    if (!code || !phoneNumberId) {
+      return NextResponse.json({ ok: false, error: "Missing code or phoneNumberId" }, { status: 400 });
     }
 
     if (email && email !== authedEmail) {
@@ -166,18 +356,38 @@ export async function POST(req: Request) {
       );
     }
 
+    const requestedWabaIds = normalizeRequestedWabaIds(wabaIds);
+
     // Resolve the authoritative WABA from the phone number before subscribing.
     // Embedded signup should already provide it, but we trust the server-side lookup
     // because subscribed_apps must be posted against the WABA object, not the phone.
     const phoneNumber = await graphJson<MetaPhoneNumberLookup>({
       endpoint: graphEndpoint(metaGraphApiVersion, `/${phoneNumberId}`),
       method: "GET",
-      accessToken: businessToken,
+      accessToken: metaSystemUserToken,
       query: {
-        fields: "id,display_phone_number,verified_name,waba_id",
+        fields: "id,display_phone_number,verified_name,status,code_verification_status,last_onboarded_time",
       },
     });
-    const resolvedWabaId = normalizeWabaId(phoneNumber.waba_id) ?? wabaId;
+    const resolvedWabaId = await resolveAuthoritativeWabaId({
+      requestedWabaId: wabaId,
+      requestedWabaIds,
+      phoneNumberId,
+      metaGraphApiVersion,
+      systemUserToken: metaSystemUserToken,
+      businessToken,
+    });
+
+    if (!resolvedWabaId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "WhatsApp setup could not be completed. Please retry the sync.",
+          code: "WABA_RESOLUTION_FAILED",
+        },
+        { status: 502, headers: rl.headers },
+      );
+    }
 
     // Step 2 (Solution Partner): Share your credit line with the customer.
     let creditShareRes: { allocation_config_id?: string; waba_id?: string } | null = null;
@@ -208,13 +418,33 @@ export async function POST(req: Request) {
         pin: desiredPin,
       },
     });
+    if (registered?.success !== true) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "WhatsApp setup could not be completed. Please retry the sync.",
+          code: "REGISTER_FAILED",
+        },
+        { status: 502, headers: rl.headers },
+      );
+    }
 
     // Step 4: Subscribe to webhooks on the customer's WABA.
     const subscribed = await graphJson<{ success?: boolean } | { success: true }>({
       endpoint: graphEndpoint(metaGraphApiVersion, `/${resolvedWabaId}/subscribed_apps`),
       method: "POST",
-      accessToken: businessToken,
+      accessToken: metaSystemUserToken,
     });
+    if (subscribed?.success !== true) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "WhatsApp setup could not be completed. Please retry the sync.",
+          code: "SUBSCRIBE_FAILED",
+        },
+        { status: 502, headers: rl.headers },
+      );
+    }
 
     const now = new Date();
 
@@ -272,6 +502,9 @@ export async function POST(req: Request) {
       businessId: user.businessId,
       wabaId: resolvedWabaId,
       requestedWabaId: wabaId,
+      requestedWabaIds,
+      metaBusinessPortfolioId: normalizeGraphId(metaBusinessPortfolioId),
+      embeddedSignupEvent: typeof embeddedSignupEvent === "string" ? embeddedSignupEvent : null,
       phoneNumberId,
       displayPhoneNumber: phoneNumber.display_phone_number ?? null,
       code: code.slice(0, 6) + "…",
@@ -295,6 +528,9 @@ export async function POST(req: Request) {
         registered_success: Boolean(registered?.success ?? true),
         waba_id: resolvedWabaId,
         requested_waba_id: wabaId,
+        requested_waba_ids: requestedWabaIds.join(",") || null,
+        meta_business_portfolio_id: normalizeGraphId(metaBusinessPortfolioId),
+        embedded_signup_event: typeof embeddedSignupEvent === "string" ? embeddedSignupEvent : null,
         display_phone_number: phoneNumber.display_phone_number ?? null,
       },
     });
@@ -323,6 +559,11 @@ export async function POST(req: Request) {
         attributes: {
           endpoint: err.endpoint,
           error_message: err.message,
+          requested_waba_id: typeof requestedWabaIdForLogs === "string" ? requestedWabaIdForLogs : null,
+          requested_waba_ids: Array.isArray(requestedWabaIdsForLogs) ? requestedWabaIdsForLogs.join(",") : null,
+          phone_number_id: typeof phoneNumberIdForLogs === "string" ? phoneNumberIdForLogs : null,
+          meta_business_portfolio_id: normalizeGraphId(metaBusinessPortfolioIdForLogs),
+          embedded_signup_event: typeof embeddedSignupEventForLogs === "string" ? embeddedSignupEventForLogs : null,
           graph_error_code: err.graphError?.code,
           graph_error_subcode: err.graphError?.error_subcode,
           graph_error_type: err.graphError?.type,
@@ -354,7 +595,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           ok: false,
-          error: err.message,
+          error: "WhatsApp setup could not be completed. Please retry the sync.",
           code: "META_GRAPH_ERROR",
           meta: {
             status: err.status,

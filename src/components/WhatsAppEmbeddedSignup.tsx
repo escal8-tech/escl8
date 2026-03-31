@@ -8,10 +8,51 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { usePathname } from "next/navigation";
 import Script from "next/script";
 
+type EmbeddedSignupSuccessEvent =
+  | "FINISH"
+  | "FINISH_ONLY_WABA"
+  | "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING"
+  | "FINISH_OBO_MIGRATION"
+  | "FINISH_GRANT_ONLY_API_ACCESS";
+
+type EmbeddedSignupSuccessData = {
+  phone_number_id?: string;
+  waba_id?: string;
+  business_id?: string;
+  waba_ids?: string[];
+  ad_account_ids?: string[];
+  page_ids?: string[];
+  dataset_ids?: string[];
+  catalog_ids?: string[];
+  instagram_account_ids?: string[];
+};
+
 type SessionEvent =
-  | { type: "WA_EMBEDDED_SIGNUP"; event: "FINISH"; data: { phone_number_id: string; waba_id: string } }
+  | {
+      type: "WA_EMBEDDED_SIGNUP";
+      event: EmbeddedSignupSuccessEvent;
+      data: EmbeddedSignupSuccessData;
+    }
   | { type: "WA_EMBEDDED_SIGNUP"; event: "CANCEL"; data: { current_step?: string } }
-  | { type: "WA_EMBEDDED_SIGNUP"; event: "ERROR"; data: { error_message?: string } };
+  | { type: "WA_EMBEDDED_SIGNUP"; event: "ERROR"; data: { error_message?: string; error_code?: string; session_id?: string; timestamp?: number } };
+
+const SUCCESSFUL_EMBEDDED_SIGNUP_EVENTS = new Set<EmbeddedSignupSuccessEvent>([
+  "FINISH",
+  "FINISH_ONLY_WABA",
+  "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
+  "FINISH_OBO_MIGRATION",
+  "FINISH_GRANT_ONLY_API_ACCESS",
+]);
+
+function isSuccessfulEmbeddedSignupEvent(event: string): event is EmbeddedSignupSuccessEvent {
+  return SUCCESSFUL_EMBEDDED_SIGNUP_EVENTS.has(event as EmbeddedSignupSuccessEvent);
+}
+
+function isSuccessfulEmbeddedSignupMessage(
+  event: SessionEvent,
+): event is Extract<SessionEvent, { event: EmbeddedSignupSuccessEvent }> {
+  return isSuccessfulEmbeddedSignupEvent(event.event);
+}
 
 declare global {
   interface Window {
@@ -46,7 +87,13 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
 
   // Store whichever arrives first and combine later
   const codeRef = useRef<string | null>(null);
-  const idsRef = useRef<{ phoneNumberId: string; wabaId: string } | null>(null);
+  const idsRef = useRef<{
+    phoneNumberId: string;
+    wabaId: string | null;
+    wabaIds: string[];
+    metaBusinessPortfolioId: string | null;
+    finishEvent: EmbeddedSignupSuccessEvent;
+  } | null>(null);
   const sentRef = useRef(false);
 
   const canLaunch = useMemo(() => sdkReady && !busy, [sdkReady, busy]);
@@ -90,11 +137,55 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
       try {
         const data = JSON.parse(event.data) as SessionEvent;
         if (data?.type === "WA_EMBEDDED_SIGNUP") {
-          if (data.event === "FINISH") {
-            const phoneNumberId = data.data.phone_number_id;
-            const wabaId = data.data.waba_id;
-            idsRef.current = { phoneNumberId, wabaId };
-            setStatus(`Linked phone ${phoneNumberId} (WABA ${wabaId}). Finishing…`);
+          if (isSuccessfulEmbeddedSignupMessage(data)) {
+            const phoneNumberId = typeof data.data.phone_number_id === "string" ? data.data.phone_number_id.trim() : "";
+            const wabaIds = Array.from(
+              new Set(
+                [data.data.waba_id, ...(Array.isArray(data.data.waba_ids) ? data.data.waba_ids : [])]
+                  .map((value) => (typeof value === "string" ? value.trim() : ""))
+                  .filter(Boolean),
+              ),
+            );
+            const wabaId = wabaIds[0] ?? null;
+            const metaBusinessPortfolioId =
+              typeof data.data.business_id === "string" && data.data.business_id.trim()
+                ? data.data.business_id.trim()
+                : null;
+
+            if (!phoneNumberId) {
+              setBusy(false);
+              setConnected(false);
+              setStatus("WhatsApp signup completed, but no phone number was returned. Please reconnect and add a phone number.");
+              recordClientBusinessEvent({
+                event: "whatsapp.embedded_signup_completed_without_phone",
+                action: "portal-whatsapp-embedded-signup",
+                area: "whatsapp",
+                level: "warn",
+                outcome: "missing_phone_number",
+                route,
+                attributes: {
+                  email_domain: emailDomain,
+                  finish_event: data.event,
+                  meta_business_portfolio_id: metaBusinessPortfolioId,
+                  waba_id: wabaId,
+                  waba_ids: wabaIds.join(",") || undefined,
+                },
+              });
+              return;
+            }
+
+            idsRef.current = {
+              phoneNumberId,
+              wabaId,
+              wabaIds,
+              metaBusinessPortfolioId,
+              finishEvent: data.event,
+            };
+            setStatus(
+              wabaId
+                ? `Linked phone ${phoneNumberId} (WABA ${wabaId}). Finishing…`
+                : `Linked phone ${phoneNumberId}. Finishing…`,
+            );
             maybeSendToServer();
           } else if (data.event === "CANCEL") {
             setBusy(false);
@@ -125,6 +216,8 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
               captureInSentry: true,
               attributes: {
                 email_domain: emailDomain,
+                embedded_error_code: data.data?.error_code,
+                embedded_session_id: data.data?.session_id,
               },
             });
           }
@@ -198,6 +291,9 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
           body: JSON.stringify({
             code: codeRef.current,
             wabaId: idsRef.current.wabaId,
+            wabaIds: idsRef.current.wabaIds,
+            metaBusinessPortfolioId: idsRef.current.metaBusinessPortfolioId,
+            embeddedSignupEvent: idsRef.current.finishEvent,
             phoneNumberId: idsRef.current.phoneNumberId,
             email,
           }),
@@ -306,6 +402,8 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
             email_domain: emailDomain,
             phone_number_id: idsRef.current?.phoneNumberId,
             waba_id: idsRef.current?.wabaId,
+            finish_event: idsRef.current?.finishEvent,
+            meta_business_portfolio_id: idsRef.current?.metaBusinessPortfolioId,
           },
         });
         onConnected?.();
@@ -323,6 +421,8 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
             email_domain: emailDomain,
             phone_number_id: idsRef.current?.phoneNumberId,
             waba_id: idsRef.current?.wabaId,
+            finish_event: idsRef.current?.finishEvent,
+            meta_business_portfolio_id: idsRef.current?.metaBusinessPortfolioId,
           },
         });
       }
