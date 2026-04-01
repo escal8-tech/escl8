@@ -4177,6 +4177,12 @@ html.portal-theme-light {
   justify-content: flex-end;
 }
 
+.portal-order-item-icon-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
 .portal-order-editor-footer {
   display: flex;
   align-items: flex-end;
@@ -5015,12 +5021,6 @@ html.portal-theme-light {
 
 .portal-drawer-footer__actions .btn {
   min-width: 0;
-}
-
-.portal-drawer-action-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
 }
 
 .portal-layout .btn-primary.portal-button--success {
