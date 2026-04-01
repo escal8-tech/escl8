@@ -1,12 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import { messageOutbox } from "../../../drizzle/schema";
+import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { captureSentryException } from "@/lib/sentry-monitoring";
 import { sendWhatsAppMessagesViaBot, type BotSendMessage } from "./botApi";
 import { sendBusinessGmailMessage, type BusinessEmailMessage } from "./companyGmail";
 import { persistOutboundThreadMessage, sanitizePhoneDigits } from "./orderFlow";
 
 type JsonRecord = Record<string, unknown>;
+const STALE_OUTBOX_LOCK_MS = Number(process.env.MESSAGE_OUTBOX_STALE_LOCK_MS ?? String(10 * 60 * 1000));
 
 function asJsonRecord(value: unknown): JsonRecord {
   try {
@@ -207,9 +210,13 @@ export async function drainBusinessOutbox(input: {
   limit?: number;
 }) {
   const limit = Math.max(1, Math.min(50, input.limit ?? 20));
+  const staleLockCutoff = new Date(Date.now() - Math.max(60_000, STALE_OUTBOX_LOCK_MS));
   const filters = [
     eq(messageOutbox.businessId, input.businessId),
-    inArray(messageOutbox.status, ["pending", "failed"]),
+    or(
+      inArray(messageOutbox.status, ["pending", "failed"]),
+      and(eq(messageOutbox.status, "sending"), lte(messageOutbox.lockedAt, staleLockCutoff)),
+    ),
   ];
   if (Array.isArray(input.idempotencyKeys) && input.idempotencyKeys.length) {
     filters.push(inArray(messageOutbox.idempotencyKey, input.idempotencyKeys));
@@ -237,7 +244,15 @@ export async function drainBusinessOutbox(input: {
         lockedAt: now,
         updatedAt: now,
       })
-      .where(and(eq(messageOutbox.id, row.id), inArray(messageOutbox.status, ["pending", "failed"])))
+      .where(
+        and(
+          eq(messageOutbox.id, row.id),
+          or(
+            inArray(messageOutbox.status, ["pending", "failed"]),
+            and(eq(messageOutbox.status, "sending"), lte(messageOutbox.lockedAt, staleLockCutoff)),
+          ),
+        ),
+      )
       .returning();
     if (!claimed) continue;
 
@@ -326,6 +341,36 @@ export async function drainBusinessOutbox(input: {
       failedCount += 1;
       const messageText = error instanceof Error ? error.message : "Failed to deliver WhatsApp order update.";
       firstError = firstError ?? messageText;
+      recordBusinessEvent({
+        event: "outbox.delivery_failed",
+        businessId: claimed.businessId,
+        entity: claimed.entityType,
+        entityId: claimed.entityId,
+        action: "deliver",
+        level: "warn",
+        status: claimed.channel,
+        attributes: {
+          idempotency_key: claimed.idempotencyKey,
+          attempts: claimed.attempts,
+        },
+      });
+      captureSentryException(error, {
+        area: "message_outbox",
+        action: "deliver",
+        level: "warning",
+        tags: {
+          business_id: claimed.businessId,
+          channel: claimed.channel,
+          entity_type: claimed.entityType,
+        },
+        contexts: {
+          outbox: {
+            entityId: claimed.entityId,
+            idempotencyKey: claimed.idempotencyKey,
+            attempts: claimed.attempts,
+          },
+        },
+      });
       await markOutboxFailure(claimed.id, messageText);
     }
   }

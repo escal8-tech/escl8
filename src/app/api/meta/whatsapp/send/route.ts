@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/server/db/client";
-import { users, whatsappIdentities } from "../../../../../../drizzle/schema";
+import { whatsappIdentities } from "../../../../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 // decryptSecret removed — prefer plaintext storage
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
-import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
+import { getAuthedUserFromRequest } from "@/server/apiAuth";
 import { checkRateLimit } from "@/server/rateLimit";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { captureSentryException } from "@/lib/sentry-monitoring";
@@ -31,17 +31,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const auth = req.headers.get("authorization") || "";
-    const m = auth.match(/^Bearer\s+(.+)$/i);
-    if (!m) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    const decoded = await verifyFirebaseIdToken(m[1]);
-    const authedEmail = decoded.email;
-    const firebaseUid = decoded.uid;
-    if (!authedEmail || !firebaseUid) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    const authed = await getAuthedUserFromRequest(req);
+    if (!authed?.user || !authed.email) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401, headers: rl.headers });
     }
 
     const { email, phoneNumberId, to, text } = (await req.json()) as {
@@ -51,43 +43,28 @@ export async function POST(req: Request) {
       text?: string;
     };
 
-    if (email && email !== authedEmail) {
+    if (email && email !== authed.email) {
       return NextResponse.json({ ok: false, error: "Email mismatch" }, { status: 403 });
     }
     if (!phoneNumberId || !to || !text) {
       return NextResponse.json({ ok: false, error: "Missing phoneNumberId, to, or text" }, { status: 400 });
     }
-
-    let user = await db
-      .select()
-      .from(users)
-      .where(eq(users.firebaseUid, firebaseUid))
-      .then((r) => r[0] ?? null);
-
-    if (!user) {
-      user = await db
-        .select()
-        .from(users)
-        .where(eq(users.email, authedEmail))
-        .then((r) => r[0] ?? null);
-
-      if (user && !user.firebaseUid) {
-        const repaired = await db
-          .update(users)
-          .set({ firebaseUid, updatedAt: new Date() })
-          .where(and(eq(users.id, user.id), eq(users.email, authedEmail)))
-          .returning();
-        user = repaired[0] ?? user;
-      }
+    const trimmedPhoneNumberId = phoneNumberId.trim();
+    const trimmedRecipient = to.trim();
+    const trimmedText = text.trim();
+    if (!trimmedPhoneNumberId || !trimmedRecipient || !trimmedText) {
+      return NextResponse.json({ ok: false, error: "Missing phoneNumberId, to, or text" }, { status: 400 });
     }
-    if (!user) {
-      return NextResponse.json({ ok: false, error: "User not found" }, { status: 404 });
+    if (trimmedPhoneNumberId.length > 64 || trimmedRecipient.length > 32 || trimmedText.length > 4096) {
+      return NextResponse.json({ ok: false, error: "Request payload is too large" }, { status: 413 });
     }
+
+    const user = authed.user;
 
     const identity = await db
       .select()
       .from(whatsappIdentities)
-      .where(and(eq(whatsappIdentities.phoneNumberId, phoneNumberId), eq(whatsappIdentities.businessId, user.businessId)))
+      .where(and(eq(whatsappIdentities.phoneNumberId, trimmedPhoneNumberId), eq(whatsappIdentities.businessId, user.businessId)))
       .then((r) => r[0] ?? null);
 
     if (!identity) {
@@ -109,16 +86,16 @@ export async function POST(req: Request) {
     }
 
     const res = await graphJson<unknown>({
-      endpoint: graphEndpoint(metaGraphApiVersion, `/${phoneNumberId}/messages`),
+      endpoint: graphEndpoint(metaGraphApiVersion, `/${trimmedPhoneNumberId}/messages`),
       method: "POST",
       accessToken: businessToken,
       json: {
         messaging_product: "whatsapp",
         recipient_type: "individual",
-        to,
+        to: trimmedRecipient,
         type: "text",
         text: {
-          body: text,
+          body: trimmedText,
         },
       },
     });
@@ -134,8 +111,8 @@ export async function POST(req: Request) {
       outcome: "success",
       status: "sent",
       attributes: {
-        recipient: to,
-        text_length: text.length,
+        recipient: trimmedRecipient,
+        text_length: trimmedText.length,
       },
     });
 

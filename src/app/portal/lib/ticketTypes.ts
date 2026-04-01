@@ -19,7 +19,7 @@ const LEGACY_PORTAL_TICKET_TYPE_LABELS = new Map<string, string>([
 ]);
 
 export const PORTAL_TICKET_TYPES: PortalTicketTypeConfig[] = [
-  { key: "ordercreation", label: "Orders", navLabel: "Order Tickets", chartLabel: "Orders" },
+  { key: "ordercreation", label: "Orders", navLabel: "Orders", chartLabel: "Orders" },
   { key: "complaint", label: "Complaint", navLabel: "Complaint", chartLabel: "Complaint" },
   { key: "refund", label: "Refund", navLabel: "Refund", chartLabel: "Refund" },
   { key: "cancellation", label: "Cancellation", navLabel: "Cancellation", chartLabel: "Cancellation" },

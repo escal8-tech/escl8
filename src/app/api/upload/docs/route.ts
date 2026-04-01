@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { db } from "@/server/db/client";
-import { trainingDocuments, users } from "@/../drizzle/schema";
-import { and, eq } from "drizzle-orm";
+import { trainingDocuments } from "@/../drizzle/schema";
+import { eq } from "drizzle-orm";
 import { storeFile } from "@/lib/storage";
-import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
+import { getAuthedUserFromRequest } from "@/server/apiAuth";
 import { checkRateLimit } from "@/server/rateLimit";
 import { publishPortalEvent, toPortalDocumentPayload } from "@/server/realtime/portalEvents";
 import { captureSentryException, recordSentryLog, recordSentryMetric } from "@/lib/sentry-monitoring";
@@ -64,33 +64,8 @@ async function listCurrent(businessId: string) {
 }
 
 async function getAuthedBusinessId(request: Request): Promise<string | null> {
-  const auth = request.headers.get("authorization") || "";
-  const m = auth.match(/^Bearer\s+(.+)$/i);
-  if (!m) return null;
-
-  try {
-    const decoded = await verifyFirebaseIdToken(m[1]);
-    const email = decoded.email;
-    const firebaseUid = decoded.uid;
-    if (!email || !firebaseUid) return null;
-
-    let user = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid)).then((rows) => rows[0] ?? null);
-    if (!user) {
-      user = await db.select().from(users).where(eq(users.email, email)).then((rows) => rows[0] ?? null);
-      if (user && !user.firebaseUid) {
-        const repaired = await db
-          .update(users)
-          .set({ firebaseUid, updatedAt: new Date() })
-          .where(and(eq(users.id, user.id), eq(users.email, email)))
-          .returning();
-        user = repaired[0] ?? user;
-      }
-    }
-
-    return (user?.businessId as string) ?? null;
-  } catch {
-    return null;
-  }
+  const auth = await getAuthedUserFromRequest(request);
+  return auth?.businessId || null;
 }
 
 export async function GET(request: Request) {

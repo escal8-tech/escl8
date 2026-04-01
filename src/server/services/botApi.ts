@@ -1,4 +1,5 @@
 import { TRPCError } from "@trpc/server";
+import { normalizeServiceBaseUrl } from "@/server/internalSecurity";
 
 export type BotSendMessage =
   | { type: "text"; text: string }
@@ -23,7 +24,11 @@ export type BotWebChatResult = {
 };
 
 function getBotBaseUrl(): string {
-  return String(process.env.BOT_INTERNAL_BASE_URL || "").trim().replace(/\/+$/, "");
+  try {
+    return normalizeServiceBaseUrl(String(process.env.BOT_INTERNAL_BASE_URL || ""));
+  } catch {
+    throw new TRPCError({ code: "CONFLICT", message: "BOT_INTERNAL_BASE_URL is invalid." });
+  }
 }
 
 function getBotApiKey(): string {

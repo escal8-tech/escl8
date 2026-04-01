@@ -7,6 +7,7 @@
     "build": "npm run verify:client-auth && next build",
     "start": "node .next/standalone/server.js",
     "lint": "eslint",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "db:init": "node ./scripts/db-init.mjs",
     "db:push": "drizzle-kit push",
     "db:push:control": "drizzle-kit push --config=drizzle.control.config.ts",

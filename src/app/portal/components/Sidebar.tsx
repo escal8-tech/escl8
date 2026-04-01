@@ -101,14 +101,6 @@ const navItems = [
   { href: "/bookings", label: "Bookings", icon: "calendar" },
   { href: "/sync", label: "Sync", icon: "sync" },
 ];
-const ticketNavItems = PORTAL_TICKET_TYPES
-  .map((type) => ({
-  href: `/tickets?type=${type.key}`,
-  label: type.navLabel,
-  icon: "tickets" as const,
-  typeKey: type.key,
-}));
-
 interface SidebarProps {
   collapsed: boolean;
   mobileOpen: boolean;
@@ -167,11 +159,33 @@ export default function Sidebar({
     ...navItems,
     ...(businessQuery.data?.orderSettings?.ticketToOrderEnabled
       ? [
-          { href: "/payments", label: "Payment Status", icon: "revenue" as const },
-          { href: "/orders", label: "Order Status", icon: "sync" as const },
           { href: "/revenue", label: "Revenue", icon: "revenue" as const },
         ]
       : []),
+  ];
+  const orderTicketType = PORTAL_TICKET_TYPES.find((type) => type.key === "ordercreation");
+  const supportTicketTypes = PORTAL_TICKET_TYPES.filter((type) => type.key !== "ordercreation");
+  const ticketNavItems = [
+    ...(orderTicketType
+      ? [{
+          href: `/tickets?type=${orderTicketType.key}`,
+          label: orderTicketType.navLabel,
+          icon: "tickets" as const,
+          active: pathname === "/tickets" && activeTicketType === orderTicketType.key,
+        }]
+      : []),
+    ...(businessQuery.data?.orderSettings?.ticketToOrderEnabled
+      ? [
+          { href: "/payments", label: "Payment Status", icon: "revenue" as const, active: isActive("/payments") },
+          { href: "/orders", label: "Order Status", icon: "sync" as const, active: isActive("/orders") },
+        ]
+      : []),
+    ...supportTicketTypes.map((type) => ({
+      href: `/tickets?type=${type.key}`,
+      label: type.navLabel,
+      icon: "tickets" as const,
+      active: pathname === "/tickets" && activeTicketType === type.key,
+    })),
   ];
 
   return (
@@ -233,7 +247,7 @@ export default function Sidebar({
             <Link
               key={item.href}
               href={item.href}
-              className={`sidebar-nav-item ${pathname === "/tickets" && activeTicketType === item.typeKey ? "active" : ""}`}
+              className={`sidebar-nav-item ${item.active ? "active" : ""}`}
               title={collapsed ? item.label : undefined}
               onClick={onMobileClose}
               style={{ position: "relative" }}

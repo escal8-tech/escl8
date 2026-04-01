@@ -1,18 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { and, desc, eq, getTableColumns, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import {
   businesses,
   customers,
-  messageThreads,
   orders,
   supportTicketEvents,
   supportTicketTypes,
   supportTickets,
-  threadMessages,
 } from "../../../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 import { normalizeOrderFlowSettings } from "@/lib/order-settings";
@@ -21,8 +19,7 @@ import { DEFAULT_TICKET_TYPE_KEYS, ensureDefaultTicketTypes } from "../services/
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { drainBusinessOutbox, enqueueEmailOutboxMessages, enqueueWhatsAppOutboxMessages } from "@/server/services/messageOutbox";
-import { assertExpectedUpdatedAt, assertOperationThrottle, getStaffActorKey } from "@/server/operationalHardening";
-import { type BotSendMessage } from "../services/botApi";
+import { assertExpectedUpdatedAt } from "@/server/operationalHardening";
 import {
   buildOrderApprovalEmail,
   buildOrderApprovalMessages,
@@ -32,11 +29,37 @@ import {
   logOrderEvent,
   sanitizePhoneDigits,
 } from "../services/orderFlow";
+import {
+  asRecord,
+  assertTicketAwaitingOrderDecision,
+  buildOrderDenialMessages,
+  coalesceText,
+  enforceOrderTicketOperationThrottle,
+  extractCustomerEmail,
+  flushBusinessOutbox,
+  getSlaDueAt,
+  getThreadWhatsappWindowState,
+  lockWorkflowKey,
+  logTicketEvent,
+  maskPhoneNumber,
+  normalizeKey,
+  publishHydratedTicketUpsert,
+  resolveTicketContactContext,
+  sanitizeTicketFields,
+  validateTicketOrderFlow,
+} from "@/server/services/ticketWorkflowSupport";
+import {
+  getHydratedTicketByIdForBusiness,
+  getTicketPerformanceForBusiness,
+  getTicketTypeCountersForBusiness,
+  listTicketLedgerForBusiness,
+  listTicketTypesForBusiness,
+  listTicketsForBusiness,
+} from "@/server/services/ticketReadSupport";
 
 const ticketStatusSchema = z.enum(["open", "in_progress", "resolved"]);
 const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const ticketOutcomeSchema = z.enum(["pending", "won", "lost"]);
-const LEGACY_ORDER_OPS_TICKET_TYPE_KEYS = ["orderstatus", "paymentstatus"] as const;
 const orderStageSchema = z.enum([
   "pending_approval",
   "approved",
@@ -48,450 +71,11 @@ const orderStageSchema = z.enum([
   "refunded",
   "denied",
 ]);
-const ORDER_TICKET_OPERATION_LIMITS = {
-  approve: {
-    actorMax: Number(process.env.TICKET_APPROVE_ORDER_ACTOR_MAX ?? "30"),
-    actorWindowMs: Number(process.env.TICKET_APPROVE_ORDER_ACTOR_WINDOW_MS ?? String(5 * 60 * 1000)),
-    businessMax: Number(process.env.TICKET_APPROVE_ORDER_BUSINESS_MAX ?? "180"),
-    businessWindowMs: Number(process.env.TICKET_APPROVE_ORDER_BUSINESS_WINDOW_MS ?? String(5 * 60 * 1000)),
-    entityMax: Number(process.env.TICKET_APPROVE_ORDER_ENTITY_MAX ?? "2"),
-    entityWindowMs: Number(process.env.TICKET_APPROVE_ORDER_ENTITY_WINDOW_MS ?? String(10 * 60 * 1000)),
-    message: "This ticket is being actioned too frequently. Please wait a moment and try again.",
-  },
-  deny: {
-    actorMax: Number(process.env.TICKET_DENY_ORDER_ACTOR_MAX ?? "30"),
-    actorWindowMs: Number(process.env.TICKET_DENY_ORDER_ACTOR_WINDOW_MS ?? String(5 * 60 * 1000)),
-    businessMax: Number(process.env.TICKET_DENY_ORDER_BUSINESS_MAX ?? "180"),
-    businessWindowMs: Number(process.env.TICKET_DENY_ORDER_BUSINESS_WINDOW_MS ?? String(5 * 60 * 1000)),
-    entityMax: Number(process.env.TICKET_DENY_ORDER_ENTITY_MAX ?? "2"),
-    entityWindowMs: Number(process.env.TICKET_DENY_ORDER_ENTITY_WINDOW_MS ?? String(10 * 60 * 1000)),
-    message: "This ticket is being actioned too frequently. Please wait a moment and try again.",
-  },
-} as const;
-const WHATSAPP_WINDOW_MS = 24 * 60 * 60 * 1000;
-
-function normalizeKey(input: string): string {
-  return input.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
-}
-
-function getSlaDueAt(priority: z.infer<typeof ticketPrioritySchema>, base = new Date()): Date {
-  const byPriority: Record<z.infer<typeof ticketPrioritySchema>, number> = {
-    urgent: 60 * 60 * 1000,
-    high: 4 * 60 * 60 * 1000,
-    normal: 12 * 60 * 60 * 1000,
-    low: 24 * 60 * 60 * 1000,
-  };
-  return new Date(base.getTime() + byPriority[priority]);
-}
-
-async function logTicketEvent(params: {
-  businessId: string;
-  ticketId: string;
-  eventType: string;
-  actorType: "user" | "bot" | "system";
-  actorId?: string | null;
-  actorLabel?: string | null;
-  payload?: Record<string, unknown>;
-}) {
-  await db.insert(supportTicketEvents).values({
-    businessId: params.businessId,
-    ticketId: params.ticketId,
-    eventType: params.eventType,
-    actorType: params.actorType,
-    actorId: params.actorId ?? null,
-    actorLabel: params.actorLabel ?? null,
-    payload: params.payload ?? {},
-  });
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return {};
-}
-
-function validateTicketOrderFlow(input: {
-  ticketTypeKey: string | null | undefined;
-  ticketFlowEnabled: boolean;
-}) {
-  if (normalizeKey(String(input.ticketTypeKey || "")) !== "ordercreation") {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "Only order creation tickets support approve and deny." });
-  }
-  if (!input.ticketFlowEnabled) {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
-  }
-}
-
-function assertTicketAwaitingOrderDecision(input: {
-  status: string | null | undefined;
-  outcome: string | null | undefined;
-}) {
-  const status = String(input.status ?? "").trim().toLowerCase();
-  const outcome = String(input.outcome ?? "").trim().toLowerCase();
-  if (status === "resolved" || (outcome && outcome !== "pending")) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Only unresolved order tickets can be approved or denied.",
-    });
-  }
-}
-
-function coalesceText(...values: Array<string | null | undefined>): string | null {
-  for (const value of values) {
-    const normalized = String(value ?? "").trim();
-    if (normalized) return normalized;
-  }
-  return null;
-}
-
-function preferredWhatsAppNumber(source: string | null | undefined, ...values: Array<string | null | undefined>): string | null {
-  const sourceKey = String(source ?? "").trim().toLowerCase();
-  for (const value of values) {
-    const normalized = sanitizePhoneDigits(value);
-    if (normalized) return normalized;
-  }
-  if (sourceKey === "whatsapp") {
-    for (const value of values) {
-      const fallback = String(value ?? "").trim();
-      if (fallback) return fallback;
-    }
-  }
-  return null;
-}
-
-function maskPhoneNumber(value: string | null | undefined): string | null {
-  const digits = sanitizePhoneDigits(value);
-  if (!digits) return null;
-  if (digits.length <= 4) return digits;
-  return `${"*".repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
-}
-
-function whatsappWindowState(lastInboundAt: Date | string | null | undefined) {
-  const parsed = lastInboundAt ? new Date(lastInboundAt) : null;
-  if (!parsed || Number.isNaN(parsed.getTime())) {
-    return {
-      lastInboundAt: null as Date | null,
-      whatsappWindowExpiresAt: null as Date | null,
-      whatsappWindowOpen: false,
-    };
-  }
-  const expiresAt = new Date(parsed.getTime() + WHATSAPP_WINDOW_MS);
-  return {
-    lastInboundAt: parsed,
-    whatsappWindowExpiresAt: expiresAt,
-    whatsappWindowOpen: expiresAt.getTime() > Date.now(),
-  };
-}
-
-function parseThreadTimestamp(value: unknown): Date | null {
-  if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  if (typeof value === "string") {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-  return null;
-}
-
-async function getThreadWhatsappWindowState(tx: any, threadId: string | null | undefined) {
-  const normalizedThreadId = String(threadId ?? "").trim();
-  if (!normalizedThreadId) return whatsappWindowState(null);
-
-  const [agg] = await tx
-    .select({
-      lastInboundAt: sql<Date | null>`
-        max(${threadMessages.createdAt})
-        filter (
-          where lower(coalesce(${threadMessages.direction}, '')) in ('inbound', 'incoming', 'customer', 'user')
-        )
-      `,
-      lastMessageAt: sql<Date | null>`max(${threadMessages.createdAt})`,
-    })
-    .from(threadMessages)
-    .where(eq(threadMessages.threadId, normalizedThreadId));
-
-  const lastInboundAt = parseThreadTimestamp(agg?.lastInboundAt);
-  const lastMessageAt = parseThreadTimestamp(agg?.lastMessageAt);
-  return whatsappWindowState(lastInboundAt ?? lastMessageAt);
-}
-
-type CustomerContext = {
-  id: string;
-  name: string | null;
-  email: string | null;
-  phone: string | null;
-  externalId: string | null;
-  source: string | null;
-  whatsappIdentityId: string | null;
-};
-
-type ThreadContext = {
-  threadId: string;
-  whatsappIdentityId: string | null;
-  customerId: string;
-  customerName: string | null;
-  customerPhone: string | null;
-  customerExternalId: string | null;
-  customerSource: string | null;
-};
-
-async function getCustomerContext(businessId: string, customerId: string | null | undefined): Promise<CustomerContext | null> {
-  const normalizedCustomerId = String(customerId ?? "").trim();
-  if (!normalizedCustomerId) return null;
-  const [row] = await db
-    .select({
-      id: customers.id,
-      name: customers.name,
-      email: customers.email,
-      phone: customers.phone,
-      externalId: customers.externalId,
-      source: customers.source,
-      whatsappIdentityId: customers.whatsappIdentityId,
-    })
-    .from(customers)
-    .where(and(eq(customers.businessId, businessId), eq(customers.id, normalizedCustomerId)))
-    .limit(1);
-  return row ?? null;
-}
-
-function extractCustomerEmail(fields: Record<string, unknown>): string | null {
-  for (const [key, value] of Object.entries(fields)) {
-    const normalized = normalizeKey(key);
-    if (normalized !== "email" && normalized !== "customeremail") continue;
-    const text = String(value ?? "").trim().toLowerCase();
-    if (text && text.includes("@")) return text.slice(0, 320);
-  }
-  return null;
-}
-
-async function getThreadContext(businessId: string, threadId: string | null | undefined): Promise<ThreadContext | null> {
-  const normalizedThreadId = String(threadId ?? "").trim();
-  if (!normalizedThreadId) return null;
-  const [row] = await db
-    .select({
-      threadId: messageThreads.id,
-      whatsappIdentityId: messageThreads.whatsappIdentityId,
-      customerId: customers.id,
-      customerName: customers.name,
-      customerPhone: customers.phone,
-      customerExternalId: customers.externalId,
-      customerSource: customers.source,
-    })
-    .from(messageThreads)
-    .innerJoin(customers, eq(messageThreads.customerId, customers.id))
-    .where(and(eq(messageThreads.businessId, businessId), eq(messageThreads.id, normalizedThreadId)))
-    .limit(1);
-  return row ?? null;
-}
-
-async function resolveTicketContactContext(params: {
-  businessId: string;
-  customerId?: string | null;
-  threadId?: string | null;
-  whatsappIdentityId?: string | null;
-  customerName?: string | null;
-  customerPhone?: string | null;
-  customerExternalId?: string | null;
-  customerSource?: string | null;
-}) {
-  const directCustomer = await getCustomerContext(params.businessId, params.customerId);
-  const threadContext = await getThreadContext(params.businessId, params.threadId);
-
-  const customerId = coalesceText(
-    params.customerId,
-    directCustomer?.id ?? null,
-    threadContext?.customerId ?? null,
-  );
-  const customerName = coalesceText(
-    params.customerName,
-    directCustomer?.name ?? null,
-    threadContext?.customerName ?? null,
-  );
-  const customerEmail = coalesceText(directCustomer?.email ?? null);
-  const customerExternalId = coalesceText(
-    params.customerExternalId,
-    directCustomer?.externalId ?? null,
-    threadContext?.customerExternalId ?? null,
-  );
-  const customerSource = coalesceText(
-    params.customerSource,
-    directCustomer?.source ?? null,
-    threadContext?.customerSource ?? null,
-  );
-  const customerPhone = coalesceText(
-    params.customerPhone,
-    directCustomer?.phone ?? null,
-    threadContext?.customerPhone ?? null,
-    customerSource?.toLowerCase() === "whatsapp" ? customerExternalId : null,
-  );
-  const whatsappIdentityId = coalesceText(
-    params.whatsappIdentityId,
-    directCustomer?.whatsappIdentityId ?? null,
-    threadContext?.whatsappIdentityId ?? null,
-  );
-
-  const recipient =
-    preferredWhatsAppNumber(params.customerSource, params.customerPhone) ??
-    preferredWhatsAppNumber(directCustomer?.source, directCustomer?.phone, directCustomer?.externalId) ??
-    preferredWhatsAppNumber(
-      threadContext?.customerSource,
-      threadContext?.customerPhone,
-      threadContext?.customerExternalId,
-    );
-
-  const recipientSource =
-    preferredWhatsAppNumber(params.customerSource, params.customerPhone) != null
-      ? "ticket.customer_phone"
-      : preferredWhatsAppNumber(directCustomer?.source, directCustomer?.phone) != null
-        ? "customer.phone"
-        : preferredWhatsAppNumber(directCustomer?.source, directCustomer?.externalId) != null
-          ? "customer.external_id"
-          : preferredWhatsAppNumber(threadContext?.customerSource, threadContext?.customerPhone) != null
-            ? "thread.customer.phone"
-            : preferredWhatsAppNumber(threadContext?.customerSource, threadContext?.customerExternalId) != null
-              ? "thread.customer.external_id"
-              : null;
-
-  const whatsappIdentitySource = coalesceText(params.whatsappIdentityId)
-    ? "ticket.whatsapp_identity_id"
-    : coalesceText(directCustomer?.whatsappIdentityId ?? null)
-      ? "customer.whatsapp_identity_id"
-      : coalesceText(threadContext?.whatsappIdentityId ?? null)
-        ? "thread.whatsapp_identity_id"
-        : null;
-
-  return {
-    customerId,
-    customerName,
-    customerEmail,
-    customerPhone,
-    customerExternalId,
-    customerSource,
-    threadId: coalesceText(params.threadId, threadContext?.threadId ?? null),
-    whatsappIdentityId,
-    approvalRecipient: recipient ?? "",
-    recipientSource,
-    whatsappIdentitySource,
-  };
-}
-
-async function lockWorkflowKey(tx: any, key: string) {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
-}
-
-async function flushBusinessOutbox(businessId: string) {
-  await drainBusinessOutbox({ businessId, limit: 25 });
-}
-
-async function enforceOrderTicketOperationThrottle(
-  tx: any,
-  ctx: {
-    businessId: string;
-    userId?: string | null;
-    firebaseUid?: string | null;
-    userEmail?: string | null;
-  },
-  action: keyof typeof ORDER_TICKET_OPERATION_LIMITS,
-  ticketId: string,
-) {
-  const limits = ORDER_TICKET_OPERATION_LIMITS[action];
-  const actorKey = getStaffActorKey(ctx);
-  await assertOperationThrottle(tx, {
-    businessId: ctx.businessId,
-    bucket: `ticket.${action}.actor`,
-    scope: `${ctx.businessId}:${actorKey}`,
-    max: limits.actorMax,
-    windowMs: limits.actorWindowMs,
-    message: limits.message,
-  });
-  await assertOperationThrottle(tx, {
-    businessId: ctx.businessId,
-    bucket: `ticket.${action}.business`,
-    scope: ctx.businessId,
-    max: limits.businessMax,
-    windowMs: limits.businessWindowMs,
-    message: limits.message,
-  });
-  await assertOperationThrottle(tx, {
-    businessId: ctx.businessId,
-    bucket: `ticket.${action}.entity`,
-    scope: `${ctx.businessId}:${ticketId}`,
-    max: limits.entityMax,
-    windowMs: limits.entityWindowMs,
-    message: limits.message,
-  });
-}
-
-async function getHydratedTicketRow(businessId: string, ticketId: string) {
-  const [row] = await db
-    .select({
-      ...getTableColumns(supportTickets),
-      orderId: orders.id,
-      orderStatus: orders.status,
-      orderPaymentMethod: orders.paymentMethod,
-      orderUpdatedAt: orders.updatedAt,
-    })
-    .from(supportTickets)
-    .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
-    .where(and(eq(supportTickets.businessId, businessId), eq(supportTickets.id, ticketId)))
-    .limit(1);
-  return row ?? null;
-}
-
-async function publishHydratedTicketUpsert(input: {
-  businessId: string;
-  ticketId: string;
-  createdAt?: Date | string | null;
-}) {
-  const ticket = await getHydratedTicketRow(input.businessId, input.ticketId);
-  if (!ticket) return null;
-  await publishPortalEvent({
-    businessId: input.businessId,
-    entity: "ticket",
-    op: "upsert",
-    entityId: ticket.id,
-    payload: { ticket: ticket as any },
-    createdAt: input.createdAt ?? ticket.updatedAt ?? ticket.createdAt ?? new Date(),
-  });
-  return ticket;
-}
-
-function buildOrderDenialMessages(input: {
-  customerName?: string | null;
-  reason?: string | null;
-}): BotSendMessage[] {
-  const normalizedReason = String(input.reason ?? "").trim();
-  const customerLine = input.customerName
-    ? `Hi ${input.customerName}, we could not approve your order request yet.`
-    : "We could not approve your order request yet.";
-  const lines = [
-    customerLine,
-    normalizedReason && normalizedReason.toLowerCase() !== "denied" ? `Reason: ${normalizedReason}.` : null,
-    "Please reply in this chat if you want to update the request or place a new order.",
-  ].filter(Boolean);
-  return [{ type: "text", text: lines.join("\n") }];
-}
 
 export const ticketsRouter = router({
   listTypes: businessProcedure
     .input(z.object({ includeDisabled: z.boolean().optional() }).optional())
-    .query(async ({ ctx, input }) => {
-      await ensureDefaultTicketTypes(ctx.businessId);
-      const conditions = [eq(supportTicketTypes.businessId, ctx.businessId)];
-      if (!input?.includeDisabled) {
-        conditions.push(eq(supportTicketTypes.enabled, true));
-      }
-      conditions.push(sql`lower(${supportTicketTypes.key}) not in (${sql.join(
-        LEGACY_ORDER_OPS_TICKET_TYPE_KEYS.map((key) => sql`${key}`),
-        sql`, `,
-      )})`);
-      return db
-        .select()
-        .from(supportTicketTypes)
-        .where(and(...conditions))
-        .orderBy(supportTicketTypes.sortOrder, supportTicketTypes.label);
-    }),
+    .query(async ({ ctx, input }) => listTicketTypesForBusiness({ businessId: ctx.businessId, includeDisabled: input?.includeDisabled })),
 
   upsertType: businessProcedure
     .input(
@@ -564,24 +148,7 @@ export const ticketsRouter = router({
         limit: z.number().int().min(1).max(500).optional(),
       }).optional(),
     )
-    .query(async ({ ctx, input }) => {
-      const conditions = [eq(supportTickets.businessId, ctx.businessId)];
-      if (input?.status) conditions.push(eq(supportTickets.status, input.status));
-      if (input?.typeKey) conditions.push(eq(supportTickets.ticketTypeKey, normalizeKey(input.typeKey)));
-      return db
-        .select({
-          ...getTableColumns(supportTickets),
-          orderId: orders.id,
-          orderStatus: orders.status,
-          orderPaymentMethod: orders.paymentMethod,
-          orderUpdatedAt: orders.updatedAt,
-        })
-        .from(supportTickets)
-        .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
-        .where(and(...conditions))
-        .orderBy(desc(supportTickets.updatedAt), desc(supportTickets.createdAt))
-        .limit(input?.limit ?? 200);
-    }),
+    .query(async ({ ctx, input }) => listTicketsForBusiness({ businessId: ctx.businessId, status: input?.status, typeKey: input?.typeKey, limit: input?.limit })),
 
   listTicketLedger: businessProcedure
     .input(
@@ -594,76 +161,11 @@ export const ticketsRouter = router({
         offset: z.number().int().min(0).default(0),
       }),
     )
-    .query(async ({ ctx, input }) => {
-      const conditions: any[] = [eq(supportTickets.businessId, ctx.businessId)];
-      const normalizedStatusExpr = sql<string>`case when lower(coalesce(${supportTickets.status}, '')) = 'closed' then 'resolved' else lower(coalesce(${supportTickets.status}, '')) end`;
-      const orderStageExpr = sql<string>`case
-        when lower(coalesce(${orders.status}, '')) in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'paid', 'refund_pending', 'refunded', 'denied')
-          then lower(coalesce(${orders.status}, ''))
-        when lower(coalesce(${supportTickets.outcome}, '')) = 'lost' then 'denied'
-        when lower(coalesce(${supportTickets.outcome}, '')) = 'won' then 'approved'
-        else 'pending_approval'
-      end`;
-      if (input.typeKey) {
-        conditions.push(eq(supportTickets.ticketTypeKey, normalizeKey(input.typeKey)));
-      }
-      if (input.status) {
-        conditions.push(sql<boolean>`${normalizedStatusExpr} = ${input.status}`);
-      }
-      if (input.orderStage) {
-        conditions.push(sql<boolean>`${orderStageExpr} = ${input.orderStage}`);
-      }
-
-      const searchPattern = String(input.search ?? "").trim().replace(/^#/, "");
-      if (searchPattern) {
-        const pattern = `%${searchPattern}%`;
-        conditions.push(
-          or(
-            ilike(supportTickets.id, pattern),
-            ilike(supportTickets.title, pattern),
-            ilike(supportTickets.summary, pattern),
-            ilike(supportTickets.notes, pattern),
-            ilike(supportTickets.customerName, pattern),
-            ilike(supportTickets.customerPhone, pattern),
-            ilike(orders.id, pattern),
-          ),
-        );
-      }
-
-      const [countRow] = await db
-        .select({
-          count: sql<number>`count(*)::int`,
-        })
-        .from(supportTickets)
-        .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
-        .where(and(...conditions));
-
-      const rows = await db
-        .select({
-          ...getTableColumns(supportTickets),
-          orderId: orders.id,
-          orderStatus: orders.status,
-          orderPaymentMethod: orders.paymentMethod,
-          orderUpdatedAt: orders.updatedAt,
-        })
-        .from(supportTickets)
-        .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
-        .where(and(...conditions))
-        .orderBy(desc(supportTickets.updatedAt), desc(supportTickets.createdAt))
-        .limit(input.limit)
-        .offset(input.offset);
-
-      return {
-        totalCount: countRow?.count ?? 0,
-        items: rows,
-      };
-    }),
+    .query(async ({ ctx, input }) => listTicketLedgerForBusiness({ businessId: ctx.businessId, ...input })),
 
   getTicketById: businessProcedure
     .input(z.object({ ticketId: z.string().min(1) }))
-    .query(async ({ ctx, input }) => {
-      return getHydratedTicketRow(ctx.businessId, input.ticketId);
-    }),
+    .query(async ({ ctx, input }) => getHydratedTicketByIdForBusiness({ businessId: ctx.businessId, ticketId: input.ticketId })),
 
   createTicket: businessProcedure
     .input(
@@ -725,7 +227,7 @@ export const ticketsRouter = router({
           whatsappIdentityId: contactContext.whatsappIdentityId,
           customerName: contactContext.customerName,
           customerPhone: contactContext.customerPhone,
-          fields: input.fields ?? {},
+          fields: sanitizeTicketFields(input.fields ?? {}),
           notes: input.notes?.trim() || null,
           createdBy: input.createdBy ?? "user",
           outcome: "pending",
@@ -807,7 +309,7 @@ export const ticketsRouter = router({
         actualUpdatedAt: existing.updatedAt,
       });
 
-      const nextFields = input.fields ?? asRecord(existing.fields);
+      const nextFields = sanitizeTicketFields(input.fields ?? asRecord(existing.fields));
       const [updated] = await db
         .update(supportTickets)
         .set({
@@ -1865,23 +1367,7 @@ export const ticketsRouter = router({
         .limit(input.limit ?? 100);
     }),
 
-  getTypeCounters: businessProcedure.query(async ({ ctx }) => {
-    const rows = await db
-      .select({
-        key: supportTickets.ticketTypeKey,
-        openCount: sql<number>`count(*) filter (where lower(coalesce(${supportTickets.status}, '')) = 'open')::int`,
-        inProgressCount: sql<number>`count(*) filter (where lower(coalesce(${supportTickets.status}, '')) in ('in_progress', 'pending'))::int`,
-      })
-      .from(supportTickets)
-      .where(eq(supportTickets.businessId, ctx.businessId))
-      .groupBy(supportTickets.ticketTypeKey);
-
-    return rows.map((row) => ({
-      key: row.key,
-      openCount: Number(row.openCount ?? 0),
-      inProgressCount: Number(row.inProgressCount ?? 0),
-    }));
-  }),
+  getTypeCounters: businessProcedure.query(async ({ ctx }) => getTicketTypeCountersForBusiness(ctx.businessId)),
 
   getPerformance: businessProcedure
     .input(
@@ -1892,76 +1378,5 @@ export const ticketsRouter = router({
         })
         .optional(),
     )
-    .query(async ({ ctx, input }) => {
-      const whereChunks = [sql`${supportTickets.businessId} = ${ctx.businessId}`];
-      if (input?.typeKey) {
-        whereChunks.push(sql`${supportTickets.ticketTypeKey} = ${normalizeKey(input.typeKey)}`);
-      }
-      if (input?.windowDays) {
-        whereChunks.push(sql`${supportTickets.createdAt} >= now() - (${input.windowDays} * interval '1 day')`);
-      }
-
-      const whereSql = sql.join(whereChunks, sql` AND `);
-      const result = await db.execute<{
-        total: number;
-        overdue_open: number;
-        resolved_total: number;
-        resolved_on_time: number;
-        resolved_late: number;
-        won_count: number;
-        lost_count: number;
-      }>(sql`
-        SELECT
-          count(*)::int AS total,
-          count(*) FILTER (
-            WHERE ${supportTickets.status} IN ('open','in_progress')
-            AND ${supportTickets.slaDueAt} IS NOT NULL
-            AND ${supportTickets.slaDueAt} < now()
-          )::int AS overdue_open,
-          count(*) FILTER (WHERE ${supportTickets.status} = 'resolved')::int AS resolved_total,
-          count(*) FILTER (
-            WHERE ${supportTickets.status} = 'resolved'
-            AND ${supportTickets.resolvedAt} IS NOT NULL
-            AND ${supportTickets.slaDueAt} IS NOT NULL
-            AND ${supportTickets.resolvedAt} <= ${supportTickets.slaDueAt}
-          )::int AS resolved_on_time,
-          count(*) FILTER (
-            WHERE ${supportTickets.status} = 'resolved'
-            AND ${supportTickets.resolvedAt} IS NOT NULL
-            AND ${supportTickets.slaDueAt} IS NOT NULL
-            AND ${supportTickets.resolvedAt} > ${supportTickets.slaDueAt}
-          )::int AS resolved_late,
-          count(*) FILTER (WHERE ${supportTickets.outcome} = 'won')::int AS won_count,
-          count(*) FILTER (WHERE ${supportTickets.outcome} = 'lost')::int AS lost_count
-        FROM ${supportTickets}
-        WHERE ${whereSql}
-      `);
-
-      const row = result.rows?.[0] ?? {
-        total: 0,
-        overdue_open: 0,
-        resolved_total: 0,
-        resolved_on_time: 0,
-        resolved_late: 0,
-        won_count: 0,
-        lost_count: 0,
-      };
-      const won = Number(row.won_count ?? 0);
-      const lost = Number(row.lost_count ?? 0);
-      const closedDeals = won + lost;
-      const resolvedTotal = Number(row.resolved_total ?? 0);
-      const resolvedOnTime = Number(row.resolved_on_time ?? 0);
-
-      return {
-        total: Number(row.total ?? 0),
-        overdueOpen: Number(row.overdue_open ?? 0),
-        resolvedTotal,
-        resolvedOnTime,
-        resolvedLate: Number(row.resolved_late ?? 0),
-        wonCount: won,
-        lostCount: lost,
-        conversionRate: closedDeals > 0 ? Number(((won / closedDeals) * 100).toFixed(1)) : 0,
-        slaOnTimeRate: resolvedTotal > 0 ? Number(((resolvedOnTime / resolvedTotal) * 100).toFixed(1)) : 0,
-      };
-    }),
+    .query(async ({ ctx, input }) => getTicketPerformanceForBusiness({ businessId: ctx.businessId, typeKey: input?.typeKey, windowDays: input?.windowDays })),
 });
