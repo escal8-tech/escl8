@@ -4166,13 +4166,9 @@ html.portal-theme-light {
 
 .portal-order-line {
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) 92px 124px 120px 44px;
+  grid-template-columns: minmax(0, 2.6fr) 72px 116px 44px;
   gap: 10px;
   align-items: end;
-}
-
-.portal-order-line-total {
-  min-width: 0;
 }
 
 .portal-order-line-actions {

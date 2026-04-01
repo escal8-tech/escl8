@@ -12,7 +12,6 @@ import {
   buildOrderEditorLines,
   canApproveOrderStage,
   canDenyOrderStage,
-  computeOrderEditorLineTotal,
   computeOrderEditorTotal,
   firstFieldText,
   formatDate,
@@ -169,7 +168,7 @@ export function TicketDetailsDrawer({
   const computedOrderTotal = computeOrderEditorTotal(draftOrderLines);
   const fieldRows = Object.entries(fields);
   const importantFieldRows = getImportantFieldRows(fields);
-  const status = getTicketString(ticket, "status");
+  const status = getTicketString(ticket, "status") === "closed" ? "resolved" : getTicketString(ticket, "status");
   const outcome = (getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome;
   const lossReason = getTicketString(ticket, "lossReason", "loss_reason");
   const slaDueAt = slaDueAtRaw;
@@ -518,10 +517,6 @@ export function TicketDetailsDrawer({
                               }
                               placeholder="Optional"
                             />
-                          </div>
-                          <div className="portal-field portal-order-line-total">
-                            <div className="portal-field-label">Line Total</div>
-                            <div className="portal-read-box">{computeOrderEditorLineTotal(line) || "-"}</div>
                           </div>
                           <div className="portal-order-line-actions">
                             <button
