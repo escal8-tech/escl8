@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { normalizeOrderFlowSettings } from "@/lib/order-settings";
+import { buildPrivateBlobReadUrl } from "@/lib/storage";
 import {
   ORDER_FULFILLMENT_STATUSES,
   normalizeOrderFulfillmentStatus,
@@ -21,11 +22,14 @@ import {
   buildOrderApprovalMessages,
   buildFulfillmentStatusMessages,
   buildManualCollectionMessages,
+  buildManualCollectionEmail,
   formatOrderItemsSummary,
   logOrderEvent,
+  parseMoneyValue,
   sanitizePhoneDigits,
 } from "../services/orderFlow";
 import type { OrderEmailMessage } from "../services/orderFlow";
+import { createOrderInvoiceArtifact } from "../services/orderInvoice";
 
 const reviewActionSchema = z.enum(["approve", "reject"]);
 const refundActionSchema = z.enum(["mark_pending", "mark_refunded", "cancel"]);
@@ -78,6 +82,13 @@ const ORDER_OPERATION_LIMITS = {
     message: "Refund updates were attempted too quickly. Please wait and try again.",
   },
 } as const;
+
+const ORDER_WORKSPACE_MODES = ["payments", "status", "revenue"] as const;
+type OrderWorkspaceMode = (typeof ORDER_WORKSPACE_MODES)[number];
+type PaymentQueueFilter = "all" | "pending" | "approved" | "denied";
+type OrderStatusQueueFilter = "all" | "pending" | "out_for_delivery" | "completed";
+type RevenueQueueFilter = "all" | "realized" | "unrealized";
+type OrderWorkspaceFilter = PaymentQueueFilter | OrderStatusQueueFilter | RevenueQueueFilter;
 
 function resolveOrderLedgerAmount(
   orderRow: {
@@ -208,6 +219,24 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+function readStoredBlobPath(value: unknown): string | null {
+  const storage = asRecord(asRecord(value).storage);
+  const blobPath = String(storage.blobPath || "").trim();
+  return blobPath || null;
+}
+
+function refreshOrderPaymentProofUrl(paymentRow: typeof orderPayments.$inferSelect | null | undefined): string | null {
+  if (!paymentRow) return null;
+  const blobPath = readStoredBlobPath(paymentRow.details);
+  return buildPrivateBlobReadUrl(blobPath || "", 24 * 30) || cleanOptionalText(paymentRow.proofUrl, 2000);
+}
+
+function refreshOrderInvoiceUrl(orderRow: typeof orders.$inferSelect | null | undefined): string | null {
+  if (!orderRow) return null;
+  return buildPrivateBlobReadUrl(String(orderRow.invoiceStoragePath || "").trim(), 24 * 30)
+    || cleanOptionalText(orderRow.invoiceUrl, 2000);
+}
+
 function buildStoredOrderFlowSettings(orderRow: {
   paymentMethod?: string | null;
   currency?: string | null;
@@ -275,15 +304,6 @@ async function getThreadWhatsappWindowState(tx: any, threadId: string | null | u
 
 type OrderAnalyticsDateField = "updatedAt" | "createdAt";
 type OrderAnalyticsMethodFilter = "all" | "manual" | "bank_qr" | "cod";
-type OrderAnalyticsFilterKey =
-  | "all"
-  | "needs_action"
-  | "on_hold"
-  | "active"
-  | "in_transit"
-  | "delivered"
-  | "exceptions"
-  | "refunds";
 
 function getOrderRangeBounds(rangeDays: number) {
   const rangeEnd = new Date();
@@ -395,80 +415,81 @@ async function hydrateOrderRows(businessId: string, orderRows: Array<typeof orde
     const windowState = whatsappWindowState(row.threadId ? latestInboundByThread.get(row.threadId) : null);
     return {
       ...row,
-      latestPayment,
+      invoiceUrl: refreshOrderInvoiceUrl(row),
+      latestPayment: latestPayment
+        ? {
+            ...latestPayment,
+            proofUrl: refreshOrderPaymentProofUrl(latestPayment),
+          }
+        : null,
       botDisplayPhoneNumber: row.whatsappIdentityId ? displayPhoneByIdentity.get(row.whatsappIdentityId) ?? null : null,
       ...windowState,
     };
   });
 }
 
-function latestSubmittedPaymentCondition() {
-  return sql<boolean>`exists (
-    select 1
-    from ${orderPayments} op
-    where op.business_id = ${orders.businessId}
-      and op.order_id = ${orders.id}
-      and lower(coalesce(op.status, '')) = 'submitted'
-      and op.created_at = (
-        select max(op2.created_at)
-        from ${orderPayments} op2
-        where op2.business_id = ${orders.businessId}
-          and op2.order_id = ${orders.id}
-      )
-  )`;
+function simpleFulfillmentBucketExpr() {
+  return sql<string>`case
+    when lower(coalesce(${orders.fulfillmentStatus}, '')) = 'delivered' then 'completed'
+    when lower(coalesce(${orders.fulfillmentStatus}, '')) in ('dispatched', 'out_for_delivery') then 'out_for_delivery'
+    else 'pending'
+  end`;
 }
 
-function buildOrderAnalyticsConditions(params: {
+function buildWorkspaceConditions(params: {
   businessId: string;
-  status?: string;
+  mode: OrderWorkspaceMode;
+  queueFilter: OrderWorkspaceFilter;
   methodFilter?: OrderAnalyticsMethodFilter;
   dateField?: OrderAnalyticsDateField;
   rangeDays?: number;
   search?: string;
-  activeFilter?: OrderAnalyticsFilterKey;
 }) {
-  const conditions = buildOrderBaseConditions(params);
-  const latestPaymentSubmitted = latestSubmittedPaymentCondition();
+  const statusExpr = sql<string>`lower(coalesce(${orders.status}, ''))`;
+  const fulfillmentBucket = simpleFulfillmentBucketExpr();
+  const conditions = buildOrderBaseConditions({
+    businessId: params.businessId,
+    methodFilter: params.methodFilter,
+    dateField: params.dateField,
+    rangeDays: params.rangeDays,
+    search: params.search,
+  });
 
-  switch (params.activeFilter) {
-    case "needs_action":
+  if (params.mode === "payments") {
+    conditions.push(sql<boolean>`${statusExpr} not in ('denied')`);
+    if (params.queueFilter === "pending") {
+      conditions.push(sql<boolean>`${statusExpr} in ('approved', 'awaiting_payment', 'payment_submitted')`);
+    } else if (params.queueFilter === "approved") {
+      conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
+    } else if (params.queueFilter === "denied") {
+      conditions.push(sql<boolean>`${statusExpr} in ('payment_rejected')`);
+    } else {
       conditions.push(
-        sql<boolean>`(
-          lower(coalesce(${orders.status}, '')) in ('payment_submitted', 'payment_rejected')
-          or lower(coalesce(${orders.fulfillmentStatus}, '')) in ('failed_delivery', 'returned')
-          or (
-            lower(coalesce(${orders.fulfillmentStatus}, '')) = 'packed'
-            and coalesce(${orders.courierName}, '') = ''
-            and coalesce(${orders.trackingNumber}, '') = ''
-            and coalesce(${orders.dispatchReference}, '') = ''
-          )
-          or ${latestPaymentSubmitted}
-        )`,
+        sql<boolean>`${statusExpr} in ('approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'paid', 'refund_pending', 'refunded')`,
       );
-      break;
-    case "on_hold":
-      conditions.push(eq(orders.fulfillmentStatus, "on_hold"));
-      break;
-    case "active":
-      conditions.push(sql<boolean>`lower(coalesce(${orders.fulfillmentStatus}, '')) in ('queued', 'preparing', 'packed', 'dispatched', 'out_for_delivery')`);
-      break;
-    case "in_transit":
-      conditions.push(sql<boolean>`lower(coalesce(${orders.fulfillmentStatus}, '')) in ('dispatched', 'out_for_delivery')`);
-      break;
-    case "delivered":
-      conditions.push(eq(orders.fulfillmentStatus, "delivered"));
-      break;
-    case "exceptions":
-      conditions.push(sql<boolean>`lower(coalesce(${orders.fulfillmentStatus}, '')) in ('failed_delivery', 'returned')`);
-      break;
-    case "refunds":
-      conditions.push(sql<boolean>`lower(coalesce(${orders.status}, '')) in ('refund_pending', 'refunded')`);
-      break;
-    default:
-      break;
+    }
+  } else if (params.mode === "status") {
+    conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
+    if (params.queueFilter === "pending") {
+      conditions.push(sql<boolean>`${fulfillmentBucket} = 'pending'`);
+    } else if (params.queueFilter === "out_for_delivery") {
+      conditions.push(sql<boolean>`${fulfillmentBucket} = 'out_for_delivery'`);
+    } else if (params.queueFilter === "completed") {
+      conditions.push(sql<boolean>`${fulfillmentBucket} = 'completed'`);
+    }
+  } else {
+    if (params.queueFilter === "realized") {
+      conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
+    } else if (params.queueFilter === "unrealized") {
+      conditions.push(sql<boolean>`${statusExpr} in ('approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected')`);
+    } else {
+      conditions.push(
+        sql<boolean>`${statusExpr} in ('approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'paid', 'refund_pending', 'refunded')`,
+      );
+    }
   }
 
-  return { conditions, latestPaymentSubmitted };
+  return { conditions, statusExpr, fulfillmentBucket };
 }
 
 function preferredWhatsAppNumber(source: string | null | undefined, ...values: Array<string | null | undefined>): string | null {
@@ -671,6 +692,7 @@ function buildPaymentReviewMessages(input: {
   paidAmount?: string | number | null;
   currency: string;
   notes?: string | null;
+  invoiceUrl?: string | null;
 }): BotSendMessage[] {
   const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
   if (input.action === "approve") {
@@ -678,6 +700,7 @@ function buildPaymentReviewMessages(input: {
       `We have approved your payment for order reference ${ref}.`,
       input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
       "Your order is now marked as paid and our team will continue processing it.",
+      input.invoiceUrl ? `Invoice: ${input.invoiceUrl}` : null,
     ].filter(Boolean);
     return [{ type: "text", text: lines.join("\n") }];
   }
@@ -696,6 +719,7 @@ function buildPaymentReviewEmail(input: {
   paidAmount?: string | number | null;
   currency: string;
   notes?: string | null;
+  invoiceUrl?: string | null;
 }): OrderEmailMessage {
   const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
   const approved = input.action === "approve";
@@ -705,6 +729,7 @@ function buildPaymentReviewEmail(input: {
         `We have approved your payment for order reference ${ref}.`,
         input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
         "Your order is now confirmed and queued for fulfilment.",
+        input.invoiceUrl ? `Invoice link: ${input.invoiceUrl}` : null,
       ]
     : [
         `We reviewed the payment proof for order reference ${ref}, but we could not verify it yet.`,
@@ -835,8 +860,18 @@ export const ordersRouter = router({
         limit: z.number().int().min(1).max(100).default(20),
         offset: z.number().int().min(0).default(0),
         search: z.string().optional(),
-        activeFilter: z
-          .enum(["all", "needs_action", "on_hold", "active", "in_transit", "delivered", "exceptions", "refunds"])
+        mode: z.enum(ORDER_WORKSPACE_MODES).default("payments"),
+        queueFilter: z
+          .enum([
+            "all",
+            "pending",
+            "approved",
+            "denied",
+            "out_for_delivery",
+            "completed",
+            "realized",
+            "unrealized",
+          ])
           .default("all"),
         dateField: z.enum(["updatedAt", "createdAt"]).default("updatedAt"),
         rangeDays: z.number().int().min(1).max(365).default(30),
@@ -845,13 +880,14 @@ export const ordersRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const settings = await getBusinessOrderSettings(ctx.businessId);
-      const { conditions } = buildOrderAnalyticsConditions({
+      const { conditions } = buildWorkspaceConditions({
         businessId: ctx.businessId,
+        mode: input.mode,
+        queueFilter: input.queueFilter,
         methodFilter: input.methodFilter,
         dateField: input.dateField,
         rangeDays: input.rangeDays,
         search: input.search,
-        activeFilter: input.activeFilter,
       });
 
       const [countRow] = await db
@@ -881,134 +917,76 @@ export const ordersRouter = router({
   getOverview: businessProcedure
     .input(
       z.object({
+        mode: z.enum(ORDER_WORKSPACE_MODES).default("payments"),
+        queueFilter: z
+          .enum([
+            "all",
+            "pending",
+            "approved",
+            "denied",
+            "out_for_delivery",
+            "completed",
+            "realized",
+            "unrealized",
+          ])
+          .default("all"),
         dateField: z.enum(["updatedAt", "createdAt"]).default("updatedAt"),
         rangeDays: z.number().int().min(1).max(365).default(30),
         methodFilter: z.enum(["all", "manual", "bank_qr", "cod"]).default("all"),
-        mode: z.enum(["orders", "revenue"]).default("orders"),
       }),
     )
     .query(async ({ ctx, input }) => {
       const settings = await getBusinessOrderSettings(ctx.businessId);
-      const { conditions, latestPaymentSubmitted } = buildOrderAnalyticsConditions({
+      const { conditions, statusExpr, fulfillmentBucket } = buildWorkspaceConditions({
         businessId: ctx.businessId,
+        mode: input.mode,
+        queueFilter: input.queueFilter,
         methodFilter: input.methodFilter,
         dateField: input.dateField,
         rangeDays: input.rangeDays,
       });
-
-      const statusExpr = sql<string>`lower(coalesce(${orders.status}, ''))`;
-      const fulfillmentExpr = sql<string>`lower(coalesce(${orders.fulfillmentStatus}, ''))`;
       const amountExpr = sql<number>`coalesce(${orders.paidAmount}, ${orders.refundAmount}, ${orders.expectedAmount}, 0)::numeric`;
       const paidExpr = sql<number>`coalesce(${orders.paidAmount}, ${orders.expectedAmount}, 0)::numeric`;
       const refundExpr = sql<number>`coalesce(${orders.refundAmount}, ${orders.paidAmount}, ${orders.expectedAmount}, 0)::numeric`;
-      const needsActionExpr = sql<boolean>`(
-        ${statusExpr} in ('payment_submitted', 'payment_rejected')
-        or ${fulfillmentExpr} in ('failed_delivery', 'returned')
-        or (
-          ${fulfillmentExpr} = 'packed'
-          and coalesce(${orders.courierName}, '') = ''
-          and coalesce(${orders.trackingNumber}, '') = ''
-          and coalesce(${orders.dispatchReference}, '') = ''
-        )
-        or ${latestPaymentSubmitted}
-      )`;
 
       const [aggregateRow] = await db
         .select({
           scopedCount: sql<number>`count(*)::int`,
-          needsAction: sql<number>`count(*) filter (where ${needsActionExpr})::int`,
-          inFulfilment: sql<number>`count(*) filter (where ${fulfillmentExpr} in ('queued', 'preparing', 'packed', 'dispatched', 'out_for_delivery'))::int`,
-          inTransit: sql<number>`count(*) filter (where ${fulfillmentExpr} in ('dispatched', 'out_for_delivery'))::int`,
-          delivered: sql<number>`count(*) filter (where ${fulfillmentExpr} = 'delivered')::int`,
-          exceptions: sql<number>`count(*) filter (where ${fulfillmentExpr} in ('failed_delivery', 'returned'))::int`,
+          paymentPendingCount: sql<number>`count(*) filter (where ${statusExpr} in ('approved', 'awaiting_payment', 'payment_submitted'))::int`,
+          paymentApprovedCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded'))::int`,
+          paymentDeniedCount: sql<number>`count(*) filter (where ${statusExpr} = 'payment_rejected')::int`,
+          paymentReviewCount: sql<number>`count(*) filter (where ${statusExpr} = 'payment_submitted')::int`,
+          orderPendingCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded') and ${fulfillmentBucket} = 'pending')::int`,
+          orderOutForDeliveryCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded') and ${fulfillmentBucket} = 'out_for_delivery')::int`,
+          orderCompletedCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded') and ${fulfillmentBucket} = 'completed')::int`,
           booked: sql<number>`coalesce(sum(${amountExpr}), 0)::float`,
-          collected: sql<number>`coalesce(sum(case when ${statusExpr} = 'paid' then ${paidExpr} else 0 end), 0)::float`,
+          collected: sql<number>`coalesce(sum(case when ${statusExpr} in ('paid', 'refund_pending', 'refunded') then ${paidExpr} else 0 end), 0)::float`,
           pending: sql<number>`coalesce(sum(case when ${statusExpr} not in ('paid', 'refunded', 'refund_pending') then ${amountExpr} else 0 end), 0)::float`,
           refundExposure: sql<number>`coalesce(sum(case when ${statusExpr} in ('refunded', 'refund_pending') then ${refundExpr} else 0 end), 0)::float`,
-          needsActionCount: sql<number>`count(*) filter (where ${needsActionExpr})::int`,
-          onHoldCount: sql<number>`count(*) filter (where ${fulfillmentExpr} = 'on_hold')::int`,
-          activeCount: sql<number>`count(*) filter (where ${fulfillmentExpr} in ('queued', 'preparing', 'packed', 'dispatched', 'out_for_delivery'))::int`,
-          inTransitCount: sql<number>`count(*) filter (where ${fulfillmentExpr} in ('dispatched', 'out_for_delivery'))::int`,
-          deliveredCount: sql<number>`count(*) filter (where ${fulfillmentExpr} = 'delivered')::int`,
-          exceptionsCount: sql<number>`count(*) filter (where ${fulfillmentExpr} in ('failed_delivery', 'returned'))::int`,
-          refundsCount: sql<number>`count(*) filter (where ${statusExpr} in ('refund_pending', 'refunded'))::int`,
-          awaitingCount: sql<number>`count(*) filter (where ${statusExpr} not in ('paid', 'payment_submitted', 'refund_pending', 'refunded', 'payment_rejected', 'denied'))::int`,
-          reviewCount: sql<number>`count(*) filter (where ${statusExpr} = 'payment_submitted')::int`,
-          collectedCount: sql<number>`count(*) filter (where ${statusExpr} = 'paid')::int`,
-          refundsMixCount: sql<number>`count(*) filter (where ${statusExpr} in ('refund_pending', 'refunded'))::int`,
-          exceptionsMixCount: sql<number>`count(*) filter (where ${statusExpr} in ('payment_rejected', 'denied'))::int`,
         })
         .from(orders)
         .where(and(...conditions));
 
-      const trendColumn = input.dateField === "createdAt" ? orders.createdAt : orders.updatedAt;
-      const trendRows = await db
-        .select({
-          day: sql<Date>`date_trunc('day', ${trendColumn})`,
-          expected: sql<number>`coalesce(sum(${amountExpr}), 0)::float`,
-          collected: sql<number>`coalesce(sum(case when ${statusExpr} = 'paid' then ${paidExpr} else 0 end), 0)::float`,
-        })
-        .from(orders)
-        .where(and(...conditions))
-        .groupBy(sql`date_trunc('day', ${trendColumn})`)
-        .orderBy(sql`date_trunc('day', ${trendColumn}) asc`);
-
-      const trendData = trendRows
-        .map((row) => ({
-          sortKey: new Date(row.day).getTime(),
-          label: new Date(row.day).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-          expected: Number(row.expected ?? 0),
-          collected: Number(row.collected ?? 0),
-        }))
-        .sort((a, b) => a.sortKey - b.sortKey)
-        .slice(-Math.min(input.rangeDays, 14));
-
-      const metrics = {
-        needsAction: Number(aggregateRow?.needsAction ?? 0),
-        inFulfilment: Number(aggregateRow?.inFulfilment ?? 0),
-        inTransit: Number(aggregateRow?.inTransit ?? 0),
-        delivered: Number(aggregateRow?.delivered ?? 0),
-        exceptions: Number(aggregateRow?.exceptions ?? 0),
-      };
-
-      const mixData = input.mode === "revenue"
-        ? [
-            { name: "Awaiting", value: Number(aggregateRow?.awaitingCount ?? 0) },
-            { name: "Review", value: Number(aggregateRow?.reviewCount ?? 0) },
-            { name: "Collected", value: Number(aggregateRow?.collectedCount ?? 0) },
-            { name: "Refunds", value: Number(aggregateRow?.refundsMixCount ?? 0) },
-            { name: "Exceptions", value: Number(aggregateRow?.exceptionsMixCount ?? 0) },
-          ].filter((entry) => entry.value > 0)
-        : [
-            { name: "Needs Action", value: metrics.needsAction },
-            { name: "In Fulfilment", value: metrics.inFulfilment },
-            { name: "In Transit", value: metrics.inTransit },
-            { name: "Delivered", value: metrics.delivered },
-            { name: "Exceptions", value: metrics.exceptions },
-          ].filter((entry) => entry.value > 0);
-
       return {
         settings,
         scopedCount: Number(aggregateRow?.scopedCount ?? 0),
-        metrics,
+        metrics: {
+          paymentPending: Number(aggregateRow?.paymentPendingCount ?? 0),
+          paymentApproved: Number(aggregateRow?.paymentApprovedCount ?? 0),
+          paymentDenied: Number(aggregateRow?.paymentDeniedCount ?? 0),
+          paymentReview: Number(aggregateRow?.paymentReviewCount ?? 0),
+          orderPending: Number(aggregateRow?.orderPendingCount ?? 0),
+          orderOutForDelivery: Number(aggregateRow?.orderOutForDeliveryCount ?? 0),
+          orderCompleted: Number(aggregateRow?.orderCompletedCount ?? 0),
+        },
         financeTotals: {
           booked: Number(aggregateRow?.booked ?? 0),
           collected: Number(aggregateRow?.collected ?? 0),
           pending: Number(aggregateRow?.pending ?? 0),
           refundExposure: Number(aggregateRow?.refundExposure ?? 0),
         },
-        filterCounts: {
-          all: Number(aggregateRow?.scopedCount ?? 0),
-          needs_action: Number(aggregateRow?.needsActionCount ?? 0),
-          on_hold: Number(aggregateRow?.onHoldCount ?? 0),
-          active: Number(aggregateRow?.activeCount ?? 0),
-          in_transit: Number(aggregateRow?.inTransitCount ?? 0),
-          delivered: Number(aggregateRow?.deliveredCount ?? 0),
-          exceptions: Number(aggregateRow?.exceptionsCount ?? 0),
-          refunds: Number(aggregateRow?.refundsCount ?? 0),
-        },
-        trendData,
-        mixData,
+        trendData: [],
+        mixData: [],
       };
     }),
 
@@ -1094,11 +1072,100 @@ export const ordersRouter = router({
   getOrderPayments: businessProcedure
     .input(z.object({ orderId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      return db
+      const rows = await db
         .select()
         .from(orderPayments)
         .where(and(eq(orderPayments.businessId, ctx.businessId), eq(orderPayments.orderId, input.orderId)))
         .orderBy(desc(orderPayments.createdAt));
+      return rows.map((row) => ({
+        ...row,
+        proofUrl: refreshOrderPaymentProofUrl(row),
+      }));
+    }),
+
+  updatePaymentSetup: businessProcedure
+    .input(
+      z.object({
+        orderId: z.string().min(1),
+        expectedUpdatedAt: z.coerce.date().optional(),
+        expectedAmount: z.string().optional().nullable(),
+        paymentReference: z.string().optional().nullable(),
+        customerEmail: z.string().optional().nullable(),
+        notes: z.string().optional().nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const now = new Date();
+      const [orderRow] = await db
+        .select()
+        .from(orders)
+        .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, input.orderId)))
+        .limit(1);
+      if (!orderRow) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
+      }
+      assertExpectedUpdatedAt({
+        entityLabel: "order",
+        expectedUpdatedAt: input.expectedUpdatedAt,
+        actualUpdatedAt: orderRow.updatedAt,
+      });
+
+      const nextExpectedAmount = input.expectedAmount === undefined
+        ? orderRow.expectedAmount?.toString() ?? null
+        : parseMoneyValue(input.expectedAmount);
+      const nextPaymentReference = input.paymentReference === undefined
+        ? cleanOptionalText(orderRow.paymentReference, 120)
+        : cleanOptionalText(input.paymentReference, 120);
+      const nextCustomerEmail = input.customerEmail === undefined
+        ? cleanOptionalText(orderRow.customerEmail, 320)
+        : cleanOptionalText(input.customerEmail, 320);
+      const nextNotes = input.notes === undefined
+        ? cleanOptionalText(orderRow.notes, 1200)
+        : cleanOptionalText(input.notes, 1200);
+
+      const [updatedOrder] = await db
+        .update(orders)
+        .set({
+          expectedAmount: nextExpectedAmount,
+          paymentReference: nextPaymentReference,
+          customerEmail: nextCustomerEmail,
+          notes: nextNotes,
+          updatedAt: now,
+        })
+        .where(and(eq(orders.id, orderRow.id), eq(orders.updatedAt, orderRow.updatedAt)))
+        .returning();
+
+      if (!updatedOrder) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "This order was updated by another staff member. Refresh and try again.",
+        });
+      }
+
+      await logOrderEvent({
+        businessId: ctx.businessId,
+        orderId: updatedOrder.id,
+        eventType: "payment_setup_updated",
+        actorType: "user",
+        actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+        actorLabel: ctx.userEmail ?? "user",
+        payload: {
+          expectedAmount: updatedOrder.expectedAmount,
+          paymentReference: updatedOrder.paymentReference,
+          customerEmail: updatedOrder.customerEmail,
+        },
+      });
+
+      await publishPortalEvent({
+        businessId: ctx.businessId,
+        entity: "order",
+        op: "upsert",
+        entityId: updatedOrder.id,
+        payload: { order: updatedOrder as any },
+        createdAt: updatedOrder.updatedAt ?? now,
+      });
+
+      return updatedOrder;
     }),
 
   getOrderEvents: businessProcedure
@@ -1412,54 +1479,110 @@ export const ordersRouter = router({
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to review payment." });
         }
 
+        let finalizedOrder = updatedOrder;
+        let invoiceArtifact: Awaited<ReturnType<typeof createOrderInvoiceArtifact>> | null = null;
+        if (input.action === "approve") {
+          invoiceArtifact = await createOrderInvoiceArtifact({
+            businessId: ctx.businessId,
+            order: {
+              ...updatedOrder,
+              paidAmount: updatedPayment.paidAmount ?? updatedOrder.paidAmount,
+            },
+            issuedAt: now,
+          });
+          const [invoiceUpdatedOrder] = await tx
+            .update(orders)
+            .set({
+              invoiceNumber: invoiceArtifact.invoiceNumber,
+              invoiceUrl: invoiceArtifact.url,
+              invoiceStoragePath: invoiceArtifact.storagePath,
+              invoiceFileName: invoiceArtifact.fileName,
+              invoiceStatus: "sent",
+              invoiceDeliveryMethod: null,
+              invoiceGeneratedAt: invoiceArtifact.generatedAt,
+              invoiceSentAt: null,
+              updatedAt: now,
+            })
+            .where(eq(orders.id, updatedOrder.id))
+            .returning();
+          if (invoiceUpdatedOrder) {
+            finalizedOrder = invoiceUpdatedOrder;
+          }
+        }
+
         const contactContext = await resolveOrderNotificationContext({
           businessId: ctx.businessId,
-          customerId: updatedOrder.customerId ?? null,
-          threadId: updatedOrder.threadId ?? null,
-          whatsappIdentityId: updatedOrder.whatsappIdentityId ?? null,
-          customerName: updatedOrder.customerName ?? null,
-          customerEmail: updatedOrder.customerEmail ?? null,
-          customerPhone: updatedOrder.customerPhone ?? null,
+          customerId: finalizedOrder.customerId ?? null,
+          threadId: finalizedOrder.threadId ?? null,
+          whatsappIdentityId: finalizedOrder.whatsappIdentityId ?? null,
+          customerName: finalizedOrder.customerName ?? null,
+          customerEmail: finalizedOrder.customerEmail ?? null,
+          customerPhone: finalizedOrder.customerPhone ?? null,
         });
-        const notification = await enqueueWhatsAppOutboxMessages(tx, {
-          businessId: ctx.businessId,
-          entityType: "order",
-          entityId: updatedOrder.id,
-          customerId: updatedOrder.customerId ?? null,
-          threadId: contactContext.threadId ?? null,
-          whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
-          recipient: contactContext.approvalRecipient,
-          recipientSource: contactContext.recipientSource,
-          whatsappIdentitySource: contactContext.whatsappIdentitySource,
-          source: input.action === "approve" ? "order_payment_approved" : "order_payment_rejected",
-          idempotencyBaseKey: `order:${updatedOrder.id}:payment_review:${paymentRow.id}:${input.action}`,
-          messages: buildPaymentReviewMessages({
-            action: input.action,
-            orderId: updatedOrder.id,
-            paymentReference: updatedOrder.paymentReference,
-            paidAmount: updatedPayment.paidAmount ?? updatedOrder.paidAmount,
-            currency: String(updatedOrder.currency || "LKR").trim() || "LKR",
-            notes: input.notes?.trim() || null,
-          }),
-        });
-        const emailNotification = contactContext.customerEmail
-          && input.action === "approve"
+        const windowState = await getThreadWhatsappWindowState(tx, finalizedOrder.threadId);
+        const hasWhatsappRoute = Boolean(contactContext.whatsappIdentityId && sanitizePhoneDigits(contactContext.approvalRecipient));
+        const hasEmailRoute = Boolean(contactContext.customerEmail);
+        const deliveryChannel: "whatsapp" | "email" =
+          windowState.whatsappWindowOpen && hasWhatsappRoute
+            ? "whatsapp"
+            : hasEmailRoute
+              ? "email"
+              : hasWhatsappRoute
+                ? "whatsapp"
+                : (() => {
+                    throw new TRPCError({
+                      code: "BAD_REQUEST",
+                      message: "This order is missing both an active WhatsApp route and a customer email address.",
+                    });
+                  })();
+        const notification = deliveryChannel === "whatsapp"
+          ? await enqueueWhatsAppOutboxMessages(tx, {
+              businessId: ctx.businessId,
+              entityType: "order",
+              entityId: finalizedOrder.id,
+              customerId: finalizedOrder.customerId ?? null,
+              threadId: contactContext.threadId ?? null,
+              whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
+              recipient: contactContext.approvalRecipient,
+              recipientSource: contactContext.recipientSource,
+              whatsappIdentitySource: contactContext.whatsappIdentitySource,
+              source: input.action === "approve" ? "order_payment_approved" : "order_payment_rejected",
+              idempotencyBaseKey: `order:${finalizedOrder.id}:payment_review:${paymentRow.id}:${input.action}`,
+              messages: buildPaymentReviewMessages({
+                action: input.action,
+                orderId: finalizedOrder.id,
+                paymentReference: finalizedOrder.paymentReference,
+                paidAmount: updatedPayment.paidAmount ?? finalizedOrder.paidAmount,
+                currency: String(finalizedOrder.currency || "LKR").trim() || "LKR",
+                notes: input.notes?.trim() || null,
+                invoiceUrl: refreshOrderInvoiceUrl(finalizedOrder),
+              }),
+            })
+          : {
+              ok: true as const,
+              error: null,
+              recipientSource: null,
+              whatsappIdentitySource: null,
+              idempotencyKeys: [] as string[],
+            };
+        const emailNotification = deliveryChannel === "email"
           ? await enqueueEmailOutboxMessages(tx, {
               businessId: ctx.businessId,
               entityType: "order",
-              entityId: updatedOrder.id,
-              customerId: updatedOrder.customerId ?? null,
+              entityId: finalizedOrder.id,
+              customerId: finalizedOrder.customerId ?? null,
               recipientEmail: contactContext.customerEmail,
-              source: "order_payment_approved_email",
-              idempotencyBaseKey: `order:${updatedOrder.id}:payment_review_email:${paymentRow.id}:approve`,
+              source: input.action === "approve" ? "order_payment_approved_email" : "order_payment_rejected_email",
+              idempotencyBaseKey: `order:${finalizedOrder.id}:payment_review_email:${paymentRow.id}:${input.action}`,
               messages: [
                 buildPaymentReviewEmail({
-                  action: "approve",
-                  orderId: updatedOrder.id,
-                  paymentReference: updatedOrder.paymentReference,
-                  paidAmount: updatedPayment.paidAmount ?? updatedOrder.paidAmount,
-                  currency: String(updatedOrder.currency || "LKR").trim() || "LKR",
+                  action: input.action,
+                  orderId: finalizedOrder.id,
+                  paymentReference: finalizedOrder.paymentReference,
+                  paidAmount: updatedPayment.paidAmount ?? finalizedOrder.paidAmount,
+                  currency: String(finalizedOrder.currency || "LKR").trim() || "LKR",
                   notes: input.notes?.trim() || null,
+                  invoiceUrl: refreshOrderInvoiceUrl(finalizedOrder),
                 }),
               ],
             })
@@ -1469,52 +1592,67 @@ export const ordersRouter = router({
           paymentRow,
           orderRow,
           updatedPayment,
-          updatedOrder,
+          updatedOrder: finalizedOrder,
           nextPaymentStatus,
           nextOrderStatus,
           nextFulfillmentStatus,
           notification,
           emailNotification,
+          deliveryChannel,
+          windowState,
+          invoiceArtifact,
         };
       });
 
       let delivery: {
         ok: boolean;
         error: string | null;
+        channel: "whatsapp" | "email";
         recipientSource: string | null;
         whatsappIdentitySource: string | null;
       } = {
         ok: true,
         error: null,
+        channel: result.deliveryChannel,
         recipientSource: result.notification.recipientSource,
         whatsappIdentitySource: result.notification.whatsappIdentitySource,
       };
-      if (!result.notification.ok) {
+      if (result.deliveryChannel === "whatsapp" && !result.notification.ok) {
         delivery = {
           ok: false,
           error: result.notification.error,
+          channel: "whatsapp",
           recipientSource: result.notification.recipientSource,
           whatsappIdentitySource: result.notification.whatsappIdentitySource,
         };
-      } else if (result.notification.idempotencyKeys.length) {
-        const drained = await drainBusinessOutbox({
-          businessId: ctx.businessId,
-          idempotencyKeys: result.notification.idempotencyKeys,
-          limit: result.notification.idempotencyKeys.length,
-        });
+      } else if (result.deliveryChannel === "email" && !result.emailNotification.ok) {
         delivery = {
-          ok: drained.ok,
-          error: drained.error,
-          recipientSource: result.notification.recipientSource,
-          whatsappIdentitySource: result.notification.whatsappIdentitySource,
+          ok: false,
+          error: result.emailNotification.error,
+          channel: "email",
+          recipientSource: null,
+          whatsappIdentitySource: null,
         };
-      }
-      if (result.emailNotification.ok && result.emailNotification.idempotencyKeys.length) {
-        await drainBusinessOutbox({
-          businessId: ctx.businessId,
-          idempotencyKeys: result.emailNotification.idempotencyKeys,
-          limit: result.emailNotification.idempotencyKeys.length,
-        });
+      } else {
+        const idempotencyKeys =
+          result.deliveryChannel === "whatsapp"
+            ? result.notification.idempotencyKeys
+            : result.emailNotification.idempotencyKeys;
+        if (idempotencyKeys.length) {
+          const drained = await drainBusinessOutbox({
+            businessId: ctx.businessId,
+            idempotencyKeys,
+            limit: idempotencyKeys.length,
+          });
+          delivery = {
+            ok: drained.ok,
+            error: drained.error,
+            channel: result.deliveryChannel,
+            recipientSource: result.deliveryChannel === "whatsapp" ? result.notification.recipientSource : null,
+            whatsappIdentitySource:
+              result.deliveryChannel === "whatsapp" ? result.notification.whatsappIdentitySource : null,
+          };
+        }
       }
       await flushBusinessOutbox(ctx.businessId);
 
@@ -1530,6 +1668,7 @@ export const ordersRouter = router({
           paymentId: result.paymentRow.id,
           paymentStatus: result.nextPaymentStatus,
           fulfillmentStatus: result.nextFulfillmentStatus,
+          invoiceNumber: result.updatedOrder.invoiceNumber,
         },
       });
       if (input.action === "approve" && normalizeOrderFulfillmentStatus(result.orderRow.fulfillmentStatus) === "on_hold") {
@@ -1589,6 +1728,7 @@ export const ordersRouter = router({
           action: input.action,
           order_id: result.updatedOrder.id,
           delivery_ok: delivery.ok,
+          delivery_channel: delivery.channel,
           delivery_phone_source: delivery.recipientSource,
           delivery_identity_source: delivery.whatsappIdentitySource,
         },
@@ -1991,35 +2131,105 @@ export const ordersRouter = router({
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to record manual payment." });
         }
 
+        const invoiceArtifact = await createOrderInvoiceArtifact({
+          businessId: ctx.businessId,
+          order: {
+            ...updatedOrder,
+            paidAmount,
+          },
+          issuedAt: now,
+        });
+        const [invoiceUpdatedOrder] = await tx
+          .update(orders)
+          .set({
+            invoiceNumber: invoiceArtifact.invoiceNumber,
+            invoiceUrl: invoiceArtifact.url,
+            invoiceStoragePath: invoiceArtifact.storagePath,
+            invoiceFileName: invoiceArtifact.fileName,
+            invoiceStatus: "sent",
+            invoiceDeliveryMethod: null,
+            invoiceGeneratedAt: invoiceArtifact.generatedAt,
+            invoiceSentAt: null,
+            updatedAt: now,
+          })
+          .where(eq(orders.id, updatedOrder.id))
+          .returning();
+        const currentOrder = invoiceUpdatedOrder ?? updatedOrder;
+
         const contactContext = await resolveOrderNotificationContext({
           businessId: ctx.businessId,
-          customerId: updatedOrder.customerId ?? null,
-          threadId: updatedOrder.threadId ?? null,
-          whatsappIdentityId: updatedOrder.whatsappIdentityId ?? null,
-          customerName: updatedOrder.customerName ?? null,
-          customerEmail: updatedOrder.customerEmail ?? null,
-          customerPhone: updatedOrder.customerPhone ?? null,
+          customerId: currentOrder.customerId ?? null,
+          threadId: currentOrder.threadId ?? null,
+          whatsappIdentityId: currentOrder.whatsappIdentityId ?? null,
+          customerName: currentOrder.customerName ?? null,
+          customerEmail: currentOrder.customerEmail ?? null,
+          customerPhone: currentOrder.customerPhone ?? null,
         });
-        const notification = await enqueueWhatsAppOutboxMessages(tx, {
-          businessId: ctx.businessId,
-          entityType: "order",
-          entityId: updatedOrder.id,
-          customerId: updatedOrder.customerId ?? null,
-          threadId: contactContext.threadId ?? null,
-          whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
-          recipient: contactContext.approvalRecipient,
-          recipientSource: contactContext.recipientSource,
-          whatsappIdentitySource: contactContext.whatsappIdentitySource,
-          source: "order_manual_payment_collected",
-          idempotencyBaseKey: `order:${updatedOrder.id}:manual_payment:${String(updatedOrder.paymentApprovedAt ?? now.toISOString())}`,
-          messages: buildManualCollectionMessages({
-            customerName: updatedOrder.customerName,
-            orderId: updatedOrder.id,
-            currency: String(updatedOrder.currency || "LKR").trim() || "LKR",
-            paidAmount,
-          }),
-        });
-        return { orderRow, updatedOrder, paidAmount, notification };
+        const windowState = await getThreadWhatsappWindowState(tx, currentOrder.threadId);
+        const hasWhatsappRoute = Boolean(contactContext.whatsappIdentityId && sanitizePhoneDigits(contactContext.approvalRecipient));
+        const hasEmailRoute = Boolean(contactContext.customerEmail);
+        const deliveryChannel: "whatsapp" | "email" =
+          windowState.whatsappWindowOpen && hasWhatsappRoute
+            ? "whatsapp"
+            : hasEmailRoute
+              ? "email"
+              : hasWhatsappRoute
+                ? "whatsapp"
+                : (() => {
+                    throw new TRPCError({
+                      code: "BAD_REQUEST",
+                      message: "This order is missing both an active WhatsApp route and a customer email address.",
+                    });
+                  })();
+        const notification = deliveryChannel === "whatsapp"
+          ? await enqueueWhatsAppOutboxMessages(tx, {
+              businessId: ctx.businessId,
+              entityType: "order",
+              entityId: currentOrder.id,
+              customerId: currentOrder.customerId ?? null,
+              threadId: contactContext.threadId ?? null,
+              whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
+              recipient: contactContext.approvalRecipient,
+              recipientSource: contactContext.recipientSource,
+              whatsappIdentitySource: contactContext.whatsappIdentitySource,
+              source: "order_manual_payment_collected",
+              idempotencyBaseKey: `order:${currentOrder.id}:manual_payment:${String(currentOrder.paymentApprovedAt ?? now.toISOString())}`,
+              messages: buildManualCollectionMessages({
+                customerName: currentOrder.customerName,
+                orderId: currentOrder.id,
+                currency: String(currentOrder.currency || "LKR").trim() || "LKR",
+                paidAmount,
+                invoiceUrl: refreshOrderInvoiceUrl(currentOrder),
+              }),
+            })
+          : {
+              ok: true as const,
+              error: null,
+              recipientSource: null,
+              whatsappIdentitySource: null,
+              idempotencyKeys: [] as string[],
+            };
+        const emailNotification = deliveryChannel === "email"
+          ? await enqueueEmailOutboxMessages(tx, {
+              businessId: ctx.businessId,
+              entityType: "order",
+              entityId: currentOrder.id,
+              customerId: currentOrder.customerId ?? null,
+              recipientEmail: contactContext.customerEmail,
+              source: "order_manual_payment_collected_email",
+              idempotencyBaseKey: `order:${currentOrder.id}:manual_payment_email:${String(currentOrder.paymentApprovedAt ?? now.toISOString())}`,
+              messages: [
+                buildManualCollectionEmail({
+                  customerName: currentOrder.customerName,
+                  orderId: currentOrder.id,
+                  currency: String(currentOrder.currency || "LKR").trim() || "LKR",
+                  paidAmount,
+                  invoiceUrl: refreshOrderInvoiceUrl(currentOrder),
+                }),
+              ],
+            })
+          : { ok: true as const, error: null, idempotencyKeys: [] as string[] };
+        return { orderRow, updatedOrder: currentOrder, paidAmount, notification, emailNotification, deliveryChannel };
       });
 
       await logOrderEvent({
@@ -2033,41 +2243,71 @@ export const ordersRouter = router({
           amount: result.paidAmount,
           note: cleanOptionalText(input.note, 400),
           paymentMethod: result.updatedOrder.paymentMethod,
+          invoiceNumber: result.updatedOrder.invoiceNumber,
         },
       });
 
       let delivery: {
         ok: boolean;
         error: string | null;
+        channel: "whatsapp" | "email";
         recipientSource: string | null;
         whatsappIdentitySource: string | null;
       } = {
         ok: true,
         error: null,
+        channel: result.deliveryChannel,
         recipientSource: result.notification.recipientSource,
         whatsappIdentitySource: result.notification.whatsappIdentitySource,
       };
-      if (!result.notification.ok) {
+      if (result.deliveryChannel === "whatsapp" && !result.notification.ok) {
         delivery = {
           ok: false,
           error: result.notification.error,
+          channel: "whatsapp",
           recipientSource: result.notification.recipientSource,
           whatsappIdentitySource: result.notification.whatsappIdentitySource,
         };
-      } else if (result.notification.idempotencyKeys.length) {
-        const drained = await drainBusinessOutbox({
-          businessId: ctx.businessId,
-          idempotencyKeys: result.notification.idempotencyKeys,
-          limit: result.notification.idempotencyKeys.length,
-        });
+      } else if (result.deliveryChannel === "email" && !result.emailNotification.ok) {
         delivery = {
-          ok: drained.ok,
-          error: drained.error,
-          recipientSource: result.notification.recipientSource,
-          whatsappIdentitySource: result.notification.whatsappIdentitySource,
+          ok: false,
+          error: result.emailNotification.error,
+          channel: "email",
+          recipientSource: null,
+          whatsappIdentitySource: null,
         };
+      } else {
+        const idempotencyKeys =
+          result.deliveryChannel === "whatsapp"
+            ? result.notification.idempotencyKeys
+            : result.emailNotification.idempotencyKeys;
+        if (idempotencyKeys.length) {
+          const drained = await drainBusinessOutbox({
+            businessId: ctx.businessId,
+            idempotencyKeys,
+            limit: idempotencyKeys.length,
+          });
+          delivery = {
+            ok: drained.ok,
+            error: drained.error,
+            channel: result.deliveryChannel,
+            recipientSource: result.deliveryChannel === "whatsapp" ? result.notification.recipientSource : null,
+            whatsappIdentitySource:
+              result.deliveryChannel === "whatsapp" ? result.notification.whatsappIdentitySource : null,
+          };
+        }
       }
       await flushBusinessOutbox(ctx.businessId);
+      if (delivery.ok) {
+        await db
+          .update(orders)
+          .set({
+            invoiceSentAt: now,
+            invoiceDeliveryMethod: delivery.channel,
+            updatedAt: now,
+          })
+          .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, result.updatedOrder.id)));
+      }
       if (!delivery.ok) {
         await logOrderEvent({
           businessId: ctx.businessId,
@@ -2105,6 +2345,7 @@ export const ordersRouter = router({
         attributes: {
           payment_method: result.updatedOrder.paymentMethod,
           delivery_ok: delivery.ok,
+          delivery_channel: delivery.channel,
         },
       });
 

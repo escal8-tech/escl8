@@ -95,11 +95,12 @@ export default function TicketsPage() {
         .sort((a, b) => a.label.localeCompare(b.label)),
     [ticketTypesData],
   );
+  const allowedTypeKeys = useMemo(() => new Set(typeOptions.map((type) => type.typeKey)), [typeOptions]);
   const effectiveTypeKey = useMemo(() => {
-    if (queryTypeKey) return queryTypeKey;
+    if (queryTypeKey && allowedTypeKeys.has(queryTypeKey)) return queryTypeKey;
     if (!typeOptions.length) return null;
     return typeOptions[0]?.typeKey ?? null;
-  }, [queryTypeKey, typeOptions]);
+  }, [allowedTypeKeys, queryTypeKey, typeOptions]);
   const activeFilterKey = effectiveTypeKey ?? "__all";
   const statusFilter = filtersByType[activeFilterKey] ?? "all";
   const isOrderTicketView = effectiveTypeKey === "ordercreation";

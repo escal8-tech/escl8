@@ -36,6 +36,7 @@ import {
 const ticketStatusSchema = z.enum(["open", "in_progress", "resolved"]);
 const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const ticketOutcomeSchema = z.enum(["pending", "won", "lost"]);
+const LEGACY_ORDER_OPS_TICKET_TYPE_KEYS = ["orderstatus", "paymentstatus"] as const;
 const orderStageSchema = z.enum([
   "pending_approval",
   "approved",
@@ -481,6 +482,10 @@ export const ticketsRouter = router({
       if (!input?.includeDisabled) {
         conditions.push(eq(supportTicketTypes.enabled, true));
       }
+      conditions.push(sql`lower(${supportTicketTypes.key}) not in (${sql.join(
+        LEGACY_ORDER_OPS_TICKET_TYPE_KEYS.map((key) => sql`${key}`),
+        sql`, `,
+      )})`);
       return db
         .select()
         .from(supportTicketTypes)

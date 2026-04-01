@@ -101,7 +101,8 @@ const navItems = [
   { href: "/bookings", label: "Bookings", icon: "calendar" },
   { href: "/sync", label: "Sync", icon: "sync" },
 ];
-const ticketNavItems = PORTAL_TICKET_TYPES.map((type) => ({
+const ticketNavItems = PORTAL_TICKET_TYPES
+  .map((type) => ({
   href: `/tickets?type=${type.key}`,
   label: type.navLabel,
   icon: "tickets" as const,
@@ -165,7 +166,11 @@ export default function Sidebar({
   const mainNavItems = [
     ...navItems,
     ...(businessQuery.data?.orderSettings?.ticketToOrderEnabled
-      ? [{ href: "/revenue", label: "Revenue", icon: "revenue" as const }]
+      ? [
+          { href: "/payments", label: "Payment Status", icon: "revenue" as const },
+          { href: "/orders", label: "Order Status", icon: "sync" as const },
+          { href: "/revenue", label: "Revenue", icon: "revenue" as const },
+        ]
       : []),
   ];
 

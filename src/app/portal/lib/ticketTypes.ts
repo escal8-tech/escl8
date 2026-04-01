@@ -1,7 +1,5 @@
 export type PortalTicketTypeKey =
   | "ordercreation"
-  | "orderstatus"
-  | "paymentstatus"
   | "complaint"
   | "refund"
   | "cancellation"
@@ -15,10 +13,13 @@ export type PortalTicketTypeConfig = {
   chartLabel?: string;
 };
 
+const LEGACY_PORTAL_TICKET_TYPE_LABELS = new Map<string, string>([
+  ["orderstatus", "Order Status"],
+  ["paymentstatus", "Payment Status"],
+]);
+
 export const PORTAL_TICKET_TYPES: PortalTicketTypeConfig[] = [
   { key: "ordercreation", label: "Orders", navLabel: "Order Tickets", chartLabel: "Orders" },
-  { key: "orderstatus", label: "Order Status", navLabel: "Order Status", chartLabel: "Status" },
-  { key: "paymentstatus", label: "Payment Status", navLabel: "Payment Status", chartLabel: "Payment" },
   { key: "complaint", label: "Complaint", navLabel: "Complaint", chartLabel: "Complaint" },
   { key: "refund", label: "Refund", navLabel: "Refund", chartLabel: "Refund" },
   { key: "cancellation", label: "Cancellation", navLabel: "Cancellation", chartLabel: "Cancellation" },
@@ -35,7 +36,9 @@ const PORTAL_TICKET_TYPE_CHART_LABELS = new Map(
 export function getPortalTicketTypeLabel(typeKey: string | null | undefined): string {
   const normalizedKey = String(typeKey ?? "").trim().toLowerCase();
   if (!normalizedKey) return "Tickets";
-  return PORTAL_TICKET_TYPE_LABELS.get(normalizedKey as PortalTicketTypeKey) ?? normalizedKey;
+  return PORTAL_TICKET_TYPE_LABELS.get(normalizedKey as PortalTicketTypeKey)
+    ?? LEGACY_PORTAL_TICKET_TYPE_LABELS.get(normalizedKey)
+    ?? normalizedKey;
 }
 
 export function getPortalTicketTypeNavLabel(typeKey: string | null | undefined): string {

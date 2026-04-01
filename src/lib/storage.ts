@@ -47,6 +47,19 @@ function buildReadUrl(blobUrl: string, blobPath: string, expiresOn: Date): strin
   return `${blobUrl}?${sas}`;
 }
 
+export function buildPrivateBlobReadUrl(blobPath: string, readTtlHours = 72): string | null {
+  const normalizedPath = String(blobPath || "").trim();
+  if (!AZURE_CONN || !normalizedPath) return null;
+  const service = BlobServiceClient.fromConnectionString(AZURE_CONN);
+  const container = service.getContainerClient(AZURE_CONTAINER);
+  const blob = container.getBlockBlobClient(normalizedPath);
+  return buildReadUrl(
+    blob.url,
+    normalizedPath,
+    new Date(Date.now() + Math.max(1, Number(readTtlHours || 72)) * 60 * 60 * 1000),
+  );
+}
+
 export async function storeFile(
   businessId: string,
   docType: DocType,

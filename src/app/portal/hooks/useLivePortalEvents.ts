@@ -71,7 +71,8 @@ type OrderLedgerInput = {
   limit?: number;
   offset?: number;
   search?: string;
-  activeFilter?: string;
+  mode?: "payments" | "status" | "revenue";
+  queueFilter?: string;
   dateField?: "updatedAt" | "createdAt";
   rangeDays?: number;
   methodFilter?: "all" | "manual" | "bank_qr" | "cod";
@@ -81,7 +82,8 @@ type OrderOverviewInput = {
   dateField?: "updatedAt" | "createdAt";
   rangeDays?: number;
   methodFilter?: "all" | "manual" | "bank_qr" | "cod";
-  mode?: "orders" | "revenue";
+  mode?: "payments" | "status" | "revenue";
+  queueFilter?: string;
 };
 
 type MessageRow = {

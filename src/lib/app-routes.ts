@@ -11,6 +11,7 @@ export const APP_PROTECTED_ROUTE_PREFIXES = [
   "/sync",
   "/settings",
   "/orders",
+  "/payments",
   "/revenue",
   "/tickets",
 ] as const;
