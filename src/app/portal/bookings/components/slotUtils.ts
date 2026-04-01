@@ -1,8 +1,8 @@
 import { Booking, Slot } from "./types";
 
 type SlotConfig = {
-  open: string;
-  close: string;
+  open?: string;
+  close?: string;
   minutes: number;
   capacity?: number | null;
 };
