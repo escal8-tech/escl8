@@ -10,18 +10,6 @@ export const DEFAULT_TICKET_TYPES = [
     sortOrder: 10,
   },
   {
-    key: "orderstatus",
-    label: "Order Status",
-    requiredFields: ["orderid"],
-    sortOrder: 20,
-  },
-  {
-    key: "paymentstatus",
-    label: "Payment Status",
-    requiredFields: ["orderid"],
-    sortOrder: 25,
-  },
-  {
     key: "complaint",
     label: "Complaint",
     requiredFields: ["details"],

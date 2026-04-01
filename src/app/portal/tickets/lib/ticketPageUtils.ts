@@ -635,11 +635,11 @@ export function formatOrderStage(stage: OrderStage): string {
 
 export function describeOrderStage(stage: OrderStage): string {
   if (stage === "pending_approval") return "Review the ticket, confirm details, then approve or deny it.";
-  if (stage === "approved") return "Approved and moved into the Orders workspace for fulfilment tracking.";
+  if (stage === "approved") return "Approved and moved into the Payment Status queue.";
   if (stage === "awaiting_payment") return "Approved and waiting for the customer to send payment proof.";
   if (stage === "payment_submitted") return "Payment proof received and waiting for staff review.";
   if (stage === "payment_rejected") return "Customer needs to resend payment proof.";
-  if (stage === "paid") return "Payment approved and revenue captured.";
+  if (stage === "paid") return "Payment approved and moved into the Order Status queue.";
   if (stage === "refund_pending") return "Refund is being processed.";
   if (stage === "refunded") return "Refund completed and order closed.";
   return "Order flow closed without approval.";

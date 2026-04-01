@@ -46,6 +46,16 @@ export type OrderRow = {
   paymentConfigSnapshot?: Record<string, unknown> | null;
   expectedAmount?: string | number | null;
   paidAmount?: string | number | null;
+  customerEmail?: string | null;
+  notes?: string | null;
+  invoiceNumber?: string | null;
+  invoiceUrl?: string | null;
+  invoiceStoragePath?: string | null;
+  invoiceFileName?: string | null;
+  invoiceStatus?: string | null;
+  invoiceDeliveryMethod?: string | null;
+  invoiceGeneratedAt?: Date | string | null;
+  invoiceSentAt?: Date | string | null;
   refundAmount?: string | number | null;
   refundReason?: string | null;
   refundRequestedAt?: Date | string | null;
