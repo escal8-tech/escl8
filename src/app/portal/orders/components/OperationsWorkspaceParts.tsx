@@ -438,6 +438,12 @@ export function OrderWorkspaceDrawer({
   const showDeliveryDetails = mode === "status";
   const showInvoicePanel = mode !== "status";
   const canApproveLatestPayment = canStaffApprovePayment(order, latestPayment);
+  const footerActionLabel =
+    mode === "payments"
+      ? "Payment Actions"
+      : mode === "status"
+        ? "Order Actions"
+        : "Transaction And Refund";
 
   const copyManualInstructions = async () => {
     try {
@@ -487,38 +493,6 @@ export function OrderWorkspaceDrawer({
                     <Field label="Invoice Status" value={normalizeStatusLabel(order.invoiceStatus)} onChange={() => {}} placeholder="" disabled />
                   </div>
                   <TextAreaField label="Internal Notes" value={orderNotes} onChange={setOrderNotes} placeholder="Order notes visible to staff only" />
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      disabled={busy}
-                      onClick={() => void onUpdatePaymentSetup({
-                        orderId: order.id,
-                        expectedUpdatedAt,
-                        expectedAmount,
-                        paymentReference,
-                        customerEmail,
-                        notes: orderNotes,
-                      })}
-                    >
-                      Save Payment Details
-                    </button>
-                    {needsPaymentDetailsWorkflow(order) ? (
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={busy || !paymentWindowOpen}
-                        onClick={() => void onSendPaymentDetails(order)}
-                      >
-                        Send Payment Details
-                      </button>
-                    ) : null}
-                    {needsPaymentDetailsWorkflow(order) && !paymentWindowOpen ? (
-                      <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void copyManualInstructions()}>
-                        Copy Manual Instructions
-                      </button>
-                    ) : null}
-                  </div>
                   {needsPaymentDetailsWorkflow(order) ? (
                     <div className="text-muted" style={{ fontSize: 12 }}>
                       {describeWhatsAppWindow(order, nowTs)}
@@ -545,126 +519,9 @@ export function OrderWorkspaceDrawer({
                   <TextAreaField label="Shipping Address" value={shippingAddress} onChange={setShippingAddress} placeholder="Delivery address" />
                   <TextAreaField label="Delivery Notes" value={deliveryNotes} onChange={setDeliveryNotes} placeholder="Landmarks or instructions" />
                   <TextAreaField label="Fulfilment Notes" value={fulfillmentNotes} onChange={setFulfillmentNotes} placeholder="Internal notes for dispatch" />
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      disabled={busy}
-                      onClick={() => void onUpdateFulfillment({
-                        orderId: order.id,
-                        expectedUpdatedAt,
-                        recipientName,
-                        recipientPhone,
-                        shippingAddress,
-                        deliveryArea,
-                        deliveryNotes,
-                        courierName,
-                        trackingNumber,
-                        trackingUrl,
-                        dispatchReference,
-                        scheduledDeliveryAt: toIsoFromDateTimeLocal(scheduledDeliveryAt),
-                        fulfillmentNotes,
-                        notifyCustomer: false,
-                      })}
-                    >
-                      Save Delivery Details
-                    </button>
-                    {simpleFulfillmentBucket(order) === "pending" ? (
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        disabled={busy}
-                        onClick={() => void onUpdateFulfillment({
-                          orderId: order.id,
-                          expectedUpdatedAt,
-                          fulfillmentStatus: "out_for_delivery",
-                          recipientName,
-                          recipientPhone,
-                          shippingAddress,
-                          deliveryArea,
-                          deliveryNotes,
-                          courierName,
-                          trackingNumber,
-                          trackingUrl,
-                          dispatchReference,
-                          scheduledDeliveryAt: toIsoFromDateTimeLocal(scheduledDeliveryAt),
-                          fulfillmentNotes,
-                          notifyCustomer: true,
-                        })}
-                      >
-                        Dispatch
-                      </button>
-                    ) : null}
-                    {simpleFulfillmentBucket(order) === "out_for_delivery" ? (
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        disabled={busy}
-                        onClick={() => void onUpdateFulfillment({
-                          orderId: order.id,
-                          expectedUpdatedAt,
-                          fulfillmentStatus: "delivered",
-                          recipientName,
-                          recipientPhone,
-                          shippingAddress,
-                          deliveryArea,
-                          deliveryNotes,
-                          courierName,
-                          trackingNumber,
-                          trackingUrl,
-                          dispatchReference,
-                          scheduledDeliveryAt: toIsoFromDateTimeLocal(scheduledDeliveryAt),
-                          fulfillmentNotes,
-                          notifyCustomer: true,
-                        })}
-                      >
-                        Complete
-                      </button>
-                    ) : null}
-                  </div>
                 </div>
               </div>
             ) : null}
-
-            <div className="card">
-              <div className="card-body" style={{ display: "grid", gap: 10 }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>
-                  {mode === "payments" ? "Payment Actions" : "Transaction And Refund"}
-                </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  {mode === "payments" && latestPayment?.status === "submitted" ? (
-                    <>
-                      <button type="button" className="btn btn-primary" disabled={busy || !canApproveLatestPayment} onClick={() => void onApprovePayment(latestPayment.id, "approve")}>Approve Payment</button>
-                      <button type="button" className="btn btn-ghost" disabled={busy || !canApproveLatestPayment} onClick={() => void onRejectPayment(latestPayment.id, "reject")}>Deny Payment</button>
-                    </>
-                  ) : null}
-                  {mode === "payments" && canRecordManualPayment(order) ? (
-                    <button type="button" className="btn btn-primary portal-button--success" disabled={busy} onClick={() => void onRecordManualPayment(order)}>Mark Paid Manually</button>
-                  ) : null}
-                  {getOrderStatus(order) === "paid" ? (
-                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onUpdateRefundStatus(order, "mark_pending")}>Start Refund</button>
-                  ) : null}
-                  {getOrderStatus(order) === "refund_pending" ? (
-                    <>
-                      <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onUpdateRefundStatus(order, "mark_refunded")}>Mark Refunded</button>
-                      <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onUpdateRefundStatus(order, "cancel")}>Cancel Refund</button>
-                    </>
-                  ) : null}
-                </div>
-                {mode === "payments" && latestPayment?.status === "submitted" && !canApproveLatestPayment ? (
-                  <div className="text-muted" style={{ fontSize: 12 }}>
-                    Bank and QR payments stay locked until the AI proof check finishes. Manual collection can still be approved by staff.
-                  </div>
-                ) : null}
-                {latestPayment?.proofUrl ? (
-                  <a href={latestPayment.proofUrl} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ width: "fit-content" }}>
-                    Open Latest Proof
-                  </a>
-                ) : (
-                  <div className="text-muted" style={{ fontSize: 12 }}>No payment proof uploaded yet.</div>
-                )}
-              </div>
-            </div>
 
             {showInvoicePanel ? (
               <div className="card">
@@ -721,6 +578,150 @@ export function OrderWorkspaceDrawer({
                 )}
               </div>
             </div>
+          </div>
+        </div>
+        <div className="portal-drawer-footer">
+          <div className="portal-drawer-footer__label">{footerActionLabel}</div>
+          <div className="portal-drawer-footer__actions">
+            {showPaymentSetup ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => void onUpdatePaymentSetup({
+                  orderId: order.id,
+                  expectedUpdatedAt,
+                  expectedAmount,
+                  paymentReference,
+                  customerEmail,
+                  notes: orderNotes,
+                })}
+              >
+                Save Payment Details
+              </button>
+            ) : null}
+            {needsPaymentDetailsWorkflow(order) && showPaymentSetup ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busy || !paymentWindowOpen}
+                onClick={() => void onSendPaymentDetails(order)}
+              >
+                Send Payment Details
+              </button>
+            ) : null}
+            {needsPaymentDetailsWorkflow(order) && showPaymentSetup && !paymentWindowOpen ? (
+              <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void copyManualInstructions()}>
+                Copy Manual Instructions
+              </button>
+            ) : null}
+            {showDeliveryDetails ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => void onUpdateFulfillment({
+                  orderId: order.id,
+                  expectedUpdatedAt,
+                  recipientName,
+                  recipientPhone,
+                  shippingAddress,
+                  deliveryArea,
+                  deliveryNotes,
+                  courierName,
+                  trackingNumber,
+                  trackingUrl,
+                  dispatchReference,
+                  scheduledDeliveryAt: toIsoFromDateTimeLocal(scheduledDeliveryAt),
+                  fulfillmentNotes,
+                  notifyCustomer: false,
+                })}
+              >
+                Save Delivery Details
+              </button>
+            ) : null}
+            {showDeliveryDetails && simpleFulfillmentBucket(order) === "pending" ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => void onUpdateFulfillment({
+                  orderId: order.id,
+                  expectedUpdatedAt,
+                  fulfillmentStatus: "out_for_delivery",
+                  recipientName,
+                  recipientPhone,
+                  shippingAddress,
+                  deliveryArea,
+                  deliveryNotes,
+                  courierName,
+                  trackingNumber,
+                  trackingUrl,
+                  dispatchReference,
+                  scheduledDeliveryAt: toIsoFromDateTimeLocal(scheduledDeliveryAt),
+                  fulfillmentNotes,
+                  notifyCustomer: true,
+                })}
+              >
+                Dispatch
+              </button>
+            ) : null}
+            {showDeliveryDetails && simpleFulfillmentBucket(order) === "out_for_delivery" ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy}
+                onClick={() => void onUpdateFulfillment({
+                  orderId: order.id,
+                  expectedUpdatedAt,
+                  fulfillmentStatus: "delivered",
+                  recipientName,
+                  recipientPhone,
+                  shippingAddress,
+                  deliveryArea,
+                  deliveryNotes,
+                  courierName,
+                  trackingNumber,
+                  trackingUrl,
+                  dispatchReference,
+                  scheduledDeliveryAt: toIsoFromDateTimeLocal(scheduledDeliveryAt),
+                  fulfillmentNotes,
+                  notifyCustomer: true,
+                })}
+              >
+                Complete
+              </button>
+            ) : null}
+            {mode === "payments" && latestPayment?.status === "submitted" ? (
+              <button type="button" className="btn btn-primary" disabled={busy || !canApproveLatestPayment} onClick={() => void onApprovePayment(latestPayment.id, "approve")}>
+                Approve Payment
+              </button>
+            ) : null}
+            {mode === "payments" && latestPayment?.status === "submitted" ? (
+              <button type="button" className="btn btn-ghost" disabled={busy || !canApproveLatestPayment} onClick={() => void onRejectPayment(latestPayment.id, "reject")}>
+                Deny Payment
+              </button>
+            ) : null}
+            {mode === "payments" && canRecordManualPayment(order) ? (
+              <button type="button" className="btn btn-primary portal-button--success" disabled={busy} onClick={() => void onRecordManualPayment(order)}>
+                Mark Paid Manually
+              </button>
+            ) : null}
+            {getOrderStatus(order) === "paid" ? (
+              <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onUpdateRefundStatus(order, "mark_pending")}>
+                Start Refund
+              </button>
+            ) : null}
+            {getOrderStatus(order) === "refund_pending" ? (
+              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onUpdateRefundStatus(order, "mark_refunded")}>
+                Mark Refunded
+              </button>
+            ) : null}
+            {getOrderStatus(order) === "refund_pending" ? (
+              <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onUpdateRefundStatus(order, "cancel")}>
+                Cancel Refund
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

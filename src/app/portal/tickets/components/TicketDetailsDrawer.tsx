@@ -461,7 +461,7 @@ export function TicketDetailsDrawer({
                     <div className="portal-section-title" style={{ fontSize: 16 }}>Order Items</div>
                     <button
                       type="button"
-                      className="portal-ledger-action portal-ledger-action--neutral"
+                      className="portal-ledger-action portal-ledger-action--neutral portal-order-item-icon-button"
                       aria-label="Add order item"
                       title="Add order item"
                       onClick={() => setDraftOrderLines((current) => [...current, { item: "", quantity: "1", unitPrice: "" }])}
@@ -521,7 +521,7 @@ export function TicketDetailsDrawer({
                           <div className="portal-order-line-actions">
                             <button
                               type="button"
-                              className="portal-ledger-action portal-ledger-action--reject"
+                              className="portal-ledger-action portal-ledger-action--reject portal-order-item-icon-button"
                               aria-label="Remove order item"
                               title="Remove order item"
                               onClick={() =>
@@ -617,23 +617,19 @@ export function TicketDetailsDrawer({
               <>
                 <button
                   type="button"
-                  className="portal-ledger-action portal-ledger-action--approve portal-drawer-action-icon"
+                  className="btn btn-primary"
                   disabled={orderActionPending || !canApproveOrder}
                   onClick={() => void onApproveOrderTicket(ticket)}
-                  title="Approve order"
-                  aria-label="Approve order"
                 >
-                  <TicketCheckIcon />
+                  Approve Order
                 </button>
                 <button
                   type="button"
-                  className="portal-ledger-action portal-ledger-action--reject portal-drawer-action-icon"
+                  className="btn btn-secondary portal-button--danger"
                   disabled={orderActionPending || !canDenyOrder}
                   onClick={() => onDenyOrderTicket(ticket)}
-                  title="Deny order"
-                  aria-label="Deny order"
                 >
-                  <TicketCloseIcon />
+                  Deny Order
                 </button>
               </>
             ) : null}
@@ -675,14 +671,6 @@ function TicketCloseIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 6 6 18" />
       <path d="m6 6 12 12" />
-    </svg>
-  );
-}
-
-function TicketCheckIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m5 12 5 5L20 7" />
     </svg>
   );
 }
