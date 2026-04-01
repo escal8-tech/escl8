@@ -471,11 +471,11 @@ export default function TicketsPage() {
                           <th style={{ textAlign: "left", width: "14%" }}>Ticket</th>
                           <th style={{ textAlign: "center", width: "7%" }}>Bot</th>
                           <th style={{ textAlign: "left", width: "18%" }}>Customer</th>
-                          <th style={{ textAlign: "left", width: "23%" }}>Items</th>
-                          <th style={{ textAlign: "left", width: "10%" }}>Priority</th>
+                          <th style={{ textAlign: "left", width: "22%" }}>Items</th>
+                          <th style={{ textAlign: "left", width: "11%" }}>Priority</th>
                           <th style={{ textAlign: "left", width: "10%" }}>SLA</th>
-                          <th style={{ textAlign: "left", width: "10%" }}>Status</th>
-                          <th style={{ textAlign: "left", width: "10%" }}>Outcome</th>
+                          <th style={{ textAlign: "left", width: "11%" }}>Status</th>
+                          <th style={{ textAlign: "left", width: "11%" }}>Outcome</th>
                           <th style={{ textAlign: "right", width: "8%" }}>Action</th>
                         </tr>
                       )}
@@ -524,14 +524,14 @@ export default function TicketsPage() {
                   </td>
                 );
                 const itemsCell = (
-                  <td data-label="Items">
+                  <td data-label="Items" className="portal-ledger-cell portal-ledger-cell--items">
                     <span className="portal-body-text" title={itemsLabel}>
                       {itemsLabel}
                     </span>
                   </td>
                 );
                 const priorityCell = (
-                  <td data-label="Priority">
+                  <td data-label="Priority" className="portal-ledger-cell portal-ledger-cell--priority">
                     <span className={priorityPillClass(getTicketString(ticket, "priority") || "normal")}>
                       {(getTicketString(ticket, "priority") || "normal")}
                     </span>
@@ -649,7 +649,7 @@ export default function TicketsPage() {
                         {itemsCell}
                         {priorityCell}
                         {slaCell}
-                        <td data-label="Status" style={{ textAlign: "right", paddingRight: 12 }}>
+                        <td data-label="Status" className="portal-ledger-cell portal-ledger-cell--status">
                           <TableSelect
                             className="portal-ticket-row-select"
                             style={{ width: "100%", maxWidth: 136 }}
@@ -673,7 +673,7 @@ export default function TicketsPage() {
                             ))}
                           </TableSelect>
                         </td>
-                        <td data-label="Outcome" style={{ paddingLeft: 12 }}>
+                        <td data-label="Outcome" className="portal-ledger-cell portal-ledger-cell--outcome">
                           <TableSelect
                             className="portal-ticket-row-select"
                             style={{ width: "100%", maxWidth: 136 }}

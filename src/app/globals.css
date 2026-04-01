@@ -4166,15 +4166,54 @@ html.portal-theme-light {
 
 .portal-order-line {
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) 92px 124px auto;
+  grid-template-columns: minmax(0, 1.8fr) 92px 124px 120px 44px;
   gap: 10px;
   align-items: end;
 }
 
+.portal-order-line-total {
+  min-width: 0;
+}
+
 .portal-order-line-actions {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.portal-order-editor-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.portal-order-editor-total {
   display: grid;
   gap: 6px;
-  justify-items: end;
+}
+
+.portal-order-editor-total__value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--portal-text);
+}
+
+.portal-ledger-cell--items {
+  padding-right: 18px !important;
+}
+
+.portal-ledger-cell--priority {
+  padding-left: 8px !important;
+}
+
+.portal-ledger-cell--status {
+  padding-right: 10px !important;
+}
+
+.portal-ledger-cell--outcome {
+  padding-left: 10px !important;
 }
 
 .portal-table-details {
@@ -4346,6 +4385,7 @@ html.portal-theme-light {
 .portal-ticket-row-select {
   width: 100%;
   max-width: 136px;
+  min-width: 0;
 }
 
 .portal-dropdown-item[data-highlighted] {
@@ -4707,6 +4747,12 @@ html.portal-theme-light {
   transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
 }
 
+.portal-ledger-action--neutral {
+  border-color: var(--portal-border);
+  background: var(--portal-card-plain);
+  color: var(--portal-text);
+}
+
 .portal-ledger-action:disabled {
   cursor: not-allowed;
 }
@@ -4975,6 +5021,24 @@ html.portal-theme-light {
   min-width: 0;
 }
 
+.portal-drawer-action-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+.portal-layout .btn-primary.portal-button--success {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.28);
+  color: #34d399;
+}
+
+.portal-layout .btn-primary.portal-button--success:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.36);
+  color: #6ee7b7;
+}
+
 .portal-layout .btn-secondary.portal-button--danger {
   background: rgba(244, 63, 94, 0.08);
   border-color: rgba(244, 63, 94, 0.24);
@@ -5029,7 +5093,7 @@ html.portal-theme-light {
   }
 
   .portal-order-line-actions {
-    justify-items: stretch;
+    justify-content: flex-start;
   }
 
   .portal-table-details__row {
@@ -5077,6 +5141,10 @@ html.portal-theme-light {
   .portal-drawer-metrics,
   .portal-drawer-footer__actions {
     grid-template-columns: 1fr;
+  }
+
+  .portal-order-editor-footer {
+    align-items: stretch;
   }
 }
 

@@ -133,9 +133,6 @@ export function PaymentsTable({
               <td data-label="Payment Status">
                 <div className="portal-entity-stack">
                   <span className={financeToneClass(order)}>{describeFinanceState(order, latestPayment)}</span>
-                  <div className="portal-meta-text">
-                    {sendDetails ? describeWhatsAppWindow(order, nowTs) : latestPayment?.aiCheckNotes || "No payment note yet"}
-                  </div>
                 </div>
               </td>
               <td data-label="Proof">
@@ -175,11 +172,10 @@ export function PaymentsTable({
                     </button>
                   ) : null}
                   {!canApprove && manualPayment ? (
-                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onRecordManualPayment(order)}>
+                    <button type="button" className="btn btn-primary portal-button--success" disabled={busy} onClick={() => void onRecordManualPayment(order)}>
                       Mark Paid
                     </button>
                   ) : null}
-                  <button type="button" className="btn btn-ghost" onClick={() => onOpen(order.id)}>Open</button>
                 </div>
               </td>
             </tr>
@@ -247,7 +243,6 @@ export function StatusTable({
               <td data-label="Status">
                 <div className="portal-entity-stack">
                   <span className={simpleFulfillmentTone(order)}>{simpleFulfillmentLabel(order)}</span>
-                  <div className="portal-meta-text">{bucket === "pending" ? "Needs dispatch" : bucket === "out_for_delivery" ? "Delivery in progress" : "Order completed"}</div>
                 </div>
               </td>
               <td data-label="Delivery">
@@ -644,7 +639,7 @@ export function OrderWorkspaceDrawer({
                     </>
                   ) : null}
                   {mode === "payments" && canRecordManualPayment(order) ? (
-                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onRecordManualPayment(order)}>Mark Paid Manually</button>
+                    <button type="button" className="btn btn-primary portal-button--success" disabled={busy} onClick={() => void onRecordManualPayment(order)}>Mark Paid Manually</button>
                   ) : null}
                   {getOrderStatus(order) === "paid" ? (
                     <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onUpdateRefundStatus(order, "mark_pending")}>Start Refund</button>
