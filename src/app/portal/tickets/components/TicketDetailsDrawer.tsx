@@ -462,10 +462,12 @@ export function TicketDetailsDrawer({
                     <div className="portal-section-title" style={{ fontSize: 16 }}>Order Items</div>
                     <button
                       type="button"
-                      className="btn btn-secondary"
+                      className="portal-ledger-action portal-ledger-action--neutral"
+                      aria-label="Add order item"
+                      title="Add order item"
                       onClick={() => setDraftOrderLines((current) => [...current, { item: "", quantity: "1", unitPrice: "" }])}
                     >
-                      Add Item
+                      <TicketPlusIcon />
                     </button>
                   </div>
 
@@ -517,19 +519,22 @@ export function TicketDetailsDrawer({
                               placeholder="Optional"
                             />
                           </div>
+                          <div className="portal-field portal-order-line-total">
+                            <div className="portal-field-label">Line Total</div>
+                            <div className="portal-read-box">{computeOrderEditorLineTotal(line) || "-"}</div>
+                          </div>
                           <div className="portal-order-line-actions">
                             <button
                               type="button"
-                              className="btn btn-secondary btn-sm"
+                              className="portal-ledger-action portal-ledger-action--reject"
+                              aria-label="Remove order item"
+                              title="Remove order item"
                               onClick={() =>
                                 setDraftOrderLines((current) => current.filter((_, entryIndex) => entryIndex !== index))
                               }
                             >
-                              Remove
+                              <TicketTrashIcon />
                             </button>
-                            <div className="portal-meta-text">
-                              Line Total: {computeOrderEditorLineTotal(line) || "-"}
-                            </div>
                           </div>
                         </div>
                       ))}
@@ -538,14 +543,11 @@ export function TicketDetailsDrawer({
                     <div className="portal-meta-text">No order items yet.</div>
                   )}
                 </div>
-                <div className="portal-form-grid">
-                  <div className="portal-field portal-field--full">
+                <div className="portal-order-editor-footer">
+                  <div className="portal-order-editor-total">
                     <div className="portal-field-label">Computed Total</div>
-                    <div className="portal-read-box">{computedOrderTotal || "-"}</div>
+                    <div className="portal-order-editor-total__value">{computedOrderTotal || "-"}</div>
                   </div>
-                </div>
-
-                <div className="portal-inline-actions" style={{ justifyContent: "flex-start" }}>
                   <button type="button" className="btn btn-primary" disabled={savingTicket} onClick={handleSaveTicket}>
                     {savingTicket ? "Saving..." : "Save Ticket"}
                   </button>
@@ -620,19 +622,23 @@ export function TicketDetailsDrawer({
               <>
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className="portal-ledger-action portal-ledger-action--approve portal-drawer-action-icon"
                   disabled={orderActionPending || !canApproveOrder}
                   onClick={() => void onApproveOrderTicket(ticket)}
+                  title="Approve order"
+                  aria-label="Approve order"
                 >
-                  Approve Order
+                  <TicketCheckIcon />
                 </button>
                 <button
                   type="button"
-                  className="btn btn-secondary portal-button--danger"
+                  className="portal-ledger-action portal-ledger-action--reject portal-drawer-action-icon"
                   disabled={orderActionPending || !canDenyOrder}
                   onClick={() => onDenyOrderTicket(ticket)}
+                  title="Deny order"
+                  aria-label="Deny order"
                 >
-                  Deny Order
+                  <TicketCloseIcon />
                 </button>
               </>
             ) : null}
@@ -674,6 +680,35 @@ function TicketCloseIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 6 6 18" />
       <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
+function TicketCheckIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m5 12 5 5L20 7" />
+    </svg>
+  );
+}
+
+function TicketPlusIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+function TicketTrashIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
     </svg>
   );
 }
