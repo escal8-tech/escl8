@@ -42,6 +42,14 @@ export interface SmartChunk {
   question: string | null;     // For FAQ chunks, the question being answered
   contextBefore: string;       // Brief context of preceding content
   contextAfter: string;        // Brief context of following content
+  inventoryData?: {
+    fields?: Record<string, string>;
+    itemCode?: string;
+    product?: string;
+    specification?: string;
+    priceFields?: Array<{ key: string; value: string }>;
+    displayText?: string;
+  };
 }
 
 // Rough token estimation (1 token ≈ 4 chars for English)
