@@ -573,8 +573,8 @@ export default function SettingsPage() {
   // Booking settings state
   const [unitCapacity, setUnitCapacity] = useState<number>(1);
   const [timeslotMinutes, setTimeslotMinutes] = useState<number>(60);
-  const [openTime, setOpenTime] = useState<string>("09:00");
-  const [closeTime, setCloseTime] = useState<string>("18:00");
+  const [openTime, setOpenTime] = useState<string>("");
+  const [closeTime, setCloseTime] = useState<string>("");
   const [bookingsEnabled, setBookingsEnabled] = useState(false);
   const [promotionsEnabled, setPromotionsEnabled] = useState(true);
   const [timezone, setTimezone] = useState("UTC");
@@ -652,8 +652,8 @@ export default function SettingsPage() {
     if (businessQuery.data) {
       setUnitCapacity(businessQuery.data.bookingUnitCapacity ?? 1);
       setTimeslotMinutes(businessQuery.data.bookingTimeslotMinutes ?? 60);
-      setOpenTime(businessQuery.data.bookingOpenTime ?? "09:00");
-      setCloseTime(businessQuery.data.bookingCloseTime ?? "18:00");
+      setOpenTime(businessQuery.data.bookingOpenTime ?? "");
+      setCloseTime(businessQuery.data.bookingCloseTime ?? "");
       setBookingsEnabled(businessQuery.data.bookingsEnabled ?? false);
       setPromotionsEnabled(businessQuery.data.promotionsEnabled ?? true);
       const tz = (businessQuery.data.settings as Record<string, unknown> | null | undefined)?.timezone;
@@ -745,6 +745,13 @@ export default function SettingsPage() {
 
   const handleSaveBookingSettings = () => {
     if (!email || !businessQuery.data?.id) return;
+    if (!openTime || !closeTime) {
+      showErrorToast(toast, {
+        title: "Booking hours missing",
+        message: "Set both opening and closing times before saving booking settings.",
+      });
+      return;
+    }
     updateBooking.mutate({
       email,
       businessId: businessQuery.data.id,
@@ -1086,6 +1093,7 @@ export default function SettingsPage() {
                   style={styles.input}
                   value={openTime}
                   onChange={(e) => setOpenTime(e.target.value)}
+                  placeholder="Not configured"
                 />
               </div>
               <span style={styles.timeSeparator}>to</span>
@@ -1096,9 +1104,15 @@ export default function SettingsPage() {
                   style={styles.input}
                   value={closeTime}
                   onChange={(e) => setCloseTime(e.target.value)}
+                  placeholder="Not configured"
                 />
               </div>
             </div>
+            {(!openTime || !closeTime) && (
+              <p style={{ ...styles.labelHint, color: "#b45309", marginTop: 12 }}>
+                Booking hours are not configured yet. Set both times so staff and customers are not misled.
+              </p>
+            )}
           </div>
         </div>
         <div style={styles.actions}>

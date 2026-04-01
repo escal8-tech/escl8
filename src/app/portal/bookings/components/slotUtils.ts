@@ -153,16 +153,22 @@ export function generateSlots(
   bookings: Booking[],
   timeZone?: string | null,
 ): Slot[] {
+  if (!cfg.open || !cfg.close) {
+    return [];
+  }
   const config = {
     cap: cfg.capacity ?? 0,
     minutes: cfg.minutes ?? 60,
-    open: cfg.open ?? "09:00",
-    close: cfg.close ?? "18:00",
+    open: cfg.open,
+    close: cfg.close,
   };
   const tz = normalizeTimeZone(timeZone);
   const weekDays = getWeekDateKeys(selectedDate);
-  const openMinutes = parseHHMM(config.open, 9 * 60);
-  const closeMinutes = parseHHMM(config.close, 18 * 60);
+  const openMinutes = parseHHMM(config.open, Number.NaN);
+  const closeMinutes = parseHHMM(config.close, Number.NaN);
+  if (!Number.isFinite(openMinutes) || !Number.isFinite(closeMinutes)) {
+    return [];
+  }
   const closingBoundary = closeMinutes > openMinutes ? closeMinutes : openMinutes + config.minutes;
 
   const all: Slot[] = [];
