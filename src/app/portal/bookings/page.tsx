@@ -759,12 +759,18 @@ export default function BookingsPage() {
     return typeof tz === "string" && tz.trim() ? tz.trim() : "UTC";
   }, [biz.data?.settings]);
 
+  const bookingHoursConfigured = useMemo(() => {
+    const open = biz.data?.bookingOpenTime;
+    const close = biz.data?.bookingCloseTime;
+    return Boolean(typeof open === "string" && open.trim() && typeof close === "string" && close.trim());
+  }, [biz.data?.bookingOpenTime, biz.data?.bookingCloseTime]);
+
   const slots = useMemo(() => {
     return generateSlots(
       selectedDate,
       {
-        open: biz.data?.bookingOpenTime ?? "09:00",
-        close: biz.data?.bookingCloseTime ?? "18:00",
+        open: biz.data?.bookingOpenTime ?? undefined,
+        close: biz.data?.bookingCloseTime ?? undefined,
         minutes: biz.data?.bookingTimeslotMinutes ?? 60,
         capacity: biz.data?.bookingUnitCapacity,
       },
@@ -953,6 +959,23 @@ export default function BookingsPage() {
         </div>
       </div>
 
+      {!bookingHoursConfigured && (
+        <div
+          style={{
+            marginBottom: 16,
+            borderRadius: 16,
+            border: "1px solid rgba(180, 83, 9, 0.2)",
+            background: "rgba(245, 158, 11, 0.12)",
+            color: "#92400e",
+            padding: "14px 16px",
+            fontSize: 14,
+            fontWeight: 600,
+          }}
+        >
+          Booking hours are not configured for this business. Set opening and closing times in Settings before relying on this calendar.
+        </div>
+      )}
+
       {/* Calendar */}
       <div style={styles.calendarContainer}>
         {/* Calendar Header */}
@@ -985,7 +1008,11 @@ export default function BookingsPage() {
 
         {/* Calendar Body */}
         <div style={styles.calendarBody}>
-          {rowLabels.map((label, idxRow) => {
+          {!bookingHoursConfigured ? (
+            <div style={{ padding: 24, color: "var(--muted)", textAlign: "center" }}>
+              No booking slots are shown because opening and closing times are not configured.
+            </div>
+          ) : rowLabels.map((label, idxRow) => {
             const row = slotsByLabel.get(label) || [];
             return (
               <div key={`row-${idxRow}`} style={styles.calendarRow}>
