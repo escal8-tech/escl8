@@ -499,6 +499,7 @@ export default function TicketsPage() {
                   ? (customerPhone && customerPhone !== customerPrimary ? customerPhone : (!customerPhone ? "No phone" : ""))
                   : (!customerPhone ? "No phone" : "");
                 const itemsLabel = formatItemsCell(fields);
+                const normalizedTicketStatus = (ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus;
                 const ticketDate = formatDate(
                   (getTicketValue(ticket as TicketRow, "updatedAt", "updated_at") as Date | string | null | undefined) ?? ticket.createdAt,
                 );
@@ -653,7 +654,7 @@ export default function TicketsPage() {
                           <TableSelect
                             className="portal-ticket-row-select"
                             style={{ width: "100%", maxWidth: 136 }}
-                            value={(ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus}
+                            value={normalizedTicketStatus}
                             disabled={updatingId === ticket.id}
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => {
@@ -678,7 +679,7 @@ export default function TicketsPage() {
                             className="portal-ticket-row-select"
                             style={{ width: "100%", maxWidth: 136 }}
                             value={(getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome}
-                            disabled={updatingOutcomeId === ticket.id || ticket.status !== "resolved"}
+                            disabled={updatingOutcomeId === ticket.id || normalizedTicketStatus !== "resolved"}
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => {
                               const nextOutcome = e.target.value as TicketOutcome;
