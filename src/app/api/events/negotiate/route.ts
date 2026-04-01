@@ -1,47 +1,36 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
-import { db } from "@/server/db/client";
-import { users } from "@/../drizzle/schema";
-import { and, eq } from "drizzle-orm";
-import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
+import { getAuthedUserFromRequest } from "@/server/apiAuth";
+import { checkRateLimit } from "@/server/rateLimit";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { captureSentryException } from "@/lib/sentry-monitoring";
 
 export const runtime = "nodejs";
 
 async function getAuthedIdentity(req: Request): Promise<{ businessId: string; userId: string } | null> {
-  const auth = req.headers.get("authorization") || "";
-  const m = auth.match(/^Bearer\s+(.+)$/i);
-  if (!m) return null;
-
-  try {
-    const decoded = await verifyFirebaseIdToken(m[1]);
-    const userEmail = decoded.email || null;
-    const firebaseUid = decoded.uid || null;
-    if (!userEmail || !firebaseUid) return null;
-
-    let user = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid)).then((r) => r[0] ?? null);
-    if (!user) {
-      user = await db.select().from(users).where(eq(users.email, userEmail)).then((r) => r[0] ?? null);
-      if (user && !user.firebaseUid) {
-        const repaired = await db
-          .update(users)
-          .set({ firebaseUid, updatedAt: new Date() })
-          .where(and(eq(users.id, user.id), eq(users.email, userEmail)))
-          .returning();
-        user = repaired[0] ?? user;
-      }
-    }
-
-    const businessId = (user?.businessId as string) ?? "";
-    if (!businessId) return null;
-    return { businessId, userId: firebaseUid };
-  } catch {
-    return null;
-  }
+  const authed = await getAuthedUserFromRequest(req);
+  if (!authed?.businessId) return null;
+  return { businessId: authed.businessId, userId: authed.firebaseUid };
 }
 
 export async function GET(req: Request) {
+  const rl = checkRateLimit(req, {
+    name: "events_negotiate",
+    max: Number(process.env.RATE_LIMIT_EVENTS_NEGOTIATE_MAX ?? "90"),
+    windowMs: Number(process.env.RATE_LIMIT_EVENTS_NEGOTIATE_WINDOW_MS ?? String(60_000)),
+  });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "Too Many Requests" },
+      {
+        status: 429,
+        headers: {
+          ...rl.headers,
+          "retry-after": String(Math.max(1, Math.ceil((rl.resetAtMs - Date.now()) / 1000))),
+        },
+      },
+    );
+  }
   const startedAt = Date.now();
   const identity = await getAuthedIdentity(req);
   if (!identity) {
@@ -55,7 +44,7 @@ export async function GET(req: Request) {
       status: "unauthorized",
       entity: "realtime_session",
     });
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: rl.headers });
   }
 
   const conn = process.env.WEB_PUBSUB_CONNECTION_STRING || process.env.WEB_PUBSUB_CONN || "";
@@ -85,7 +74,7 @@ export async function GET(req: Request) {
         "realtime.hub": hub,
       },
     });
-    return NextResponse.json({ error: "WEB_PUBSUB_CONNECTION_STRING missing" }, { status: 503 });
+    return NextResponse.json({ error: "WEB_PUBSUB_CONNECTION_STRING missing" }, { status: 503, headers: rl.headers });
   }
 
   let WebPubSubServiceClientCtor: any;
@@ -116,7 +105,7 @@ export async function GET(req: Request) {
         "realtime.hub": hub,
       },
     });
-    return NextResponse.json({ error: "@azure/web-pubsub not installed" }, { status: 503 });
+    return NextResponse.json({ error: "@azure/web-pubsub not installed" }, { status: 503, headers: rl.headers });
   }
 
   const group = `business.${identity.businessId}`;

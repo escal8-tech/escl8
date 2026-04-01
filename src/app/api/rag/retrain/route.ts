@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/server/db/client";
-import { users } from "@/../drizzle/schema";
-import { and, eq } from "drizzle-orm";
-import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
+import { getAuthedUserFromRequest } from "@/server/apiAuth";
 import { checkRateLimit } from "@/server/rateLimit";
 import { isDocType, type DocType } from "@/lib/rag-documents";
 
@@ -31,32 +28,8 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    const auth = request.headers.get("authorization") || "";
-    const m = auth.match(/^Bearer\s+(.+)$/i);
-    if (!m) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    let businessId: string | null = null;
-    try {
-      const decoded = await verifyFirebaseIdToken(m[1]);
-      const email = decoded.email;
-      const firebaseUid = decoded.uid;
-      if (email && firebaseUid) {
-        let user = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid)).then((rows) => rows[0] ?? null);
-        if (!user) {
-          user = await db.select().from(users).where(eq(users.email, email)).then((rows) => rows[0] ?? null);
-          if (user && !user.firebaseUid) {
-            const repaired = await db
-              .update(users)
-              .set({ firebaseUid, updatedAt: new Date() })
-              .where(and(eq(users.id, user.id), eq(users.email, email)))
-              .returning();
-            user = repaired[0] ?? user;
-          }
-        }
-        if (user?.businessId) businessId = user.businessId as string;
-      }
-    } catch {}
-
+    const authed = await getAuthedUserFromRequest(request);
+    const businessId = authed?.businessId || null;
     if (!businessId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const docType = (body.docType as DocType);
     if (!isDocType(docType)) {
