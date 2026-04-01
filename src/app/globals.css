@@ -4178,8 +4178,10 @@ html.portal-theme-light {
 }
 
 .portal-order-item-icon-button {
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
+  min-height: 42px;
+  align-self: end;
   border-radius: 10px;
 }
 

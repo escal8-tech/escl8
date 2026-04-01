@@ -493,6 +493,23 @@ export function OrderWorkspaceDrawer({
                     <Field label="Invoice Status" value={normalizeStatusLabel(order.invoiceStatus)} onChange={() => {}} placeholder="" disabled />
                   </div>
                   <TextAreaField label="Internal Notes" value={orderNotes} onChange={setOrderNotes} placeholder="Order notes visible to staff only" />
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={busy}
+                      onClick={() => void onUpdatePaymentSetup({
+                        orderId: order.id,
+                        expectedUpdatedAt,
+                        expectedAmount,
+                        paymentReference,
+                        customerEmail,
+                        notes: orderNotes,
+                      })}
+                    >
+                      Save Payment Details
+                    </button>
+                  </div>
                   {needsPaymentDetailsWorkflow(order) ? (
                     <div className="text-muted" style={{ fontSize: 12 }}>
                       {describeWhatsAppWindow(order, nowTs)}
@@ -519,6 +536,31 @@ export function OrderWorkspaceDrawer({
                   <TextAreaField label="Shipping Address" value={shippingAddress} onChange={setShippingAddress} placeholder="Delivery address" />
                   <TextAreaField label="Delivery Notes" value={deliveryNotes} onChange={setDeliveryNotes} placeholder="Landmarks or instructions" />
                   <TextAreaField label="Fulfilment Notes" value={fulfillmentNotes} onChange={setFulfillmentNotes} placeholder="Internal notes for dispatch" />
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={busy}
+                      onClick={() => void onUpdateFulfillment({
+                        orderId: order.id,
+                        expectedUpdatedAt,
+                        recipientName,
+                        recipientPhone,
+                        shippingAddress,
+                        deliveryArea,
+                        deliveryNotes,
+                        courierName,
+                        trackingNumber,
+                        trackingUrl,
+                        dispatchReference,
+                        scheduledDeliveryAt: toIsoFromDateTimeLocal(scheduledDeliveryAt),
+                        fulfillmentNotes,
+                        notifyCustomer: false,
+                      })}
+                    >
+                      Save Delivery Details
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -583,23 +625,6 @@ export function OrderWorkspaceDrawer({
         <div className="portal-drawer-footer">
           <div className="portal-drawer-footer__label">{footerActionLabel}</div>
           <div className="portal-drawer-footer__actions">
-            {showPaymentSetup ? (
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={busy}
-                onClick={() => void onUpdatePaymentSetup({
-                  orderId: order.id,
-                  expectedUpdatedAt,
-                  expectedAmount,
-                  paymentReference,
-                  customerEmail,
-                  notes: orderNotes,
-                })}
-              >
-                Save Payment Details
-              </button>
-            ) : null}
             {needsPaymentDetailsWorkflow(order) && showPaymentSetup ? (
               <button
                 type="button"
@@ -613,31 +638,6 @@ export function OrderWorkspaceDrawer({
             {needsPaymentDetailsWorkflow(order) && showPaymentSetup && !paymentWindowOpen ? (
               <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void copyManualInstructions()}>
                 Copy Manual Instructions
-              </button>
-            ) : null}
-            {showDeliveryDetails ? (
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={busy}
-                onClick={() => void onUpdateFulfillment({
-                  orderId: order.id,
-                  expectedUpdatedAt,
-                  recipientName,
-                  recipientPhone,
-                  shippingAddress,
-                  deliveryArea,
-                  deliveryNotes,
-                  courierName,
-                  trackingNumber,
-                  trackingUrl,
-                  dispatchReference,
-                  scheduledDeliveryAt: toIsoFromDateTimeLocal(scheduledDeliveryAt),
-                  fulfillmentNotes,
-                  notifyCustomer: false,
-                })}
-              >
-                Save Delivery Details
               </button>
             ) : null}
             {showDeliveryDetails && simpleFulfillmentBucket(order) === "pending" ? (
