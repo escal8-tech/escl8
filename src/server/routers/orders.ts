@@ -89,6 +89,15 @@ type PaymentQueueFilter = "all" | "pending" | "approved" | "denied";
 type OrderStatusQueueFilter = "all" | "pending" | "out_for_delivery" | "completed";
 type RevenueQueueFilter = "all" | "realized" | "unrealized";
 type OrderWorkspaceFilter = PaymentQueueFilter | OrderStatusQueueFilter | RevenueQueueFilter;
+const PAYMENT_SETUP_EDITABLE_ORDER_STATUSES = new Set([
+  "approved",
+  "awaiting_payment",
+  "payment_submitted",
+  "payment_rejected",
+]);
+const FULFILLMENT_MUTABLE_ORDER_STATUSES = new Set(["paid", "refund_pending", "refunded"]);
+const AI_APPROVABLE_PAYMENT_METHODS = new Set(["bank_qr"]);
+const AI_APPROVAL_PASS_STATUSES = new Set(["passed"]);
 
 function resolveOrderLedgerAmount(
   orderRow: {
@@ -205,6 +214,48 @@ function canCaptureManualPayment(orderRow: {
   const method = String(orderRow.paymentMethod || "").trim().toLowerCase();
   const status = String(orderRow.status || "").trim().toLowerCase();
   return (method === "manual" || method === "cod") && ["approved", "payment_rejected"].includes(status);
+}
+
+function assertPaymentSetupEditable(orderRow: {
+  status?: string | null;
+}) {
+  const status = String(orderRow.status || "").trim().toLowerCase();
+  if (PAYMENT_SETUP_EDITABLE_ORDER_STATUSES.has(status)) return;
+  throw new TRPCError({
+    code: "BAD_REQUEST",
+    message: "Payment details can only be edited before the payment is approved.",
+  });
+}
+
+function assertOrderAllowsFulfillmentUpdates(orderRow: {
+  status?: string | null;
+}) {
+  const status = String(orderRow.status || "").trim().toLowerCase();
+  if (FULFILLMENT_MUTABLE_ORDER_STATUSES.has(status)) return;
+  throw new TRPCError({
+    code: "BAD_REQUEST",
+    message: "Only paid or refund-tracked orders can be updated in order status.",
+  });
+}
+
+function assertPaymentReviewAllowed(params: {
+  orderRow: {
+    paymentMethod?: string | null;
+  };
+  paymentRow: {
+    aiCheckStatus?: string | null;
+  };
+  action: "approve" | "reject";
+}) {
+  if (params.action !== "approve") return;
+  const method = String(params.orderRow.paymentMethod || "").trim().toLowerCase();
+  if (!AI_APPROVABLE_PAYMENT_METHODS.has(method)) return;
+  const aiStatus = String(params.paymentRow.aiCheckStatus || "").trim().toLowerCase();
+  if (AI_APPROVAL_PASS_STATUSES.has(aiStatus)) return;
+  throw new TRPCError({
+    code: "BAD_REQUEST",
+    message: "Bank or QR payments can only be approved after the AI proof check passes.",
+  });
 }
 
 function coalesceText(...values: Array<string | null | undefined>): string | null {
@@ -1104,6 +1155,7 @@ export const ordersRouter = router({
       if (!orderRow) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
       }
+      assertPaymentSetupEditable(orderRow);
       assertExpectedUpdatedAt({
         entityLabel: "order",
         expectedUpdatedAt: input.expectedUpdatedAt,
@@ -1428,6 +1480,11 @@ export const ordersRouter = router({
         if (String(orderRow.status || "").trim().toLowerCase() !== "payment_submitted") {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Only payment-submitted orders can be reviewed." });
         }
+        assertPaymentReviewAllowed({
+          orderRow,
+          paymentRow,
+          action: input.action,
+        });
         const [latestPayment] = await tx
           .select({
             id: orderPayments.id,
@@ -1780,6 +1837,7 @@ export const ordersRouter = router({
         if (!orderRow) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
         }
+        assertOrderAllowsFulfillmentUpdates(orderRow);
         assertExpectedUpdatedAt({
           entityLabel: "order",
           expectedUpdatedAt: input.expectedUpdatedAt,

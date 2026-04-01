@@ -5,10 +5,20 @@ import { orderPayments, orders } from "@/../drizzle/schema";
 import { storePrivateFileAtPath } from "@/lib/storage";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { isInternalApiAuthorized, normalizeServiceBaseUrl } from "@/server/internalSecurity";
 import { logOrderEvent } from "@/server/services/orderFlow";
+import { assertOperationThrottle } from "@/server/operationalHardening";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+const MAX_PAYMENT_PROOF_FILE_BYTES = Number(process.env.ORDER_PAYMENT_PROOF_MAX_BYTES ?? String(10 * 1024 * 1024));
+const ALLOWED_PAYMENT_PROOF_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]);
 
 type PaymentProofAnalyzerResult = {
   provider: string;
@@ -45,14 +55,7 @@ function getInternalApiKey(): string {
 }
 
 function isAuthorized(request: Request): boolean {
-  const expected = getInternalApiKey();
-  if (!expected) return false;
-  const provided =
-    request.headers.get("x-api-key") ||
-    request.headers.get("X-API-Key") ||
-    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
-    "";
-  return String(provided).trim() === expected;
+  return isInternalApiAuthorized(request, getInternalApiKey());
 }
 
 function toMoneyString(value: unknown): string | null {
@@ -76,7 +79,7 @@ async function analyzePaymentProof(input: {
   paymentProofUrl?: string | null;
   paymentProofText?: string | null;
 }): Promise<PaymentProofAnalyzerResult | null> {
-  const baseUrl = String(process.env.BOT_INTERNAL_BASE_URL || "").trim().replace(/\/+$/, "");
+  const baseUrl = normalizeServiceBaseUrl(String(process.env.BOT_INTERNAL_BASE_URL || ""));
   const apiKey = String(
     process.env.PAYMENT_PROOF_ANALYZER_API_KEY ||
       process.env.BOT_INTERNAL_API_KEY ||
@@ -126,6 +129,26 @@ export async function POST(request: Request) {
   if (!(file instanceof File) && !paymentText) {
     return NextResponse.json({ success: false, error: "Payment proof file or text is required." }, { status: 400 });
   }
+  if (paymentText.length > 12_000) {
+    return NextResponse.json({ success: false, error: "Payment proof text is too large." }, { status: 400 });
+  }
+
+  await assertOperationThrottle(db, {
+    businessId,
+    bucket: "internal.order_payment_proof.business",
+    scope: businessId,
+    max: Number(process.env.ORDER_PAYMENT_PROOF_BUSINESS_MAX ?? "120"),
+    windowMs: Number(process.env.ORDER_PAYMENT_PROOF_BUSINESS_WINDOW_MS ?? String(5 * 60 * 1000)),
+    message: "Too many payment proof submissions were received. Please wait and try again.",
+  });
+  await assertOperationThrottle(db, {
+    businessId,
+    bucket: "internal.order_payment_proof.order",
+    scope: `${businessId}:${orderId}`,
+    max: Number(process.env.ORDER_PAYMENT_PROOF_ORDER_MAX ?? "8"),
+    windowMs: Number(process.env.ORDER_PAYMENT_PROOF_ORDER_WINDOW_MS ?? String(10 * 60 * 1000)),
+    message: "Too many payment proof submissions were received for this order. Please wait and try again.",
+  });
 
   const [orderRow] = await db
     .select()
@@ -154,6 +177,13 @@ export async function POST(request: Request) {
     | null = null;
 
   if (file instanceof File) {
+    if (file.size > MAX_PAYMENT_PROOF_FILE_BYTES) {
+      return NextResponse.json({ success: false, error: "Payment proof file is too large." }, { status: 400 });
+    }
+    const normalizedType = String(file.type || "").trim().toLowerCase();
+    if (normalizedType && !ALLOWED_PAYMENT_PROOF_TYPES.has(normalizedType)) {
+      return NextResponse.json({ success: false, error: "Unsupported payment proof file type." }, { status: 400 });
+    }
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     storedProof = await storePrivateFileAtPath({

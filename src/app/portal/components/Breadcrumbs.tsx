@@ -12,7 +12,8 @@ const routeLabels: Record<string, string> = {
   messages: "Messages",
   upload: "Documents",
   bookings: "Bookings",
-  orders: "Revenue",
+  orders: "Order Status",
+  payments: "Payment Status",
   sync: "Sync",
   settings: "Settings",
   revenue: "Revenue",
@@ -24,11 +25,16 @@ export default function Breadcrumbs() {
   const appPath = normalizeAppPath(pathname);
   const segments = appPath.split("/").filter(Boolean);
   const leaf = segments[segments.length - 1] || "dashboard";
-  const isTickets = appPath === "/tickets" || appPath.startsWith("/tickets/");
+  const isTickets = appPath === "/tickets"
+    || appPath.startsWith("/tickets/")
+    || appPath === "/orders"
+    || appPath.startsWith("/orders/")
+    || appPath === "/payments"
+    || appPath.startsWith("/payments/");
 
   const sectionLabel = isTickets ? "Tickets" : "Menu";
   const ticketType = (searchParams?.get("type") || "").toLowerCase();
-  const currentTitle = isTickets
+  const currentTitle = appPath === "/tickets" || appPath.startsWith("/tickets/")
     ? getPortalTicketTypeLabel(ticketType)
     : routeLabels[leaf] || leaf.charAt(0).toUpperCase() + leaf.slice(1);
 

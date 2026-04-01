@@ -111,6 +111,61 @@ function asRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
+function sanitizeJsonLikeValue(
+  value: unknown,
+  depth = 0,
+): z.infer<ReturnType<typeof z.unknown>> {
+  if (depth > 6) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Ticket fields are too deeply nested.",
+    });
+  }
+  if (value == null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 200) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Ticket fields contain too many array items.",
+      });
+    }
+    return value.map((entry) => sanitizeJsonLikeValue(entry, depth + 1));
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const entries = Object.entries(record);
+    if (entries.length > 200) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Ticket fields contain too many properties.",
+      });
+    }
+    const next: Record<string, unknown> = {};
+    for (const [rawKey, rawValue] of entries) {
+      const key = String(rawKey || "").trim().slice(0, 120);
+      if (!key) continue;
+      next[key] = sanitizeJsonLikeValue(rawValue, depth + 1);
+    }
+    return next;
+  }
+  return String(value);
+}
+
+function sanitizeTicketFields(fields: Record<string, unknown>): Record<string, unknown> {
+  const sanitized = sanitizeJsonLikeValue(fields, 0);
+  if (!sanitized || typeof sanitized !== "object" || Array.isArray(sanitized)) return {};
+  const serialized = JSON.stringify(sanitized);
+  if (serialized.length > 24_000) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Ticket fields are too large to save safely.",
+    });
+  }
+  return sanitized as Record<string, unknown>;
+}
+
 function validateTicketOrderFlow(input: {
   ticketTypeKey: string | null | undefined;
   ticketFlowEnabled: boolean;
@@ -725,7 +780,7 @@ export const ticketsRouter = router({
           whatsappIdentityId: contactContext.whatsappIdentityId,
           customerName: contactContext.customerName,
           customerPhone: contactContext.customerPhone,
-          fields: input.fields ?? {},
+          fields: sanitizeTicketFields(input.fields ?? {}),
           notes: input.notes?.trim() || null,
           createdBy: input.createdBy ?? "user",
           outcome: "pending",
@@ -807,7 +862,7 @@ export const ticketsRouter = router({
         actualUpdatedAt: existing.updatedAt,
       });
 
-      const nextFields = input.fields ?? asRecord(existing.fields);
+      const nextFields = sanitizeTicketFields(input.fields ?? asRecord(existing.fields));
       const [updated] = await db
         .update(supportTickets)
         .set({

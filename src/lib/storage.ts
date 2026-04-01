@@ -17,6 +17,15 @@ export type StoredFile = {
   contentType?: string;
 };
 
+export function normalizeBlobPath(blobPath: string): string | null {
+  const normalized = String(blobPath || "").trim().replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!normalized || normalized.length > 1024) return null;
+  const segments = normalized.split("/");
+  if (!segments.every((segment) => segment && segment !== "." && segment !== "..")) return null;
+  if (!/^[A-Za-z0-9._/-]+$/.test(normalized)) return null;
+  return normalized;
+}
+
 function safeName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
@@ -48,7 +57,7 @@ function buildReadUrl(blobUrl: string, blobPath: string, expiresOn: Date): strin
 }
 
 export function buildPrivateBlobReadUrl(blobPath: string, readTtlHours = 72): string | null {
-  const normalizedPath = String(blobPath || "").trim();
+  const normalizedPath = normalizeBlobPath(blobPath);
   if (!AZURE_CONN || !normalizedPath) return null;
   const service = BlobServiceClient.fromConnectionString(AZURE_CONN);
   const container = service.getContainerClient(AZURE_CONTAINER);
@@ -107,18 +116,22 @@ export async function storePrivateFileAtPath(params: {
   if (!AZURE_CONN) {
     throw new Error("Missing AZURE_BLOB_CONNECTION_STRING (blob storage is required)");
   }
+  const normalizedBlobPath = normalizeBlobPath(params.blobPath);
+  if (!normalizedBlobPath) {
+    throw new Error("Invalid blob path.");
+  }
 
   const service = BlobServiceClient.fromConnectionString(AZURE_CONN);
   const container = service.getContainerClient(AZURE_CONTAINER);
   await container.createIfNotExists();
-  const blockBlob = container.getBlockBlobClient(params.blobPath);
+  const blockBlob = container.getBlockBlobClient(normalizedBlobPath);
   await blockBlob.uploadData(params.buffer, {
     blobHTTPHeaders: { blobContentType: params.contentType || undefined },
   });
   const props = await blockBlob.getProperties();
   const readUrl = buildReadUrl(
     blockBlob.url,
-    params.blobPath,
+    normalizedBlobPath,
     new Date(Date.now() + Math.max(1, Number(params.readTtlHours ?? 72)) * 60 * 60 * 1000),
   );
 
@@ -126,7 +139,7 @@ export async function storePrivateFileAtPath(params: {
     name: safeName(params.fileName),
     size: Number(props.contentLength || params.buffer.byteLength),
     url: readUrl,
-    blobPath: params.blobPath,
+    blobPath: normalizedBlobPath,
     contentType: params.contentType || props.contentType || undefined,
   };
 }
