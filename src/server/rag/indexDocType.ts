@@ -21,6 +21,69 @@ function extractPricesLite(text: string): string[] {
   return unique.slice(0, 20);
 }
 
+function isInventoryPriceKey(key: string): boolean {
+  return /(^|_)(retail|price|cost|member|wholesale|dealer|cash|offer|promo|warranty)($|_)/i.test(key);
+}
+
+function isInventoryProductKey(key: string): boolean {
+  return /(^|_)(product|item|description|model|name)($|_)/i.test(key);
+}
+
+function isInventoryCodeKey(key: string): boolean {
+  return /(^|_)(item_code|product_code|sku|code)($|_)/i.test(key);
+}
+
+function isInventorySpecKey(key: string): boolean {
+  return /(^|_)(spec|specification|details?)($|_)/i.test(key);
+}
+
+function summarizeInventoryRow(row: SpreadsheetRow): {
+  displayText: string;
+  itemCode: string;
+  product: string;
+  specification: string;
+  priceFields: Array<{ key: string; value: string }>;
+  keywords: string[];
+  products: string[];
+} {
+  const entries = Object.entries(row.fields || {}).filter(([, value]) => String(value || "").trim());
+  const itemCode = entries.find(([key]) => isInventoryCodeKey(key))?.[1] || "";
+  const product = entries.find(([key]) => isInventoryProductKey(key))?.[1] || "";
+  const specification = entries.find(([key]) => isInventorySpecKey(key))?.[1] || "";
+  const priceFields = entries
+    .filter(([key]) => isInventoryPriceKey(key))
+    .map(([key, value]) => ({ key, value: String(value).trim() }));
+
+  const ordered: Array<[string, string]> = [];
+  const seen = new Set<string>();
+  const push = (predicate: (key: string) => boolean) => {
+    for (const [key, value] of entries) {
+      if (seen.has(key) || !predicate(key)) continue;
+      ordered.push([key, value]);
+      seen.add(key);
+    }
+  };
+
+  push(isInventoryCodeKey);
+  push(isInventoryProductKey);
+  push(isInventorySpecKey);
+  push((key) => !isInventoryPriceKey(key));
+  push(() => true);
+
+  const displayText = ordered.map(([key, value]) => `${key}: ${value}`).join(" | ");
+  const keywordSeed = [
+    itemCode,
+    product,
+    specification,
+    ...priceFields.map((row) => `${row.key} ${row.value}`),
+    ...entries.map(([key]) => key),
+  ].join(" ");
+
+  const keywords = extractKeywordsLite(keywordSeed);
+  const products = [product, specification].map((value) => value.trim()).filter(Boolean).slice(0, 6);
+  return { displayText, itemCode, product, specification, priceFields, keywords, products };
+}
+
 function extractKeywordsLite(text: string): string[] {
   const words = text.toLowerCase().match(/\\b[a-z]{4,}\\b/g) || [];
   const stop = new Set(["this","that","with","from","have","been","were","will","would","could","should","their","there","which","about","into","more","other","some","such","than","then","these","they","through","very","your","also","each","just","like","make","when","only","where","what"]);
@@ -254,7 +317,8 @@ function buildInventoryStructuredRowChunks(rows: SpreadsheetRow[]): SmartChunk[]
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const rowText = row.text.trim();
+    const summary = summarizeInventoryRow(row);
+    const rowText = (summary.displayText || row.text || "").trim();
     if (!rowText) continue;
 
     const charStart = charOffset;
@@ -269,12 +333,20 @@ function buildInventoryStructuredRowChunks(rows: SpreadsheetRow[]): SmartChunk[]
       charStart,
       charEnd,
       tokenEstimate: estimateTokens(rowText),
-      products: [],
-      keywords: extractKeywordsLite(rowText),
-      prices: extractPricesLite(rowText),
+      products: summary.products,
+      keywords: summary.keywords,
+      prices: summary.priceFields.map((field) => field.value).filter(Boolean),
       question: null,
       contextBefore: i > 0 ? getShortContext(rowTexts, i - 1) : "",
       contextAfter: i < rows.length - 1 ? getShortContext(rowTexts, i + 1) : "",
+      inventoryData: {
+        fields: row.fields,
+        itemCode: summary.itemCode,
+        product: summary.product,
+        specification: summary.specification,
+        priceFields: summary.priceFields,
+        displayText: summary.displayText,
+      },
     });
   }
 
@@ -474,6 +546,18 @@ export async function indexSingleDocType(params: {
           question: truncate(chunk.question, 500),
           contextBefore: truncate(chunk.contextBefore, MAX_CONTEXT_CHARS),
           contextAfter: truncate(chunk.contextAfter, MAX_CONTEXT_CHARS),
+          inventoryItemCode: truncate(chunk.inventoryData?.itemCode, 120),
+          inventoryProduct: truncate(chunk.inventoryData?.product, 500),
+          inventorySpecification: truncate(chunk.inventoryData?.specification, 500),
+          inventoryDisplayText: truncate(chunk.inventoryData?.displayText || chunk.text, MAX_TEXT_CHARS),
+          inventoryPriceFields: truncate(
+            JSON.stringify(chunk.inventoryData?.priceFields || []),
+            1200,
+          ),
+          inventoryFieldsJson: truncate(
+            JSON.stringify(chunk.inventoryData?.fields || {}),
+            4000,
+          ),
         },
       };
     });

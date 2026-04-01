@@ -16,6 +16,69 @@ export type SpreadsheetRow = {
   text: string; // Labeled row text for embedding
 };
 
+const PRODUCT_FIELD_PATTERNS = [
+  /(^|_)product($|_)/i,
+  /(^|_)item($|_)/i,
+  /(^|_)description($|_)/i,
+  /(^|_)model($|_)/i,
+  /(^|_)name($|_)/i,
+];
+
+const CODE_FIELD_PATTERNS = [
+  /(^|_)item_code($|_)/i,
+  /(^|_)product_code($|_)/i,
+  /(^|_)sku($|_)/i,
+  /(^|_)code($|_)/i,
+];
+
+const SPEC_FIELD_PATTERNS = [
+  /(^|_)spec($|_)/i,
+  /(^|_)specification($|_)/i,
+  /(^|_)details?($|_)/i,
+];
+
+const PRICE_FIELD_PATTERNS = [
+  /(^|_)(retail|price|cost|member|wholesale|dealer|cash|offer|promo|warranty)($|_)/i,
+];
+
+function matchesAnyPattern(key: string, patterns: RegExp[]): boolean {
+  return patterns.some((pattern) => pattern.test(key));
+}
+
+function buildSpreadsheetRowText(fields: Record<string, string>): string {
+  const entries = Object.entries(fields);
+  if (!entries.length) return "";
+
+  const ordered: Array<[string, string]> = [];
+  const seen = new Set<string>();
+
+  const pushMatching = (patterns: RegExp[]) => {
+    for (const [key, value] of entries) {
+      if (!value || seen.has(key) || !matchesAnyPattern(key, patterns)) continue;
+      ordered.push([key, value]);
+      seen.add(key);
+    }
+  };
+
+  pushMatching(CODE_FIELD_PATTERNS);
+  pushMatching(PRODUCT_FIELD_PATTERNS);
+  pushMatching(SPEC_FIELD_PATTERNS);
+
+  for (const [key, value] of entries) {
+    if (!value || seen.has(key) || matchesAnyPattern(key, PRICE_FIELD_PATTERNS)) continue;
+    ordered.push([key, value]);
+    seen.add(key);
+  }
+
+  for (const [key, value] of entries) {
+    if (!value || seen.has(key)) continue;
+    ordered.push([key, value]);
+    seen.add(key);
+  }
+
+  return normalizeText(ordered.map(([k, v]) => `${k}: ${v}`).join(" | "));
+}
+
 // Page boundary marker used when preserving page structure
 export const PAGE_BOUNDARY = "\n\n---PAGE_BREAK---\n\n";
 
@@ -135,7 +198,8 @@ export async function extractTextFromBuffer(params: {
       );
       if (headerRowIndex < 0) continue;
 
-      const rawHeaders = rows[headerRowIndex].map((cell) => String(cell ?? "").trim());
+      const columnCount = rows.reduce((max, row) => Math.max(max, row.length), 0);
+      const rawHeaders = Array.from({ length: columnCount }, (_, idx) => String(rows[headerRowIndex]?.[idx] ?? "").trim());
       const normalizedHeaders = rawHeaders.map((header, idx) => {
         const key = normalizeHeaderKey(header);
         return key || `col${idx + 1}`;
@@ -152,11 +216,7 @@ export async function extractTextFromBuffer(params: {
           fields[key] = value;
         }
 
-        const entries = Object.entries(fields);
-        if (entries.length === 0) continue;
-
-        const labeledText = entries.map(([k, v]) => `${k}: ${v}`).join(" | ");
-        const finalText = normalize(labeledText);
+        const finalText = buildSpreadsheetRowText(fields);
         if (!finalText) continue;
 
         rowTexts.push(finalText);
@@ -190,4 +250,3 @@ export async function extractTextFromBuffer(params: {
   // Legacy .doc (binary) is not supported here.
   throw new Error(`Unsupported document type for extraction: ${filename} (${contentType || "unknown"})`);
 }
-
