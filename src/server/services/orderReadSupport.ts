@@ -135,7 +135,7 @@ export async function getOrderWorkspaceOverviewForBusiness(args: {
   const [aggregateRow] = await db
     .select({
       scopedCount: sql<number>`count(*)::int`,
-      paymentPendingCount: sql<number>`count(*) filter (where ${statusExpr} in ('approved', 'awaiting_payment', 'payment_submitted'))::int`,
+      paymentPendingCount: sql<number>`count(*) filter (where ${statusExpr} in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted'))::int`,
       paymentApprovedCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded'))::int`,
       paymentDeniedCount: sql<number>`count(*) filter (where ${statusExpr} = 'payment_rejected')::int`,
       paymentReviewCount: sql<number>`count(*) filter (where ${statusExpr} = 'payment_submitted')::int`,

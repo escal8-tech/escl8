@@ -142,6 +142,27 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
     { enabled: Boolean(selectedOrderId) },
   );
 
+  const updateDraftOrder = trpc.orders.updateDraftOrder.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.orders.listOrdersPage.invalidate(),
+        utils.orders.getOverview.invalidate(),
+        utils.orders.getOrderById.invalidate(),
+        utils.orders.getOrderEvents.invalidate(),
+      ]);
+    },
+  });
+  const approveOrderTicket = trpc.tickets.approveOrderTicket.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.orders.listOrdersPage.invalidate(),
+        utils.orders.getOverview.invalidate(),
+        utils.orders.getOrderById.invalidate(),
+        utils.orders.getOrderEvents.invalidate(),
+        utils.orders.getOrderPayments.invalidate(),
+      ]);
+    },
+  });
   const updatePaymentSetup = trpc.orders.updatePaymentSetup.useMutation({
     onSuccess: async () => {
       await Promise.all([
@@ -241,7 +262,9 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
   }, [overviewQuery.data?.financeTotals]);
 
   const isBusy =
-    updatePaymentSetup.isPending
+    updateDraftOrder.isPending
+    || approveOrderTicket.isPending
+    || updatePaymentSetup.isPending
     || reviewPayment.isPending
     || updateFulfillment.isPending
     || captureManualPayment.isPending
@@ -399,6 +422,54 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
       showErrorToast(toast, {
         title: "Could not save payment details",
         message: error instanceof Error ? error.message : "Payment setup update failed.",
+      });
+    }
+  };
+
+  const handleSaveDraftOrder = async (input: {
+    orderId: string;
+    expectedUpdatedAt?: Date;
+    title?: string | null;
+    summary?: string | null;
+    notes?: string | null;
+    customerName?: string | null;
+    customerPhone?: string | null;
+    customerEmail?: string | null;
+    fields?: Record<string, unknown>;
+  }) => {
+    try {
+      await updateDraftOrder.mutateAsync(input);
+      showSuccessToast(toast, {
+        title: "Draft order saved",
+        message: "The manual order draft and linked ticket were updated.",
+      });
+    } catch (error) {
+      showErrorToast(toast, {
+        title: "Could not save draft",
+        message: error instanceof Error ? error.message : "Draft order update failed.",
+      });
+    }
+  };
+
+  const handleApproveDraftOrder = async (order: OrderRow) => {
+    const supportTicketId = String(order.supportTicketId || "").trim();
+    if (!supportTicketId) {
+      showErrorToast(toast, {
+        title: "Could not approve order",
+        message: "This draft order is missing its linked ticket.",
+      });
+      return;
+    }
+    try {
+      await approveOrderTicket.mutateAsync({ id: supportTicketId });
+      showSuccessToast(toast, {
+        title: "Order approved",
+        message: "The draft order was promoted and the customer received the payment instructions.",
+      });
+    } catch (error) {
+      showErrorToast(toast, {
+        title: "Could not approve order",
+        message: error instanceof Error ? error.message : "Draft approval failed.",
       });
     }
   };
@@ -598,6 +669,8 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
         onRejectPayment={handleReview}
         onSendPaymentDetails={handleSendPaymentDetails}
         onRecordManualPayment={handleManualPayment}
+        onUpdateDraftOrder={handleSaveDraftOrder}
+        onApproveDraftOrder={handleApproveDraftOrder}
         onUpdateFulfillment={handleFulfillmentUpdate}
         onUpdatePaymentSetup={handleSavePaymentSetup}
         onUpdateRefundStatus={handleRefundAction}

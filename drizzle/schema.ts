@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, integer, timestamp, jsonb, uniqueIndex, index, numeric, check, foreignKey } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, integer, timestamp, jsonb, uniqueIndex, index, numeric, check, foreignKey, pgSequence } from "drizzle-orm/pg-core";
 import crypto from "crypto";
 import { relations, sql } from "drizzle-orm";
 
@@ -177,7 +177,7 @@ export const whatsappIdentities = pgTable(
     ),
     waIdentitiesBotTypeValid: check(
       "wa_identities_bot_type_valid",
-      sql`${t.botType} in ('AGENT', 'CONCIERGE', 'RESERVATION')`,
+      sql`${t.botType} in ('AGENT', 'CONCIERGE', 'ORDER', 'RESERVATION')`,
     ),
 
     // lifecycle sanity (optional): if disconnectedAt exists, isActive should typically be false
@@ -501,6 +501,12 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
 export type CustomerRow = typeof customers.$inferSelect;
 export type NewCustomer = typeof customers.$inferInsert;
 
+export const supportTicketNumberSeq = pgSequence("support_ticket_number_seq", {
+  startWith: "1",
+  increment: "1",
+  minValue: "1",
+});
+
 // Tenant-defined ticket categories + required flow-state fields.
 export const supportTicketTypes = pgTable(
   "support_ticket_types",
@@ -542,6 +548,9 @@ export const supportTickets = pgTable(
       .primaryKey()
       .notNull()
       .$defaultFn(() => crypto.randomUUID()),
+    ticketNumber: text("ticket_number")
+      .notNull()
+      .default(sql`('A' || lpad(nextval('support_ticket_number_seq'::regclass)::text, 5, '0'))`),
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
@@ -589,6 +598,7 @@ export const supportTickets = pgTable(
     supportTicketsSlaDueIdx: index("support_tickets_sla_due_at_idx").on(t.slaDueAt),
     supportTicketsCreatedIdx: index("support_tickets_created_at_idx").on(t.createdAt),
     supportTicketsCustomerIdx: index("support_tickets_customer_id_idx").on(t.customerId),
+    supportTicketsTicketNumberUx: uniqueIndex("support_tickets_ticket_number_ux").on(t.ticketNumber),
     supportTicketsIdempotencyUx: uniqueIndex("support_tickets_business_idempotency_uk")
       .on(t.businessId, t.idempotencyKey)
       .where(sql`${t.idempotencyKey} is not null`),

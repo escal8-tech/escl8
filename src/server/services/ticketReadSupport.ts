@@ -74,6 +74,7 @@ export async function listTicketLedgerForBusiness(args: {
     const pattern = `%${searchPattern}%`;
     conditions.push(
       or(
+        ilike(supportTickets.ticketNumber, pattern),
         ilike(supportTickets.id, pattern),
         ilike(supportTickets.title, pattern),
         ilike(supportTickets.summary, pattern),

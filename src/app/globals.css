@@ -4178,11 +4178,11 @@ html.portal-theme-light {
 }
 
 .portal-order-item-icon-button {
-  width: 42px;
-  height: 42px;
-  min-height: 42px;
+  width: 46px;
+  height: 46px;
+  min-height: 46px;
   align-self: end;
-  border-radius: 10px;
+  border-radius: 999px;
 }
 
 .portal-order-editor-footer {

@@ -15,6 +15,7 @@ export type TicketEventRow = {
 export type TicketRow = {
   [key: string]: unknown;
   id: string;
+  ticketNumber?: string | null;
   status: string;
   orderId?: string | null;
   orderStatus?: string | null;
@@ -84,6 +85,12 @@ export function formatDate(value: Date | string | null | undefined): string {
 
 export function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
+}
+
+export function formatTicketReference(ticket: TicketRow): string {
+  const preferred = getTicketString(ticket, "ticketNumber", "ticket_number").trim();
+  if (preferred) return preferred;
+  return shortId(String(ticket.id || "").trim());
 }
 
 export function toDateTimeLocalValue(value: Date | string | null | undefined): string {
