@@ -60,8 +60,8 @@ function buildSpreadsheetRowText(fields: Record<string, string>): string {
     }
   };
 
-  pushMatching(CODE_FIELD_PATTERNS);
   pushMatching(PRODUCT_FIELD_PATTERNS);
+  pushMatching(CODE_FIELD_PATTERNS);
   pushMatching(SPEC_FIELD_PATTERNS);
 
   for (const [key, value] of entries) {

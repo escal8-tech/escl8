@@ -295,6 +295,7 @@ export const ticketsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const now = new Date();
       const [existing] = await db
         .select()
         .from(supportTickets)
@@ -310,6 +311,7 @@ export const ticketsRouter = router({
       });
 
       const nextFields = sanitizeTicketFields(input.fields ?? asRecord(existing.fields));
+      const nextCustomerEmail = extractCustomerEmail(nextFields);
       const [updated] = await db
         .update(supportTickets)
         .set({
@@ -322,7 +324,7 @@ export const ticketsRouter = router({
           customerPhone:
             input.customerPhone === undefined ? existing.customerPhone : input.customerPhone?.trim() || null,
           fields: nextFields,
-          updatedAt: new Date(),
+          updatedAt: now,
         })
         .where(
           and(
@@ -340,6 +342,62 @@ export const ticketsRouter = router({
         });
       }
 
+      let updatedDraftOrder: { id: string; updatedAt: Date | string | null } | null = null;
+      if (normalizeKey(updated.ticketTypeKey) === "ordercreation") {
+        const ticketSnapshot = {
+          ticketId: updated.id,
+          title: updated.title ?? null,
+          summary: updated.summary ?? null,
+          fields: nextFields,
+          notes: updated.notes ?? null,
+          priority: updated.priority ?? null,
+        };
+        const [draftOrder] = await db
+          .select({
+            id: orders.id,
+          })
+          .from(orders)
+          .where(
+            and(
+              eq(orders.businessId, ctx.businessId),
+              eq(orders.supportTicketId, updated.id),
+              eq(orders.status, "pending_approval"),
+            ),
+          )
+          .limit(1);
+
+        if (draftOrder) {
+          const [draftOrderRow] = await db
+            .update(orders)
+            .set({
+              customerName: updated.customerName,
+              customerPhone: updated.customerPhone,
+              customerEmail: nextCustomerEmail,
+              ticketSnapshot,
+              notes: updated.notes?.trim() || null,
+              updatedAt: now,
+            })
+            .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, draftOrder.id)))
+            .returning({
+              id: orders.id,
+              updatedAt: orders.updatedAt,
+            });
+          if (draftOrderRow) updatedDraftOrder = draftOrderRow;
+        }
+
+        if (updated.customerId) {
+          await db
+            .update(customers)
+            .set({
+              name: updated.customerName,
+              phone: updated.customerPhone,
+              email: nextCustomerEmail,
+              updatedAt: now,
+            })
+            .where(and(eq(customers.businessId, ctx.businessId), eq(customers.id, updated.customerId)));
+        }
+      }
+
       await logTicketEvent({
         businessId: ctx.businessId,
         ticketId: updated.id,
@@ -352,11 +410,36 @@ export const ticketsRouter = router({
           priority: updated.priority,
         },
       });
-      await publishHydratedTicketUpsert({
-        businessId: ctx.businessId,
-        ticketId: updated.id,
-        createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
-      });
+      if (updatedDraftOrder) {
+        await logOrderEvent({
+          businessId: ctx.businessId,
+          orderId: updatedDraftOrder.id,
+          eventType: "draft_updated",
+          actorType: "user",
+          actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+          actorLabel: ctx.userEmail ?? "user",
+          payload: {
+            supportTicketId: updated.id,
+          },
+        });
+      }
+      await Promise.all([
+        publishHydratedTicketUpsert({
+          businessId: ctx.businessId,
+          ticketId: updated.id,
+          createdAt: updated.updatedAt ?? updated.createdAt ?? now,
+        }),
+        updatedDraftOrder
+          ? publishPortalEvent({
+              businessId: ctx.businessId,
+              entity: "order",
+              op: "upsert",
+              entityId: updatedDraftOrder.id,
+              payload: { order: { id: updatedDraftOrder.id } as any },
+              createdAt: updatedDraftOrder.updatedAt ?? now,
+            })
+          : Promise.resolve(false),
+      ]);
       recordBusinessEvent({
         event: "ticket.updated",
         action: "updateTicket",
@@ -789,32 +872,35 @@ export const ticketsRouter = router({
             message: "Ticket is missing WhatsApp routing details for payment delivery.",
           });
         }
-        if (!shouldSendApprovalViaWhatsapp && !customerEmail) {
+
+        const [existingOrder] = await tx
+          .select({
+            id: orders.id,
+            status: orders.status,
+            paymentReference: orders.paymentReference,
+            customerEmail: orders.customerEmail,
+          })
+          .from(orders)
+          .where(and(eq(orders.businessId, ctx.businessId), eq(orders.supportTicketId, ticket.id)))
+          .limit(1);
+        if (existingOrder && String(existingOrder.status || "").trim().toLowerCase() !== "pending_approval") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Ticket already has a linked order (${existingOrder.status || "existing"}) and cannot be approved again.`,
+          });
+        }
+        const effectiveCustomerEmail = coalesceText(customerEmail, existingOrder?.customerEmail);
+        if (!shouldSendApprovalViaWhatsapp && !effectiveCustomerEmail) {
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: "Order approval requires the customer's email after the WhatsApp window closes.",
           });
         }
 
-        const [existingOrder] = await tx
-          .select({
-            id: orders.id,
-            status: orders.status,
-          })
-          .from(orders)
-          .where(and(eq(orders.businessId, ctx.businessId), eq(orders.supportTicketId, ticket.id)))
-          .limit(1);
-        if (existingOrder) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Ticket already has a linked order (${existingOrder.status || "existing"}) and cannot be approved again.`,
-          });
-        }
-
-        const orderId = randomUUID();
+        const orderId = existingOrder?.id ?? randomUUID();
         const paymentReference =
           orderSettings.paymentMethod === "bank_qr"
-            ? `ORD-${orderId.slice(0, 8).toUpperCase()}`
+            ? coalesceText(existingOrder?.paymentReference, `ORD-${orderId.slice(0, 8).toUpperCase()}`)
             : null;
 
         const baseOrderValues = {
@@ -826,7 +912,7 @@ export const ticketsRouter = router({
           whatsappIdentityId: contactContext.whatsappIdentityId,
           customerName: contactContext.customerName,
           customerPhone: contactContext.customerPhone,
-          customerEmail,
+          customerEmail: effectiveCustomerEmail,
           status: nextOrderStatus,
           fulfillmentStatus: initialFulfillmentStatus,
           fulfillmentUpdatedAt: now,
@@ -846,19 +932,25 @@ export const ticketsRouter = router({
           updatedAt: now,
         } as const;
 
-        const [orderRow] = await tx
-          .insert(orders)
-          .values({
-            id: orderId,
-            ...baseOrderValues,
-          })
-          .returning();
+        const [orderRow] = existingOrder
+          ? await tx
+              .update(orders)
+              .set(baseOrderValues)
+              .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, existingOrder.id)))
+              .returning()
+          : await tx
+              .insert(orders)
+              .values({
+                id: orderId,
+                ...baseOrderValues,
+              })
+              .returning();
 
-        if (contactContext.customerId && customerEmail) {
+        if (contactContext.customerId && effectiveCustomerEmail) {
           await tx
             .update(customers)
             .set({
-              email: customerEmail,
+              email: effectiveCustomerEmail,
               updatedAt: now,
             })
             .where(and(eq(customers.businessId, ctx.businessId), eq(customers.id, contactContext.customerId)));
@@ -943,7 +1035,7 @@ export const ticketsRouter = router({
               entityType: "order",
               entityId: orderRow?.id ?? orderId,
               customerId: contactContext.customerId,
-              recipientEmail: customerEmail,
+              recipientEmail: effectiveCustomerEmail,
               source: "order_ticket_approval_email",
               idempotencyBaseKey: `order_ticket:${ticket.id}:approval_email:${orderRow?.id ?? orderId}`,
               messages: [approvalEmail],

@@ -32,6 +32,12 @@ import {
   type OrderPaymentRow,
   type OrderRow,
 } from "@/app/portal/orders/lib/orderPageUtils";
+import {
+  applyOrderEditorToFields,
+  buildOrderEditorLines,
+  computeOrderEditorTotal,
+  type OrderEditorLine,
+} from "@/app/portal/tickets/lib/ticketPageUtils";
 import { type OrderFulfillmentStatus } from "@/lib/order-operations";
 
 type OperationsWorkspaceMode = "payments" | "status" | "revenue";
@@ -357,6 +363,8 @@ export function OrderWorkspaceDrawer({
   onRejectPayment,
   onSendPaymentDetails,
   onRecordManualPayment,
+  onUpdateDraftOrder,
+  onApproveDraftOrder,
   onUpdateFulfillment,
   onUpdatePaymentSetup,
   onUpdateRefundStatus,
@@ -371,6 +379,18 @@ export function OrderWorkspaceDrawer({
   onRejectPayment: (paymentId: string, action: "approve" | "reject") => Promise<void>;
   onSendPaymentDetails: (order: OrderRow) => Promise<void>;
   onRecordManualPayment: (order: OrderRow) => Promise<void>;
+  onUpdateDraftOrder: (input: {
+    orderId: string;
+    expectedUpdatedAt?: Date;
+    title?: string | null;
+    summary?: string | null;
+    notes?: string | null;
+    customerName?: string | null;
+    customerPhone?: string | null;
+    customerEmail?: string | null;
+    fields?: Record<string, unknown>;
+  }) => Promise<void>;
+  onApproveDraftOrder: (order: OrderRow) => Promise<void>;
   onUpdateFulfillment: (input: {
     orderId: string;
     expectedUpdatedAt?: Date;
@@ -414,6 +434,14 @@ export function OrderWorkspaceDrawer({
   const [paymentReference, setPaymentReference] = useState(() => String(order?.paymentReference || "").trim());
   const [customerEmail, setCustomerEmail] = useState(() => String(order?.customerEmail || "").trim());
   const [orderNotes, setOrderNotes] = useState(() => String(order?.notes || "").trim());
+  const [draftTitle, setDraftTitle] = useState(() => String(asRecord(order?.ticketSnapshot).title || "").trim());
+  const [draftSummary, setDraftSummary] = useState(() => String(asRecord(order?.ticketSnapshot).summary || "").trim());
+  const [draftCustomerName, setDraftCustomerName] = useState(() => String(order?.customerName || "").trim());
+  const [draftCustomerPhone, setDraftCustomerPhone] = useState(() => String(order?.customerPhone || "").trim());
+  const [draftCustomerEmail, setDraftCustomerEmail] = useState(() => String(order?.customerEmail || "").trim());
+  const [draftOrderLines, setDraftOrderLines] = useState<OrderEditorLine[]>(() =>
+    buildOrderEditorLines(asRecord(asRecord(order?.ticketSnapshot).fields)),
+  );
   const [recipientName, setRecipientName] = useState(() => String(order?.recipientName || order?.customerName || "").trim());
   const [recipientPhone, setRecipientPhone] = useState(() => String(order?.recipientPhone || order?.customerPhone || "").trim());
   const [shippingAddress, setShippingAddress] = useState(() => String(order?.shippingAddress || "").trim());
@@ -432,14 +460,19 @@ export function OrderWorkspaceDrawer({
   const payments = (paymentsQuery.data ?? []) as OrderPaymentRow[];
   const latestPayment = payments[0] ?? order.latestPayment ?? null;
   const snapshot = asRecord(order.ticketSnapshot);
+  const snapshotFields = asRecord(snapshot.fields);
+  const isDraftOrder = getOrderStatus(order) === "pending_approval";
   const paymentWindowOpen = isWhatsAppWindowOpen(order, nowTs);
   const manualInstructions = needsPaymentDetailsWorkflow(order) ? buildManualPaymentInstructions(order) : "";
-  const showPaymentSetup = mode === "payments";
+  const showPaymentSetup = mode === "payments" && !isDraftOrder;
   const showDeliveryDetails = mode === "status";
-  const showInvoicePanel = mode !== "status";
+  const showInvoicePanel = mode !== "status" && !isDraftOrder;
   const canApproveLatestPayment = canStaffApprovePayment(order, latestPayment);
+  const computedDraftOrderTotal = computeOrderEditorTotal(draftOrderLines);
   const footerActionLabel =
-    mode === "payments"
+    isDraftOrder
+      ? "Draft Actions"
+      : mode === "payments"
       ? "Payment Actions"
       : mode === "status"
         ? "Order Actions"
@@ -455,6 +488,21 @@ export function OrderWorkspaceDrawer({
         message: error instanceof Error ? error.message : "Could not copy the payment instructions.",
       });
     }
+  };
+
+  const saveDraftOrder = async () => {
+    const nextFields = applyOrderEditorToFields(snapshotFields, draftOrderLines, computedDraftOrderTotal);
+    await onUpdateDraftOrder({
+      orderId: order.id,
+      expectedUpdatedAt,
+      title: draftTitle,
+      summary: draftSummary,
+      notes: orderNotes,
+      customerName: draftCustomerName,
+      customerPhone: draftCustomerPhone,
+      customerEmail: draftCustomerEmail,
+      fields: nextFields,
+    });
   };
 
   return (
@@ -482,6 +530,104 @@ export function OrderWorkspaceDrawer({
 
         <div className="drawer-body">
           <div className="portal-rows">
+            {isDraftOrder ? (
+              <div className="card">
+                <div className="card-body" style={{ display: "grid", gap: 12 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Manual Order Draft</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                    <Field label="Title" value={draftTitle} onChange={setDraftTitle} placeholder="Manual order follow-up" />
+                    <Field label="Customer Name" value={draftCustomerName} onChange={setDraftCustomerName} placeholder="Customer name" />
+                    <Field label="Customer Phone" value={draftCustomerPhone} onChange={setDraftCustomerPhone} placeholder="Customer phone" />
+                    <Field label="Customer Email" value={draftCustomerEmail} onChange={setDraftCustomerEmail} placeholder="Customer email" type="email" />
+                  </div>
+                  <TextAreaField label="Summary" value={draftSummary} onChange={setDraftSummary} placeholder="What the customer wants to buy" />
+                  <TextAreaField label="Internal Notes" value={orderNotes} onChange={setOrderNotes} placeholder="Staff-only notes for this draft order" />
+
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>Order Items</div>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={busy}
+                        onClick={() => setDraftOrderLines((current) => [...current, { item: "", quantity: "1", unitPrice: "" }])}
+                      >
+                        Add Item
+                      </button>
+                    </div>
+
+                    {draftOrderLines.length ? (
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {draftOrderLines.map((line, index) => (
+                          <div key={`draft-order-line-${index}`} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.7fr) 110px 140px auto", gap: 10, alignItems: "end" }}>
+                            <Field
+                              label="Item"
+                              value={line.item}
+                              onChange={(value) =>
+                                setDraftOrderLines((current) =>
+                                  current.map((entry, entryIndex) =>
+                                    entryIndex === index ? { ...entry, item: value } : entry,
+                                  ),
+                                )
+                              }
+                              placeholder="Item name"
+                            />
+                            <Field
+                              label="Qty"
+                              value={line.quantity}
+                              onChange={(value) =>
+                                setDraftOrderLines((current) =>
+                                  current.map((entry, entryIndex) =>
+                                    entryIndex === index ? { ...entry, quantity: value } : entry,
+                                  ),
+                                )
+                              }
+                              placeholder="1"
+                              type="number"
+                            />
+                            <Field
+                              label="Unit Price"
+                              value={line.unitPrice}
+                              onChange={(value) =>
+                                setDraftOrderLines((current) =>
+                                  current.map((entry, entryIndex) =>
+                                    entryIndex === index ? { ...entry, unitPrice: value } : entry,
+                                  ),
+                                )
+                              }
+                              placeholder="0.00"
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              disabled={busy}
+                              onClick={() =>
+                                setDraftOrderLines((current) => current.filter((_, entryIndex) => entryIndex !== index))
+                              }
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-muted" style={{ fontSize: 13 }}>No order items added yet.</div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div>
+                      <div className="portal-field-label">Computed Total</div>
+                      <div style={{ fontSize: 16, fontWeight: 600 }}>{computedDraftOrderTotal || "-"}</div>
+                    </div>
+                    <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveDraftOrder()}>
+                      Save Draft
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             {showPaymentSetup ? (
               <div className="card">
                 <div className="card-body" style={{ display: "grid", gap: 10 }}>
@@ -584,25 +730,27 @@ export function OrderWorkspaceDrawer({
               </div>
             ) : null}
 
-            <div className="card">
-              <div className="card-body" style={{ display: "grid", gap: 8 }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>Payment History</div>
-                {!payments.length ? (
-                  <div className="text-muted" style={{ fontSize: 13 }}>No payment attempts recorded.</div>
-                ) : (
-                  payments.map((payment) => (
-                    <div key={payment.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", display: "grid", gap: 4 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                        <span style={{ fontWeight: 600 }}>{normalizeStatusLabel(payment.status)}</span>
-                        <span style={{ color: "var(--muted)", fontSize: 12 }}>{formatDate(payment.createdAt)}</span>
+            {!isDraftOrder ? (
+              <div className="card">
+                <div className="card-body" style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Payment History</div>
+                  {!payments.length ? (
+                    <div className="text-muted" style={{ fontSize: 13 }}>No payment attempts recorded.</div>
+                  ) : (
+                    payments.map((payment) => (
+                      <div key={payment.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", display: "grid", gap: 4 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                          <span style={{ fontWeight: 600 }}>{normalizeStatusLabel(payment.status)}</span>
+                          <span style={{ color: "var(--muted)", fontSize: 12 }}>{formatDate(payment.createdAt)}</span>
+                        </div>
+                        <div>{formatMoney(payment.currency, payment.paidAmount ?? payment.expectedAmount)}</div>
+                        {payment.aiCheckNotes ? <div style={{ color: "var(--muted)", fontSize: 12 }}>{payment.aiCheckNotes}</div> : null}
                       </div>
-                      <div>{formatMoney(payment.currency, payment.paidAmount ?? payment.expectedAmount)}</div>
-                      {payment.aiCheckNotes ? <div style={{ color: "var(--muted)", fontSize: 12 }}>{payment.aiCheckNotes}</div> : null}
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
+            ) : null}
 
             <div className="card">
               <div className="card-body" style={{ display: "grid", gap: 8 }}>
@@ -625,6 +773,11 @@ export function OrderWorkspaceDrawer({
         <div className="portal-drawer-footer">
           <div className="portal-drawer-footer__label">{footerActionLabel}</div>
           <div className="portal-drawer-footer__actions">
+            {isDraftOrder ? (
+              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onApproveDraftOrder(order)}>
+                Approve Draft Order
+              </button>
+            ) : null}
             {needsPaymentDetailsWorkflow(order) && showPaymentSetup ? (
               <button
                 type="button"

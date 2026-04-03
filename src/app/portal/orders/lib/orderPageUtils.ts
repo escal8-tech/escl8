@@ -20,6 +20,7 @@ export type OrderPaymentRow = {
 export type OrderRow = {
   id: string;
   status: string;
+  supportTicketId?: string | null;
   fulfillmentStatus?: string | null;
   currency?: string | null;
   customerName?: string | null;
@@ -303,6 +304,7 @@ export function buildManualPaymentInstructions(order: OrderRow): string {
 export function describeFinanceState(order: OrderRow, latestPayment?: OrderPaymentRow | null): string {
   const status = getOrderStatus(order);
   const method = String(order.paymentMethod || "").toLowerCase();
+  if (status === "pending_approval") return "Awaiting approval";
   if (status === "paid") return "Payment captured";
   if (status === "refund_pending") return "Refund pending";
   if (status === "refunded") return "Refunded";
@@ -320,7 +322,9 @@ export function financeToneClass(order: OrderRow): string {
   const status = getOrderStatus(order);
   if (status === "paid") return "portal-pill portal-pill--success";
   if (status === "payment_submitted") return "portal-pill portal-pill--warning";
-  if (status === "awaiting_payment" || status === "approved") return "portal-pill portal-pill--neutral";
+  if (status === "pending_approval" || status === "awaiting_payment" || status === "approved") {
+    return "portal-pill portal-pill--neutral";
+  }
   if (status === "payment_rejected" || status === "denied" || status === "refunded") {
     return "portal-pill portal-pill--danger";
   }

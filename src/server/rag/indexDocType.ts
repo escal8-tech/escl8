@@ -64,13 +64,33 @@ function summarizeInventoryRow(row: SpreadsheetRow): {
     }
   };
 
-  push(isInventoryCodeKey);
   push(isInventoryProductKey);
+  push(isInventoryCodeKey);
   push(isInventorySpecKey);
   push((key) => !isInventoryPriceKey(key));
   push(() => true);
 
-  const displayText = ordered.map(([key, value]) => `${key}: ${value}`).join(" | ");
+  const displayParts: string[] = [];
+  if (product) displayParts.push(`product: ${product}`);
+  if (itemCode) displayParts.push(`item_code: ${itemCode}`);
+  if (specification) displayParts.push(`specification: ${specification}`);
+  for (const field of priceFields) {
+    const key = String(field.key || "").trim();
+    const value = String(field.value || "").trim();
+    if (key && value) displayParts.push(`${key}: ${value}`);
+  }
+  for (const [key, value] of ordered) {
+    if (!value) continue;
+    if ((product && isInventoryProductKey(key)) || (itemCode && isInventoryCodeKey(key)) || (specification && isInventorySpecKey(key))) {
+      continue;
+    }
+    if (isInventoryPriceKey(key) && priceFields.some((field) => String(field.key || "").trim() === key && String(field.value || "").trim() === String(value || "").trim())) {
+      continue;
+    }
+    displayParts.push(`${key}: ${value}`);
+  }
+
+  const displayText = displayParts.join(" | ");
   const keywordSeed = [
     itemCode,
     product,

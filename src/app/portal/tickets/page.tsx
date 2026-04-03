@@ -23,6 +23,7 @@ import {
   formatItemsCell,
   formatOrderStage,
   formatSlaCountdown,
+  formatTicketReference,
   getTicketFields,
   getTicketString,
   getTicketTypeLabel,
@@ -31,7 +32,6 @@ import {
   orderStagePillClass,
   priorityPillClass,
   resolveOrderStage,
-  shortId,
   toLooseStringList,
   type OrderStage,
   type TicketListFilter,
@@ -439,7 +439,7 @@ export default function TicketsPage() {
                       setTicketIdQuery(value);
                       setPage(0);
                     }}
-                    placeholder="Search ticket ID..."
+                    placeholder="Search ticket #..."
                     style={{ width: "min(280px, 100%)" }}
                   />
                 </div>
@@ -494,10 +494,14 @@ export default function TicketsPage() {
                 const nameFromTicket = getTicketString(ticket as TicketRow, "customerName", "customer_name").trim();
                 const rawCustomerName = nameFromFields || nameFromTicket;
                 const customerName = rawCustomerName && !isLikelyInvalidCustomerName(rawCustomerName) ? rawCustomerName : "";
-                const customerPrimary = requiresName ? (customerName || customerPhone || "-") : (customerPhone || "-");
-                const customerSecondary = requiresName
+                const customerPrimary = isOrderRow
+                  ? (customerPhone || "-")
+                  : (requiresName ? (customerName || customerPhone || "-") : (customerPhone || "-"));
+                const customerSecondary = isOrderRow
+                  ? (!customerPhone ? "No phone" : "")
+                  : (requiresName
                   ? (customerPhone && customerPhone !== customerPrimary ? customerPhone : (!customerPhone ? "No phone" : ""))
-                  : (!customerPhone ? "No phone" : "");
+                  : (!customerPhone ? "No phone" : ""));
                 const itemsLabel = formatItemsCell(fields);
                 const normalizedTicketStatus = (ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus;
                 const ticketDate = formatDate(
@@ -506,11 +510,12 @@ export default function TicketsPage() {
                 const customerId = getTicketString(ticket, "customerId", "customer_id");
                 const paused = customerId ? (botPausedOverrides[customerId] ?? Boolean(customerBotPausedMapQuery.data?.[customerId])) : false;
                 const isBotPending = customerId ? Boolean(pendingBotCustomerIds[customerId]) : false;
+                const ticketReference = formatTicketReference(ticket as TicketRow);
                 const ticketCell = (
                   <td data-label="Ticket">
                     <div className="portal-entity-stack">
                       <div className="portal-ledger-table__ref" title={ticket.id}>
-                        #{shortId(ticket.id)}
+                        #{ticketReference}
                       </div>
                       <div className="portal-meta-text">{ticketDate}</div>
                     </div>

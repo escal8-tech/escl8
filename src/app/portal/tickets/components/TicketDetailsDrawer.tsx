@@ -19,6 +19,7 @@ import {
   formatOrderStage,
   formatSlaCountdown,
   formatStatus,
+  formatTicketReference,
   getImportantFieldRows,
   getTicketFields,
   getTicketString,
@@ -27,7 +28,6 @@ import {
   orderStagePillClass,
   priorityPillClass,
   resolveOrderStage,
-  shortId,
   toDateTimeLocalValue,
   type OrderEditorLine,
   type TicketEventRow,
@@ -187,6 +187,7 @@ export function TicketDetailsDrawer({
   const expectedUpdatedAt = toMutationDate(updatedAt);
   const canApproveOrder = isOrderTicket && canApproveOrderStage(orderStage);
   const canDenyOrder = isOrderTicket && canDenyOrderStage(orderStage);
+  const ticketReference = formatTicketReference(ticket);
 
   const handleSaveTicket = () => {
     let parsedFields: Record<string, unknown> = { ...fields };
@@ -217,7 +218,7 @@ export function TicketDetailsDrawer({
           <div className="portal-drawer-heading">
             <div>
               <div className="portal-drawer-eyebrow">Ticket Details</div>
-              <div className="portal-drawer-title">Ticket #{shortId(ticket.id)}</div>
+              <div className="portal-drawer-title">Ticket #{ticketReference}</div>
               <div className="portal-drawer-copy">
                 {ticket.title || ticket.summary || "Untitled ticket"}
               </div>
@@ -251,7 +252,7 @@ export function TicketDetailsDrawer({
           <div className="portal-rows">
             <div className="portal-detail-panel">
               <div className="portal-section-head">
-                <div className="portal-section-kicker">Ticket #{shortId(ticket.id)}</div>
+                <div className="portal-section-kicker">Ticket #{ticketReference}</div>
                 <div className="portal-section-title">{ticket.title || ticket.summary || "Untitled ticket"}</div>
                 <div className="portal-section-caption">
                   {ticket.summary || ticket.notes || "Review the order request and keep the workflow clean from one place."}
