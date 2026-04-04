@@ -200,7 +200,7 @@ export function TicketDetailsDrawer({
     setSavingTicket(true);
     updateTicket.mutate({
       id: ticket.id,
-      expectedUpdatedAt,
+      expectedUpdatedAt: isOrderTicket ? undefined : expectedUpdatedAt,
       title: draftTitle,
       summary: draftSummary,
       notes: draftNotes,

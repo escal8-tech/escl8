@@ -737,7 +737,7 @@ export function buildPaymentReviewMessages(input: {
   const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
   if (input.action === "approve") {
     const lines = [
-      `We have approved your payment for order reference ${ref}.`,
+      `We have approved your payment for order number ${ref}.`,
       input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
       "Your order is now marked as paid and our team will continue processing it.",
       input.invoiceUrl ? `Invoice: ${input.invoiceUrl}` : null,
@@ -745,7 +745,7 @@ export function buildPaymentReviewMessages(input: {
     return [{ type: "text", text: lines.join("\n") }];
   }
   const lines = [
-    `We reviewed the payment proof for order reference ${ref}, but we could not verify it yet.`,
+    `We reviewed the payment proof for order number ${ref}, but we could not verify it yet.`,
     input.notes ? `Reason: ${String(input.notes).trim()}.` : null,
     "Please resend a clear payment slip in this chat after checking the transfer details.",
   ].filter(Boolean);
@@ -766,13 +766,13 @@ export function buildPaymentReviewEmail(input: {
   const subject = approved ? `Order confirmed: ${ref}` : `Payment needs attention: ${ref}`;
   const lines = approved
     ? [
-        `We have approved your payment for order reference ${ref}.`,
+        `We have approved your payment for order number ${ref}.`,
         input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
         "Your order is now confirmed and queued for fulfilment.",
         input.invoiceUrl ? `Invoice link: ${input.invoiceUrl}` : null,
       ]
     : [
-        `We reviewed the payment proof for order reference ${ref}, but we could not verify it yet.`,
+        `We reviewed the payment proof for order number ${ref}, but we could not verify it yet.`,
         input.notes ? `Reason: ${String(input.notes).trim()}.` : null,
         "Please resend a clear payment slip after checking the transfer details.",
       ];
@@ -795,7 +795,7 @@ export function buildRefundStatusMessages(input: {
   const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
   if (input.action === "mark_pending") {
     const lines = [
-      `We have started reviewing your refund for order reference ${ref}.`,
+      `We have started reviewing your refund for order number ${ref}.`,
       input.reason ? `Reason noted: ${input.reason}.` : null,
       "We will update you again as soon as the refund is processed.",
     ].filter(Boolean);
@@ -803,10 +803,10 @@ export function buildRefundStatusMessages(input: {
   }
   if (input.action === "mark_refunded") {
     const lines = [
-      `Your refund for order reference ${ref} has been completed.`,
+      `Your refund for order number ${ref} has been completed.`,
       input.refundAmount ? `Refunded amount: ${input.currency} ${input.refundAmount}.` : null,
     ].filter(Boolean);
     return [{ type: "text", text: lines.join("\n") }];
   }
-  return [{ type: "text", text: `Your refund request for order reference ${ref} has been cancelled, and the order remains paid.` }];
+  return [{ type: "text", text: `Your refund request for order number ${ref} has been cancelled, and the order remains paid.` }];
 }
