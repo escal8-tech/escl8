@@ -780,6 +780,28 @@ export const ordersRouter = router({
           customerEmail: finalizedOrder.customerEmail ?? null,
           customerPhone: finalizedOrder.customerPhone ?? null,
         });
+        let resumedCustomer: typeof customers.$inferSelect | null = null;
+        let previousCustomerBotPaused = false;
+        if (finalizedOrder.customerId) {
+          const [existingCustomer] = await tx
+            .select({
+              botPaused: customers.botPaused,
+            })
+            .from(customers)
+            .where(and(eq(customers.businessId, ctx.businessId), eq(customers.id, finalizedOrder.customerId)))
+            .limit(1);
+          previousCustomerBotPaused = Boolean(existingCustomer?.botPaused);
+          if (previousCustomerBotPaused) {
+            [resumedCustomer] = await tx
+              .update(customers)
+              .set({
+                botPaused: false,
+                updatedAt: now,
+              })
+              .where(and(eq(customers.businessId, ctx.businessId), eq(customers.id, finalizedOrder.customerId)))
+              .returning();
+          }
+        }
         const windowState = await getThreadWhatsappWindowState(tx, finalizedOrder.threadId);
         const hasWhatsappRoute = Boolean(contactContext.whatsappIdentityId && sanitizePhoneDigits(contactContext.approvalRecipient));
         const hasEmailRoute = Boolean(contactContext.customerEmail);
@@ -862,6 +884,10 @@ export const ordersRouter = router({
           deliveryChannel,
           windowState,
           invoiceArtifact,
+          customerPause: {
+            row: resumedCustomer,
+            previousBotPaused: previousCustomerBotPaused,
+          },
         };
       });
 
@@ -972,6 +998,18 @@ export const ordersRouter = router({
         },
         createdAt: result.updatedOrder.updatedAt ?? result.updatedOrder.createdAt ?? now,
       });
+      if (result.customerPause?.row) {
+        await publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "customer",
+          op: "upsert",
+          entityId: result.customerPause.row.id,
+          payload: {
+            customer: JSON.parse(JSON.stringify(result.customerPause.row)) as any,
+          },
+          createdAt: result.customerPause.row.updatedAt ?? now,
+        });
+      }
 
       recordBusinessEvent({
         event: "order.payment_reviewed",
@@ -994,6 +1032,28 @@ export const ordersRouter = router({
           delivery_identity_source: delivery.whatsappIdentitySource,
         },
       });
+      if (result.customerPause?.row && result.customerPause.previousBotPaused) {
+        recordBusinessEvent({
+          event: "customer.bot_resumed",
+          action: "reviewPayment",
+          area: "customer",
+          businessId: ctx.businessId,
+          entity: "customer",
+          entityId: result.customerPause.row.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          status: result.customerPause.row.status,
+          attributes: {
+            previous_bot_paused: true,
+            source: result.customerPause.row.source,
+            order_id: result.updatedOrder.id,
+            payment_id: result.paymentRow.id,
+            trigger: input.action === "approve" ? "payment_approved" : "payment_rejected",
+          },
+        });
+      }
 
       return {
         order: result.updatedOrder,
