@@ -956,6 +956,29 @@ export const ticketsRouter = router({
             .where(and(eq(customers.businessId, ctx.businessId), eq(customers.id, contactContext.customerId)));
         }
 
+        let resumedCustomer: typeof customers.$inferSelect | null = null;
+        let previousCustomerBotPaused = false;
+        if (contactContext.customerId) {
+          const [existingCustomer] = await tx
+            .select({
+              botPaused: customers.botPaused,
+            })
+            .from(customers)
+            .where(and(eq(customers.businessId, ctx.businessId), eq(customers.id, contactContext.customerId)))
+            .limit(1);
+          previousCustomerBotPaused = Boolean(existingCustomer?.botPaused);
+          if (previousCustomerBotPaused) {
+            [resumedCustomer] = await tx
+              .update(customers)
+              .set({
+                botPaused: false,
+                updatedAt: now,
+              })
+              .where(and(eq(customers.businessId, ctx.businessId), eq(customers.id, contactContext.customerId)))
+              .returning();
+          }
+        }
+
         const [ticketRow] = await tx
           .update(supportTickets)
           .set({
@@ -1049,6 +1072,10 @@ export const ticketsRouter = router({
           emailNotification,
           deliveryChannel,
           windowState,
+          customerPause: {
+            row: resumedCustomer,
+            previousBotPaused: previousCustomerBotPaused,
+          },
         };
       });
 
@@ -1169,6 +1196,18 @@ export const ticketsRouter = router({
           createdAt: result.order.updatedAt ?? now,
         }),
       ]);
+      if (result.customerPause?.row) {
+        await publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "customer",
+          op: "upsert",
+          entityId: result.customerPause.row.id,
+          payload: {
+            customer: JSON.parse(JSON.stringify(result.customerPause.row)) as any,
+          },
+          createdAt: result.customerPause.row.updatedAt ?? now,
+        });
+      }
 
       recordBusinessEvent({
         event: "ticket.order_approved",
