@@ -234,7 +234,7 @@ export function buildOrderApprovalMessages(input: {
   const messages: OrderApprovalMessage[] = [];
   const introLines = [
     input.customerName ? `Hi ${input.customerName}, your order has been approved.` : "Your order has been approved.",
-    `Order reference: ${input.orderId.slice(0, 8).toUpperCase()}`,
+    `Order number: ${input.orderId.slice(0, 8).toUpperCase()}`,
     `Items: ${input.itemsSummary}`,
   ];
   if (input.expectedAmount) {
@@ -289,7 +289,7 @@ export function buildOrderApprovalEmail(input: {
   const lead = input.customerName
     ? `Hi ${input.customerName}, your order has been approved and is now in our operations queue.`
     : "Your order has been approved and is now in our operations queue.";
-  const lines = [`Order reference: ${ref}`, `Items: ${input.itemsSummary}`];
+  const lines = [`Order number: ${ref}`, `Items: ${input.itemsSummary}`];
   if (input.expectedAmount) {
     lines.push(`Total due: ${input.orderSettings.currency} ${input.expectedAmount}`);
   }
@@ -343,7 +343,7 @@ export function buildPaymentSubmittedEmail(input: {
     ? `Hi ${input.customerName}, we received the payment proof for order ${ref}.`
     : `We received the payment proof for order ${ref}.`;
   const lines = [
-    `Order reference: ${ref}`,
+    `Order number: ${ref}`,
     input.paymentReference ? `Payment reference: ${input.paymentReference}` : "",
     input.expectedAmount ? `Expected amount: ${input.currency} ${input.expectedAmount}` : "",
     input.submittedAmount ? `Submitted amount: ${input.currency} ${input.submittedAmount}` : "",

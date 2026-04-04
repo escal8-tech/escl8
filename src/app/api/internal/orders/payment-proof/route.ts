@@ -8,6 +8,7 @@ import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { isInternalApiAuthorized, normalizeServiceBaseUrl } from "@/server/internalSecurity";
 import { logOrderEvent } from "@/server/services/orderFlow";
 import { assertOperationThrottle } from "@/server/operationalHardening";
+import { resolvePaymentProofAssessment } from "@/server/services/paymentProofSupport";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,7 +30,6 @@ type PaymentProofAnalyzerResult = {
     amountMatch: boolean;
     dateFormatValid: boolean;
     dateNotFuture: boolean;
-    referenceMatch: boolean;
     proofPresent: boolean;
   };
   extracted?: Record<string, unknown>;
@@ -122,12 +122,20 @@ export async function POST(request: Request) {
   const orderId = String(formData.get("orderId") || "").trim();
   const paymentText = String(formData.get("paymentText") || "").trim();
   const file = formData.get("file");
+  const stagedProofUrl = String(formData.get("stagedProofUrl") || "").trim();
+  const stagedBlobPath = String(formData.get("stagedBlobPath") || "").trim();
+  const stagedFileName = String(formData.get("stagedFileName") || "").trim();
+  const stagedMimeType = String(formData.get("stagedMimeType") || "").trim();
+  const hasStagedProof = Boolean(stagedProofUrl);
 
   if (!businessId || !orderId) {
     return NextResponse.json({ success: false, error: "businessId and orderId are required." }, { status: 400 });
   }
-  if (!(file instanceof File) && !paymentText) {
-    return NextResponse.json({ success: false, error: "Payment proof file or text is required." }, { status: 400 });
+  if (!(file instanceof File) && !paymentText && !hasStagedProof) {
+    return NextResponse.json(
+      { success: false, error: "Payment proof file, staged proof, or text is required." },
+      { status: 400 },
+    );
   }
   if (paymentText.length > 12_000) {
     return NextResponse.json({ success: false, error: "Payment proof text is too large." }, { status: 400 });
@@ -193,6 +201,13 @@ export async function POST(request: Request) {
       contentType: file.type || undefined,
       readTtlHours: 24 * 7,
     });
+  } else if (hasStagedProof) {
+    storedProof = {
+      url: stagedProofUrl,
+      blobPath: stagedBlobPath,
+      contentType: stagedMimeType || undefined,
+      name: stagedFileName || "staged-payment-proof",
+    };
   }
 
   const analysis = await analyzePaymentProof({
@@ -204,8 +219,14 @@ export async function POST(request: Request) {
   });
 
   const submittedAmount = toMoneyString(analysis?.extracted?.amount) ?? null;
-  const aiCheckStatus = analysis?.status ?? "needs_review";
-  const aiCheckNotes = analysis?.summary ?? (storedProof?.url ? "Payment proof received." : "Payment details received.");
+  const assessed = resolvePaymentProofAssessment({
+    analysis,
+    expectedAmount: toMoneyString(orderRow.expectedAmount),
+    paidAmount: submittedAmount,
+    currency: String(orderRow.currency || "LKR").trim() || "LKR",
+  });
+  const aiCheckStatus = assessed.aiCheckStatus;
+  const aiCheckNotes = assessed.aiCheckNotes || (storedProof?.url ? "Payment proof received." : "Payment details received.");
   const now = new Date();
   const txResult = await db.transaction(async (tx) => {
     const [paymentRow] = await tx
@@ -228,6 +249,7 @@ export async function POST(request: Request) {
         aiCheckNotes,
         details: {
           analysis: analysis ?? null,
+          paymentBalance: assessed.balance,
           proofText: paymentText || null,
           storage: storedProof
             ? {
@@ -308,5 +330,6 @@ export async function POST(request: Request) {
     proofUrl: paymentRow?.proofUrl ?? storedProof?.url ?? null,
     aiCheckStatus: paymentRow?.aiCheckStatus ?? null,
     aiCheckNotes: paymentRow?.aiCheckNotes ?? null,
+    paymentBalance: assessed.balance,
   });
 }
