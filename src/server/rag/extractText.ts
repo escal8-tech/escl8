@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import mammoth from "mammoth";
+import { buildSpreadsheetRowText, isMeaningfulInventoryValue, normalizeHeaderKey } from "./inventoryFields";
 
 export type ExtractedDoc = {
   text: string;
@@ -16,69 +17,6 @@ export type SpreadsheetRow = {
   text: string; // Labeled row text for embedding
 };
 
-const PRODUCT_FIELD_PATTERNS = [
-  /(^|_)product($|_)/i,
-  /(^|_)item($|_)/i,
-  /(^|_)description($|_)/i,
-  /(^|_)model($|_)/i,
-  /(^|_)name($|_)/i,
-];
-
-const CODE_FIELD_PATTERNS = [
-  /(^|_)item_code($|_)/i,
-  /(^|_)product_code($|_)/i,
-  /(^|_)sku($|_)/i,
-  /(^|_)code($|_)/i,
-];
-
-const SPEC_FIELD_PATTERNS = [
-  /(^|_)spec($|_)/i,
-  /(^|_)specification($|_)/i,
-  /(^|_)details?($|_)/i,
-];
-
-const PRICE_FIELD_PATTERNS = [
-  /(^|_)(retail|price|cost|member|wholesale|dealer|cash|offer|promo|warranty)($|_)/i,
-];
-
-function matchesAnyPattern(key: string, patterns: RegExp[]): boolean {
-  return patterns.some((pattern) => pattern.test(key));
-}
-
-function buildSpreadsheetRowText(fields: Record<string, string>): string {
-  const entries = Object.entries(fields);
-  if (!entries.length) return "";
-
-  const ordered: Array<[string, string]> = [];
-  const seen = new Set<string>();
-
-  const pushMatching = (patterns: RegExp[]) => {
-    for (const [key, value] of entries) {
-      if (!value || seen.has(key) || !matchesAnyPattern(key, patterns)) continue;
-      ordered.push([key, value]);
-      seen.add(key);
-    }
-  };
-
-  pushMatching(PRODUCT_FIELD_PATTERNS);
-  pushMatching(CODE_FIELD_PATTERNS);
-  pushMatching(SPEC_FIELD_PATTERNS);
-
-  for (const [key, value] of entries) {
-    if (!value || seen.has(key) || matchesAnyPattern(key, PRICE_FIELD_PATTERNS)) continue;
-    ordered.push([key, value]);
-    seen.add(key);
-  }
-
-  for (const [key, value] of entries) {
-    if (!value || seen.has(key)) continue;
-    ordered.push([key, value]);
-    seen.add(key);
-  }
-
-  return normalizeText(ordered.map(([k, v]) => `${k}: ${v}`).join(" | "));
-}
-
 // Page boundary marker used when preserving page structure
 export const PAGE_BOUNDARY = "\n\n---PAGE_BREAK---\n\n";
 
@@ -93,15 +31,6 @@ function normalizeTextPreserveLines(t: string): string {
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-}
-
-function normalizeHeaderKey(raw: string): string {
-  return String(raw || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
 }
 
 export async function extractTextFromBuffer(params: {
@@ -212,7 +141,7 @@ export async function extractTextFromBuffer(params: {
         for (let j = 0; j < normalizedHeaders.length; j++) {
           const key = normalizedHeaders[j];
           const value = String(row?.[j] ?? "").trim();
-          if (!value) continue;
+          if (!value || !isMeaningfulInventoryValue(value)) continue;
           fields[key] = value;
         }
 

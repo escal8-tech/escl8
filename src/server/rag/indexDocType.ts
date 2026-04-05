@@ -5,6 +5,7 @@ import { downloadBlobToBuffer, uploadTextToBlob } from "./blob";
 import { extractTextFromBuffer, PAGE_BOUNDARY, SpreadsheetRow } from "./extractText";
 import { smartChunkText, classifyChunksWithLLM, SmartChunk } from "./smartChunk";
 import { embedTexts } from "./embed";
+import { summarizeInventoryRow } from "./inventoryFields";
 import { getPineconeIndex } from "./pinecone";
 
 function sha256Hex(buf: Buffer): string {
@@ -19,89 +20,6 @@ function extractPricesLite(text: string): string[] {
   const matches = text.match(/(?:RM|MYR|USD|US\\$|\\$|£|€|₹)\\s*[\\d,]+(?:\\.\\d{2})?/gi) || [];
   const unique = Array.from(new Set(matches.map(m => m.trim())));
   return unique.slice(0, 20);
-}
-
-function isInventoryPriceKey(key: string): boolean {
-  return /(^|_)(retail|price|cost|member|wholesale|dealer|cash|offer|promo|warranty)($|_)/i.test(key);
-}
-
-function isInventoryProductKey(key: string): boolean {
-  return /(^|_)(product|item|description|model|name)($|_)/i.test(key);
-}
-
-function isInventoryCodeKey(key: string): boolean {
-  return /(^|_)(item_code|product_code|sku|code)($|_)/i.test(key);
-}
-
-function isInventorySpecKey(key: string): boolean {
-  return /(^|_)(spec|specification|details?)($|_)/i.test(key);
-}
-
-function summarizeInventoryRow(row: SpreadsheetRow): {
-  displayText: string;
-  itemCode: string;
-  product: string;
-  specification: string;
-  priceFields: Array<{ key: string; value: string }>;
-  keywords: string[];
-  products: string[];
-} {
-  const entries = Object.entries(row.fields || {}).filter(([, value]) => String(value || "").trim());
-  const itemCode = entries.find(([key]) => isInventoryCodeKey(key))?.[1] || "";
-  const product = entries.find(([key]) => isInventoryProductKey(key))?.[1] || "";
-  const specification = entries.find(([key]) => isInventorySpecKey(key))?.[1] || "";
-  const priceFields = entries
-    .filter(([key]) => isInventoryPriceKey(key))
-    .map(([key, value]) => ({ key, value: String(value).trim() }));
-
-  const ordered: Array<[string, string]> = [];
-  const seen = new Set<string>();
-  const push = (predicate: (key: string) => boolean) => {
-    for (const [key, value] of entries) {
-      if (seen.has(key) || !predicate(key)) continue;
-      ordered.push([key, value]);
-      seen.add(key);
-    }
-  };
-
-  push(isInventoryProductKey);
-  push(isInventoryCodeKey);
-  push(isInventorySpecKey);
-  push((key) => !isInventoryPriceKey(key));
-  push(() => true);
-
-  const displayParts: string[] = [];
-  if (product) displayParts.push(`product: ${product}`);
-  if (itemCode) displayParts.push(`item_code: ${itemCode}`);
-  if (specification) displayParts.push(`specification: ${specification}`);
-  for (const field of priceFields) {
-    const key = String(field.key || "").trim();
-    const value = String(field.value || "").trim();
-    if (key && value) displayParts.push(`${key}: ${value}`);
-  }
-  for (const [key, value] of ordered) {
-    if (!value) continue;
-    if ((product && isInventoryProductKey(key)) || (itemCode && isInventoryCodeKey(key)) || (specification && isInventorySpecKey(key))) {
-      continue;
-    }
-    if (isInventoryPriceKey(key) && priceFields.some((field) => String(field.key || "").trim() === key && String(field.value || "").trim() === String(value || "").trim())) {
-      continue;
-    }
-    displayParts.push(`${key}: ${value}`);
-  }
-
-  const displayText = displayParts.join(" | ");
-  const keywordSeed = [
-    itemCode,
-    product,
-    specification,
-    ...priceFields.map((row) => `${row.key} ${row.value}`),
-    ...entries.map(([key]) => key),
-  ].join(" ");
-
-  const keywords = extractKeywordsLite(keywordSeed);
-  const products = [product, specification].map((value) => value.trim()).filter(Boolean).slice(0, 6);
-  return { displayText, itemCode, product, specification, priceFields, keywords, products };
 }
 
 function extractKeywordsLite(text: string): string[] {
