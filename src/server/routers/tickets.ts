@@ -19,7 +19,6 @@ import { DEFAULT_TICKET_TYPE_KEYS, ensureDefaultTicketTypes } from "../services/
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { drainBusinessOutbox, enqueueEmailOutboxMessages, enqueueWhatsAppOutboxMessages } from "@/server/services/messageOutbox";
-import { assertExpectedUpdatedAt } from "@/server/operationalHardening";
 import {
   buildOrderApprovalEmail,
   buildOrderApprovalMessages,
@@ -304,12 +303,6 @@ export const ticketsRouter = router({
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
       }
-      assertExpectedUpdatedAt({
-        entityLabel: "ticket",
-        expectedUpdatedAt: input.expectedUpdatedAt,
-        actualUpdatedAt: existing.updatedAt,
-      });
-
       const nextFields = sanitizeTicketFields(input.fields ?? asRecord(existing.fields));
       const nextCustomerEmail = extractCustomerEmail(nextFields);
       const [updated] = await db
@@ -330,15 +323,14 @@ export const ticketsRouter = router({
           and(
             eq(supportTickets.id, input.id),
             eq(supportTickets.businessId, ctx.businessId),
-            eq(supportTickets.updatedAt, existing.updatedAt),
           ),
         )
         .returning();
 
       if (!updated) {
         throw new TRPCError({
-          code: "CONFLICT",
-          message: "This ticket was updated by another staff member. Refresh and try again.",
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update ticket.",
         });
       }
 
@@ -487,11 +479,6 @@ export const ticketsRouter = router({
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
       }
-      assertExpectedUpdatedAt({
-        entityLabel: "ticket",
-        expectedUpdatedAt: input.expectedUpdatedAt,
-        actualUpdatedAt: existing.updatedAt,
-      });
       const [updated] = await db
         .update(supportTickets)
         .set({
@@ -507,14 +494,13 @@ export const ticketsRouter = router({
           and(
             eq(supportTickets.id, input.id),
             eq(supportTickets.businessId, ctx.businessId),
-            eq(supportTickets.updatedAt, existing.updatedAt),
           ),
         )
         .returning();
       if (!updated) {
         throw new TRPCError({
-          code: "CONFLICT",
-          message: "This ticket was updated by another staff member. Refresh and try again.",
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update ticket status.",
         });
       }
       if (existing.status !== updated.status) {
@@ -586,12 +572,6 @@ export const ticketsRouter = router({
       if (existing.status !== "resolved" && input.outcome !== "pending") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Only resolved tickets can be marked won/lost." });
       }
-      assertExpectedUpdatedAt({
-        entityLabel: "ticket",
-        expectedUpdatedAt: input.expectedUpdatedAt,
-        actualUpdatedAt: existing.updatedAt,
-      });
-
       const normalizedLossReason = input.lossReason?.trim() || null;
       if (input.outcome === "lost" && !normalizedLossReason) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Loss reason is required when outcome is lost." });
@@ -608,14 +588,13 @@ export const ticketsRouter = router({
           and(
             eq(supportTickets.id, input.id),
             eq(supportTickets.businessId, ctx.businessId),
-            eq(supportTickets.updatedAt, existing.updatedAt),
           ),
         )
         .returning();
       if (!updated) {
         throw new TRPCError({
-          code: "CONFLICT",
-          message: "This ticket was updated by another staff member. Refresh and try again.",
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update ticket outcome.",
         });
       }
 
@@ -680,12 +659,6 @@ export const ticketsRouter = router({
       if (!existing) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
       }
-      assertExpectedUpdatedAt({
-        entityLabel: "ticket",
-        expectedUpdatedAt: input.expectedUpdatedAt,
-        actualUpdatedAt: existing.updatedAt,
-      });
-
       const [updated] = await db
         .update(supportTickets)
         .set({
@@ -696,14 +669,13 @@ export const ticketsRouter = router({
           and(
             eq(supportTickets.id, input.id),
             eq(supportTickets.businessId, ctx.businessId),
-            eq(supportTickets.updatedAt, existing.updatedAt),
           ),
         )
         .returning();
       if (!updated) {
         throw new TRPCError({
-          code: "CONFLICT",
-          message: "This ticket was updated by another staff member. Refresh and try again.",
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update ticket SLA.",
         });
       }
 

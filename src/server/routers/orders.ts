@@ -7,7 +7,6 @@ import {
   normalizeOrderFulfillmentStatus,
 } from "@/lib/order-operations";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
-import { assertExpectedUpdatedAt } from "@/server/operationalHardening";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { drainBusinessOutbox, enqueueEmailOutboxMessages, enqueueWhatsAppOutboxMessages } from "@/server/services/messageOutbox";
 import { db } from "../db/client";
@@ -173,12 +172,6 @@ export const ordersRouter = router({
           message: "Only pending approval draft orders can be edited here.",
         });
       }
-      assertExpectedUpdatedAt({
-        entityLabel: "order",
-        expectedUpdatedAt: input.expectedUpdatedAt,
-        actualUpdatedAt: orderRow.updatedAt,
-      });
-
       const snapshot = asRecord(orderRow.ticketSnapshot);
       const baseFields = asRecord(snapshot.fields);
       const nextFieldsSeed = sanitizeTicketFields(input.fields ?? baseFields);
@@ -233,13 +226,13 @@ export const ordersRouter = router({
             notes: nextNotes,
             updatedAt: now,
           })
-          .where(and(eq(orders.id, orderRow.id), eq(orders.updatedAt, orderRow.updatedAt)))
+          .where(eq(orders.id, orderRow.id))
           .returning();
 
         if (!updatedOrder) {
           throw new TRPCError({
-            code: "CONFLICT",
-            message: "This draft order was updated by another staff member. Refresh and try again.",
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to update draft order.",
           });
         }
 
@@ -366,12 +359,6 @@ export const ordersRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
       }
       assertPaymentSetupEditable(orderRow);
-      assertExpectedUpdatedAt({
-        entityLabel: "order",
-        expectedUpdatedAt: input.expectedUpdatedAt,
-        actualUpdatedAt: orderRow.updatedAt,
-      });
-
       const nextExpectedAmount = input.expectedAmount === undefined
         ? orderRow.expectedAmount?.toString() ?? null
         : parseMoneyValue(input.expectedAmount);
@@ -394,13 +381,13 @@ export const ordersRouter = router({
           notes: nextNotes,
           updatedAt: now,
         })
-        .where(and(eq(orders.id, orderRow.id), eq(orders.updatedAt, orderRow.updatedAt)))
+        .where(eq(orders.id, orderRow.id))
         .returning();
 
       if (!updatedOrder) {
         throw new TRPCError({
-          code: "CONFLICT",
-          message: "This order was updated by another staff member. Refresh and try again.",
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update order.",
         });
       }
 
@@ -1102,12 +1089,6 @@ export const ordersRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
         }
         assertOrderAllowsFulfillmentUpdates(orderRow);
-        assertExpectedUpdatedAt({
-          entityLabel: "order",
-          expectedUpdatedAt: input.expectedUpdatedAt,
-          actualUpdatedAt: orderRow.updatedAt,
-        });
-
         const nextFulfillmentStatus = input.fulfillmentStatus
           ? normalizeOrderFulfillmentStatus(input.fulfillmentStatus)
           : normalizeOrderFulfillmentStatus(orderRow.fulfillmentStatus);
@@ -1213,13 +1194,13 @@ export const ordersRouter = router({
             returnedAt: nextTimestamps.returnedAt,
             updatedAt: now,
           })
-          .where(and(eq(orders.id, orderRow.id), eq(orders.updatedAt, orderRow.updatedAt)))
+          .where(eq(orders.id, orderRow.id))
           .returning();
 
         if (!updatedOrder) {
           throw new TRPCError({
-            code: "CONFLICT",
-            message: "This order was updated by another staff member. Refresh and try again.",
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to update order fulfillment.",
           });
         }
 
