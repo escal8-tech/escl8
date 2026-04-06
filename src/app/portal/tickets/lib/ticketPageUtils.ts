@@ -459,6 +459,7 @@ const INVALID_CUSTOMER_NAME_TOKENS = new Set([
   "ordercreation",
   "order",
   "orders",
+  "generalsupport",
   "paymentstatus",
   "refund",
   "cancellation",
