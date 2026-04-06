@@ -1,6 +1,7 @@
 export type PortalTicketTypeKey =
   | "ordercreation"
   | "complaint"
+  | "generalsupport"
   | "refund"
   | "cancellation"
   | "warrantyclaim"
@@ -21,6 +22,7 @@ const LEGACY_PORTAL_TICKET_TYPE_LABELS = new Map<string, string>([
 export const PORTAL_TICKET_TYPES: PortalTicketTypeConfig[] = [
   { key: "ordercreation", label: "Orders", navLabel: "Orders", chartLabel: "Orders" },
   { key: "complaint", label: "Complaint", navLabel: "Complaint", chartLabel: "Complaint" },
+  { key: "generalsupport", label: "General Support", navLabel: "General Support", chartLabel: "General Support" },
   { key: "refund", label: "Refund", navLabel: "Refund", chartLabel: "Refund" },
   { key: "cancellation", label: "Cancellation", navLabel: "Cancellation", chartLabel: "Cancellation" },
   { key: "warrantyclaim", label: "Warranty Claim", navLabel: "Warranty Claim", chartLabel: "Warranty" },

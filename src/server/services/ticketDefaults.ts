@@ -16,6 +16,12 @@ export const DEFAULT_TICKET_TYPES = [
     sortOrder: 30,
   },
   {
+    key: "generalsupport",
+    label: "General Support",
+    requiredFields: ["details"],
+    sortOrder: 35,
+  },
+  {
     key: "refund",
     label: "Refund",
     requiredFields: ["orderid", "reason"],
