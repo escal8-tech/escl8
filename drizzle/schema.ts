@@ -490,10 +490,7 @@ export const aiUsageEvents = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
-    whatsappIdentityId: text("whatsapp_identity_id").references(() => whatsappIdentities.phoneNumberId, {
-      onDelete: "set null",
-      onUpdate: "cascade",
-    }),
+    whatsappIdentityId: text("whatsapp_identity_id"),
     customerId: text("customer_id").references(() => customers.id, {
       onDelete: "set null",
       onUpdate: "cascade",
@@ -511,6 +508,11 @@ export const aiUsageEvents = pgTable(
   (t) => ({
     aiUsageEventsBusinessIdx: index("ai_usage_events_business_id_idx").on(t.businessId, t.createdAt),
     aiUsageEventsIdentityIdx: index("ai_usage_events_identity_id_idx").on(t.whatsappIdentityId, t.createdAt),
+    aiUsageEventsWhatsappIdentityFk: foreignKey({
+      name: "ai_usage_events_whatsapp_identity_id_whatsapp_identities_phone_",
+      columns: [t.whatsappIdentityId],
+      foreignColumns: [whatsappIdentities.phoneNumberId],
+    }).onDelete("set null").onUpdate("cascade"),
   }),
 );
 
@@ -605,7 +607,7 @@ export const supportTickets = pgTable(
       .$defaultFn(() => crypto.randomUUID()),
     ticketNumber: text("ticket_number")
       .notNull()
-      .default(sql`('A' || lpad(nextval('support_ticket_number_seq'::regclass)::text, 5, '0'))`),
+      .default(sql`('A'::text || lpad((nextval('support_ticket_number_seq'::regclass))::text, 5, '0'::text))`),
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
