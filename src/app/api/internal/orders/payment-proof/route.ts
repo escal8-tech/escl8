@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/server/db/client";
-import { orderPayments, orders } from "@/../drizzle/schema";
+import { orderPayments, orders, whatsappIdentities } from "@/../drizzle/schema";
 import { storePrivateFileAtPath } from "@/lib/storage";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
@@ -9,6 +9,7 @@ import { isInternalApiAuthorized, normalizeServiceBaseUrl } from "@/server/inter
 import { logOrderEvent } from "@/server/services/orderFlow";
 import { assertOperationThrottle } from "@/server/operationalHardening";
 import { resolvePaymentProofAssessment } from "@/server/services/paymentProofSupport";
+import { recordAiUsageEvent } from "@/server/services/aiUsage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -23,6 +24,7 @@ const ALLOWED_PAYMENT_PROOF_TYPES = new Set([
 
 type PaymentProofAnalyzerResult = {
   provider: string;
+  fallback_reason?: string | null;
   status: "passed" | "needs_review";
   confidence: number;
   summary: string;
@@ -34,6 +36,14 @@ type PaymentProofAnalyzerResult = {
   };
   extracted?: Record<string, unknown>;
 };
+
+function didConsumePaymentProofAi(result: PaymentProofAnalyzerResult | null): boolean {
+  if (!result) return false;
+  const provider = String(result.provider || "").trim().toLowerCase();
+  if (provider === "openai") return true;
+  const fallbackReason = String(result.fallback_reason || "").trim().toLowerCase();
+  return fallbackReason === "model_output_parse_failed";
+}
 
 type PortalJsonValue = string | number | boolean | null | PortalJsonValue[] | { [k: string]: PortalJsonValue };
 
@@ -76,6 +86,8 @@ async function analyzePaymentProof(input: {
   expectedAmount: string | null;
   currency: string;
   expectedReference: string | null;
+  businessId?: string | null;
+  phoneNumberId?: string | null;
   paymentProofUrl?: string | null;
   paymentProofText?: string | null;
 }): Promise<PaymentProofAnalyzerResult | null> {
@@ -96,6 +108,8 @@ async function analyzePaymentProof(input: {
       "x-api-key": apiKey,
     },
     body: JSON.stringify({
+      businessId: input.businessId ?? undefined,
+      phoneNumberId: input.phoneNumberId ?? undefined,
       expectedAmount,
       expectedReference: input.expectedReference ?? "",
       currency: input.currency,
@@ -166,6 +180,15 @@ export async function POST(request: Request) {
   if (!orderRow) {
     return NextResponse.json({ success: false, error: "Order not found." }, { status: 404 });
   }
+  const [identityRow] = orderRow.whatsappIdentityId
+    ? await db
+        .select({
+          aiDisabled: whatsappIdentities.aiDisabled,
+        })
+        .from(whatsappIdentities)
+        .where(and(eq(whatsappIdentities.businessId, businessId), eq(whatsappIdentities.phoneNumberId, orderRow.whatsappIdentityId)))
+        .limit(1)
+    : [{ aiDisabled: false }];
 
   const allowedStatuses = new Set(["awaiting_payment", "payment_submitted", "payment_rejected"]);
   if (!allowedStatuses.has(String(orderRow.status || "").trim().toLowerCase())) {
@@ -210,13 +233,30 @@ export async function POST(request: Request) {
     };
   }
 
-  const analysis = await analyzePaymentProof({
-    expectedAmount: toMoneyString(orderRow.expectedAmount),
-    currency: String(orderRow.currency || "LKR").trim() || "LKR",
-    expectedReference: String(orderRow.paymentReference || "").trim() || null,
-    paymentProofUrl: storedProof?.url ?? null,
-    paymentProofText: paymentText || null,
-  });
+  const analysis = identityRow?.aiDisabled
+    ? null
+    : await analyzePaymentProof({
+        businessId,
+        phoneNumberId: orderRow.whatsappIdentityId ?? null,
+        expectedAmount: toMoneyString(orderRow.expectedAmount),
+        currency: String(orderRow.currency || "LKR").trim() || "LKR",
+        expectedReference: String(orderRow.paymentReference || "").trim() || null,
+        paymentProofUrl: storedProof?.url ?? null,
+        paymentProofText: paymentText || null,
+      });
+
+  if (didConsumePaymentProofAi(analysis) && !identityRow?.aiDisabled) {
+    await recordAiUsageEvent({
+      businessId,
+      whatsappIdentityId: orderRow.whatsappIdentityId ?? null,
+      customerId: orderRow.customerId ?? null,
+      threadId: orderRow.threadId ?? null,
+      eventType: "payment_proof_ai_analysis",
+      source: "order_payment_proof_route",
+      credits: 1,
+      metadata: { orderId },
+    });
+  }
 
   const submittedAmount = toMoneyString(analysis?.extracted?.amount) ?? null;
   const assessed = resolvePaymentProofAssessment({

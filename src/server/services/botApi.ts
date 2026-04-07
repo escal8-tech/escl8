@@ -88,6 +88,49 @@ export async function sendWhatsAppMessagesViaBot(input: {
   return (Array.isArray(payload?.results) ? payload.results : []) as BotSendResult[];
 }
 
+export async function observeAssistantMessageViaBot(input: {
+  businessId: string;
+  phoneNumberId: string;
+  to: string;
+  text: string;
+  intent?: string;
+}) {
+  const baseUrl = getBotBaseUrl();
+  const apiKey = getBotApiKey();
+  if (!baseUrl) {
+    throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_BASE_URL." });
+  }
+  if (!apiKey) {
+    throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_API_KEY." });
+  }
+
+  const response = await fetch(`${baseUrl}/internal/assistant/observe`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      businessId: input.businessId,
+      phoneNumberId: input.phoneNumberId,
+      to: input.to,
+      text: input.text,
+      intent: input.intent ?? "general",
+    }),
+    cache: "no-store",
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: String(payload?.error || payload?.message || "Bot assistant observe failed."),
+    });
+  }
+
+  return payload as { success?: boolean };
+}
+
 export async function sendWebChatMessageViaBot(input: {
   businessId: string;
   visitorId: string;

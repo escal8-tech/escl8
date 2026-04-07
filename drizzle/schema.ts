@@ -130,6 +130,8 @@ export const whatsappIdentities = pgTable(
     // Optional debug/admin fields
     wabaId: text("waba_id"),
     displayPhoneNumber: text("display_phone_number"),
+    autoReplyPaused: boolean("auto_reply_paused").notNull().default(false),
+    aiDisabled: boolean("ai_disabled").notNull().default(false),
 
     // Phone number two-step verification PIN used for /register (plaintext).
     twoStepPin: text("two_step_pin"),
@@ -474,6 +476,59 @@ export const messageThreadsRelations = relations(messageThreads, ({ one, many })
 export const threadMessagesRelations = relations(threadMessages, ({ one }) => ({
   thread: one(messageThreads, {
     fields: [threadMessages.threadId],
+    references: [messageThreads.id],
+  }),
+}));
+
+export const aiUsageEvents = pgTable(
+  "ai_usage_events",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    whatsappIdentityId: text("whatsapp_identity_id").references(() => whatsappIdentities.phoneNumberId, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    customerId: text("customer_id").references(() => customers.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    threadId: text("thread_id").references(() => messageThreads.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    eventType: text("event_type").notNull(),
+    source: text("source").notNull(),
+    credits: integer("credits").notNull().default(1),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    aiUsageEventsBusinessIdx: index("ai_usage_events_business_id_idx").on(t.businessId, t.createdAt),
+    aiUsageEventsIdentityIdx: index("ai_usage_events_identity_id_idx").on(t.whatsappIdentityId, t.createdAt),
+  }),
+);
+
+export const aiUsageEventsRelations = relations(aiUsageEvents, ({ one }) => ({
+  business: one(businesses, {
+    fields: [aiUsageEvents.businessId],
+    references: [businesses.id],
+  }),
+  whatsappIdentity: one(whatsappIdentities, {
+    fields: [aiUsageEvents.whatsappIdentityId],
+    references: [whatsappIdentities.phoneNumberId],
+  }),
+  customer: one(customers, {
+    fields: [aiUsageEvents.customerId],
+    references: [customers.id],
+  }),
+  thread: one(messageThreads, {
+    fields: [aiUsageEvents.threadId],
     references: [messageThreads.id],
   }),
 }));

@@ -533,15 +533,26 @@ const styles: Record<string, React.CSSProperties> = {
 /* ─────────────────────────────────────────────────────────────────────────────
    TOGGLE COMPONENT
 ───────────────────────────────────────────────────────────────────────────── */
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (val: boolean) => void }) {
+function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onChange: (val: boolean) => void; disabled?: boolean }) {
   return (
     <div
-      style={{ ...styles.toggle, ...(checked ? styles.toggleActive : {}) }}
-      onClick={() => onChange(!checked)}
+      style={{
+        ...styles.toggle,
+        ...(checked ? styles.toggleActive : {}),
+        ...(disabled ? { opacity: 0.45, cursor: "not-allowed" } : {}),
+      }}
+      onClick={() => {
+        if (disabled) return;
+        onChange(!checked);
+      }}
       role="switch"
       aria-checked={checked}
-      tabIndex={0}
-      onKeyDown={(e) => e.key === "Enter" && onChange(!checked)}
+      aria-disabled={disabled}
+      tabIndex={disabled ? -1 : 0}
+      onKeyDown={(e) => {
+        if (disabled) return;
+        if (e.key === "Enter") onChange(!checked);
+      }}
     >
       <div style={{ ...styles.toggleKnob, ...(checked ? styles.toggleKnobActive : {}) }} />
     </div>
@@ -603,6 +614,7 @@ export default function SettingsPage() {
 
   const userQuery = trpc.user.getMe.useQuery({ email: email ?? "" }, { enabled: !!email });
   const businessQuery = trpc.business.getMine.useQuery({ email: email ?? "" }, { enabled: !!email });
+  const phoneNumbersQuery = trpc.business.listPhoneNumbers.useQuery(undefined, { enabled: !!email });
   const ticketTypesQuery = trpc.tickets.listTypes.useQuery({ includeDisabled: true }, { enabled: !!email });
   const updateBooking = trpc.business.updateBookingConfig.useMutation({
     onSuccess: () => {
@@ -644,6 +656,40 @@ export default function SettingsPage() {
       showErrorToast(toast, {
         title: "Disconnect failed",
         message: "The Gmail connection could not be removed.",
+      });
+    },
+  });
+  const setWhatsappIdentityAutoReplyPaused = trpc.business.setWhatsappIdentityAutoReplyPaused.useMutation({
+    onSuccess: (row) => {
+      showSuccessToast(toast, {
+        title: row.autoReplyPaused ? "Auto replies paused" : "Auto replies resumed",
+        message: row.autoReplyPaused
+          ? "The bot will keep processing messages for this number, but it will not send replies."
+          : "The bot can now reply automatically again for this number.",
+      });
+      void phoneNumbersQuery.refetch();
+    },
+    onError: () => {
+      showErrorToast(toast, {
+        title: "Update failed",
+        message: "The WhatsApp number automation setting could not be saved.",
+      });
+    },
+  });
+  const setWhatsappIdentityAiDisabled = trpc.business.setWhatsappIdentityAiDisabled.useMutation({
+    onSuccess: (row) => {
+      showSuccessToast(toast, {
+        title: row.aiDisabled ? "AI disabled" : "AI enabled",
+        message: row.aiDisabled
+          ? "This number now runs in manual-only mode. No AI processing or auto replies will run."
+          : "This number can use AI again.",
+      });
+      void phoneNumbersQuery.refetch();
+    },
+    onError: () => {
+      showErrorToast(toast, {
+        title: "Update failed",
+        message: "The WhatsApp number AI mode could not be saved.",
       });
     },
   });
@@ -1337,6 +1383,7 @@ export default function SettingsPage() {
 
   const renderIntegrationsTab = () => {
     const isConnected = userQuery.data?.whatsappConnected;
+    const phoneNumbers = phoneNumbersQuery.data ?? [];
     const gmailConnected = Boolean(businessQuery.data?.gmailConnected);
     const gmailAddress = String(businessQuery.data?.gmailEmail || "").trim();
     const gmailError = describeCompanyGmailError(businessQuery.data?.gmailError);
@@ -1375,6 +1422,65 @@ export default function SettingsPage() {
                 {isConnected ? "Manage" : "Connect"}
               </button>
             </div>
+            {phoneNumbers.length ? (
+              <div style={{ marginTop: 20, display: "grid", gap: 12 }}>
+                {phoneNumbers.map((phone) => (
+                  <div
+                    key={phone.phoneNumberId}
+                    style={{
+                      ...styles.toggleRow,
+                      border: "1px solid var(--border)",
+                      borderRadius: 14,
+                      padding: "14px 16px",
+                    }}
+                  >
+                    <div style={styles.toggleInfo}>
+                      <span style={styles.toggleLabel}>
+                        {phone.displayPhoneNumber || phone.phoneNumberId}
+                      </span>
+                      <span style={styles.toggleDescription}>
+                        {phone.aiDisabled
+                          ? "AI is fully disabled for this number. Incoming messages are not processed by the bot."
+                          : phone.autoReplyPaused
+                          ? "Auto replies are paused for this number. Staff can reply manually while the bot keeps tracking context."
+                          : "Auto replies are active for this number."}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
+                        <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          Auto Reply
+                        </span>
+                        <Toggle
+                          checked={!phone.autoReplyPaused}
+                          onChange={(checked) => {
+                            void setWhatsappIdentityAutoReplyPaused.mutateAsync({
+                              phoneNumberId: phone.phoneNumberId,
+                              autoReplyPaused: !checked,
+                            });
+                          }}
+                          disabled={Boolean(phone.aiDisabled)}
+                        />
+                      </div>
+                      <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
+                        <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                          AI Enabled
+                        </span>
+                        <Toggle
+                          checked={!phone.aiDisabled}
+                          onChange={(checked) => {
+                            void setWhatsappIdentityAiDisabled.mutateAsync({
+                              phoneNumberId: phone.phoneNumberId,
+                              aiDisabled: !checked,
+                            });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 

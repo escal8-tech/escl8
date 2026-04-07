@@ -2,12 +2,13 @@ import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
-import { businesses, users, whatsappIdentities, messageThreads, threadMessages } from "../../../drizzle/schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { businesses, users, whatsappIdentities } from "../../../drizzle/schema";
+import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { mergeOrderFlowSettings, normalizeOrderFlowSettings } from "@/lib/order-settings";
 import { mergeWebsiteWidgetSettings, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
+import { getBusinessAiCreditsUsed } from "@/server/services/aiUsage";
 
 export const businessRouter = router({
   listPhoneNumbers: businessProcedure.query(async ({ ctx }) => {
@@ -16,6 +17,8 @@ export const businessRouter = router({
         phoneNumberId: whatsappIdentities.phoneNumberId,
         displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
         isActive: whatsappIdentities.isActive,
+        autoReplyPaused: whatsappIdentities.autoReplyPaused,
+        aiDisabled: whatsappIdentities.aiDisabled,
         connectedAt: whatsappIdentities.connectedAt,
       })
       .from(whatsappIdentities)
@@ -30,6 +33,96 @@ export const businessRouter = router({
     return rows;
   }),
 
+  setWhatsappIdentityAutoReplyPaused: businessProcedure
+    .input(z.object({
+      phoneNumberId: z.string().min(1),
+      autoReplyPaused: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await db
+        .update(whatsappIdentities)
+        .set({
+          autoReplyPaused: input.autoReplyPaused,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(whatsappIdentities.businessId, ctx.businessId),
+          eq(whatsappIdentities.phoneNumberId, input.phoneNumberId),
+        ))
+        .returning({
+          phoneNumberId: whatsappIdentities.phoneNumberId,
+          displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
+          autoReplyPaused: whatsappIdentities.autoReplyPaused,
+          isActive: whatsappIdentities.isActive,
+          connectedAt: whatsappIdentities.connectedAt,
+        });
+      if (!row) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
+      }
+      recordBusinessEvent({
+        event: row.autoReplyPaused ? "whatsapp_identity.auto_reply_paused" : "whatsapp_identity.auto_reply_resumed",
+        action: "setWhatsappIdentityAutoReplyPaused",
+        area: "whatsapp_identity",
+        businessId: ctx.businessId,
+        entity: "whatsapp_identity",
+        entityId: row.phoneNumberId,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: "success",
+        attributes: {
+          display_phone_number: row.displayPhoneNumber ?? null,
+        },
+      });
+      return row;
+    }),
+
+  setWhatsappIdentityAiDisabled: businessProcedure
+    .input(z.object({
+      phoneNumberId: z.string().min(1),
+      aiDisabled: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await db
+        .update(whatsappIdentities)
+        .set({
+          aiDisabled: input.aiDisabled,
+          ...(input.aiDisabled ? { autoReplyPaused: false } : {}),
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(whatsappIdentities.businessId, ctx.businessId),
+          eq(whatsappIdentities.phoneNumberId, input.phoneNumberId),
+        ))
+        .returning({
+          phoneNumberId: whatsappIdentities.phoneNumberId,
+          displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
+          autoReplyPaused: whatsappIdentities.autoReplyPaused,
+          aiDisabled: whatsappIdentities.aiDisabled,
+          isActive: whatsappIdentities.isActive,
+          connectedAt: whatsappIdentities.connectedAt,
+        });
+      if (!row) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
+      }
+      recordBusinessEvent({
+        event: row.aiDisabled ? "whatsapp_identity.ai_disabled" : "whatsapp_identity.ai_enabled",
+        action: "setWhatsappIdentityAiDisabled",
+        area: "whatsapp_identity",
+        businessId: ctx.businessId,
+        entity: "whatsapp_identity",
+        entityId: row.phoneNumberId,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: "success",
+        attributes: {
+          display_phone_number: row.displayPhoneNumber ?? null,
+        },
+      });
+      return row;
+    }),
+
   getMine: businessProcedure
     .input(z.object({ email: z.string().email() }))
     .query(async ({ input, ctx }) => {
@@ -40,19 +133,7 @@ export const businessRouter = router({
       const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId));
       if (!biz) return null;
 
-      const [usageRow] = await db
-        .select({
-          used: sql<number>`count(*)`,
-        })
-        .from(threadMessages)
-        .innerJoin(messageThreads, eq(threadMessages.threadId, messageThreads.id))
-        .where(
-          and(
-            eq(messageThreads.businessId, ctx.businessId),
-            eq(threadMessages.direction, "outbound"),
-            isNull(messageThreads.deletedAt),
-          ),
-        );
+      const creditsUsed = await getBusinessAiCreditsUsed(ctx.businessId);
 
       return {
         ...biz,
@@ -62,7 +143,7 @@ export const businessRouter = router({
         gmailConnectedAt: biz.gmailConnectedAt ?? null,
         gmailError: biz.gmailError ?? null,
         responseUsage: {
-          used: Number(usageRow?.used ?? 0),
+          used: creditsUsed,
           max: 50_000,
         },
       };
