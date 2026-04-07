@@ -5,7 +5,8 @@ import { db } from "../db/client";
 import { customers, messageThreads, threadMessages, whatsappIdentities, SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { and, desc, eq, ilike, isNull, lt, or, sql } from "drizzle-orm";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
-import { sendWhatsAppMessagesViaBot } from "../services/botApi";
+import { observeAssistantMessageViaBot, sendWhatsAppMessagesViaBot } from "../services/botApi";
+import { recordAiUsageEvent } from "../services/aiUsage";
 
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
 
@@ -326,6 +327,7 @@ export const messagesRouter = router({
       const [identity] = await db
         .select({
           phoneNumberId: whatsappIdentities.phoneNumberId,
+          aiDisabled: whatsappIdentities.aiDisabled,
         })
         .from(whatsappIdentities)
         .where(
@@ -401,6 +403,46 @@ export const messagesRouter = router({
             message_type: saved.messageType,
             text_length: input.text.length,
             thread_id: input.threadId,
+            whatsapp_identity_id: thread.whatsappIdentityId,
+          },
+        });
+      }
+
+      try {
+        if (!identity.aiDisabled) {
+          await observeAssistantMessageViaBot({
+            businessId: ctx.businessId,
+            phoneNumberId: thread.whatsappIdentityId,
+            to,
+            text: input.text,
+            intent: "general",
+          });
+          await recordAiUsageEvent({
+            businessId: ctx.businessId,
+            whatsappIdentityId: thread.whatsappIdentityId,
+            threadId: input.threadId,
+            eventType: "manual_outbound_message",
+            source: "portal_manual_send",
+            credits: 1,
+            metadata: {
+              customerExternalId: thread.customerExternalId ?? null,
+            },
+          });
+        }
+      } catch (error) {
+        recordBusinessEvent({
+          event: "message.manual_send_observe_failed",
+          action: "sendText",
+          area: "message",
+          businessId: ctx.businessId,
+          entity: "thread",
+          entityId: input.threadId,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "degraded",
+          status: "assistant_observe_failed",
+          attributes: {
             whatsapp_identity_id: thread.whatsappIdentityId,
           },
         });
