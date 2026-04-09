@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useToast } from "@/components/ToastProvider";
 import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
 import { TablePagination } from "@/app/portal/components/TablePagination";
@@ -104,13 +104,6 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
   const [rangeDays, setRangeDays] = useState<RangeDays>(30);
   const [methodFilter, setMethodFilter] = useState<OrderMethodFilter>("all");
   const [queueFilter, setQueueFilter] = useState<QueueFilter>(() => defaultQueueFilter(mode));
-  const [nowTs, setNowTs] = useState(() => Date.now());
-
-  useEffect(() => {
-    const timerId = window.setInterval(() => setNowTs(Date.now()), 30_000);
-    return () => window.clearInterval(timerId);
-  }, []);
-
   const orderLedgerInput = useMemo(
     () => ({
       mode,
@@ -204,12 +197,13 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
       ]);
     },
   });
-  const sendPaymentDetails = trpc.orders.sendPaymentDetails.useMutation({
+  const denyPendingPaymentOrder = trpc.orders.denyPendingPaymentOrder.useMutation({
     onSuccess: async () => {
       await Promise.all([
         utils.orders.listOrdersPage.invalidate(),
         utils.orders.getOverview.invalidate(),
         utils.orders.getOrderById.invalidate(),
+        utils.orders.getOrderPayments.invalidate(),
         utils.orders.getOrderEvents.invalidate(),
       ]);
     },
@@ -268,7 +262,7 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
     || reviewPayment.isPending
     || updateFulfillment.isPending
     || captureManualPayment.isPending
-    || sendPaymentDetails.isPending
+    || denyPendingPaymentOrder.isPending
     || updateRefundStatus.isPending;
 
   const summaryCards = useMemo(() => {
@@ -296,57 +290,36 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
     ];
   }, [currency, financeTotals, metrics, mode]);
 
-  const handleReview = async (paymentId: string, action: "approve" | "reject") => {
+  const handleReview = async (order: OrderRow, paymentId: string | undefined, action: "approve" | "reject") => {
+    const rejectReason = action === "reject"
+      ? window.prompt("Reason for denying this payment", "Payment was not approved")
+      : null;
+    if (action === "reject" && rejectReason === null) return;
+    const notes = rejectReason?.trim() || undefined;
     try {
-      await reviewPayment.mutateAsync({ paymentId, action });
+      if (paymentId) {
+        await reviewPayment.mutateAsync({ paymentId, action, notes });
+      } else if (action === "approve") {
+        await captureManualPayment.mutateAsync({
+          orderId: order.id,
+          amount: String(order.expectedAmount ?? order.paidAmount ?? "").trim() || undefined,
+        });
+      } else {
+        await denyPendingPaymentOrder.mutateAsync({
+          orderId: order.id,
+          reason: notes || "Payment was not approved",
+        });
+      }
       showSuccessToast(toast, {
         title: action === "approve" ? "Payment approved" : "Payment rejected",
         message: action === "approve"
           ? "The order moved into the order status queue."
-          : "The payment was marked denied and the customer was updated.",
+          : "The order was denied and the customer was updated.",
       });
     } catch (error) {
       showErrorToast(toast, {
         title: "Review failed",
         message: error instanceof Error ? error.message : "Could not review this payment.",
-      });
-    }
-  };
-
-  const handleSendPaymentDetails = async (order: OrderRow) => {
-    try {
-      const result = await sendPaymentDetails.mutateAsync({ orderId: order.id });
-      showSuccessToast(toast, {
-        title: "Payment details sent",
-        message: result.deliveryChannel === "email"
-          ? "The customer was emailed because the WhatsApp window is closed."
-          : "The customer received the payment details in WhatsApp.",
-      });
-    } catch (error) {
-      showErrorToast(toast, {
-        title: "Could not send details",
-        message: error instanceof Error ? error.message : "Could not send the payment details.",
-      });
-    }
-  };
-
-  const handleManualPayment = async (order: OrderRow) => {
-    const amountDefault = String(order.expectedAmount ?? order.paidAmount ?? "").trim();
-    const amountPrompt = window.prompt("Paid amount", amountDefault || "");
-    if (amountPrompt === null) return;
-    try {
-      await captureManualPayment.mutateAsync({
-        orderId: order.id,
-        amount: amountPrompt || amountDefault || undefined,
-      });
-      showSuccessToast(toast, {
-        title: "Payment recorded",
-        message: "The order was marked paid and the invoice link was sent.",
-      });
-    } catch (error) {
-      showErrorToast(toast, {
-        title: "Could not record payment",
-        message: error instanceof Error ? error.message : "Manual payment capture failed.",
       });
     }
   };
@@ -474,17 +447,6 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
     }
   };
 
-  if (overviewQuery.data && !overviewQuery.data.settings.ticketToOrderEnabled) {
-    return (
-      <div className="card" style={{ margin: 24 }}>
-        <div className="card-body" style={{ padding: 24 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Order operations are disabled</div>
-          <div className="text-muted">Enable Ticket To Order in Settings before using these workspaces.</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
       <div className="portal-page-shell">
@@ -586,12 +548,9 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
                 {mode === "payments" ? (
                   <PaymentsTable
                     rows={rows}
-                    nowTs={nowTs}
                     onOpen={setSelectedOrderId}
-                    onApprove={handleReview}
-                    onReject={handleReview}
-                    onSendPaymentDetails={handleSendPaymentDetails}
-                    onRecordManualPayment={handleManualPayment}
+                    onApprove={(order, paymentId) => handleReview(order, paymentId, "approve")}
+                    onReject={(order, paymentId) => handleReview(order, paymentId, "reject")}
                     busy={isBusy}
                   />
                 ) : mode === "status" ? (
@@ -665,17 +624,14 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
         title={modeTitle(mode)}
         order={selectedOrder}
         onClose={() => setSelectedOrderId(null)}
-        onApprovePayment={handleReview}
-        onRejectPayment={handleReview}
-        onSendPaymentDetails={handleSendPaymentDetails}
-        onRecordManualPayment={handleManualPayment}
+        onApprovePayment={(order, paymentId) => handleReview(order, paymentId, "approve")}
+        onRejectPayment={(order, paymentId) => handleReview(order, paymentId, "reject")}
         onUpdateDraftOrder={handleSaveDraftOrder}
         onApproveDraftOrder={handleApproveDraftOrder}
         onUpdateFulfillment={handleFulfillmentUpdate}
         onUpdatePaymentSetup={handleSavePaymentSetup}
         onUpdateRefundStatus={handleRefundAction}
         busy={isBusy}
-        nowTs={nowTs}
       />
     </>
   );

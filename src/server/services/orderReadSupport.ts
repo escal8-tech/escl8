@@ -135,9 +135,9 @@ export async function getOrderWorkspaceOverviewForBusiness(args: {
   const [aggregateRow] = await db
     .select({
       scopedCount: sql<number>`count(*)::int`,
-      paymentPendingCount: sql<number>`count(*) filter (where ${statusExpr} in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted'))::int`,
+      paymentPendingCount: sql<number>`count(*) filter (where ${statusExpr} in ('pending_approval', 'edit_required', 'approved', 'awaiting_payment', 'payment_submitted'))::int`,
       paymentApprovedCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded'))::int`,
-      paymentDeniedCount: sql<number>`count(*) filter (where ${statusExpr} = 'payment_rejected')::int`,
+      paymentDeniedCount: sql<number>`count(*) filter (where ${statusExpr} in ('payment_rejected', 'denied'))::int`,
       paymentReviewCount: sql<number>`count(*) filter (where ${statusExpr} = 'payment_submitted')::int`,
       orderPendingCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded') and ${fulfillmentBucket} = 'pending')::int`,
       orderOutForDeliveryCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded') and ${fulfillmentBucket} = 'out_for_delivery')::int`,
@@ -214,7 +214,7 @@ export async function getOrderStatsForBusiness(businessId: string) {
   for (const row of rows) {
     const latestPayment = latestPaymentByOrder.get(row.id);
     const amount = resolveOrderLedgerAmount(row, latestPayment);
-    if (row.status === "awaiting_payment") pendingPaymentCount += 1;
+    if (row.status === "awaiting_payment" || row.status === "edit_required") pendingPaymentCount += 1;
     if (row.status === "payment_submitted") paymentSubmittedCount += 1;
     if (row.status === "paid") {
       paidCount += 1;

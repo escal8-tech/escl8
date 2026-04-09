@@ -49,6 +49,7 @@ export const STATUS_OPTIONS: TicketStatus[] = ["open", "in_progress", "resolved"
 export const OUTCOME_OPTIONS: TicketOutcome[] = ["pending", "won", "lost"];
 export const ORDER_STAGE_OPTIONS = [
   "pending_approval",
+  "edit_required",
   "approved",
   "awaiting_payment",
   "payment_submitted",
@@ -638,11 +639,13 @@ export function resolveOrderStage(ticket: TicketRow): OrderStage {
 
 export function formatOrderStage(stage: OrderStage): string {
   if (stage === "pending_approval") return "Pending approval";
+  if (stage === "edit_required") return "Edit required";
   return formatStatus(stage);
 }
 
 export function describeOrderStage(stage: OrderStage): string {
   if (stage === "pending_approval") return "Review the ticket, confirm details, then approve or deny it.";
+  if (stage === "edit_required") return "This approved unpaid order was reopened because the customer changed it before payment was approved.";
   if (stage === "approved") return "Approved and moved into the Payment Status queue.";
   if (stage === "awaiting_payment") return "Approved and waiting for the customer to send payment proof.";
   if (stage === "payment_submitted") return "Payment proof received and waiting for staff review.";
@@ -656,6 +659,7 @@ export function describeOrderStage(stage: OrderStage): string {
 export function orderStagePillClass(stage: OrderStage): string {
   if (stage === "paid") return "portal-pill portal-pill--success";
   if (stage === "awaiting_payment" || stage === "payment_submitted") return "portal-pill portal-pill--warning";
+  if (stage === "edit_required") return "portal-pill portal-pill--warning";
   if (stage === "approved") return "portal-pill portal-pill--info";
   if (stage === "refund_pending") return "portal-pill portal-pill--warning";
   if (stage === "refunded") return "portal-pill portal-pill--neutral";
@@ -664,9 +668,9 @@ export function orderStagePillClass(stage: OrderStage): string {
 }
 
 export function canApproveOrderStage(stage: OrderStage): boolean {
-  return stage === "pending_approval";
+  return stage === "pending_approval" || stage === "edit_required";
 }
 
 export function canDenyOrderStage(stage: OrderStage): boolean {
-  return !["paid", "refund_pending", "refunded", "denied"].includes(stage);
+  return stage === "pending_approval" || stage === "edit_required";
 }

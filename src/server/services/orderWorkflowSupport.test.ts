@@ -22,15 +22,13 @@ test("resolveRefundAmount falls back to ledger amount", () => {
   );
 });
 
-test("bank qr payments require passed ai status before approval", () => {
-  assert.throws(
-    () =>
-      assertPaymentReviewAllowed({
-        orderRow: { paymentMethod: "bank_qr" },
-        paymentRow: { aiCheckStatus: "needs_review" },
-        action: "approve",
-      }),
-    /AI proof check passes/i,
+test("bank qr payments can still be approved manually", () => {
+  assert.doesNotThrow(() =>
+    assertPaymentReviewAllowed({
+      orderRow: { paymentMethod: "bank_qr" },
+      paymentRow: { aiCheckStatus: "invalid" },
+      action: "approve",
+    }),
   );
 });
 
@@ -38,7 +36,7 @@ test("manual payments can still be approved", () => {
   assert.doesNotThrow(() =>
     assertPaymentReviewAllowed({
       orderRow: { paymentMethod: "manual" },
-      paymentRow: { aiCheckStatus: "needs_review" },
+      paymentRow: { aiCheckStatus: "manual_review" },
       action: "approve",
     }),
   );

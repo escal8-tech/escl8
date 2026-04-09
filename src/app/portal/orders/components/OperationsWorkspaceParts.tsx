@@ -1,15 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useToast } from "@/components/ToastProvider";
-import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
 import { trpc } from "@/utils/trpc";
 import {
   asRecord,
-  buildManualPaymentInstructions,
-  canRecordManualPayment,
   describeFinanceState,
-  describeWhatsAppWindow,
   financeToneClass,
   formatDate,
   formatEventSummary,
@@ -20,8 +15,6 @@ import {
   getDeliverySummary,
   getFulfillmentStatus,
   getOrderStatus,
-  isWhatsAppWindowOpen,
-  needsPaymentDetailsWorkflow,
   normalizeStatusLabel,
   numericAmount,
   resolveOrderAmount,
@@ -70,29 +63,21 @@ function simpleFulfillmentTone(order: OrderRow): string {
 }
 
 function canStaffApprovePayment(order: OrderRow, latestPayment: OrderPaymentRow | null): boolean {
-  if (!latestPayment || latestPayment.status !== "submitted") return false;
-  const paymentMethod = String(order.paymentMethod || "").trim().toLowerCase();
-  if (paymentMethod === "manual" || paymentMethod === "cod") return true;
-  return Boolean(latestPayment.aiCheckStatus && latestPayment.aiCheckStatus !== "needs_review");
+  if (latestPayment?.status === "submitted") return true;
+  return ["approved", "awaiting_payment", "payment_rejected"].includes(getOrderStatus(order));
 }
 
 export function PaymentsTable({
   rows,
-  nowTs,
   onOpen,
   onApprove,
   onReject,
-  onSendPaymentDetails,
-  onRecordManualPayment,
   busy,
 }: {
   rows: OrderRow[];
-  nowTs: number;
   onOpen: (orderId: string) => void;
-  onApprove: (paymentId: string, action: "approve" | "reject") => Promise<void>;
-  onReject: (paymentId: string, action: "approve" | "reject") => Promise<void>;
-  onSendPaymentDetails: (order: OrderRow) => Promise<void>;
-  onRecordManualPayment: (order: OrderRow) => Promise<void>;
+  onApprove: (order: OrderRow, paymentId?: string) => Promise<void>;
+  onReject: (order: OrderRow, paymentId?: string) => Promise<void>;
   busy: boolean;
 }) {
   return (
@@ -114,8 +99,6 @@ export function PaymentsTable({
           const latestPayment = order.latestPayment ?? null;
           const canApprove = canStaffApprovePayment(order, latestPayment);
           const canReject = canApprove;
-          const sendDetails = needsPaymentDetailsWorkflow(order);
-          const manualPayment = canRecordManualPayment(order);
           return (
             <tr key={order.id} onClick={() => onOpen(order.id)} style={{ cursor: "pointer" }}>
               <td data-label="Order">
@@ -163,23 +146,13 @@ export function PaymentsTable({
               <td data-label="Action" style={{ textAlign: "right" }} onClick={(event) => event.stopPropagation()}>
                 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
                   {canApprove ? (
-                    <button type="button" className="btn btn-primary" disabled={busy} onClick={() => latestPayment && void onApprove(latestPayment.id, "approve")}>
+                    <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onApprove(order, latestPayment?.id)}>
                       Approve
                     </button>
                   ) : null}
                   {canReject ? (
-                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => latestPayment && void onReject(latestPayment.id, "reject")}>
+                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onReject(order, latestPayment?.id)}>
                       Deny
-                    </button>
-                  ) : null}
-                  {!canApprove && sendDetails ? (
-                    <button type="button" className="btn btn-ghost" disabled={busy || !isWhatsAppWindowOpen(order, nowTs)} onClick={() => void onSendPaymentDetails(order)}>
-                      Send Details
-                    </button>
-                  ) : null}
-                  {!canApprove && manualPayment ? (
-                    <button type="button" className="btn btn-primary portal-button--success" disabled={busy} onClick={() => void onRecordManualPayment(order)}>
-                      Mark Paid
                     </button>
                   ) : null}
                 </div>
@@ -361,24 +334,19 @@ export function OrderWorkspaceDrawer({
   onClose,
   onApprovePayment,
   onRejectPayment,
-  onSendPaymentDetails,
-  onRecordManualPayment,
   onUpdateDraftOrder,
   onApproveDraftOrder,
   onUpdateFulfillment,
   onUpdatePaymentSetup,
   onUpdateRefundStatus,
   busy,
-  nowTs,
 }: {
   mode: OperationsWorkspaceMode;
   title: string;
   order: OrderRow | null;
   onClose: () => void;
-  onApprovePayment: (paymentId: string, action: "approve" | "reject") => Promise<void>;
-  onRejectPayment: (paymentId: string, action: "approve" | "reject") => Promise<void>;
-  onSendPaymentDetails: (order: OrderRow) => Promise<void>;
-  onRecordManualPayment: (order: OrderRow) => Promise<void>;
+  onApprovePayment: (order: OrderRow, paymentId?: string) => Promise<void>;
+  onRejectPayment: (order: OrderRow, paymentId?: string) => Promise<void>;
   onUpdateDraftOrder: (input: {
     orderId: string;
     expectedUpdatedAt?: Date;
@@ -418,9 +386,7 @@ export function OrderWorkspaceDrawer({
   }) => Promise<void>;
   onUpdateRefundStatus: (order: OrderRow, action: "mark_pending" | "mark_refunded" | "cancel") => Promise<void>;
   busy: boolean;
-  nowTs: number;
 }) {
-  const toast = useToast();
   const paymentsQuery = trpc.orders.getOrderPayments.useQuery(
     { orderId: order?.id ?? "" },
     { enabled: Boolean(order?.id) },
@@ -462,8 +428,6 @@ export function OrderWorkspaceDrawer({
   const snapshot = asRecord(order.ticketSnapshot);
   const snapshotFields = asRecord(snapshot.fields);
   const isDraftOrder = getOrderStatus(order) === "pending_approval";
-  const paymentWindowOpen = isWhatsAppWindowOpen(order, nowTs);
-  const manualInstructions = needsPaymentDetailsWorkflow(order) ? buildManualPaymentInstructions(order) : "";
   const showPaymentSetup = mode === "payments" && !isDraftOrder;
   const showDeliveryDetails = mode === "status";
   const showInvoicePanel = mode !== "status" && !isDraftOrder;
@@ -477,18 +441,6 @@ export function OrderWorkspaceDrawer({
       : mode === "status"
         ? "Order Actions"
         : "Transaction And Refund";
-
-  const copyManualInstructions = async () => {
-    try {
-      await navigator.clipboard.writeText(manualInstructions);
-      showSuccessToast(toast, { title: "Copied", message: "Manual payment instructions were copied." });
-    } catch (error) {
-      showErrorToast(toast, {
-        title: "Copy failed",
-        message: error instanceof Error ? error.message : "Could not copy the payment instructions.",
-      });
-    }
-  };
 
   const saveDraftOrder = async () => {
     const nextFields = applyOrderEditorToFields(snapshotFields, draftOrderLines, computedDraftOrderTotal);
@@ -656,11 +608,6 @@ export function OrderWorkspaceDrawer({
                       Save Payment Details
                     </button>
                   </div>
-                  {needsPaymentDetailsWorkflow(order) ? (
-                    <div className="text-muted" style={{ fontSize: 12 }}>
-                      {describeWhatsAppWindow(order, nowTs)}
-                    </div>
-                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -778,21 +725,6 @@ export function OrderWorkspaceDrawer({
                 Approve Draft Order
               </button>
             ) : null}
-            {needsPaymentDetailsWorkflow(order) && showPaymentSetup ? (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={busy || !paymentWindowOpen}
-                onClick={() => void onSendPaymentDetails(order)}
-              >
-                Send Payment Details
-              </button>
-            ) : null}
-            {needsPaymentDetailsWorkflow(order) && showPaymentSetup && !paymentWindowOpen ? (
-              <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void copyManualInstructions()}>
-                Copy Manual Instructions
-              </button>
-            ) : null}
             {showDeliveryDetails && simpleFulfillmentBucket(order) === "pending" ? (
               <button
                 type="button"
@@ -845,19 +777,14 @@ export function OrderWorkspaceDrawer({
                 Complete
               </button>
             ) : null}
-            {mode === "payments" && latestPayment?.status === "submitted" ? (
-              <button type="button" className="btn btn-primary" disabled={busy || !canApproveLatestPayment} onClick={() => void onApprovePayment(latestPayment.id, "approve")}>
+            {mode === "payments" && canApproveLatestPayment ? (
+              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onApprovePayment(order, latestPayment?.id)}>
                 Approve Payment
               </button>
             ) : null}
-            {mode === "payments" && latestPayment?.status === "submitted" ? (
-              <button type="button" className="btn btn-ghost" disabled={busy || !canApproveLatestPayment} onClick={() => void onRejectPayment(latestPayment.id, "reject")}>
+            {mode === "payments" && canApproveLatestPayment ? (
+              <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onRejectPayment(order, latestPayment?.id)}>
                 Deny Payment
-              </button>
-            ) : null}
-            {mode === "payments" && canRecordManualPayment(order) ? (
-              <button type="button" className="btn btn-primary portal-button--success" disabled={busy} onClick={() => void onRecordManualPayment(order)}>
-                Mark Paid Manually
               </button>
             ) : null}
             {getOrderStatus(order) === "paid" ? (

@@ -3,10 +3,12 @@ export type OrderPaymentMethod = "manual" | "cod" | "bank_qr";
 export type OrderFlowSettings = {
   ticketToOrderEnabled: boolean;
   paymentMethod: OrderPaymentMethod;
+  paymentProofAiEnabled: boolean;
   currency: string;
   bankQr: {
     showQr: boolean;
     showBankDetails: boolean;
+    qrBlobPath: string;
     qrImageUrl: string;
     bankName: string;
     accountName: string;
@@ -16,12 +18,14 @@ export type OrderFlowSettings = {
 };
 
 export const DEFAULT_ORDER_FLOW_SETTINGS: OrderFlowSettings = {
-  ticketToOrderEnabled: false,
+  ticketToOrderEnabled: true,
   paymentMethod: "manual",
+  paymentProofAiEnabled: true,
   currency: "LKR",
   bankQr: {
     showQr: true,
     showBankDetails: true,
+    qrBlobPath: "",
     qrImageUrl: "",
     bankName: "",
     accountName: "",
@@ -69,12 +73,14 @@ export function normalizeOrderFlowSettings(raw: unknown): OrderFlowSettings {
   const paymentMethod = asPaymentMethod(nested.paymentMethod);
 
   return {
-    ticketToOrderEnabled: asBool(nested.ticketToOrderEnabled, DEFAULT_ORDER_FLOW_SETTINGS.ticketToOrderEnabled),
+    ticketToOrderEnabled: true,
     paymentMethod,
+    paymentProofAiEnabled: asBool(nested.paymentProofAiEnabled, DEFAULT_ORDER_FLOW_SETTINGS.paymentProofAiEnabled),
     currency: asString(nested.currency, DEFAULT_ORDER_FLOW_SETTINGS.currency).toUpperCase().slice(0, 10),
     bankQr: {
       showQr: asBool(bankQrRaw.showQr, DEFAULT_ORDER_FLOW_SETTINGS.bankQr.showQr),
       showBankDetails: asBool(bankQrRaw.showBankDetails, DEFAULT_ORDER_FLOW_SETTINGS.bankQr.showBankDetails),
+      qrBlobPath: asString(bankQrRaw.qrBlobPath),
       qrImageUrl: asString(bankQrRaw.qrImageUrl),
       bankName: asString(bankQrRaw.bankName),
       accountName: asString(bankQrRaw.accountName),
@@ -91,12 +97,14 @@ export function mergeOrderFlowSettings(
   return {
     ...(settings ?? {}),
     orderFlow: {
-      ticketToOrderEnabled: nextOrderFlow.ticketToOrderEnabled,
+      ticketToOrderEnabled: true,
       paymentMethod: nextOrderFlow.paymentMethod,
+      paymentProofAiEnabled: nextOrderFlow.paymentProofAiEnabled,
       currency: nextOrderFlow.currency,
       bankQr: {
         showQr: nextOrderFlow.bankQr.showQr,
         showBankDetails: nextOrderFlow.bankQr.showBankDetails,
+        qrBlobPath: nextOrderFlow.bankQr.qrBlobPath,
         qrImageUrl: nextOrderFlow.bankQr.qrImageUrl,
         bankName: nextOrderFlow.bankQr.bankName,
         accountName: nextOrderFlow.bankQr.accountName,

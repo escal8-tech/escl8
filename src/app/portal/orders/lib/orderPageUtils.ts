@@ -305,16 +305,23 @@ export function describeFinanceState(order: OrderRow, latestPayment?: OrderPayme
   const status = getOrderStatus(order);
   const method = String(order.paymentMethod || "").toLowerCase();
   if (status === "pending_approval") return "Awaiting approval";
+  if (status === "edit_required") return "Edit required";
   if (status === "paid") return "Payment captured";
   if (status === "refund_pending") return "Refund pending";
   if (status === "refunded") return "Refunded";
-  if (status === "payment_submitted") return "Payment review";
+  if (status === "payment_submitted") {
+    const checkStatus = String(latestPayment?.aiCheckStatus || "").trim().toLowerCase();
+    if (checkStatus === "confirmed") return "Proof confirmed";
+    if (checkStatus === "invalid") return "Proof invalid";
+    if (checkStatus === "manual_review") return "Manual review";
+    return "Payment review";
+  }
   if (status === "payment_rejected") return "Payment rejected";
   if (status === "awaiting_payment") return "Awaiting payment";
-  if (status === "denied") return "Not approved";
+  if (status === "denied") return "Payment denied";
   if (method === "manual") return "Manual collection";
   if (method === "cod") return "Cash on delivery";
-  if (latestPayment?.aiCheckStatus) return `AI ${normalizeStatusLabel(latestPayment.aiCheckStatus)}`;
+  if (latestPayment?.aiCheckStatus) return normalizeStatusLabel(latestPayment.aiCheckStatus);
   return normalizeStatusLabel(status || method || "pending");
 }
 
@@ -322,7 +329,7 @@ export function financeToneClass(order: OrderRow): string {
   const status = getOrderStatus(order);
   if (status === "paid") return "portal-pill portal-pill--success";
   if (status === "payment_submitted") return "portal-pill portal-pill--warning";
-  if (status === "pending_approval" || status === "awaiting_payment" || status === "approved") {
+  if (status === "pending_approval" || status === "edit_required" || status === "awaiting_payment" || status === "approved") {
     return "portal-pill portal-pill--neutral";
   }
   if (status === "payment_rejected" || status === "denied" || status === "refunded") {

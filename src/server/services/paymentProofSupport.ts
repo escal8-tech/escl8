@@ -62,7 +62,7 @@ export function resolvePaymentProofAssessment(input: {
   paidAmount: unknown;
   currency?: string | null;
 }): {
-  aiCheckStatus: "passed" | "needs_review";
+  aiCheckStatus: "confirmed" | "invalid" | "manual_review";
   aiCheckNotes: string;
   balance: PaymentBalance;
 } {
@@ -71,20 +71,20 @@ export function resolvePaymentProofAssessment(input: {
   const balance = computePaymentBalance(input.expectedAmount, input.paidAmount);
   const currency = String(input.currency || "LKR").trim() || "LKR";
   const supportingChecksOkay = Boolean(checks?.proofPresent) && Boolean(checks?.dateFormatValid) && Boolean(checks?.dateNotFuture);
-  let aiCheckStatus: "passed" | "needs_review" =
-    String(analysis?.status || "").trim().toLowerCase() === "passed" ? "passed" : "needs_review";
+  let aiCheckStatus: "confirmed" | "invalid" | "manual_review" =
+    String(analysis?.status || "").trim().toLowerCase() === "passed" ? "confirmed" : "manual_review";
   let aiCheckNotes = String(analysis?.summary || "").trim() || "Payment proof received.";
 
   if (balance.amountSufficient === false) {
     const shortBy = Number(balance.delta || "0");
-    aiCheckStatus = "needs_review";
+    aiCheckStatus = "invalid";
     aiCheckNotes = appendSentence(
       aiCheckNotes,
       `Detected amount is short by ${currency} ${Math.abs(shortBy).toFixed(2)} compared with the amount due.`,
     );
   } else if (balance.amountSufficient === true) {
     if (supportingChecksOkay) {
-      aiCheckStatus = "passed";
+      aiCheckStatus = "confirmed";
     }
     if (balance.state === "excess") {
       aiCheckNotes = appendSentence(
