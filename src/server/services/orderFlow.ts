@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { messageThreads, orderEvents, threadMessages } from "../../../drizzle/schema";
 import type { OrderFlowSettings } from "@/lib/order-settings";
+import { buildPrivateBlobReadUrl } from "@/lib/storage";
 import {
   formatOrderFulfillmentStatus,
   type OrderFulfillmentStatus,
@@ -59,6 +60,12 @@ function renderOrderEmailHtml(params: {
     "</div>",
     "</div>",
   ].join("");
+}
+
+function resolveOrderQrImageUrl(settings: OrderFlowSettings): string | null {
+  const blobPath = String(settings.bankQr.qrBlobPath || "").trim();
+  const directUrl = String(settings.bankQr.qrImageUrl || "").trim();
+  return buildPrivateBlobReadUrl(blobPath, 24 * 30) || directUrl || null;
 }
 
 export function sanitizePhoneDigits(value: string | null | undefined): string {
@@ -247,6 +254,7 @@ export function buildOrderApprovalMessages(input: {
 
   const bankQr = input.orderSettings.bankQr;
   if (input.orderSettings.paymentMethod === "bank_qr") {
+    const qrImageUrl = resolveOrderQrImageUrl(input.orderSettings);
     const paymentLines = ["Please complete the payment and send the payment slip image or PDF in this chat."];
     if (bankQr.showBankDetails) {
       if (bankQr.bankName) paymentLines.push(`Bank: ${bankQr.bankName}`);
@@ -255,10 +263,10 @@ export function buildOrderApprovalMessages(input: {
       if (bankQr.accountInstructions) paymentLines.push(bankQr.accountInstructions);
     }
     messages.push({ type: "text", text: paymentLines.join("\n") });
-    if (bankQr.showQr && bankQr.qrImageUrl) {
+    if (bankQr.showQr && qrImageUrl) {
       messages.push({
         type: "image",
-        imageUrl: bankQr.qrImageUrl,
+        imageUrl: qrImageUrl,
         caption: "Scan this QR and send the payment slip here once the transfer is complete.",
       });
     }
@@ -299,6 +307,7 @@ export function buildOrderApprovalEmail(input: {
 
   let imageUrl: string | null = null;
   if (input.orderSettings.paymentMethod === "bank_qr") {
+    const qrImageUrl = resolveOrderQrImageUrl(input.orderSettings);
     lines.push("Please complete the payment and reply to the same WhatsApp chat with the payment slip image or PDF.");
     if (input.orderSettings.bankQr.showBankDetails) {
       if (input.orderSettings.bankQr.bankName) lines.push(`Bank: ${input.orderSettings.bankQr.bankName}`);
@@ -306,9 +315,9 @@ export function buildOrderApprovalEmail(input: {
       if (input.orderSettings.bankQr.accountNumber) lines.push(`Account number: ${input.orderSettings.bankQr.accountNumber}`);
       if (input.orderSettings.bankQr.accountInstructions) lines.push(input.orderSettings.bankQr.accountInstructions);
     }
-    if (input.orderSettings.bankQr.showQr && input.orderSettings.bankQr.qrImageUrl) {
-      imageUrl = input.orderSettings.bankQr.qrImageUrl;
-      lines.push(`QR image: ${input.orderSettings.bankQr.qrImageUrl}`);
+    if (input.orderSettings.bankQr.showQr && qrImageUrl) {
+      imageUrl = qrImageUrl;
+      lines.push(`QR image: ${qrImageUrl}`);
     }
   } else if (input.orderSettings.paymentMethod === "cod") {
     lines.push("Payment method: Cash on delivery.");
@@ -347,9 +356,11 @@ export function buildPaymentSubmittedEmail(input: {
     input.paymentReference ? `Payment reference: ${input.paymentReference}` : "",
     input.expectedAmount ? `Expected amount: ${input.currency} ${input.expectedAmount}` : "",
     input.submittedAmount ? `Submitted amount: ${input.currency} ${input.submittedAmount}` : "",
-    input.aiCheckStatus === "passed"
+    input.aiCheckStatus === "confirmed"
       ? "Our automated check found the proof broadly consistent with the order details. It is now waiting for final staff verification."
-      : "The payment proof has been submitted for manual finance review.",
+      : input.aiCheckStatus === "invalid"
+        ? "The payment proof was flagged for staff review before anything is confirmed."
+        : "The payment proof has been submitted for manual finance review.",
     input.aiCheckNotes ? `Review note: ${input.aiCheckNotes}` : "",
     "We will email you again as soon as the finance review is complete.",
   ].filter(Boolean);

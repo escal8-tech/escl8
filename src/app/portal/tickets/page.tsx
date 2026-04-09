@@ -414,6 +414,7 @@ export default function TicketsPage() {
                     <>
                       <option value="all">All Stages</option>
                       <option value="pending_approval">Pending Approval</option>
+                      <option value="edit_required">Edit Required</option>
                       <option value="approved">Approved</option>
                       <option value="awaiting_payment">Awaiting Payment</option>
                       <option value="payment_submitted">Payment Review</option>

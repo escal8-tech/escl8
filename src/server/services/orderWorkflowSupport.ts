@@ -88,8 +88,6 @@ const PAYMENT_SETUP_EDITABLE_ORDER_STATUSES = new Set([
   "payment_rejected",
 ]);
 const FULFILLMENT_MUTABLE_ORDER_STATUSES = new Set(["paid", "refund_pending", "refunded"]);
-const AI_APPROVABLE_PAYMENT_METHODS = new Set(["bank_qr"]);
-const AI_APPROVAL_PASS_STATUSES = new Set(["passed"]);
 
 export function resolveOrderLedgerAmount(
   orderRow: {
@@ -203,9 +201,8 @@ export function canCaptureManualPayment(orderRow: {
   paymentMethod?: string | null;
   status?: string | null;
 }): boolean {
-  const method = String(orderRow.paymentMethod || "").trim().toLowerCase();
   const status = String(orderRow.status || "").trim().toLowerCase();
-  return (method === "manual" || method === "cod") && ["approved", "payment_rejected"].includes(status);
+  return ["approved", "awaiting_payment", "payment_rejected"].includes(status);
 }
 
 export function assertPaymentSetupEditable(orderRow: {
@@ -239,15 +236,7 @@ export function assertPaymentReviewAllowed(params: {
   };
   action: "approve" | "reject";
 }) {
-  if (params.action !== "approve") return;
-  const method = String(params.orderRow.paymentMethod || "").trim().toLowerCase();
-  if (!AI_APPROVABLE_PAYMENT_METHODS.has(method)) return;
-  const aiStatus = String(params.paymentRow.aiCheckStatus || "").trim().toLowerCase();
-  if (AI_APPROVAL_PASS_STATUSES.has(aiStatus)) return;
-  throw new TRPCError({
-    code: "BAD_REQUEST",
-    message: "Bank or QR payments can only be approved after the AI proof check passes.",
-  });
+  void params;
 }
 
 export function coalesceText(...values: Array<string | null | undefined>): string | null {
@@ -496,16 +485,15 @@ export function buildWorkspaceConditions(params: {
   });
 
   if (params.mode === "payments") {
-    conditions.push(sql<boolean>`${statusExpr} not in ('denied')`);
     if (params.queueFilter === "pending") {
       conditions.push(sql<boolean>`${statusExpr} in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted')`);
     } else if (params.queueFilter === "approved") {
       conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
     } else if (params.queueFilter === "denied") {
-      conditions.push(sql<boolean>`${statusExpr} in ('payment_rejected')`);
+      conditions.push(sql<boolean>`${statusExpr} in ('payment_rejected', 'denied')`);
     } else {
       conditions.push(
-        sql<boolean>`${statusExpr} in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'paid', 'refund_pending', 'refunded')`,
+        sql<boolean>`${statusExpr} in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'denied', 'paid', 'refund_pending', 'refunded')`,
       );
     }
   } else if (params.mode === "status") {
@@ -521,10 +509,10 @@ export function buildWorkspaceConditions(params: {
     if (params.queueFilter === "realized") {
       conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
     } else if (params.queueFilter === "unrealized") {
-      conditions.push(sql<boolean>`${statusExpr} in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected')`);
+      conditions.push(sql<boolean>`${statusExpr} in ('pending_approval', 'edit_required', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected')`);
     } else {
       conditions.push(
-        sql<boolean>`${statusExpr} in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'paid', 'refund_pending', 'refunded')`,
+        sql<boolean>`${statusExpr} in ('pending_approval', 'edit_required', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'paid', 'refund_pending', 'refunded')`,
       );
     }
   }
@@ -745,9 +733,9 @@ export function buildPaymentReviewMessages(input: {
     return [{ type: "text", text: lines.join("\n") }];
   }
   const lines = [
-    `We reviewed the payment proof for order number ${ref}, but we could not verify it yet.`,
+    `We could not confirm the payment for order number ${ref}, so this order has now been closed.`,
     input.notes ? `Reason: ${String(input.notes).trim()}.` : null,
-    "Please resend a clear payment slip in this chat after checking the transfer details.",
+    "If you still want this item, please message us again and we can start a fresh order.",
   ].filter(Boolean);
   return [{ type: "text", text: lines.join("\n") }];
 }
@@ -772,9 +760,9 @@ export function buildPaymentReviewEmail(input: {
         input.invoiceUrl ? `Invoice link: ${input.invoiceUrl}` : null,
       ]
     : [
-        `We reviewed the payment proof for order number ${ref}, but we could not verify it yet.`,
+        `We could not confirm the payment for order number ${ref}, so this order has now been closed.`,
         input.notes ? `Reason: ${String(input.notes).trim()}.` : null,
-        "Please resend a clear payment slip after checking the transfer details.",
+        "If you still want this item, reply again and we can start a fresh order.",
       ];
   const text = lines.filter(Boolean).join("\n");
   return {

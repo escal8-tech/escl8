@@ -7,7 +7,6 @@ import { useEffect, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { onAuthStateChanged } from "firebase/auth";
 import { normalizeAppPath } from "@/lib/app-routes";
-import { trpc } from "@/utils/trpc";
 import { PORTAL_TICKET_TYPES } from "@/app/portal/lib/ticketTypes";
 
 // SVG Icons as components
@@ -99,7 +98,6 @@ const navItems = [
   { href: "/messages", label: "Messages", icon: "messages" },
   { href: "/upload", label: "Documents", icon: "upload" },
   { href: "/bookings", label: "Bookings", icon: "calendar" },
-  { href: "/sync", label: "Sync", icon: "sync" },
 ];
 interface SidebarProps {
   collapsed: boolean;
@@ -134,11 +132,6 @@ export default function Sidebar({
     const auth = getFirebaseAuth();
     return auth?.currentUser?.email ?? null;
   });
-  const businessQuery = trpc.business.getMine.useQuery(
-    { email: userEmail ?? "" },
-    { enabled: Boolean(userEmail) },
-  );
-
   useEffect(() => {
     const auth = getFirebaseAuth();
     if (!auth) return;
@@ -157,11 +150,7 @@ export default function Sidebar({
   const sidebarWidth = collapsed ? 72 : 260;
   const mainNavItems = [
     ...navItems,
-    ...(businessQuery.data?.orderSettings?.ticketToOrderEnabled
-      ? [
-          { href: "/revenue", label: "Revenue", icon: "revenue" as const },
-        ]
-      : []),
+    { href: "/revenue", label: "Revenue", icon: "revenue" as const },
   ];
   const orderTicketType = PORTAL_TICKET_TYPES.find((type) => type.key === "ordercreation");
   const supportTicketTypes = PORTAL_TICKET_TYPES.filter((type) => type.key !== "ordercreation");
@@ -174,12 +163,8 @@ export default function Sidebar({
           active: pathname === "/tickets" && activeTicketType === orderTicketType.key,
         }]
       : []),
-    ...(businessQuery.data?.orderSettings?.ticketToOrderEnabled
-      ? [
-          { href: "/payments", label: "Payment Status", icon: "revenue" as const, active: isActive("/payments") },
-          { href: "/orders", label: "Order Status", icon: "sync" as const, active: isActive("/orders") },
-        ]
-      : []),
+    { href: "/payments", label: "Payment Status", icon: "revenue" as const, active: isActive("/payments") },
+    { href: "/orders", label: "Order Status", icon: "sync" as const, active: isActive("/orders") },
     ...supportTicketTypes.map((type) => ({
       href: `/tickets?type=${type.key}`,
       label: type.navLabel,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/server/db/client";
-import { orderPayments, orders, whatsappIdentities } from "@/../drizzle/schema";
+import { businesses, orderPayments, orders, whatsappIdentities } from "@/../drizzle/schema";
 import { storePrivateFileAtPath } from "@/lib/storage";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
@@ -189,6 +189,22 @@ export async function POST(request: Request) {
         .where(and(eq(whatsappIdentities.businessId, businessId), eq(whatsappIdentities.phoneNumberId, orderRow.whatsappIdentityId)))
         .limit(1)
     : [{ aiDisabled: false }];
+  const [businessRow] = await db
+    .select({ settings: businesses.settings })
+    .from(businesses)
+    .where(eq(businesses.id, businessId))
+    .limit(1);
+  const orderFlow = businessRow?.settings && typeof businessRow.settings === "object" && !Array.isArray(businessRow.settings)
+    ? ((businessRow.settings as Record<string, unknown>).orderFlow as Record<string, unknown> | undefined)
+    : undefined;
+  const paymentProofAiEnabled = (() => {
+    const raw = orderFlow?.paymentProofAiEnabled;
+    if (typeof raw === "boolean") return raw;
+    if (typeof raw === "number") return raw === 1;
+    const normalized = String(raw ?? "").trim().toLowerCase();
+    if (!normalized) return true;
+    return normalized === "true" || normalized === "1" || normalized === "yes";
+  })();
 
   const allowedStatuses = new Set(["awaiting_payment", "payment_submitted", "payment_rejected"]);
   if (!allowedStatuses.has(String(orderRow.status || "").trim().toLowerCase())) {
@@ -233,9 +249,9 @@ export async function POST(request: Request) {
     };
   }
 
-  const analysis = identityRow?.aiDisabled
-    ? null
-    : await analyzePaymentProof({
+  const shouldRunPaymentProofAi = !identityRow?.aiDisabled && paymentProofAiEnabled && Boolean(storedProof?.url);
+  const analyzed = shouldRunPaymentProofAi
+    ? await analyzePaymentProof({
         businessId,
         phoneNumberId: orderRow.whatsappIdentityId ?? null,
         expectedAmount: toMoneyString(orderRow.expectedAmount),
@@ -243,9 +259,10 @@ export async function POST(request: Request) {
         expectedReference: String(orderRow.paymentReference || "").trim() || null,
         paymentProofUrl: storedProof?.url ?? null,
         paymentProofText: paymentText || null,
-      });
+      })
+    : null;
 
-  if (didConsumePaymentProofAi(analysis) && !identityRow?.aiDisabled) {
+  if (didConsumePaymentProofAi(analyzed) && shouldRunPaymentProofAi) {
     await recordAiUsageEvent({
       businessId,
       whatsappIdentityId: orderRow.whatsappIdentityId ?? null,
@@ -258,15 +275,21 @@ export async function POST(request: Request) {
     });
   }
 
-  const submittedAmount = toMoneyString(analysis?.extracted?.amount) ?? null;
+  const submittedAmount = toMoneyString(analyzed?.extracted?.amount) ?? null;
   const assessed = resolvePaymentProofAssessment({
-    analysis,
+    analysis: analyzed,
     expectedAmount: toMoneyString(orderRow.expectedAmount),
     paidAmount: submittedAmount,
     currency: String(orderRow.currency || "LKR").trim() || "LKR",
   });
-  const aiCheckStatus = assessed.aiCheckStatus;
-  const aiCheckNotes = assessed.aiCheckNotes || (storedProof?.url ? "Payment proof received." : "Payment details received.");
+  const aiCheckStatus = shouldRunPaymentProofAi
+    ? assessed.aiCheckStatus
+    : "manual_review";
+  const aiCheckNotes = shouldRunPaymentProofAi
+    ? (assessed.aiCheckNotes || "Payment proof received.")
+    : (storedProof?.url
+        ? "Payment proof received and queued for manual review."
+        : "Customer said payment is done. Staff review is still required.");
   const now = new Date();
   const txResult = await db.transaction(async (tx) => {
     const [paymentRow] = await tx
@@ -282,13 +305,13 @@ export async function POST(request: Request) {
         currency: orderRow.currency,
         expectedAmount: orderRow.expectedAmount,
         paidAmount: submittedAmount,
-        paidDate: analysis?.extracted?.paymentDate ? String(analysis.extracted.paymentDate) : null,
-        referenceCode: String(analysis?.extracted?.reference || orderRow.paymentReference || "").trim() || null,
+        paidDate: analyzed?.extracted?.paymentDate ? String(analyzed.extracted.paymentDate) : null,
+        referenceCode: String(analyzed?.extracted?.reference || orderRow.paymentReference || "").trim() || null,
         proofUrl: storedProof?.url ?? null,
         aiCheckStatus,
         aiCheckNotes,
         details: {
-          analysis: analysis ?? null,
+          analysis: analyzed ?? null,
           paymentBalance: assessed.balance,
           proofText: paymentText || null,
           storage: storedProof

@@ -49,7 +49,7 @@ export async function listTicketLedgerForBusiness(args: {
   businessId: string;
   typeKey?: string;
   status?: "open" | "in_progress" | "resolved";
-  orderStage?: "pending_approval" | "approved" | "awaiting_payment" | "payment_submitted" | "payment_rejected" | "paid" | "refund_pending" | "refunded" | "denied";
+  orderStage?: "pending_approval" | "edit_required" | "approved" | "awaiting_payment" | "payment_submitted" | "payment_rejected" | "paid" | "refund_pending" | "refunded" | "denied";
   search?: string;
   limit: number;
   offset: number;
@@ -59,7 +59,7 @@ export async function listTicketLedgerForBusiness(args: {
   ];
   const normalizedStatusExpr = sql<string>`case when lower(coalesce(${supportTickets.status}, '')) = 'closed' then 'resolved' else lower(coalesce(${supportTickets.status}, '')) end`;
   const orderStageExpr = sql<string>`case
-    when lower(coalesce(${orders.status}, '')) in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'paid', 'refund_pending', 'refunded', 'denied')
+    when lower(coalesce(${orders.status}, '')) in ('pending_approval', 'edit_required', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'paid', 'refund_pending', 'refunded', 'denied')
       then lower(coalesce(${orders.status}, ''))
     when lower(coalesce(${supportTickets.outcome}, '')) = 'lost' then 'denied'
     when lower(coalesce(${supportTickets.outcome}, '')) = 'won' then 'approved'

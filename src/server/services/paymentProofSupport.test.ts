@@ -16,7 +16,7 @@ test("computePaymentBalance marks underpayment as owed", () => {
   assert.equal(out.delta, "-950.00");
 });
 
-test("resolvePaymentProofAssessment upgrades sufficient rounded payment to passed", () => {
+test("resolvePaymentProofAssessment upgrades sufficient rounded payment to confirmed", () => {
   const out = resolvePaymentProofAssessment({
     analysis: {
       status: "needs_review",
@@ -32,7 +32,7 @@ test("resolvePaymentProofAssessment upgrades sufficient rounded payment to passe
     paidAmount: "15000.00",
     currency: "LKR",
   });
-  assert.equal(out.aiCheckStatus, "passed");
+  assert.equal(out.aiCheckStatus, "confirmed");
   assert.match(out.aiCheckNotes, /covers the order total/i);
 });
 
@@ -52,6 +52,6 @@ test("resolvePaymentProofAssessment keeps underpayment in review", () => {
     paidAmount: "14900.00",
     currency: "LKR",
   });
-  assert.equal(out.aiCheckStatus, "needs_review");
+  assert.equal(out.aiCheckStatus, "invalid");
   assert.match(out.aiCheckNotes, /short by LKR 50.00/i);
 });

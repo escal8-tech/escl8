@@ -7,6 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { mergeOrderFlowSettings, normalizeOrderFlowSettings } from "@/lib/order-settings";
+import { buildPrivateBlobReadUrl } from "@/lib/storage";
 import { mergeWebsiteWidgetSettings, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
 import { getBusinessAiCreditsUsed } from "@/server/services/aiUsage";
 
@@ -135,9 +136,21 @@ export const businessRouter = router({
 
       const creditsUsed = await getBusinessAiCreditsUsed(ctx.businessId);
 
+      const orderSettings = normalizeOrderFlowSettings(biz.settings);
+      const qrPreviewUrl = orderSettings.bankQr.qrBlobPath
+        ? buildPrivateBlobReadUrl(orderSettings.bankQr.qrBlobPath, 24 * 30)
+        : null;
+
       return {
         ...biz,
-        orderSettings: normalizeOrderFlowSettings(biz.settings),
+        orderSettings: {
+          ...orderSettings,
+          ticketToOrderEnabled: true,
+          bankQr: {
+            ...orderSettings.bankQr,
+            qrImageUrl: qrPreviewUrl || orderSettings.bankQr.qrImageUrl,
+          },
+        },
         gmailConnected: Boolean(biz.gmailConnected),
         gmailEmail: biz.gmailEmail ?? null,
         gmailConnectedAt: biz.gmailConnectedAt ?? null,
@@ -272,12 +285,14 @@ export const businessRouter = router({
       z.object({
         email: z.string().email(),
         businessId: z.string().min(1),
-        ticketToOrderEnabled: z.boolean(),
+        ticketToOrderEnabled: z.boolean().optional(),
         paymentMethod: z.enum(["manual", "cod", "bank_qr"]),
+        paymentProofAiEnabled: z.boolean().optional(),
         currency: z.string().min(1).max(10),
         bankQr: z.object({
           showQr: z.boolean(),
           showBankDetails: z.boolean(),
+          qrBlobPath: z.string().optional(),
           qrImageUrl: z.string().optional(),
           bankName: z.string().optional(),
           accountName: z.string().optional(),
@@ -301,8 +316,9 @@ export const businessRouter = router({
 
       const normalized = normalizeOrderFlowSettings({
         orderFlow: {
-          ticketToOrderEnabled: input.ticketToOrderEnabled,
+          ticketToOrderEnabled: true,
           paymentMethod: input.paymentMethod,
+          paymentProofAiEnabled: input.paymentProofAiEnabled ?? true,
           currency: input.currency,
           bankQr: input.bankQr,
         },

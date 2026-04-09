@@ -690,7 +690,7 @@ export const ordersRouter = router({
         }
 
         const nextPaymentStatus = input.action === "approve" ? "approved_manual" : "rejected";
-        const nextOrderStatus = input.action === "approve" ? "paid" : "payment_rejected";
+        const nextOrderStatus = input.action === "approve" ? "paid" : "denied";
         const nextFulfillmentStatus =
           input.action === "approve" && normalizeOrderFulfillmentStatus(orderRow.fulfillmentStatus) === "on_hold"
             ? "queued"
@@ -725,6 +725,19 @@ export const ordersRouter = router({
 
         if (!updatedPayment || !updatedOrder) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to review payment." });
+        }
+
+        if (input.action === "reject" && updatedOrder.supportTicketId) {
+          await tx
+            .update(supportTickets)
+            .set({
+              status: "resolved",
+              outcome: "lost",
+              lossReason: input.notes?.trim() || "Payment was not approved",
+              resolvedAt: now,
+              updatedAt: now,
+            })
+            .where(and(eq(supportTickets.businessId, ctx.businessId), eq(supportTickets.id, updatedOrder.supportTicketId)));
         }
 
         let finalizedOrder = updatedOrder;
@@ -1419,6 +1432,29 @@ export const ordersRouter = router({
         }
 
         const paidAmount = resolveRefundAmount(input.amount, orderRow) ?? orderRow.expectedAmount?.toString() ?? null;
+        const [manualPaymentRow] = await tx
+          .insert(orderPayments)
+          .values({
+            businessId: ctx.businessId,
+            orderId: orderRow.id,
+            customerId: orderRow.customerId,
+            threadId: orderRow.threadId,
+            whatsappIdentityId: orderRow.whatsappIdentityId,
+            paymentMethod: orderRow.paymentMethod,
+            status: "approved_manual",
+            currency: orderRow.currency,
+            expectedAmount: orderRow.expectedAmount,
+            paidAmount,
+            aiCheckStatus: "manual_review",
+            aiCheckNotes: input.note?.trim() || "Staff approved payment manually.",
+            details: {
+              source: "manual_staff_approval",
+              note: input.note?.trim() || null,
+            },
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
         const [updatedOrder] = await tx
           .update(orders)
           .set({
@@ -1532,7 +1568,7 @@ export const ordersRouter = router({
               ],
             })
           : { ok: true as const, error: null, idempotencyKeys: [] as string[] };
-        return { orderRow, updatedOrder: currentOrder, paidAmount, notification, emailNotification, deliveryChannel };
+        return { orderRow, updatedOrder: currentOrder, paidAmount, manualPaymentRow, notification, emailNotification, deliveryChannel };
       });
 
       await logOrderEvent({
@@ -1546,6 +1582,7 @@ export const ordersRouter = router({
           amount: result.paidAmount,
           note: cleanOptionalText(input.note, 400),
           paymentMethod: result.updatedOrder.paymentMethod,
+          paymentId: result.manualPaymentRow?.id ?? null,
           invoiceNumber: result.updatedOrder.invoiceNumber,
         },
       });
@@ -1652,6 +1689,220 @@ export const ordersRouter = router({
         },
       });
 
+      return { order: result.updatedOrder, delivery };
+    }),
+
+  denyPendingPaymentOrder: businessProcedure
+    .input(
+      z.object({
+        orderId: z.string().min(1),
+        reason: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const settings = await getBusinessOrderSettings(ctx.businessId);
+      if (!settings.ticketToOrderEnabled) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
+      }
+      const now = new Date();
+      const result = await db.transaction(async (tx) => {
+        await lockWorkflowKey(tx, `${ctx.businessId}::order::${input.orderId}`);
+        await enforceOrderOperationThrottle(tx, ctx, "reviewPayment", input.orderId);
+
+        const [orderRow] = await tx
+          .select()
+          .from(orders)
+          .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, input.orderId)))
+          .limit(1);
+        if (!orderRow) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
+        }
+        const status = String(orderRow.status || "").trim().toLowerCase();
+        if (!["approved", "awaiting_payment", "payment_submitted", "payment_rejected"].includes(status)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Only unpaid orders can be denied from the payment queue." });
+        }
+
+        const normalizedReason = input.reason?.trim() || "Payment was not approved";
+        const [latestPayment] = await tx
+          .select()
+          .from(orderPayments)
+          .where(and(eq(orderPayments.businessId, ctx.businessId), eq(orderPayments.orderId, orderRow.id)))
+          .orderBy(desc(orderPayments.createdAt), desc(orderPayments.id))
+          .limit(1);
+
+        let updatedPayment = latestPayment ?? null;
+        if (latestPayment && String(latestPayment.status || "").trim().toLowerCase() === "submitted") {
+          const [rejectedPayment] = await tx
+            .update(orderPayments)
+            .set({
+              status: "rejected",
+              aiCheckNotes: normalizedReason,
+              updatedAt: now,
+            })
+            .where(eq(orderPayments.id, latestPayment.id))
+            .returning();
+          updatedPayment = rejectedPayment ?? latestPayment;
+        } else if (!latestPayment) {
+          const [createdPayment] = await tx
+            .insert(orderPayments)
+            .values({
+              businessId: ctx.businessId,
+              orderId: orderRow.id,
+              customerId: orderRow.customerId,
+              threadId: orderRow.threadId,
+              whatsappIdentityId: orderRow.whatsappIdentityId,
+              paymentMethod: orderRow.paymentMethod,
+              status: "rejected",
+              currency: orderRow.currency,
+              expectedAmount: orderRow.expectedAmount,
+              aiCheckStatus: "manual_review",
+              aiCheckNotes: normalizedReason,
+              details: {
+                source: "manual_staff_denial",
+              },
+              createdAt: now,
+              updatedAt: now,
+            })
+            .returning();
+          updatedPayment = createdPayment ?? null;
+        }
+
+        const [updatedOrder] = await tx
+          .update(orders)
+          .set({
+            status: "denied",
+            paymentRejectedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(orders.id, orderRow.id))
+          .returning();
+        if (!updatedOrder) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to deny order." });
+        }
+        if (updatedOrder.supportTicketId) {
+          await tx
+            .update(supportTickets)
+            .set({
+              status: "resolved",
+              outcome: "lost",
+              lossReason: normalizedReason,
+              resolvedAt: now,
+              updatedAt: now,
+            })
+            .where(and(eq(supportTickets.businessId, ctx.businessId), eq(supportTickets.id, updatedOrder.supportTicketId)));
+        }
+
+        const contactContext = await resolveOrderNotificationContext({
+          businessId: ctx.businessId,
+          customerId: updatedOrder.customerId ?? null,
+          threadId: updatedOrder.threadId ?? null,
+          whatsappIdentityId: updatedOrder.whatsappIdentityId ?? null,
+          customerName: updatedOrder.customerName ?? null,
+          customerEmail: updatedOrder.customerEmail ?? null,
+          customerPhone: updatedOrder.customerPhone ?? null,
+        });
+        const windowState = await getThreadWhatsappWindowState(tx, updatedOrder.threadId);
+        const hasWhatsappRoute = Boolean(contactContext.whatsappIdentityId && sanitizePhoneDigits(contactContext.approvalRecipient));
+        const hasEmailRoute = Boolean(contactContext.customerEmail);
+        const deliveryChannel: "whatsapp" | "email" =
+          windowState.whatsappWindowOpen && hasWhatsappRoute
+            ? "whatsapp"
+            : hasEmailRoute
+              ? "email"
+              : hasWhatsappRoute
+                ? "whatsapp"
+                : (() => {
+                    throw new TRPCError({
+                      code: "BAD_REQUEST",
+                      message: "This order is missing both an active WhatsApp route and a customer email address.",
+                    });
+                  })();
+        const notification = deliveryChannel === "whatsapp"
+          ? await enqueueWhatsAppOutboxMessages(tx, {
+              businessId: ctx.businessId,
+              entityType: "order",
+              entityId: updatedOrder.id,
+              customerId: updatedOrder.customerId ?? null,
+              threadId: contactContext.threadId ?? null,
+              whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
+              recipient: contactContext.approvalRecipient,
+              recipientSource: contactContext.recipientSource,
+              whatsappIdentitySource: contactContext.whatsappIdentitySource,
+              source: "order_payment_denied",
+              idempotencyBaseKey: `order:${updatedOrder.id}:payment_denied:${now.toISOString()}`,
+              messages: buildPaymentReviewMessages({
+                action: "reject",
+                orderId: updatedOrder.id,
+                paymentReference: updatedOrder.paymentReference,
+                paidAmount: updatedPayment?.paidAmount ?? updatedOrder.paidAmount,
+                currency: String(updatedOrder.currency || "LKR").trim() || "LKR",
+                notes: normalizedReason,
+                invoiceUrl: refreshOrderInvoiceUrl(updatedOrder),
+              }),
+            })
+          : { ok: true as const, error: null, recipientSource: null, whatsappIdentitySource: null, idempotencyKeys: [] as string[] };
+        const emailNotification = deliveryChannel === "email"
+          ? await enqueueEmailOutboxMessages(tx, {
+              businessId: ctx.businessId,
+              entityType: "order",
+              entityId: updatedOrder.id,
+              customerId: updatedOrder.customerId ?? null,
+              recipientEmail: contactContext.customerEmail,
+              source: "order_payment_denied_email",
+              idempotencyBaseKey: `order:${updatedOrder.id}:payment_denied_email:${now.toISOString()}`,
+              messages: [
+                buildPaymentReviewEmail({
+                  action: "reject",
+                  orderId: updatedOrder.id,
+                  paymentReference: updatedOrder.paymentReference,
+                  paidAmount: updatedPayment?.paidAmount ?? updatedOrder.paidAmount,
+                  currency: String(updatedOrder.currency || "LKR").trim() || "LKR",
+                  notes: normalizedReason,
+                  invoiceUrl: refreshOrderInvoiceUrl(updatedOrder),
+                }),
+              ],
+            })
+          : { ok: true as const, error: null, idempotencyKeys: [] as string[] };
+        return { updatedOrder, updatedPayment, notification, emailNotification, deliveryChannel };
+      });
+
+      await logOrderEvent({
+        businessId: ctx.businessId,
+        orderId: result.updatedOrder.id,
+        eventType: "payment_denied",
+        actorType: "user",
+        actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+        actorLabel: ctx.userEmail ?? "user",
+        payload: {
+          reason: cleanOptionalText(input.reason, 400),
+          paymentId: result.updatedPayment?.id ?? null,
+        },
+      });
+
+      let delivery = {
+        ok: true,
+        error: null as string | null,
+        channel: result.deliveryChannel as "whatsapp" | "email",
+      };
+      if (result.deliveryChannel === "whatsapp" && !result.notification.ok) {
+        delivery = { ok: false, error: result.notification.error, channel: "whatsapp" };
+      } else if (result.deliveryChannel === "email" && !result.emailNotification.ok) {
+        delivery = { ok: false, error: result.emailNotification.error, channel: "email" };
+      } else {
+        const idempotencyKeys =
+          result.deliveryChannel === "whatsapp"
+            ? result.notification.idempotencyKeys
+            : result.emailNotification.idempotencyKeys;
+        if (idempotencyKeys.length) {
+          const drained = await drainBusinessOutbox({
+            businessId: ctx.businessId,
+            idempotencyKeys,
+            limit: idempotencyKeys.length,
+          });
+          delivery = { ok: drained.ok, error: drained.error, channel: result.deliveryChannel };
+        }
+      }
+      await flushBusinessOutbox(ctx.businessId);
       return { order: result.updatedOrder, delivery };
     }),
 

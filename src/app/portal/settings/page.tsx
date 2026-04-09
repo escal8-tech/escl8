@@ -1,8 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
+import { fetchWithFirebaseAuth, getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
 import { describeCompanyGmailError } from "@/lib/company-gmail";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { trpc } from "@/utils/trpc";
@@ -11,6 +13,8 @@ import { useToast } from "@/components/ToastProvider";
 import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
 import { recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
 import type { OrderPaymentMethod } from "@/lib/order-settings";
+import { buildWebsiteWidgetSnippet, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
+import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ICONS (inline SVGs for clean dependency-free icons)
@@ -64,6 +68,12 @@ const Icons = {
   check: (
     <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
       <polyline points="20 6 9 17 4 12" />
+    </svg>
+  ),
+  link: (
+    <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
     </svg>
   ),
   logout: (
@@ -528,6 +538,209 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--muted)",
     fontWeight: 500,
   },
+  splitGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gap: 20,
+  },
+  helperCard: {
+    padding: 16,
+    borderRadius: 12,
+    border: "1px solid var(--border)",
+    background: "var(--background)",
+    display: "grid",
+    gap: 10,
+  },
+  helperTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: "var(--foreground)",
+  },
+  helperText: {
+    fontSize: 13,
+    color: "var(--muted)",
+    lineHeight: 1.5,
+  },
+  badgePositive: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "5px 10px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 600,
+    color: "#34d399",
+    background: "rgba(16, 185, 129, 0.12)",
+    border: "1px solid rgba(16, 185, 129, 0.24)",
+    width: "fit-content",
+  },
+  integrationGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gap: 20,
+  },
+  integrationTile: {
+    border: "1px solid var(--border)",
+    borderRadius: 16,
+    background: "var(--background)",
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+  },
+  integrationTileHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 14,
+    padding: 18,
+  },
+  integrationTileIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    fontWeight: 700,
+    color: "#fff",
+  },
+  integrationTileBody: {
+    display: "grid",
+    gap: 8,
+    minWidth: 0,
+    flex: 1,
+  },
+  integrationTileTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  integrationTileTitle: {
+    fontSize: 17,
+    fontWeight: 600,
+    color: "var(--foreground)",
+    margin: 0,
+  },
+  integrationTileDescription: {
+    fontSize: 13,
+    color: "var(--muted)",
+    lineHeight: 1.5,
+    margin: 0,
+  },
+  integrationTileFooter: {
+    padding: "14px 18px 18px",
+    borderTop: "1px solid var(--border)",
+    background: "var(--card-muted)",
+    display: "flex",
+    justifyContent: "flex-end",
+  },
+  integrationBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "5px 10px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 600,
+    border: "1px solid var(--border)",
+    background: "var(--card-muted)",
+    color: "var(--muted)",
+  },
+  qrPreview: {
+    maxWidth: 220,
+    width: "100%",
+    borderRadius: 14,
+    border: "1px solid var(--border)",
+    display: "block",
+    background: "#fff",
+  },
+  modalBackdrop: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(7, 10, 24, 0.68)",
+    backdropFilter: "blur(8px)",
+    display: "grid",
+    placeItems: "center",
+    padding: 24,
+    zIndex: 5000,
+  },
+  modalCard: {
+    width: "min(760px, 100%)",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: 24,
+    boxShadow: "0 24px 80px rgba(0,0,0,0.35)",
+    padding: 28,
+    display: "grid",
+    gap: 18,
+  },
+  modalHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
+  },
+  modalTitleWrap: {
+    display: "grid",
+    gap: 6,
+  },
+  modalTitle: {
+    margin: 0,
+    fontSize: 22,
+    fontWeight: 700,
+    color: "var(--foreground)",
+    letterSpacing: "-0.02em",
+  },
+  modalDesc: {
+    margin: 0,
+    color: "var(--muted)",
+    fontSize: 14,
+    lineHeight: 1.6,
+  },
+  closeIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    border: "1px solid var(--border)",
+    background: "var(--card-muted)",
+    color: "var(--foreground)",
+    cursor: "pointer",
+    fontSize: 18,
+  },
+  codeLabel: {
+    margin: 0,
+    fontSize: 13,
+    fontWeight: 600,
+    color: "var(--foreground)",
+  },
+  codeBox: {
+    width: "100%",
+    minHeight: 110,
+    resize: "vertical" as const,
+    borderRadius: 16,
+    border: "1px solid var(--border)",
+    background: "#071124",
+    color: "#dbeafe",
+    padding: 16,
+    fontSize: 13,
+    lineHeight: 1.6,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  },
+  modalActions: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  modalHint: {
+    color: "var(--muted)",
+    fontSize: 13,
+    lineHeight: 1.5,
+  },
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -578,6 +791,7 @@ const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
 export default function SettingsPage() {
   const auth = getFirebaseAuth();
   const toast = useToast();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
 
@@ -587,22 +801,23 @@ export default function SettingsPage() {
   const [openTime, setOpenTime] = useState<string>("");
   const [closeTime, setCloseTime] = useState<string>("");
   const [bookingsEnabled, setBookingsEnabled] = useState(false);
-  const [promotionsEnabled, setPromotionsEnabled] = useState(true);
   const [timezone, setTimezone] = useState("UTC");
   const [ticketEnabledById, setTicketEnabledById] = useState<Record<string, boolean>>({});
   const [ticketRequiredFieldsById, setTicketRequiredFieldsById] = useState<Record<string, string>>({});
   const [savingAllTicketTypes, setSavingAllTicketTypes] = useState(false);
-  const [ticketToOrderEnabled, setTicketToOrderEnabled] = useState(false);
   const [orderPaymentMethod, setOrderPaymentMethod] = useState<OrderPaymentMethod>("manual");
+  const [paymentProofAiEnabled, setPaymentProofAiEnabled] = useState(true);
   const [orderCurrency, setOrderCurrency] = useState("LKR");
-  const [bankQrShowQr, setBankQrShowQr] = useState(true);
-  const [bankQrShowBankDetails, setBankQrShowBankDetails] = useState(true);
+  const [qrBlobPath, setQrBlobPath] = useState("");
   const [bankQrImageUrl, setBankQrImageUrl] = useState("");
   const [bankName, setBankName] = useState("");
   const [accountName, setAccountName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountInstructions, setAccountInstructions] = useState("");
   const [gmailConnectPending, setGmailConnectPending] = useState(false);
+  const [qrUploadPending, setQrUploadPending] = useState(false);
+  const [widgetModalOpen, setWidgetModalOpen] = useState(false);
+  const [widgetSnippet, setWidgetSnippet] = useState("");
 
   useEffect(() => {
     if (!auth) return;
@@ -612,10 +827,10 @@ export default function SettingsPage() {
     return () => unsub();
   }, [auth]);
 
-  const userQuery = trpc.user.getMe.useQuery({ email: email ?? "" }, { enabled: !!email });
   const businessQuery = trpc.business.getMine.useQuery({ email: email ?? "" }, { enabled: !!email });
   const phoneNumbersQuery = trpc.business.listPhoneNumbers.useQuery(undefined, { enabled: !!email });
   const ticketTypesQuery = trpc.tickets.listTypes.useQuery({ includeDisabled: true }, { enabled: !!email });
+  const ensureWebsiteWidget = trpc.business.ensureWebsiteWidget.useMutation();
   const updateBooking = trpc.business.updateBookingConfig.useMutation({
     onSuccess: () => {
       showSuccessToast(toast, {
@@ -701,15 +916,13 @@ export default function SettingsPage() {
       setOpenTime(businessQuery.data.bookingOpenTime ?? "");
       setCloseTime(businessQuery.data.bookingCloseTime ?? "");
       setBookingsEnabled(businessQuery.data.bookingsEnabled ?? false);
-      setPromotionsEnabled(businessQuery.data.promotionsEnabled ?? true);
       const tz = (businessQuery.data.settings as Record<string, unknown> | null | undefined)?.timezone;
       setTimezone(typeof tz === "string" && tz ? tz : "UTC");
       const orderSettings = businessQuery.data.orderSettings;
-      setTicketToOrderEnabled(Boolean(orderSettings?.ticketToOrderEnabled));
       setOrderPaymentMethod((orderSettings?.paymentMethod as OrderPaymentMethod | undefined) ?? "manual");
+      setPaymentProofAiEnabled(orderSettings?.paymentProofAiEnabled ?? true);
       setOrderCurrency(orderSettings?.currency ?? "LKR");
-      setBankQrShowQr(Boolean(orderSettings?.bankQr?.showQr));
-      setBankQrShowBankDetails(Boolean(orderSettings?.bankQr?.showBankDetails));
+      setQrBlobPath(orderSettings?.bankQr?.qrBlobPath ?? "");
       setBankQrImageUrl(orderSettings?.bankQr?.qrImageUrl ?? "");
       setBankName(orderSettings?.bankQr?.bankName ?? "");
       setAccountName(orderSettings?.bankQr?.accountName ?? "");
@@ -717,6 +930,13 @@ export default function SettingsPage() {
       setAccountInstructions(orderSettings?.bankQr?.accountInstructions ?? "");
     }
   }, [businessQuery.data]);
+
+  useEffect(() => {
+    const requestedTab = String(searchParams?.get("tab") || "").trim().toLowerCase();
+    if (requestedTab === "profile" || requestedTab === "booking" || requestedTab === "tickets" || requestedTab === "integrations") {
+      setActiveTab(requestedTab);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -885,22 +1105,70 @@ export default function SettingsPage() {
 
   const handleSaveOrderSettings = () => {
     if (!email || !businessQuery.data?.id) return;
+    const normalizedBankName = bankName.trim();
+    const normalizedAccountName = accountName.trim();
+    const normalizedAccountNumber = accountNumber.trim();
+    const normalizedInstructions = accountInstructions.trim();
+    const hasQr = Boolean(qrBlobPath.trim() || bankQrImageUrl.trim());
+    const hasBankDetails = Boolean(
+      normalizedBankName || normalizedAccountName || normalizedAccountNumber || normalizedInstructions,
+    );
     updateOrderSettings.mutate({
       email,
       businessId: businessQuery.data.id,
-      ticketToOrderEnabled,
+      ticketToOrderEnabled: true,
       paymentMethod: orderPaymentMethod,
+      paymentProofAiEnabled,
       currency: orderCurrency.trim() || "LKR",
       bankQr: {
-        showQr: bankQrShowQr,
-        showBankDetails: bankQrShowBankDetails,
+        showQr: orderPaymentMethod === "bank_qr" && hasQr,
+        showBankDetails: orderPaymentMethod === "bank_qr" && hasBankDetails,
+        qrBlobPath: qrBlobPath.trim(),
         qrImageUrl: bankQrImageUrl.trim(),
-        bankName: bankName.trim(),
-        accountName: accountName.trim(),
-        accountNumber: accountNumber.trim(),
-        accountInstructions: accountInstructions.trim(),
+        bankName: normalizedBankName,
+        accountName: normalizedAccountName,
+        accountNumber: normalizedAccountNumber,
+        accountInstructions: normalizedInstructions,
       },
     });
+  };
+
+  const handleUploadQrImage = async (file: File) => {
+    if (!file) return;
+    setQrUploadPending(true);
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      const response = await fetchWithFirebaseAuth(
+        "/api/settings/order-flow/qr-upload",
+        {
+          method: "POST",
+          body: form,
+        },
+        {
+          action: "settings-upload-order-qr",
+          area: "business",
+          route: "/settings",
+        },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(payload?.error || "QR upload failed."));
+      }
+      setQrBlobPath(String(payload?.qrBlobPath || "").trim());
+      setBankQrImageUrl(String(payload?.qrImageUrl || "").trim());
+      showSuccessToast(toast, {
+        title: "QR image uploaded",
+        message: "The QR image is ready to be sent with bank / QR payment instructions.",
+      });
+    } catch (error) {
+      showErrorToast(toast, {
+        title: "Upload failed",
+        message: error instanceof Error ? error.message : "QR image upload failed.",
+      });
+    } finally {
+      setQrUploadPending(false);
+    }
   };
 
   const handleConnectGmail = async () => {
@@ -936,9 +1204,53 @@ export default function SettingsPage() {
     return email.substring(0, 2).toUpperCase();
   };
 
+  const openWebsiteWidgetModal = async () => {
+    if (!email || !businessQuery.data?.id) {
+      showErrorToast(toast, {
+        title: "Unable to prepare widget",
+        message: "Your business session is missing. Refresh and try again.",
+      });
+      return;
+    }
+
+    try {
+      const result = await ensureWebsiteWidget.mutateAsync({
+        email,
+        businessId: businessQuery.data.id,
+      });
+      if (!result.key) {
+        throw new Error("Widget key was not generated.");
+      }
+      setWidgetSnippet(buildWebsiteWidgetSnippet(window.location.origin, result.key));
+      setWidgetModalOpen(true);
+    } catch (error) {
+      showErrorToast(toast, {
+        title: "Widget setup failed",
+        message: error instanceof Error ? error.message : "Could not generate widget snippet.",
+      });
+    }
+  };
+
+  const copyWidgetSnippet = async () => {
+    try {
+      await navigator.clipboard.writeText(widgetSnippet);
+      showSuccessToast(toast, {
+        title: "Snippet copied",
+        message: "Paste it into your website or Wix custom code block.",
+      });
+    } catch {
+      showErrorToast(toast, {
+        title: "Copy failed",
+        message: "Copy the snippet manually from the code box.",
+      });
+    }
+  };
+
   const responsesUsed = Number(businessQuery.data?.responseUsage?.used ?? 0);
   const responsesMax = Number(businessQuery.data?.responseUsage?.max ?? 50_000);
   const responsesPercent = Math.min(100, Math.max(0, (responsesUsed / Math.max(1, responsesMax)) * 100));
+  const websiteWidget = normalizeWebsiteWidgetSettings(businessQuery.data?.settings);
+  const whatsappConnected = (phoneNumbersQuery.data?.length ?? 0) > 0;
   const fmtInt = (value: number) => value.toLocaleString("en-US");
 
   const renderProfileTab = () => (
@@ -1182,6 +1494,205 @@ export default function SettingsPage() {
     <div style={styles.section}>
       <div style={styles.card}>
         <div style={styles.cardHeader}>
+          <div style={styles.cardIcon}>{Icons.ticket}</div>
+          <div>
+            <h3 style={styles.cardTitle}>Order Flow</h3>
+            <p style={styles.cardDescription}>Keep order creation tickets on one predictable path for staff.</p>
+          </div>
+        </div>
+        <div style={styles.cardBody}>
+          <div style={styles.helperCard}>
+            <span style={styles.badgePositive}>{Icons.check} Always On</span>
+            <div style={styles.helperTitle}>Ticket to order is always enabled</div>
+            <div style={styles.helperText}>
+              Order creation tickets always open the approval, payment, fulfilment, and revenue workflow. Staff no longer need a separate toggle here.
+            </div>
+          </div>
+
+          <div style={styles.formGrid}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Payment Method</label>
+              <PortalSelect
+                value={orderPaymentMethod}
+                onValueChange={(value) => setOrderPaymentMethod(value as OrderPaymentMethod)}
+                options={[
+                  { value: "manual", label: "Manual Collection" },
+                  { value: "cod", label: "Cash on Delivery" },
+                  { value: "bank_qr", label: "Bank / QR" },
+                ]}
+                style={styles.select}
+                ariaLabel="Order payment method"
+              />
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Currency</label>
+              <input
+                type="text"
+                style={styles.input}
+                value={orderCurrency}
+                onChange={(e) => setOrderCurrency(e.target.value.toUpperCase())}
+                placeholder="LKR"
+              />
+            </div>
+          </div>
+
+          {orderPaymentMethod === "manual" ? (
+            <div style={styles.helperCard}>
+              <div style={styles.helperTitle}>Manual collection</div>
+              <div style={styles.helperText}>
+                Staff will confirm payment manually from the operations queue. No bank instructions or QR image will be sent to the customer.
+              </div>
+            </div>
+          ) : null}
+
+          {orderPaymentMethod === "cod" ? (
+            <div style={styles.helperCard}>
+              <div style={styles.helperTitle}>Cash on delivery</div>
+              <div style={styles.helperText}>
+                Customers will pay when the order is delivered. Payment instruction fields stay hidden because they are not used in this flow.
+              </div>
+            </div>
+          ) : null}
+
+          {orderPaymentMethod === "bank_qr" ? (
+            <div style={styles.splitGrid}>
+              <div style={styles.helperCard}>
+                <div style={styles.helperTitle}>QR Payment</div>
+                <div style={styles.helperText}>
+                  Upload the QR image once. It is stored privately and sent to the customer as an image in WhatsApp and email-ready payment instructions.
+                </div>
+                <div style={{ ...styles.toggleRow, marginTop: 14 }}>
+                  <div style={styles.toggleInfo}>
+                    <span style={styles.toggleLabel}>Payment Proof AI Check</span>
+                    <span style={styles.toggleDescription}>
+                      When enabled, the system checks uploaded bank slips with AI and tags them as confirmed or invalid before staff review.
+                    </span>
+                  </div>
+                  <Toggle checked={paymentProofAiEnabled} onChange={setPaymentProofAiEnabled} />
+                </div>
+                {bankQrImageUrl ? (
+                  <Image
+                    src={bankQrImageUrl}
+                    alt="Uploaded payment QR"
+                    width={220}
+                    height={220}
+                    unoptimized
+                    style={styles.qrPreview}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      ...styles.helperText,
+                      border: "1px dashed var(--border)",
+                      borderRadius: 14,
+                      padding: "18px 16px",
+                      textAlign: "center",
+                    }}
+                  >
+                    No QR image uploaded yet.
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <label style={{ ...styles.btnPrimary, position: "relative", overflow: "hidden" }}>
+                    {qrUploadPending ? "Uploading..." : bankQrImageUrl ? "Replace QR Image" : "Upload QR Image"}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) {
+                          void handleUploadQrImage(file);
+                        }
+                        event.currentTarget.value = "";
+                      }}
+                      disabled={qrUploadPending}
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        opacity: 0,
+                        cursor: qrUploadPending ? "not-allowed" : "pointer",
+                      }}
+                    />
+                  </label>
+                  {(bankQrImageUrl || qrBlobPath) ? (
+                    <button
+                      type="button"
+                      style={styles.btnSecondary}
+                      onClick={() => {
+                        setQrBlobPath("");
+                        setBankQrImageUrl("");
+                      }}
+                    >
+                      Remove QR
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div style={styles.helperCard}>
+                <div style={styles.helperTitle}>Bank Transfer Details</div>
+                <div style={styles.helperText}>
+                  These details are included with the payment instructions whenever Bank / QR is selected.
+                </div>
+                <div style={styles.formGrid}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Bank Name</label>
+                    <input
+                      type="text"
+                      style={styles.input}
+                      value={bankName}
+                      onChange={(e) => setBankName(e.target.value)}
+                      placeholder="Commercial Bank"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Account Name</label>
+                    <input
+                      type="text"
+                      style={styles.input}
+                      value={accountName}
+                      onChange={(e) => setAccountName(e.target.value)}
+                      placeholder="Escl8 Pvt Ltd"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Account Number</label>
+                    <input
+                      type="text"
+                      style={styles.input}
+                      value={accountNumber}
+                      onChange={(e) => setAccountNumber(e.target.value)}
+                      placeholder="1234567890"
+                    />
+                  </div>
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Transfer Instructions</label>
+                  <textarea
+                    style={{ ...styles.textarea, minHeight: 110 }}
+                    value={accountInstructions}
+                    onChange={(e) => setAccountInstructions(e.target.value)}
+                    placeholder="Use the order number as the transfer reference and send the payment slip in the same chat."
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <div style={styles.actions}>
+          <button
+            style={styles.btnPrimary}
+            onClick={handleSaveOrderSettings}
+            disabled={updateOrderSettings.isPending || qrUploadPending}
+          >
+            {Icons.save}
+            {updateOrderSettings.isPending ? "Saving..." : "Save Order Flow"}
+          </button>
+        </div>
+      </div>
+
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
           <div style={{ ...styles.cardIcon, ...styles.cardIconSecondary }}>{Icons.ticket}</div>
           <div>
             <h3 style={styles.cardTitle}>Ticket Fields</h3>
@@ -1252,178 +1763,157 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
-
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <div style={styles.cardIcon}>{Icons.ticket}</div>
-          <div>
-            <h3 style={styles.cardTitle}>Order Flow</h3>
-            <p style={styles.cardDescription}>Turn order creation tickets into payment-tracked orders.</p>
-          </div>
-        </div>
-        <div style={styles.cardBody}>
-          <div style={styles.toggleRow}>
-            <div style={styles.toggleInfo}>
-              <span style={styles.toggleLabel}>Enable Ticket To Order</span>
-              <span style={styles.toggleDescription}>Show approval, denial, payment tracking, fulfilment stages, and courier operations for order creation tickets.</span>
-            </div>
-            <Toggle checked={ticketToOrderEnabled} onChange={setTicketToOrderEnabled} />
-          </div>
-
-          <div style={styles.formGrid}>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Payment Method</label>
-              <PortalSelect
-                value={orderPaymentMethod}
-                onValueChange={(value) => setOrderPaymentMethod(value as OrderPaymentMethod)}
-                options={[
-                  { value: "manual", label: "Manual" },
-                  { value: "cod", label: "Cash on Delivery" },
-                  { value: "bank_qr", label: "Bank / QR" },
-                ]}
-                style={styles.select}
-                ariaLabel="Order payment method"
-              />
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Currency</label>
-              <input
-                type="text"
-                style={styles.input}
-                value={orderCurrency}
-                onChange={(e) => setOrderCurrency(e.target.value.toUpperCase())}
-                placeholder="LKR"
-              />
-            </div>
-          </div>
-
-          <div style={styles.formGrid}>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>QR Image URL</label>
-              <input
-                type="text"
-                style={styles.input}
-                value={bankQrImageUrl}
-                onChange={(e) => setBankQrImageUrl(e.target.value)}
-                placeholder="https://..."
-              />
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Bank Name</label>
-              <input
-                type="text"
-                style={styles.input}
-                value={bankName}
-                onChange={(e) => setBankName(e.target.value)}
-                placeholder="Commercial Bank"
-              />
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Account Name</label>
-              <input
-                type="text"
-                style={styles.input}
-                value={accountName}
-                onChange={(e) => setAccountName(e.target.value)}
-                placeholder="Escl8 Pvt Ltd"
-              />
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Account Number</label>
-              <input
-                type="text"
-                style={styles.input}
-                value={accountNumber}
-                onChange={(e) => setAccountNumber(e.target.value)}
-                placeholder="1234567890"
-              />
-            </div>
-          </div>
-
-          <div style={styles.formGrid}>
-            <div style={styles.toggleRow}>
-              <div style={styles.toggleInfo}>
-                <span style={styles.toggleLabel}>Show QR</span>
-                <span style={styles.toggleDescription}>Send the QR image when a QR URL is configured.</span>
-              </div>
-              <Toggle checked={bankQrShowQr} onChange={setBankQrShowQr} />
-            </div>
-            <div style={styles.toggleRow}>
-              <div style={styles.toggleInfo}>
-                <span style={styles.toggleLabel}>Show Bank Details</span>
-                <span style={styles.toggleDescription}>Send bank transfer details when any bank fields are configured.</span>
-              </div>
-              <Toggle checked={bankQrShowBankDetails} onChange={setBankQrShowBankDetails} />
-            </div>
-          </div>
-
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Account Instructions</label>
-            <textarea
-              style={{ ...styles.textarea, minHeight: 90 }}
-              value={accountInstructions}
-              onChange={(e) => setAccountInstructions(e.target.value)}
-              placeholder="Add the order reference in the transfer note and send the payment slip here."
-            />
-          </div>
-        </div>
-        <div style={styles.actions}>
-          <button
-            style={styles.btnPrimary}
-            onClick={handleSaveOrderSettings}
-            disabled={updateOrderSettings.isPending}
-          >
-            {Icons.save}
-            {updateOrderSettings.isPending ? "Saving..." : "Save Order Flow"}
-          </button>
-        </div>
-      </div>
     </div>
   );
 
   const renderIntegrationsTab = () => {
-    const isConnected = userQuery.data?.whatsappConnected;
     const phoneNumbers = phoneNumbersQuery.data ?? [];
     const gmailConnected = Boolean(businessQuery.data?.gmailConnected);
     const gmailAddress = String(businessQuery.data?.gmailEmail || "").trim();
     const gmailError = describeCompanyGmailError(businessQuery.data?.gmailError);
+    const integrationCards = [
+      {
+        key: "whatsapp",
+        title: "WhatsApp",
+        description: "Connect WhatsApp Business so the bot can receive and reply in the main staff workflow.",
+        accent: "linear-gradient(135deg, #22c55e, #128c7e)",
+        connected: whatsappConnected,
+      },
+      {
+        key: "website",
+        title: "Website Widget",
+        description: "Generate the one-line widget snippet for your site or Wix custom code block.",
+        accent: "linear-gradient(135deg, #2563eb, #0ea5e9)",
+        connected: Boolean(websiteWidget.key),
+      },
+      {
+        key: "telegram",
+        title: "Telegram",
+        description: "Telegram inbox syncing will be added here next.",
+        accent: "linear-gradient(135deg, #229ed9, #38bdf8)",
+        connected: false,
+      },
+      {
+        key: "shopee",
+        title: "Shopee",
+        description: "Shopee order and catalog syncing will land here when ready.",
+        accent: "linear-gradient(135deg, #f97316, #fb923c)",
+        connected: false,
+      },
+      {
+        key: "lazada",
+        title: "Lazada",
+        description: "Lazada order syncing will be managed from the same integrations area.",
+        accent: "linear-gradient(135deg, #7c3aed, #a855f7)",
+        connected: false,
+      },
+      {
+        key: "tiktok",
+        title: "TikTok Shop",
+        description: "TikTok Shop operations will be plugged in here later.",
+        accent: "linear-gradient(135deg, #111827, #ec4899)",
+        connected: false,
+      },
+      {
+        key: "instagram",
+        title: "Instagram",
+        description: "Instagram messaging support will appear here once available.",
+        accent: "linear-gradient(135deg, #f97316, #ec4899)",
+        connected: false,
+      },
+    ] as const;
 
     return (
       <div style={styles.section}>
         <div style={styles.card}>
           <div style={styles.cardHeader}>
-            <div style={{ ...styles.cardIcon, background: "linear-gradient(135deg, #25D366, #128C7E)" }}>
-              {Icons.whatsapp}
-            </div>
+            <div style={{ ...styles.cardIcon, background: "linear-gradient(135deg, #22c55e, #128c7e)" }}>{Icons.link}</div>
             <div>
-              <h3 style={styles.cardTitle}>WhatsApp Business</h3>
-              <p style={styles.cardDescription}>Connect your WhatsApp Business account</p>
+              <h3 style={styles.cardTitle}>Integrations</h3>
+              <p style={styles.cardDescription}>Connection setup, sync entry points, and channel controls now live in one place.</p>
             </div>
           </div>
           <div style={styles.cardBody}>
-            <div style={styles.statusCard}>
-              <div style={{ ...styles.statusIcon, ...(isConnected ? styles.statusConnected : styles.statusDisconnected) }}>
-                {isConnected ? Icons.check : Icons.whatsapp}
-              </div>
-              <div style={styles.statusInfo}>
-                <span style={styles.statusTitle}>
-                  {isConnected ? "WhatsApp Connected" : "WhatsApp Not Connected"}
-                </span>
-                <span style={styles.statusDescription}>
-                  {isConnected 
-                    ? "Your WhatsApp Business account is linked and receiving messages" 
-                    : "Connect your WhatsApp Business account to start receiving messages"}
-                </span>
-              </div>
-              <button 
-                style={isConnected ? styles.btnSecondary : styles.btnPrimary}
-                onClick={() => window.location.href = "/sync"}
-              >
-                {isConnected ? "Manage" : "Connect"}
-              </button>
+            <div style={styles.integrationGrid}>
+              {integrationCards.map((card) => (
+                <div key={card.key} style={styles.integrationTile}>
+                  <div style={styles.integrationTileHeader}>
+                    <div style={{ ...styles.integrationTileIcon, background: card.accent }}>
+                      {card.key === "whatsapp" ? "WA" : card.key === "website" ? "</>" : card.title.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div style={styles.integrationTileBody}>
+                      <div style={styles.integrationTileTitleRow}>
+                        <h4 style={styles.integrationTileTitle}>{card.title}</h4>
+                        <span
+                          style={{
+                            ...styles.integrationBadge,
+                            ...(card.connected
+                              ? {
+                                  color: "#34d399",
+                                  border: "1px solid rgba(16, 185, 129, 0.24)",
+                                  background: "rgba(16, 185, 129, 0.12)",
+                                }
+                              : {}),
+                          }}
+                        >
+                          {card.connected ? "Connected" : card.key === "whatsapp" || card.key === "website" ? "Ready" : "Coming Soon"}
+                        </span>
+                      </div>
+                      <p style={styles.integrationTileDescription}>{card.description}</p>
+                    </div>
+                  </div>
+                  <div style={styles.integrationTileFooter}>
+                    {card.key === "whatsapp" ? (
+                      <WhatsAppEmbeddedSignupButton
+                        email={email ?? undefined}
+                        connected={whatsappConnected}
+                        onConnected={() => {
+                          void phoneNumbersQuery.refetch();
+                        }}
+                        label="Connect"
+                        syncedLabel="Connected"
+                        className="btn"
+                        style={{
+                          ...styles.btnPrimary,
+                          ...(whatsappConnected ? styles.btnSecondary : {}),
+                        }}
+                      />
+                    ) : card.key === "website" ? (
+                      <button
+                        type="button"
+                        style={websiteWidget.key ? styles.btnSecondary : styles.btnPrimary}
+                        onClick={() => {
+                          void openWebsiteWidgetModal();
+                        }}
+                        disabled={ensureWebsiteWidget.isPending}
+                      >
+                        {ensureWebsiteWidget.isPending ? "Preparing..." : websiteWidget.key ? "View Snippet" : "Generate Snippet"}
+                      </button>
+                    ) : (
+                      <button type="button" style={styles.btnSecondary} disabled>
+                        Coming Soon
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
-            {phoneNumbers.length ? (
-              <div style={{ marginTop: 20, display: "grid", gap: 12 }}>
+          </div>
+        </div>
+
+        {phoneNumbers.length ? (
+          <div style={styles.card}>
+            <div style={styles.cardHeader}>
+              <div style={{ ...styles.cardIcon, background: "linear-gradient(135deg, #25D366, #128C7E)" }}>
+                {Icons.whatsapp}
+              </div>
+              <div>
+                <h3 style={styles.cardTitle}>WhatsApp Number Controls</h3>
+                <p style={styles.cardDescription}>Control automation behavior per connected WhatsApp number.</p>
+              </div>
+            </div>
+            <div style={styles.cardBody}>
+              <div style={{ display: "grid", gap: 12 }}>
                 {phoneNumbers.map((phone) => (
                   <div
                     key={phone.phoneNumberId}
@@ -1442,8 +1932,8 @@ export default function SettingsPage() {
                         {phone.aiDisabled
                           ? "AI is fully disabled for this number. Incoming messages are not processed by the bot."
                           : phone.autoReplyPaused
-                          ? "Auto replies are paused for this number. Staff can reply manually while the bot keeps tracking context."
-                          : "Auto replies are active for this number."}
+                            ? "Auto replies are paused for this number. Staff can reply manually while the bot keeps tracking context."
+                            : "Auto replies are active for this number."}
                       </span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1480,9 +1970,9 @@ export default function SettingsPage() {
                   </div>
                 ))}
               </div>
-            ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <div style={styles.card}>
           <div style={styles.cardHeader}>
@@ -1534,33 +2024,6 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-
-        {/* Future Integrations Placeholder */}
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <div style={styles.cardIcon}>{Icons.toggle}</div>
-            <div>
-              <h3 style={styles.cardTitle}>Other Integrations</h3>
-              <p style={styles.cardDescription}>Connect additional services</p>
-            </div>
-          </div>
-          <div style={styles.cardBody}>
-            <div style={{ ...styles.toggleRow }}>
-              <div style={styles.toggleInfo}>
-                <span style={styles.toggleLabel}>Enable Promotions</span>
-                <span style={styles.toggleDescription}>Allow AI to suggest promotions to customers</span>
-              </div>
-              <Toggle checked={promotionsEnabled} onChange={setPromotionsEnabled} />
-            </div>
-            <div style={{ ...styles.toggleRow, ...styles.toggleRowLast }}>
-              <div style={styles.toggleInfo}>
-                <span style={styles.toggleLabel}>Calendar Sync</span>
-                <span style={styles.toggleDescription}>Sync bookings with Google Calendar (Coming Soon)</span>
-              </div>
-              <Toggle checked={false} onChange={() => {}} />
-            </div>
-          </div>
-        </div>
       </div>
     );
   };
@@ -1594,6 +2057,60 @@ export default function SettingsPage() {
 
   return (
     <div style={styles.page}>
+      {widgetModalOpen ? (
+        <div
+          style={styles.modalBackdrop}
+          onClick={() => setWidgetModalOpen(false)}
+        >
+          <div
+            style={styles.modalCard}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleWrap}>
+                <h2 style={styles.modalTitle}>Website Widget Snippet</h2>
+                <p style={styles.modalDesc}>
+                  Paste this script into your website, Wix custom code, or before the closing
+                  <code> {"</body>"} </code>
+                  tag to load the floating AI chat widget.
+                </p>
+              </div>
+              <button
+                type="button"
+                style={styles.closeIconButton}
+                onClick={() => setWidgetModalOpen(false)}
+                aria-label="Close website widget modal"
+              >
+                ×
+              </button>
+            </div>
+
+            <p style={styles.codeLabel}>Script snippet</p>
+            <textarea
+              readOnly
+              value={widgetSnippet}
+              style={styles.codeBox}
+              aria-label="Website widget snippet"
+            />
+
+            <div style={styles.modalActions}>
+              <div style={styles.modalHint}>
+                This snippet injects the floating chat bubble directly into the site. No iframe setup is needed on the customer side.
+              </div>
+              <button
+                type="button"
+                style={styles.btnSecondary}
+                onClick={() => {
+                  void copyWidgetSnippet();
+                }}
+              >
+                Copy Snippet
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Tabs */}
       <div style={styles.tabs}>
         {tabConfig.map((tab) => (

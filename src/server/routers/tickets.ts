@@ -61,6 +61,7 @@ const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const ticketOutcomeSchema = z.enum(["pending", "won", "lost"]);
 const orderStageSchema = z.enum([
   "pending_approval",
+  "edit_required",
   "approved",
   "awaiting_payment",
   "payment_submitted",
@@ -855,7 +856,7 @@ export const ticketsRouter = router({
           .from(orders)
           .where(and(eq(orders.businessId, ctx.businessId), eq(orders.supportTicketId, ticket.id)))
           .limit(1);
-        if (existingOrder && String(existingOrder.status || "").trim().toLowerCase() !== "pending_approval") {
+        if (existingOrder && !["pending_approval", "edit_required"].includes(String(existingOrder.status || "").trim().toLowerCase())) {
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: `Ticket already has a linked order (${existingOrder.status || "existing"}) and cannot be approved again.`,
