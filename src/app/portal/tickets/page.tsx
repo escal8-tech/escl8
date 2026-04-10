@@ -89,8 +89,8 @@ export default function TicketsPage() {
     return typeOptions[0]?.typeKey ?? null;
   }, [allowedTypeKeys, queryTypeKey, typeOptions]);
   const activeFilterKey = effectiveTypeKey ?? "__all";
-  const statusFilter = filtersByType[activeFilterKey] ?? "all";
   const isOrderTicketView = effectiveTypeKey === "ordercreation";
+  const statusFilter = filtersByType[activeFilterKey] ?? (isOrderTicketView ? "pending_approval" : "all");
   const ticketLedgerInput = useMemo(
     () => ({
       typeKey: effectiveTypeKey || undefined,
