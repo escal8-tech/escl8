@@ -101,7 +101,7 @@ export const ordersRouter = router({
             "realized",
             "unrealized",
           ])
-          .default("all"),
+          .default("pending"),
         dateField: z.enum(["updatedAt", "createdAt"]).default("updatedAt"),
         rangeDays: z.number().int().min(1).max(365).default(30),
         methodFilter: z.enum(["all", "manual", "bank_qr", "cod"]).default("all"),
@@ -124,7 +124,7 @@ export const ordersRouter = router({
             "realized",
             "unrealized",
           ])
-          .default("all"),
+          .default("pending"),
         dateField: z.enum(["updatedAt", "createdAt"]).default("updatedAt"),
         rangeDays: z.number().int().min(1).max(365).default(30),
         methodFilter: z.enum(["all", "manual", "bank_qr", "cod"]).default("all"),
