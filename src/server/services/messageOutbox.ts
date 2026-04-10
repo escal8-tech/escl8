@@ -29,18 +29,26 @@ function normalizeOutboxMessage(value: unknown): BotSendMessage | null {
   const type = String(row.type ?? "text").trim().toLowerCase();
   if (type === "image") {
     const imageUrl = String(row.imageUrl ?? "").trim();
-    if (!imageUrl) return null;
+    const imageId = String(row.imageId ?? "").trim();
+    if (!imageUrl && !imageId) return null;
     const caption = String(row.caption ?? "").trim();
-    return caption ? { type: "image", imageUrl, caption } : { type: "image", imageUrl };
+    return {
+      type: "image",
+      ...(imageUrl ? { imageUrl } : {}),
+      ...(imageId ? { imageId } : {}),
+      ...(caption ? { caption } : {}),
+    };
   }
   if (type === "document") {
     const documentUrl = String(row.documentUrl ?? "").trim();
-    if (!documentUrl) return null;
+    const documentId = String(row.documentId ?? "").trim();
+    if (!documentUrl && !documentId) return null;
     const filename = String(row.filename ?? "").trim();
     const caption = String(row.caption ?? "").trim();
     return {
       type: "document",
-      documentUrl,
+      ...(documentUrl ? { documentUrl } : {}),
+      ...(documentId ? { documentId } : {}),
       ...(filename ? { filename } : {}),
       ...(caption ? { caption } : {}),
     };

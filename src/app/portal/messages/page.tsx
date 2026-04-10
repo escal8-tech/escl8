@@ -743,82 +743,194 @@ export default function MessagesPage() {
                           justifyContent: inbound ? "flex-start" : "flex-end",
                         }}
                       >
-                        <div
-                          style={{
-                            maxWidth: isMobile ? "86%" : 520,
-                            padding: "8px 12px",
-                            borderRadius: inbound ? "0 8px 8px 8px" : "8px 0 8px 8px",
-                            background: inbound
-                              ? "rgba(100, 120, 140, 0.15)"
-                              : "linear-gradient(135deg, rgba(201, 169, 98, 0.25) 0%, rgba(180, 150, 80, 0.18) 100%)",
-                            border: inbound ? "1px solid rgba(100, 120, 140, 0.2)" : "1px solid rgba(201, 169, 98, 0.4)",
-                            position: "relative",
-                          }}
-                        >
-                          {(() => {
-                            const media = readMediaInfo(m);
+                        {(() => {
+                          const media = readMediaInfo(m);
+                          const isImageMessage = media.messageType === "image" && Boolean(media.imageUrl);
+                          const isDocumentMessage = media.messageType === "document" && Boolean(media.documentUrl);
+                          const isMediaMessage = isImageMessage || isDocumentMessage;
+                          const documentBadge = media.filename?.includes(".")
+                            ? String(media.filename.split(".").pop() || "DOC").slice(0, 5).toUpperCase()
+                            : "DOC";
+                          const timestamp = formatTime(m.createdAt);
+                          const captionText = media.caption && media.caption !== "[image]"
+                            ? media.caption
+                            : isDocumentMessage
+                              ? media.filename || ""
+                              : "";
+                          const bubbleBackground = inbound
+                            ? "rgba(255,255,255,0.06)"
+                            : "linear-gradient(180deg, rgba(214, 248, 197, 0.92) 0%, rgba(190, 235, 172, 0.92) 100%)";
+                          const bubbleColor = inbound ? "rgba(255,255,255,0.96)" : "#102114";
+                          if (isMediaMessage) {
                             return (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                {media.messageType === "image" && media.imageUrl ? (
-                                  <a href={media.imageUrl} target="_blank" rel="noreferrer" style={{ display: "block" }}>
+                              <div
+                                style={{
+                                  maxWidth: isMobile ? "84%" : 360,
+                                  padding: 4,
+                                  borderRadius: 10,
+                                  background: bubbleBackground,
+                                  border: inbound ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(155, 193, 141, 0.55)",
+                                  boxShadow: "0 8px 24px rgba(0,0,0,0.14)",
+                                }}
+                              >
+                                {isImageMessage ? (
+                                  <a
+                                    href={media.imageUrl!}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{
+                                      display: "block",
+                                      textDecoration: "none",
+                                      color: "inherit",
+                                    }}
+                                  >
                                     <img
-                                      src={media.imageUrl}
-                                      alt={media.caption || "Image"}
+                                      src={media.imageUrl!}
+                                      alt={captionText || "Image"}
                                       style={{
                                         display: "block",
-                                        maxWidth: "100%",
-                                        borderRadius: 10,
-                                        border: "1px solid rgba(255,255,255,0.08)",
+                                        width: "100%",
+                                        maxHeight: isMobile ? 320 : 360,
+                                        objectFit: "cover",
+                                        borderRadius: 8,
+                                        background: "rgba(0,0,0,0.12)",
                                       }}
                                     />
                                   </a>
-                                ) : null}
-                                {media.messageType === "document" && media.documentUrl ? (
+                                ) : (
                                   <a
-                                    href={media.documentUrl}
+                                    href={media.documentUrl!}
                                     target="_blank"
                                     rel="noreferrer"
                                     style={{
                                       display: "flex",
                                       alignItems: "center",
-                                      gap: 10,
+                                      gap: 12,
                                       textDecoration: "none",
-                                      color: "inherit",
+                                      color: bubbleColor,
                                       padding: "10px 12px",
-                                      borderRadius: 10,
-                                      border: "1px solid rgba(255,255,255,0.10)",
-                                      background: "rgba(255,255,255,0.04)",
+                                      borderRadius: 8,
+                                      background: inbound ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.32)",
                                     }}
                                   >
-                                    <span style={{ fontSize: 18 }}>PDF</span>
-                                    <span style={{ fontSize: 13, lineHeight: 1.35 }}>
-                                      {media.filename || "Document"}
-                                    </span>
+                                    <div
+                                      style={{
+                                        width: 40,
+                                        height: 40,
+                                        borderRadius: 8,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        fontSize: 12,
+                                        fontWeight: 700,
+                                        letterSpacing: 0.4,
+                                        background: inbound ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.72)",
+                                        border: "1px solid rgba(0,0,0,0.08)",
+                                        flexShrink: 0,
+                                      }}
+                                    >
+                                      {documentBadge}
+                                    </div>
+                                    <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                                      <div
+                                        style={{
+                                          fontSize: 14,
+                                          lineHeight: 1.35,
+                                          fontWeight: 500,
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap",
+                                        }}
+                                      >
+                                        {media.filename || "Document"}
+                                      </div>
+                                      <div
+                                        style={{
+                                          fontSize: 11,
+                                          opacity: 0.72,
+                                          letterSpacing: 0.2,
+                                        }}
+                                      >
+                                        Tap to open
+                                      </div>
+                                    </div>
                                   </a>
-                                ) : null}
-                                <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.45 }}>
-                                  {media.messageType === "image" || media.messageType === "document"
-                                    ? media.caption && media.caption !== "[image]"
-                                      ? media.caption
-                                      : media.messageType === "image"
-                                        ? ""
-                                        : media.filename || "(document)"
-                                    : m.textBody || "(non-text message)"}
-                                </div>
+                                )}
+
+                                {captionText ? (
+                                  <div
+                                    style={{
+                                      padding: isImageMessage ? "8px 10px 6px" : "8px 10px 4px",
+                                      color: bubbleColor,
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        whiteSpace: "pre-wrap",
+                                        fontSize: 14,
+                                        lineHeight: 1.4,
+                                        wordBreak: "break-word",
+                                      }}
+                                    >
+                                      {captionText}
+                                    </div>
+                                    <div
+                                      style={{
+                                        marginTop: 4,
+                                        fontSize: 11,
+                                        opacity: 0.62,
+                                        textAlign: "right",
+                                      }}
+                                    >
+                                      {timestamp}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div
+                                    style={{
+                                      padding: "0 10px 6px",
+                                      fontSize: 11,
+                                      color: bubbleColor,
+                                      opacity: 0.62,
+                                      textAlign: "right",
+                                    }}
+                                  >
+                                    {timestamp}
+                                  </div>
+                                )}
                               </div>
                             );
-                          })()}
-                          <div
-                            style={{
-                              marginTop: 4,
-                              fontSize: 11,
-                              color: "var(--muted)",
-                              textAlign: "right",
-                            }}
-                          >
-                            {formatTimestamp(m.createdAt)}
-                          </div>
-                        </div>
+                          }
+
+                          return (
+                            <div
+                              style={{
+                                maxWidth: isMobile ? "86%" : 520,
+                                padding: "8px 12px",
+                                borderRadius: inbound ? "0 8px 8px 8px" : "8px 0 8px 8px",
+                                background: inbound
+                                  ? "rgba(100, 120, 140, 0.15)"
+                                  : "linear-gradient(135deg, rgba(201, 169, 98, 0.25) 0%, rgba(180, 150, 80, 0.18) 100%)",
+                                border: inbound ? "1px solid rgba(100, 120, 140, 0.2)" : "1px solid rgba(201, 169, 98, 0.4)",
+                                position: "relative",
+                              }}
+                            >
+                              <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.45 }}>
+                                {m.textBody || "(non-text message)"}
+                              </div>
+                              <div
+                                style={{
+                                  marginTop: 4,
+                                  fontSize: 11,
+                                  color: "var(--muted)",
+                                  textAlign: "right",
+                                }}
+                              >
+                                {formatTimestamp(m.createdAt)}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
