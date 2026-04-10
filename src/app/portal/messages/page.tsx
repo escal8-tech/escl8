@@ -5,6 +5,7 @@ import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import { useIsMobileViewport } from "@/app/portal/hooks/useIsMobileViewport";
+import { readMediaInfo } from "@/app/portal/messages/mediaInfo";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -49,24 +50,6 @@ function formatTicketStatus(status: string): string {
   if (low === "in_progress") return "In Progress";
   if (low === "resolved" || low === "closed") return "Resolved";
   return "Open";
-}
-
-function asMetaRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function readMediaInfo(message: {
-  messageType: string | null;
-  textBody: string | null;
-  meta: unknown;
-}) {
-  const meta = asMetaRecord(message.meta);
-  const messageType = String(message.messageType || "text").trim().toLowerCase();
-  const imageUrl = typeof meta.imageUrl === "string" && meta.imageUrl.trim() ? meta.imageUrl : null;
-  const documentUrl = typeof meta.documentUrl === "string" && meta.documentUrl.trim() ? meta.documentUrl : null;
-  const caption = typeof meta.caption === "string" && meta.caption.trim() ? meta.caption : message.textBody;
-  const filename = typeof meta.filename === "string" && meta.filename.trim() ? meta.filename : null;
-  return { messageType, imageUrl, documentUrl, caption, filename };
 }
 
 function ProfileIcon({ name, size = 40 }: { name?: string | null; size?: number }) {
