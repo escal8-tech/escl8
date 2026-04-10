@@ -11,7 +11,8 @@ import { publishPortalEvent } from "@/server/realtime/portalEvents";
 
 export type OrderApprovalMessage =
   | { type: "text"; text: string }
-  | { type: "image"; imageUrl: string; caption?: string };
+  | { type: "image"; imageUrl: string; caption?: string }
+  | { type: "document"; documentUrl: string; filename?: string; caption?: string };
 
 export type OrderEmailMessage = {
   subject: string;
@@ -503,9 +504,17 @@ export function buildManualCollectionMessages(input: {
     input.customerName ? `Hi ${input.customerName}, we have recorded your payment for order ${ref}.` : `We have recorded your payment for order ${ref}.`,
     input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
     "We will continue with fulfilment and keep you updated in this chat.",
-    input.invoiceUrl ? `Invoice: ${input.invoiceUrl}` : null,
   ].filter(Boolean);
-  return [{ type: "text", text: lines.join("\n") }];
+  const messages: OrderApprovalMessage[] = [{ type: "text", text: lines.join("\n") }];
+  if (String(input.invoiceUrl || "").trim()) {
+    messages.push({
+      type: "document",
+      documentUrl: String(input.invoiceUrl).trim(),
+      filename: `invoice-${ref}.pdf`,
+      caption: `Invoice for order ${ref}`,
+    });
+  }
+  return messages;
 }
 
 export function buildManualCollectionEmail(input: {

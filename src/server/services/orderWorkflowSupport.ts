@@ -726,9 +726,17 @@ export function buildPaymentReviewMessages(input: {
       `We have approved your payment for order number ${ref}.`,
       input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
       "Your order is now marked as paid and our team will continue processing it.",
-      input.invoiceUrl ? `Invoice: ${input.invoiceUrl}` : null,
     ].filter(Boolean);
-    return [{ type: "text", text: lines.join("\n") }];
+    const messages: BotSendMessage[] = [{ type: "text", text: lines.join("\n") }];
+    if (String(input.invoiceUrl || "").trim()) {
+      messages.push({
+        type: "document",
+        documentUrl: String(input.invoiceUrl).trim(),
+        filename: `invoice-${ref}.pdf`,
+        caption: `Invoice for order ${ref}`,
+      });
+    }
+    return messages;
   }
   const lines = [
     `We could not confirm the payment for order number ${ref}, so this order has now been closed.`,

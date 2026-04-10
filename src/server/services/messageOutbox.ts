@@ -33,6 +33,18 @@ function normalizeOutboxMessage(value: unknown): BotSendMessage | null {
     const caption = String(row.caption ?? "").trim();
     return caption ? { type: "image", imageUrl, caption } : { type: "image", imageUrl };
   }
+  if (type === "document") {
+    const documentUrl = String(row.documentUrl ?? "").trim();
+    if (!documentUrl) return null;
+    const filename = String(row.filename ?? "").trim();
+    const caption = String(row.caption ?? "").trim();
+    return {
+      type: "document",
+      documentUrl,
+      ...(filename ? { filename } : {}),
+      ...(caption ? { caption } : {}),
+    };
+  }
   const text = String(row.text ?? "").trim();
   if (!text) return null;
   return { type: "text", text };
@@ -306,21 +318,35 @@ export async function drainBusinessOutbox(input: {
         });
 
         if (claimed.threadId) {
+          const messageMeta: Record<string, unknown> = {
+            source: claimed.source,
+            entityType: claimed.entityType,
+            entityId: claimed.entityId,
+            idempotencyKey: claimed.idempotencyKey,
+            providerResponse: result?.providerResponse ?? null,
+            whatsappIdentityId: claimed.whatsappIdentityId,
+            recipient: claimed.recipient,
+          };
+          if (message.type === "image") {
+            messageMeta.imageUrl = message.imageUrl;
+            if (message.caption) messageMeta.caption = message.caption;
+          } else if (message.type === "document") {
+            messageMeta.documentUrl = message.documentUrl;
+            if (message.filename) messageMeta.filename = message.filename;
+            if (message.caption) messageMeta.caption = message.caption;
+          }
           await persistOutboundThreadMessage({
             businessId: claimed.businessId,
             threadId: claimed.threadId,
             messageType: message.type,
-            textBody: message.type === "text" ? message.text : message.caption ?? "[order update image]",
+            textBody:
+              message.type === "text"
+                ? message.text
+                : message.type === "image"
+                  ? message.caption ?? "[image]"
+                  : message.caption ?? `[document${message.type === "document" && message.filename ? `: ${message.filename}` : ""}]`,
             externalMessageId: result?.messageId ?? null,
-            meta: {
-              source: claimed.source,
-              entityType: claimed.entityType,
-              entityId: claimed.entityId,
-              idempotencyKey: claimed.idempotencyKey,
-              providerResponse: result?.providerResponse ?? null,
-              whatsappIdentityId: claimed.whatsappIdentityId,
-              recipient: claimed.recipient,
-            },
+            meta: messageMeta,
           });
         }
 

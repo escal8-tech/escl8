@@ -51,6 +51,24 @@ function formatTicketStatus(status: string): string {
   return "Open";
 }
 
+function asMetaRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function readMediaInfo(message: {
+  messageType: string | null;
+  textBody: string | null;
+  meta: unknown;
+}) {
+  const meta = asMetaRecord(message.meta);
+  const messageType = String(message.messageType || "text").trim().toLowerCase();
+  const imageUrl = typeof meta.imageUrl === "string" && meta.imageUrl.trim() ? meta.imageUrl : null;
+  const documentUrl = typeof meta.documentUrl === "string" && meta.documentUrl.trim() ? meta.documentUrl : null;
+  const caption = typeof meta.caption === "string" && meta.caption.trim() ? meta.caption : message.textBody;
+  const filename = typeof meta.filename === "string" && meta.filename.trim() ? meta.filename : null;
+  return { messageType, imageUrl, documentUrl, caption, filename };
+}
+
 function ProfileIcon({ name, size = 40 }: { name?: string | null; size?: number }) {
   const initials = name
     ? name
@@ -754,9 +772,59 @@ export default function MessagesPage() {
                             position: "relative",
                           }}
                         >
-                          <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.45 }}>
-                            {m.textBody || "(non-text message)"}
-                          </div>
+                          {(() => {
+                            const media = readMediaInfo(m);
+                            return (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                {media.messageType === "image" && media.imageUrl ? (
+                                  <a href={media.imageUrl} target="_blank" rel="noreferrer" style={{ display: "block" }}>
+                                    <img
+                                      src={media.imageUrl}
+                                      alt={media.caption || "Image"}
+                                      style={{
+                                        display: "block",
+                                        maxWidth: "100%",
+                                        borderRadius: 10,
+                                        border: "1px solid rgba(255,255,255,0.08)",
+                                      }}
+                                    />
+                                  </a>
+                                ) : null}
+                                {media.messageType === "document" && media.documentUrl ? (
+                                  <a
+                                    href={media.documentUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 10,
+                                      textDecoration: "none",
+                                      color: "inherit",
+                                      padding: "10px 12px",
+                                      borderRadius: 10,
+                                      border: "1px solid rgba(255,255,255,0.10)",
+                                      background: "rgba(255,255,255,0.04)",
+                                    }}
+                                  >
+                                    <span style={{ fontSize: 18 }}>PDF</span>
+                                    <span style={{ fontSize: 13, lineHeight: 1.35 }}>
+                                      {media.filename || "Document"}
+                                    </span>
+                                  </a>
+                                ) : null}
+                                <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.45 }}>
+                                  {media.messageType === "image" || media.messageType === "document"
+                                    ? media.caption && media.caption !== "[image]"
+                                      ? media.caption
+                                      : media.messageType === "image"
+                                        ? ""
+                                        : media.filename || "(document)"
+                                    : m.textBody || "(non-text message)"}
+                                </div>
+                              </div>
+                            );
+                          })()}
                           <div
                             style={{
                               marginTop: 4,
