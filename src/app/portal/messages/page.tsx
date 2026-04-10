@@ -6,6 +6,7 @@ import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import { useIsMobileViewport } from "@/app/portal/hooks/useIsMobileViewport";
 import { readMediaInfo } from "@/app/portal/messages/mediaInfo";
+import { fetchWithFirebaseAuth } from "@/lib/client-auth-ops";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -44,6 +45,13 @@ function isWhatsAppThread(thread: { customerSource?: string | null; whatsappIden
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
 }
+
+type ComposerAttachment = {
+  id: string;
+  file: File;
+  previewUrl: string | null;
+  mediaType: "image" | "document";
+};
 
 function formatTicketStatus(status: string): string {
   const low = status.toLowerCase();
@@ -103,6 +111,7 @@ export default function MessagesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [latestTicketNotice, setLatestTicketNotice] = useState<{
     id: string;
@@ -135,6 +144,9 @@ export default function MessagesPage() {
   );
   const recentThreadsQuery = trpc.messages.listRecentThreads.useQuery(threadListInput);
   const sendTextMutation = trpc.messages.sendText.useMutation();
+  const sendMediaMutation = trpc.messages.sendMedia.useMutation();
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const attachmentsRef = useRef<ComposerAttachment[]>([]);
 
   const filteredThreads = useMemo(() => {
     const threads = recentThreadsQuery.data ?? [];
@@ -349,22 +361,95 @@ export default function MessagesPage() {
     if (!isWhatsAppThread(selectedThread)) return;
     if (!sessionWindow.isOpen) return;
     const text = draft.trim();
-    if (!text) return;
+    if (!text && attachments.length === 0) return;
     setSendError(null);
     try {
-      const saved = await sendTextMutation.mutateAsync({ threadId: activeThreadId, text });
+      let savedMessages:
+        Array<{
+          id: string;
+          direction: string;
+          messageType: string | null;
+          textBody: string | null;
+          meta: unknown;
+          createdAt: Date | string;
+        }> = [];
+
+      if (attachments.length === 0) {
+        const saved = await sendTextMutation.mutateAsync({ threadId: activeThreadId, text });
+        savedMessages = [saved];
+      } else {
+        const uploadedParts: Array<
+          | { type: "text"; text: string }
+          | { type: "image"; imageUrl: string; caption?: string }
+          | { type: "document"; documentUrl: string; filename?: string; caption?: string }
+        > = [];
+
+        if (attachments.length > 1 && text) {
+          uploadedParts.push({ type: "text", text });
+        }
+
+        for (let index = 0; index < attachments.length; index += 1) {
+          const attachment = attachments[index];
+          const form = new FormData();
+          form.append("phoneNumberId", String(selectedThread?.whatsappIdentityId || ""));
+          form.append("file", attachment.file);
+          const uploadResponse = await fetchWithFirebaseAuth(
+            "/api/messages/media",
+            { method: "POST", body: form },
+            {
+              action: "messages-upload-media",
+              area: "message",
+              missingSessionEvent: "messages.upload_session_missing",
+              requestFailureEvent: "messages.upload_failed",
+              tokenFailureEvent: "messages.upload_failed",
+            },
+          );
+          const uploadJson = await uploadResponse.json().catch(() => ({}));
+          if (!uploadResponse.ok || !uploadJson?.success) {
+            throw new Error(String(uploadJson?.error || "Failed to upload media."));
+          }
+
+          const caption = attachments.length === 1 && text ? text : undefined;
+          if (attachment.mediaType === "image") {
+            uploadedParts.push({
+              type: "image",
+              imageUrl: String(uploadJson.mediaUrl || ""),
+              ...(caption ? { caption } : {}),
+            });
+          } else {
+            uploadedParts.push({
+              type: "document",
+              documentUrl: String(uploadJson.mediaUrl || ""),
+              filename: String(uploadJson.fileName || attachment.file.name || "").trim() || undefined,
+              ...(caption ? { caption } : {}),
+            });
+          }
+        }
+
+        savedMessages = await sendMediaMutation.mutateAsync({
+          threadId: activeThreadId,
+          messages: uploadedParts,
+        });
+      }
+
       setAllMessages((prev) => [
         ...prev,
-        {
+        ...savedMessages.map((saved) => ({
           id: saved.id,
           direction: saved.direction,
           messageType: saved.messageType,
           textBody: saved.textBody,
           meta: saved.meta,
           createdAt: new Date(saved.createdAt),
-        },
+        })),
       ]);
       setDraft("");
+      setAttachments((prev) => {
+        prev.forEach((attachment) => {
+          if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+        });
+        return [];
+      });
       setTimeout(() => {
         if (messagesContainerRef.current) {
           messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
@@ -374,7 +459,43 @@ export default function MessagesPage() {
       const msg = e instanceof Error ? e.message : "Failed to send message.";
       setSendError(msg);
     }
-  }, [activeThreadId, draft, sendTextMutation, selectedThread, sessionWindow.isOpen]);
+  }, [activeThreadId, attachments, draft, selectedThread, sendMediaMutation, sendTextMutation, sessionWindow.isOpen]);
+
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
+  useEffect(() => {
+    return () => {
+      attachmentsRef.current.forEach((attachment) => {
+        if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+      });
+    };
+  }, []);
+
+  const handleAttachmentPick = useCallback((files: FileList | null) => {
+    if (!files?.length) return;
+    const nextItems: ComposerAttachment[] = [];
+    Array.from(files).forEach((file) => {
+      const mime = String(file.type || "").toLowerCase();
+      const mediaType = mime.startsWith("image/") ? "image" : "document";
+      nextItems.push({
+        id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        previewUrl: mediaType === "image" ? URL.createObjectURL(file) : null,
+        mediaType,
+      });
+    });
+    setAttachments((prev) => [...prev, ...nextItems]);
+  }, []);
+
+  const removeAttachment = useCallback((attachmentId: string) => {
+    setAttachments((prev) => {
+      const match = prev.find((item) => item.id === attachmentId);
+      if (match?.previewUrl) URL.revokeObjectURL(match.previewUrl);
+      return prev.filter((item) => item.id !== attachmentId);
+    });
+  }, []);
 
   return (
     <main
@@ -955,7 +1076,141 @@ export default function MessagesPage() {
                   Manual sending is currently supported only for WhatsApp threads.
                 </div>
               )}
+              {attachments.length > 0 ? (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    overflowX: "auto",
+                    paddingBottom: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  {attachments.map((attachment) => {
+                    const isImage = attachment.mediaType === "image";
+                    const extension = attachment.file.name.includes(".")
+                      ? String(attachment.file.name.split(".").pop() || "DOC").slice(0, 5).toUpperCase()
+                      : "DOC";
+                    return (
+                      <div
+                        key={attachment.id}
+                        style={{
+                          width: isImage ? 110 : 180,
+                          minWidth: isImage ? 110 : 180,
+                          borderRadius: 12,
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          background: "rgba(255,255,255,0.04)",
+                          padding: 8,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 8,
+                          position: "relative",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(attachment.id)}
+                          style={{
+                            position: "absolute",
+                            top: 6,
+                            right: 6,
+                            width: 22,
+                            height: 22,
+                            borderRadius: 999,
+                            border: "1px solid rgba(255,255,255,0.18)",
+                            background: "rgba(15,23,42,0.75)",
+                            color: "#fff",
+                            cursor: "pointer",
+                            fontSize: 12,
+                          }}
+                        >
+                          ×
+                        </button>
+                        {isImage && attachment.previewUrl ? (
+                          <img
+                            src={attachment.previewUrl}
+                            alt={attachment.file.name}
+                            style={{
+                              width: "100%",
+                              height: 110,
+                              objectFit: "cover",
+                              borderRadius: 10,
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              height: 72,
+                              borderRadius: 10,
+                              background: "rgba(255,255,255,0.06)",
+                              border: "1px solid rgba(255,255,255,0.08)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 18,
+                              fontWeight: 700,
+                              color: "var(--foreground)",
+                            }}
+                          >
+                            {extension}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 12, lineHeight: 1.35 }}>
+                          <div
+                            style={{
+                              fontWeight: 500,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {attachment.file.name}
+                          </div>
+                          <div style={{ color: "var(--muted)", marginTop: 2 }}>
+                            {(attachment.file.size / 1024).toFixed(1)} KB
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  ref={attachmentInputRef}
+                  type="file"
+                  accept="image/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                  multiple
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    handleAttachmentPick(e.target.files);
+                    e.currentTarget.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => attachmentInputRef.current?.click()}
+                  disabled={
+                    !activeThreadId ||
+                    sendTextMutation.isPending ||
+                    sendMediaMutation.isPending ||
+                    !isWhatsAppThread(selectedThread) ||
+                    (isWhatsAppThread(selectedThread) && !sessionWindow.isOpen)
+                  }
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "rgba(255,255,255,0.03)",
+                    color: "var(--foreground)",
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                  title="Attach image or document"
+                >
+                  +
+                </button>
                 <input
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
@@ -973,6 +1228,7 @@ export default function MessagesPage() {
                   disabled={
                     !activeThreadId ||
                     sendTextMutation.isPending ||
+                    sendMediaMutation.isPending ||
                     !isWhatsAppThread(selectedThread) ||
                     (isWhatsAppThread(selectedThread) && !sessionWindow.isOpen)
                   }
@@ -993,13 +1249,14 @@ export default function MessagesPage() {
                   className="btn btn-primary btn-sm"
                   onClick={() => void handleSend()}
                   disabled={
-                    !draft.trim() ||
+                    (!draft.trim() && attachments.length === 0) ||
                     sendTextMutation.isPending ||
+                    sendMediaMutation.isPending ||
                     !isWhatsAppThread(selectedThread) ||
                     (isWhatsAppThread(selectedThread) && !sessionWindow.isOpen)
                   }
                 >
-                  {sendTextMutation.isPending ? "Sending…" : "Send"}
+                  {sendTextMutation.isPending || sendMediaMutation.isPending ? "Sending…" : "Send"}
                 </button>
               </div>
               {sendError && (
