@@ -486,14 +486,14 @@ export function buildWorkspaceConditions(params: {
 
   if (params.mode === "payments") {
     if (params.queueFilter === "pending") {
-      conditions.push(sql<boolean>`${statusExpr} in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted')`);
+      conditions.push(sql<boolean>`${statusExpr} in ('approved', 'awaiting_payment', 'payment_submitted')`);
     } else if (params.queueFilter === "approved") {
       conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
     } else if (params.queueFilter === "denied") {
       conditions.push(sql<boolean>`${statusExpr} in ('payment_rejected', 'denied')`);
     } else {
       conditions.push(
-        sql<boolean>`${statusExpr} in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'denied', 'paid', 'refund_pending', 'refunded')`,
+        sql<boolean>`${statusExpr} in ('approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'denied', 'paid', 'refund_pending', 'refunded')`,
       );
     }
   } else if (params.mode === "status") {
@@ -509,11 +509,9 @@ export function buildWorkspaceConditions(params: {
     if (params.queueFilter === "realized") {
       conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
     } else if (params.queueFilter === "unrealized") {
-      conditions.push(sql<boolean>`${statusExpr} in ('pending_approval', 'edit_required', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected')`);
+      conditions.push(sql<boolean>`false`);
     } else {
-      conditions.push(
-        sql<boolean>`${statusExpr} in ('pending_approval', 'edit_required', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'paid', 'refund_pending', 'refunded')`,
-      );
+      conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
     }
   }
 

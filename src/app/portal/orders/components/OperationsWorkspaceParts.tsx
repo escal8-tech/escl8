@@ -35,6 +35,19 @@ import { type OrderFulfillmentStatus } from "@/lib/order-operations";
 
 type OperationsWorkspaceMode = "payments" | "status" | "revenue";
 
+const ApproveIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M3.5 8.2 6.5 11.2 12.5 4.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const RejectIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path d="M4.5 4.5 11.5 11.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M11.5 4.5 4.5 11.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 function toMutationDate(value: unknown): Date | undefined {
   if (!value) return undefined;
   const parsed = value instanceof Date ? value : new Date(String(value));
@@ -144,15 +157,29 @@ export function PaymentsTable({
               </td>
               <td data-label="Updated" className="portal-meta-text">{formatDate(order.updatedAt)}</td>
               <td data-label="Action" style={{ textAlign: "right" }} onClick={(event) => event.stopPropagation()}>
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <div className="portal-ledger-actions">
                   {canApprove ? (
-                    <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onApprove(order, latestPayment?.id)}>
-                      Approve
+                    <button
+                      type="button"
+                      className="portal-ledger-action portal-ledger-action--approve"
+                      aria-label="Approve payment"
+                      title="Approve payment"
+                      disabled={busy}
+                      onClick={() => void onApprove(order, latestPayment?.id)}
+                    >
+                      <ApproveIcon />
                     </button>
                   ) : null}
                   {canReject ? (
-                    <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onReject(order, latestPayment?.id)}>
-                      Deny
+                    <button
+                      type="button"
+                      className="portal-ledger-action portal-ledger-action--reject"
+                      aria-label="Deny payment"
+                      title="Deny payment"
+                      disabled={busy}
+                      onClick={() => void onReject(order, latestPayment?.id)}
+                    >
+                      <RejectIcon />
                     </button>
                   ) : null}
                 </div>
