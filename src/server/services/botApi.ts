@@ -3,17 +3,19 @@ import { normalizeServiceBaseUrl } from "@/server/internalSecurity";
 
 export type BotSendMessage =
   | { type: "text"; text: string }
-  | { type: "image"; imageUrl: string; caption?: string };
+  | { type: "image"; imageUrl: string; caption?: string }
+  | { type: "document"; documentUrl: string; filename?: string; caption?: string };
 
 export type BotSendResult = {
-  type: "text" | "image";
+  type: "text" | "image" | "document";
   messageId: string | null;
   providerResponse: unknown;
 };
 
 export type BotWebChatMessage =
   | { type: "text"; text: string }
-  | { type: "image"; imageUrl: string; caption?: string };
+  | { type: "image"; imageUrl: string; caption?: string }
+  | { type: "document"; documentUrl: string; filename?: string; caption?: string };
 
 export type BotWebChatResult = {
   success: boolean;

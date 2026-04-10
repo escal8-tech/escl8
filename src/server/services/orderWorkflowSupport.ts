@@ -486,14 +486,14 @@ export function buildWorkspaceConditions(params: {
 
   if (params.mode === "payments") {
     if (params.queueFilter === "pending") {
-      conditions.push(sql<boolean>`${statusExpr} in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted')`);
+      conditions.push(sql<boolean>`${statusExpr} in ('approved', 'awaiting_payment', 'payment_submitted')`);
     } else if (params.queueFilter === "approved") {
       conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
     } else if (params.queueFilter === "denied") {
       conditions.push(sql<boolean>`${statusExpr} in ('payment_rejected', 'denied')`);
     } else {
       conditions.push(
-        sql<boolean>`${statusExpr} in ('pending_approval', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'denied', 'paid', 'refund_pending', 'refunded')`,
+        sql<boolean>`${statusExpr} in ('approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'denied', 'paid', 'refund_pending', 'refunded')`,
       );
     }
   } else if (params.mode === "status") {
@@ -509,11 +509,9 @@ export function buildWorkspaceConditions(params: {
     if (params.queueFilter === "realized") {
       conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
     } else if (params.queueFilter === "unrealized") {
-      conditions.push(sql<boolean>`${statusExpr} in ('pending_approval', 'edit_required', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected')`);
+      conditions.push(sql<boolean>`false`);
     } else {
-      conditions.push(
-        sql<boolean>`${statusExpr} in ('pending_approval', 'edit_required', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'paid', 'refund_pending', 'refunded')`,
-      );
+      conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
     }
   }
 
@@ -728,9 +726,17 @@ export function buildPaymentReviewMessages(input: {
       `We have approved your payment for order number ${ref}.`,
       input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
       "Your order is now marked as paid and our team will continue processing it.",
-      input.invoiceUrl ? `Invoice: ${input.invoiceUrl}` : null,
     ].filter(Boolean);
-    return [{ type: "text", text: lines.join("\n") }];
+    const messages: BotSendMessage[] = [{ type: "text", text: lines.join("\n") }];
+    if (String(input.invoiceUrl || "").trim()) {
+      messages.push({
+        type: "document",
+        documentUrl: String(input.invoiceUrl).trim(),
+        filename: `invoice-${ref}.pdf`,
+        caption: `Invoice for order ${ref}`,
+      });
+    }
+    return messages;
   }
   const lines = [
     `We could not confirm the payment for order number ${ref}, so this order has now been closed.`,
