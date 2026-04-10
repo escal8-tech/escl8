@@ -3,8 +3,8 @@ import { normalizeServiceBaseUrl } from "@/server/internalSecurity";
 
 export type BotSendMessage =
   | { type: "text"; text: string }
-  | { type: "image"; imageUrl: string; caption?: string }
-  | { type: "document"; documentUrl: string; filename?: string; caption?: string };
+  | { type: "image"; imageUrl?: string; imageId?: string; caption?: string }
+  | { type: "document"; documentUrl?: string; documentId?: string; filename?: string; caption?: string };
 
 export type BotSendResult = {
   type: "text" | "image" | "document";
@@ -14,8 +14,8 @@ export type BotSendResult = {
 
 export type BotWebChatMessage =
   | { type: "text"; text: string }
-  | { type: "image"; imageUrl: string; caption?: string }
-  | { type: "document"; documentUrl: string; filename?: string; caption?: string };
+  | { type: "image"; imageUrl?: string; imageId?: string; caption?: string }
+  | { type: "document"; documentUrl?: string; documentId?: string; filename?: string; caption?: string };
 
 export type BotWebChatResult = {
   success: boolean;
