@@ -12,6 +12,11 @@ import { PortalSelect } from "@/app/portal/components/PortalSelect";
 import { useToast } from "@/components/ToastProvider";
 import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
 import { recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
+import {
+  BUSINESS_MESSAGE_USAGE_TIERS,
+  getBusinessMessageUsageTierLabel,
+  type BusinessMessageUsageTier,
+} from "@/lib/business-usage";
 import type { OrderPaymentMethod } from "@/lib/order-settings";
 import { buildWebsiteWidgetSnippet, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
@@ -802,6 +807,7 @@ export default function SettingsPage() {
   const [closeTime, setCloseTime] = useState<string>("");
   const [bookingsEnabled, setBookingsEnabled] = useState(false);
   const [timezone, setTimezone] = useState("UTC");
+  const [messageUsageTier, setMessageUsageTier] = useState<BusinessMessageUsageTier>("standard");
   const [ticketEnabledById, setTicketEnabledById] = useState<Record<string, boolean>>({});
   const [ticketRequiredFieldsById, setTicketRequiredFieldsById] = useState<Record<string, string>>({});
   const [savingAllTicketTypes, setSavingAllTicketTypes] = useState(false);
@@ -846,6 +852,15 @@ export default function SettingsPage() {
       showSuccessToast(toast, {
         title: "Timezone updated",
         message: "Timezone saved successfully.",
+      });
+      businessQuery.refetch();
+    },
+  });
+  const updateMessageUsageTier = trpc.business.updateMessageUsageTier.useMutation({
+    onSuccess: () => {
+      showSuccessToast(toast, {
+        title: "Usage tier updated",
+        message: "Monthly AI response allowance saved successfully.",
       });
       businessQuery.refetch();
     },
@@ -918,6 +933,7 @@ export default function SettingsPage() {
       setBookingsEnabled(businessQuery.data.bookingsEnabled ?? false);
       const tz = (businessQuery.data.settings as Record<string, unknown> | null | undefined)?.timezone;
       setTimezone(typeof tz === "string" && tz ? tz : "UTC");
+      setMessageUsageTier((businessQuery.data.messageUsageTier as BusinessMessageUsageTier | undefined) ?? "standard");
       const orderSettings = businessQuery.data.orderSettings;
       setOrderPaymentMethod((orderSettings?.paymentMethod as OrderPaymentMethod | undefined) ?? "manual");
       setPaymentProofAiEnabled(orderSettings?.paymentProofAiEnabled ?? true);
@@ -1034,6 +1050,15 @@ export default function SettingsPage() {
       email,
       businessId: businessQuery.data.id,
       timezone,
+    });
+  };
+
+  const handleSaveMessageUsageTier = () => {
+    if (!email || !businessQuery.data?.id) return;
+    updateMessageUsageTier.mutate({
+      email,
+      businessId: businessQuery.data.id,
+      messageUsageTier,
     });
   };
 
@@ -1325,9 +1350,25 @@ export default function SettingsPage() {
                 placeholder="e.g. Asia/Kuala_Lumpur"
               />
             </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>
+                Usage Tier
+                <p style={styles.labelHint}>Monthly AI response allowance shared across all connected numbers</p>
+              </label>
+              <PortalSelect
+                value={messageUsageTier}
+                onValueChange={(value) => setMessageUsageTier(value as BusinessMessageUsageTier)}
+                options={BUSINESS_MESSAGE_USAGE_TIERS.map((option) => ({
+                  value: option.value,
+                  label: `${option.label} (${fmtInt(option.monthlyLimit)} / month)`,
+                }))}
+                style={styles.select}
+                ariaLabel="Business usage tier"
+              />
+            </div>
             <div style={styles.usageCard}>
               <div style={styles.usageRow}>
-                <span style={styles.usageTitle}>AI Responses Used</span>
+                <span style={styles.usageTitle}>AI Responses Used This Month</span>
                 <span style={styles.usageValue}>
                   {fmtInt(responsesUsed)} / {fmtInt(responsesMax)}
                 </span>
@@ -1336,12 +1377,20 @@ export default function SettingsPage() {
                 <div style={{ ...styles.usageFill, width: `${responsesPercent}%` }} />
               </div>
               <p style={styles.usageHint}>
-                Display only for beta. The bot is not blocked if usage goes above {fmtInt(responsesMax)}.
+                Current tier: {getBusinessMessageUsageTierLabel(messageUsageTier)}. Usage resets monthly and is shared across all WhatsApp numbers in this business.
               </p>
             </div>
           </div>
         </div>
         <div style={styles.actions}>
+          <button
+            style={styles.btnSecondary}
+            onClick={handleSaveMessageUsageTier}
+            disabled={updateMessageUsageTier.isPending}
+          >
+            {Icons.save}
+            {updateMessageUsageTier.isPending ? "Saving tier..." : "Save Usage Tier"}
+          </button>
           <button
             style={styles.btnPrimary}
             onClick={handleSaveTimezone}

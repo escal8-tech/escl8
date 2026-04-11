@@ -29,6 +29,7 @@ export const businesses = pgTable(
     bookingTimeslotMinutes: integer("booking_timeslot_minutes").default(60),
     bookingOpenTime: text("booking_open_time"),   // "09:00"
     bookingCloseTime: text("booking_close_time"), // "18:00"
+    messageUsageTier: text("message_usage_tier").notNull().default("standard"),
 
     settings: jsonb("settings").$type<Record<string, unknown>>().default({}),
     gmailConnected: boolean("gmail_connected").notNull().default(false),
@@ -48,6 +49,10 @@ export const businesses = pgTable(
     businessesInstructionsNonEmpty: check(
       "businesses_instructions_nonempty",
       sql`length(btrim(${t.instructions})) > 0`,
+    ),
+    businessesMessageUsageTierValid: check(
+      "businesses_message_usage_tier_valid",
+      sql`${t.messageUsageTier} in ('minimum', 'standard', 'enterprise')`,
     ),
   }),
 );
