@@ -5,6 +5,7 @@ import { useToast } from "@/components/ToastProvider";
 import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
 import { TablePagination } from "@/app/portal/components/TablePagination";
 import { TableSearchControl } from "@/app/portal/components/TableToolbarControls";
+import { PortalSelect } from "@/app/portal/components/PortalSelect";
 import { PortalHeaderCard, PortalMetricCard } from "@/app/portal/components/PortalSurfacePrimitives";
 import {
   OrderWorkspaceDrawer,
@@ -456,29 +457,31 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
             description={modeDescription(mode)}
             controls={
               <>
-                <select
+                <PortalSelect
                   value={dateField}
-                  onChange={(event) => {
-                    setDateField(event.target.value as OrderDateField);
+                  onValueChange={(value) => {
+                    setDateField(value as OrderDateField);
                     setPage(0);
                   }}
-                  className="portal-res-select"
-                >
-                  <option value="updatedAt">By Updated Date</option>
-                  <option value="createdAt">By Created Date</option>
-                </select>
-                <select
+                  options={[
+                    { value: "updatedAt", label: "By Updated Date" },
+                    { value: "createdAt", label: "By Created Date" },
+                  ]}
+                  ariaLabel="Order date field"
+                  className="portal-toolbar-select portal-toolbar-select--header"
+                  style={{ width: "190px" }}
+                />
+                <PortalSelect
                   value={methodFilter}
-                  onChange={(event) => {
-                    setMethodFilter(event.target.value as OrderMethodFilter);
+                  onValueChange={(value) => {
+                    setMethodFilter(value as OrderMethodFilter);
                     setPage(0);
                   }}
-                  className="portal-res-select"
-                >
-                  {METHOD_FILTER_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
+                  options={METHOD_FILTER_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                  ariaLabel="Order payment method filter"
+                  className="portal-toolbar-select portal-toolbar-select--header"
+                  style={{ width: "154px" }}
+                />
                 <div className="portal-res-range" role="group" aria-label="Range">
                   {RANGE_OPTIONS.map((option) => (
                     <button
@@ -516,30 +519,28 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
                 <h2 className="portal-ledger-toolbar__title">{mode === "revenue" ? "Transaction Ledger" : modeTitle(mode)}</h2>
                 <span className="portal-ledger-toolbar__badge">{totalCount} {totalCount === 1 ? "Entry" : "Entries"}</span>
               </div>
-              <div className="portal-ledger-toolbar__controls">
-                <select
+              <div className="portal-ledger-toolbar__filters">
+                <PortalSelect
                   value={queueFilter}
-                  onChange={(event) => {
-                    setQueueFilter(event.target.value as QueueFilter);
+                  onValueChange={(value) => {
+                    setQueueFilter(value as QueueFilter);
                     setPage(0);
                   }}
-                  className="portal-res-select portal-res-select--compact"
-                >
-                  {queueFilterOptions(mode).map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-                <div className="portal-ledger-search">
-                  <TableSearchControl
-                    value={search}
-                    onChange={(value) => {
-                      setSearch(value);
-                      setPage(0);
-                    }}
-                    placeholder={mode === "revenue" ? "Search reference, invoice, customer..." : "Search orders..."}
-                    style={{ width: "min(320px, 100%)" }}
-                  />
-                </div>
+                  options={queueFilterOptions(mode).map((option) => ({ value: option.value, label: option.label }))}
+                  ariaLabel={`${modeTitle(mode)} queue filter`}
+                  className="portal-toolbar-select"
+                  style={{ width: "160px" }}
+                />
+              </div>
+              <div className="portal-ledger-search">
+                <TableSearchControl
+                  value={search}
+                  onChange={(value) => {
+                    setSearch(value);
+                    setPage(0);
+                  }}
+                  placeholder={mode === "revenue" ? "Search reference, invoice, customer..." : "Search orders..."}
+                />
               </div>
             </div>
 

@@ -5,6 +5,7 @@ import { useToast } from "@/components/ToastProvider";
 import { showErrorToast, showInfoToast, showSuccessToast } from "@/components/toast-utils";
 import { trpc } from "@/utils/trpc";
 import { useRouter, useSearchParams } from "next/navigation";
+import { PortalSelect } from "@/app/portal/components/PortalSelect";
 import { TableSearchControl, TableSelect } from "@/app/portal/components/TableToolbarControls";
 import { TablePagination } from "@/app/portal/components/TablePagination";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
@@ -399,51 +400,50 @@ export default function TicketsPage() {
                   {totalCount} {totalCount === 1 ? "Entry" : "Entries"}
                 </span>
               </div>
-              <div className="portal-ledger-toolbar__controls">
-                <select
-                  className="portal-res-select portal-res-select--compact"
+              <div className="portal-ledger-toolbar__filters">
+                <PortalSelect
                   value={statusFilter}
-                  style={{ minWidth: 148 }}
-                  onChange={(e) => {
-                    const nextFilter = e.target.value as TicketListFilter;
+                  onValueChange={(value) => {
+                    const nextFilter = value as TicketListFilter;
                     setFiltersByType((prev) => ({ ...prev, [activeFilterKey]: nextFilter }));
                     setPage(0);
                   }}
-                >
-                  {isOrderTicketView ? (
-                    <>
-                      <option value="all">All Stages</option>
-                      <option value="pending_approval">Pending Approval</option>
-                      <option value="edit_required">Edit Required</option>
-                      <option value="approved">Approved</option>
-                      <option value="awaiting_payment">Awaiting Payment</option>
-                      <option value="payment_submitted">Payment Review</option>
-                      <option value="payment_rejected">Payment Rejected</option>
-                      <option value="paid">Paid</option>
-                      <option value="refund_pending">Refund Pending</option>
-                      <option value="refunded">Refunded</option>
-                      <option value="denied">Denied</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="all">All Statuses</option>
-                      <option value="open">Open</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="resolved">Resolved</option>
-                    </>
-                  )}
-                </select>
-                <div className="portal-ledger-search">
-                  <TableSearchControl
-                    value={ticketIdQuery}
-                    onChange={(value) => {
-                      setTicketIdQuery(value);
-                      setPage(0);
-                    }}
-                    placeholder="Search ticket #..."
-                    style={{ width: "min(280px, 100%)" }}
-                  />
-                </div>
+                  options={
+                    isOrderTicketView
+                      ? [
+                          { value: "all", label: "All Stages" },
+                          { value: "pending_approval", label: "Pending Approval" },
+                          { value: "edit_required", label: "Edit Required" },
+                          { value: "approved", label: "Approved" },
+                          { value: "awaiting_payment", label: "Awaiting Payment" },
+                          { value: "payment_submitted", label: "Payment Review" },
+                          { value: "payment_rejected", label: "Payment Rejected" },
+                          { value: "paid", label: "Paid" },
+                          { value: "refund_pending", label: "Refund Pending" },
+                          { value: "refunded", label: "Refunded" },
+                          { value: "denied", label: "Denied" },
+                        ]
+                      : [
+                          { value: "all", label: "All Statuses" },
+                          { value: "open", label: "Open" },
+                          { value: "in_progress", label: "In Progress" },
+                          { value: "resolved", label: "Resolved" },
+                        ]
+                  }
+                  ariaLabel={isOrderTicketView ? "Order stage filter" : "Ticket status filter"}
+                  className="portal-toolbar-select"
+                  style={{ width: isOrderTicketView ? "176px" : "160px" }}
+                />
+              </div>
+              <div className="portal-ledger-search">
+                <TableSearchControl
+                  value={ticketIdQuery}
+                  onChange={(value) => {
+                    setTicketIdQuery(value);
+                    setPage(0);
+                  }}
+                  placeholder="Search ticket #..."
+                />
               </div>
             </div>
 

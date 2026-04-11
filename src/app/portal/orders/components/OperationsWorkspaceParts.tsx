@@ -647,7 +647,14 @@ export function OrderWorkspaceDrawer({
                     <Field label="Recipient Name" value={recipientName} onChange={setRecipientName} placeholder="Receiver name" />
                     <Field label="Recipient Phone" value={recipientPhone} onChange={setRecipientPhone} placeholder="Receiver phone" />
                     <Field label="Delivery Area" value={deliveryArea} onChange={setDeliveryArea} placeholder="Area" />
-                    <Field label="Scheduled Delivery" value={scheduledDeliveryAt} onChange={setScheduledDeliveryAt} placeholder="" type="datetime-local" />
+                    <Field
+                      label="Scheduled Delivery"
+                      value={scheduledDeliveryAt}
+                      onChange={setScheduledDeliveryAt}
+                      placeholder=""
+                      type="datetime-local"
+                      className="portal-field--full"
+                    />
                     <Field label="Courier Name" value={courierName} onChange={setCourierName} placeholder="Courier" />
                     <Field label="Tracking Number" value={trackingNumber} onChange={setTrackingNumber} placeholder="Tracking number" />
                     <Field label="Dispatch Reference" value={dispatchReference} onChange={setDispatchReference} placeholder="Dispatch reference" />
@@ -852,6 +859,7 @@ function Field({
   placeholder,
   type = "text",
   disabled = false,
+  className,
 }: {
   label: string;
   value: string;
@@ -859,9 +867,10 @@ function Field({
   placeholder: string;
   type?: string;
   disabled?: boolean;
+  className?: string;
 }) {
   return (
-    <label className="portal-field">
+    <label className={className ? `portal-field ${className}` : "portal-field"}>
       <span className="portal-field-label">{label}</span>
       <input
         type={type}
