@@ -21,9 +21,12 @@ const catamaran = Catamaran({
 
 
 export const metadata: Metadata = {
-  title: "Escl8 — Human-like AI Sales Agents for WhatsApp & Web",
+  title: {
+    default: "Escal8 | Human-like AI Agents",
+    template: "%s | Escal8",
+  },
   description:
-    "Escl8 builds fully customized, human-like AI sales and support agents for SMBs and enterprises. Upload your docs, connect WhatsApp, and go live fast.",
+    "Escal8 builds fully customized, human-like AI sales and support agents for SMBs and enterprises. Upload your docs, connect WhatsApp, and go live fast.",
   metadataBase: new URL("http://localhost:5000"),
   icons: [
     { rel: "icon", url: "/favikon.png", type: "image/png" },

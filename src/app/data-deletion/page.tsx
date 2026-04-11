@@ -4,7 +4,7 @@ import LandingFooterLegal from "@/components/LandingFooterLegal";
 import styles from "../legal/legal.module.css";
 
 export const metadata: Metadata = {
-  title: "User Data Deletion - Escl8",
+  title: "User Data Deletion",
 };
 
 export default function DataDeletionPage() {
