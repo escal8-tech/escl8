@@ -386,6 +386,9 @@ export async function drainBusinessOutbox(input: {
         attributes: {
           idempotency_key: claimed.idempotencyKey,
           attempts: claimed.attempts,
+          error_message: messageText,
+          error_name: error instanceof Error ? error.name : undefined,
+          whatsapp_identity_id: claimed.whatsappIdentityId ?? undefined,
         },
       });
       captureSentryException(error, {
@@ -396,12 +399,16 @@ export async function drainBusinessOutbox(input: {
           business_id: claimed.businessId,
           channel: claimed.channel,
           entity_type: claimed.entityType,
+          whatsapp_identity_id: claimed.whatsappIdentityId ?? undefined,
         },
         contexts: {
           outbox: {
             entityId: claimed.entityId,
             idempotencyKey: claimed.idempotencyKey,
             attempts: claimed.attempts,
+            errorMessage: messageText,
+            errorName: error instanceof Error ? error.name : null,
+            whatsappIdentityId: claimed.whatsappIdentityId ?? null,
           },
         },
       });

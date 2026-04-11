@@ -137,6 +137,64 @@ type PortalEvent = {
 
 const REALTIME_CLIENT_FAILURE_LOG_COOLDOWN_MS = 30_000;
 
+function describeWebSocketReadyState(state: number | undefined): string {
+  switch (state) {
+    case WebSocket.CONNECTING:
+      return "connecting";
+    case WebSocket.OPEN:
+      return "open";
+    case WebSocket.CLOSING:
+      return "closing";
+    case WebSocket.CLOSED:
+      return "closed";
+    default:
+      return "unknown";
+  }
+}
+
+function describeWebSocketCloseCode(code: number): string {
+  switch (code) {
+    case 1000:
+      return "normal_closure";
+    case 1001:
+      return "going_away";
+    case 1002:
+      return "protocol_error";
+    case 1003:
+      return "unsupported_data";
+    case 1005:
+      return "no_status_received";
+    case 1006:
+      return "abnormal_closure";
+    case 1007:
+      return "invalid_payload_data";
+    case 1008:
+      return "policy_violation";
+    case 1009:
+      return "message_too_big";
+    case 1010:
+      return "mandatory_extension";
+    case 1011:
+      return "internal_error";
+    case 1012:
+      return "service_restart";
+    case 1013:
+      return "try_again_later";
+    case 1015:
+      return "tls_handshake_failure";
+    default:
+      return code >= 4000 ? "application_specific" : "unknown";
+  }
+}
+
+function getRealtimeSocketHost(url: string): string | undefined {
+  try {
+    return new URL(url).host || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function normalizeStatus(raw: unknown): "ONGOING" | "NEEDS_FOLLOWUP" | "FAILED" | "COMPLETED" {
   const value = String(raw ?? "").toLowerCase();
   if (value === "ongoing") return "ONGOING";
@@ -329,6 +387,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
   useEffect(() => {
     let cancelled = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let pendingSocketErrorTimer: ReturnType<typeof setTimeout> | null = null;
     let ws: WebSocket | null = null;
     let ackId = 1;
     let lastCatchupAt = 0;
@@ -342,6 +401,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       message: string,
       attributes: Record<string, string | number | boolean | undefined> = {},
       captureInSentry = true,
+      level: "warn" | "error" = "error",
     ) => {
       const now = Date.now();
       if (now - lastRealtimeClientFailureAt < REALTIME_CLIENT_FAILURE_LOG_COOLDOWN_MS) return;
@@ -352,7 +412,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         ...attributes,
       };
 
-      recordGrafanaLog("error", message, payload, {
+      recordGrafanaLog(level, message, payload, {
         runtime: "client",
         source: "realtime",
         forceClientDelivery: true,
@@ -363,7 +423,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       captureSentryException(new Error(message), {
         action: "realtime-client-failure",
         area: "realtime",
-        level: "error",
+        level: level === "warn" ? "warning" : "error",
         tags: {
           realtime_source: "client",
           realtime_hub: typeof attributes.hub === "string" ? attributes.hub : undefined,
@@ -740,6 +800,8 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
 
       try {
         let connectionFailureReported = false;
+        let socketOpened = false;
+        let socketErrored = false;
         const response = await fetchWithFirebaseAuth("/api/events/negotiate", {
           cache: "no-store",
         }, {
@@ -752,7 +814,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
             reportRealtimeClientFailure(report.event, {
               ...(report.attributes || {}),
               hub: "portal",
-            }, report.captureInSentry);
+            }, report.captureInSentry, report.level);
             connectionFailureReported = true;
           },
           requestFailureEvent: "realtime.negotiate_request_failed",
@@ -777,6 +839,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         const group = body.group || "";
         const hub = body.hub || "portal";
         const subprotocol = body.subprotocol || "json.webpubsub.azure.v1";
+        const socketHost = getRealtimeSocketHost(url);
         if (!url || !group) {
           reportRealtimeClientFailure(
             "realtime.negotiate_payload_invalid",
@@ -795,6 +858,11 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
 
         ws.onopen = () => {
           if (!ws || cancelled) return;
+          socketOpened = true;
+          if (pendingSocketErrorTimer) {
+            clearTimeout(pendingSocketErrorTimer);
+            pendingSocketErrorTimer = null;
+          }
           // Join the tenant group once connected so we receive business-scoped broadcasts.
           ws.send(JSON.stringify({ type: "joinGroup", group, ackId: ackId++ }));
           // Only on reconnect (not first connect), force catch-up to reconcile missed events.
@@ -825,41 +893,79 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         };
 
         ws.onclose = (event) => {
+          if (pendingSocketErrorTimer) {
+            clearTimeout(pendingSocketErrorTimer);
+            pendingSocketErrorTimer = null;
+          }
           if (!cancelled && !connectionFailureReported) {
-            reportRealtimeClientFailure(
-              "realtime.websocket_closed",
-              {
-                close_code: event.code,
-                close_clean: event.wasClean,
-                close_reason: event.reason || undefined,
-                group,
-                hub,
-              },
-              true,
-            );
-            connectionFailureReported = true;
+            if (event.wasClean && event.code === 1000) {
+              connectionFailureReported = true;
+            } else {
+              const message =
+                socketErrored || !socketOpened ? "realtime.websocket_error" : "realtime.websocket_closed";
+              const level = event.wasClean ? "warn" : "error";
+              reportRealtimeClientFailure(
+                message,
+                {
+                  close_code: event.code,
+                  close_code_label: describeWebSocketCloseCode(event.code),
+                  close_clean: event.wasClean,
+                  close_reason: event.reason || undefined,
+                  group,
+                  hub,
+                  opened_once: socketOpened,
+                  ready_state: describeWebSocketReadyState(ws?.readyState),
+                  socket_errored: socketErrored,
+                  subprotocol: ws?.protocol || subprotocol,
+                  websocket_host: socketHost,
+                },
+                !event.wasClean,
+                level,
+              );
+              connectionFailureReported = true;
+            }
           }
           if (!cancelled) reconnectTimer = setTimeout(connect, 1500);
         };
 
         ws.onerror = () => {
-          if (!connectionFailureReported) {
-            reportRealtimeClientFailure(
-              "realtime.websocket_error",
-              {
-                group,
-                hub,
-              },
-              true,
-            );
-            connectionFailureReported = true;
+          socketErrored = true;
+          if (!connectionFailureReported && !pendingSocketErrorTimer) {
+            pendingSocketErrorTimer = setTimeout(() => {
+              pendingSocketErrorTimer = null;
+              if (cancelled || connectionFailureReported) return;
+              reportRealtimeClientFailure(
+                "realtime.websocket_error",
+                {
+                  error_without_close: true,
+                  group,
+                  hub,
+                  opened_once: socketOpened,
+                  ready_state: describeWebSocketReadyState(ws?.readyState),
+                  socket_errored: true,
+                  subprotocol: ws?.protocol || subprotocol,
+                  websocket_host: socketHost,
+                },
+                true,
+                "error",
+              );
+              connectionFailureReported = true;
+            }, 1000);
           }
         };
 
         return;
       } catch (error) {
         if (!isClientErrorReported(error)) {
-          reportRealtimeClientFailure("realtime.connect_exception", { hub: "portal" }, true);
+          reportRealtimeClientFailure(
+            "realtime.connect_exception",
+            {
+              hub: "portal",
+              error_message: error instanceof Error ? error.message : String(error),
+              error_name: error instanceof Error ? error.name : undefined,
+            },
+            true,
+          );
         }
       }
 
@@ -873,6 +979,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     return () => {
       cancelled = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (pendingSocketErrorTimer) clearTimeout(pendingSocketErrorTimer);
       if (ws) ws.close();
     };
   }, [

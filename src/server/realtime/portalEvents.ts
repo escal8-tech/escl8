@@ -29,7 +29,7 @@ type PublishPortalEventInput = {
 };
 
 type WebPubSubClient = {
-  sendToGroup(group: string, message: string, options?: { contentType?: string }): Promise<void>;
+  sendToGroup(group: string, message: JsonValue[] | { [k: string]: JsonValue } | string, options?: { contentType?: string }): Promise<void>;
 };
 
 let cachedClient: WebPubSubClient | null = null;
@@ -44,7 +44,19 @@ function getWebPubSubClient(): WebPubSubClient | null {
     // Keep this lazy for environments where the package may be omitted.
     const reqFn = eval("require") as NodeRequire;
     const { WebPubSubServiceClient } = reqFn("@azure/web-pubsub");
-    cachedClient = new WebPubSubServiceClient(conn, hub);
+    const serviceClient = new WebPubSubServiceClient(conn, hub);
+    cachedClient = {
+      async sendToGroup(group: string, message: JsonValue[] | { [k: string]: JsonValue } | string, options?: { contentType?: string }) {
+        if (options?.contentType === "application/json" && typeof message !== "string") {
+          await serviceClient.group(group).sendToAll(message);
+          return;
+        }
+
+        await serviceClient.group(group).sendToAll(String(message), {
+          contentType: "text/plain",
+        });
+      },
+    };
     return cachedClient;
   } catch (err) {
     recordBusinessEvent({
@@ -100,7 +112,7 @@ export async function publishPortalEvent(input: PublishPortalEventInput): Promis
   };
 
   try {
-    await client.sendToGroup(`business.${input.businessId}`, JSON.stringify(evt), {
+    await client.sendToGroup(`business.${input.businessId}`, evt, {
       contentType: "application/json",
     });
     return true;
