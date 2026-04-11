@@ -6,10 +6,16 @@ import { businesses, users, whatsappIdentities } from "../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
+import {
+  getBusinessMessageUsageLimit,
+  normalizeBusinessMessageUsageTier,
+} from "@/lib/business-usage";
 import { mergeOrderFlowSettings, normalizeOrderFlowSettings } from "@/lib/order-settings";
 import { buildPrivateBlobReadUrl } from "@/lib/storage";
 import { mergeWebsiteWidgetSettings, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
-import { getBusinessAiCreditsUsed } from "@/server/services/aiUsage";
+import { getBusinessAiCreditsUsedThisMonth } from "@/server/services/aiUsage";
+
+const businessMessageUsageTierSchema = z.enum(["minimum", "standard", "enterprise"]);
 
 export const businessRouter = router({
   listPhoneNumbers: businessProcedure.query(async ({ ctx }) => {
@@ -134,7 +140,7 @@ export const businessRouter = router({
       const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId));
       if (!biz) return null;
 
-      const creditsUsed = await getBusinessAiCreditsUsed(ctx.businessId);
+      const creditsUsed = await getBusinessAiCreditsUsedThisMonth(ctx.businessId);
 
       const orderSettings = normalizeOrderFlowSettings(biz.settings);
       const qrPreviewUrl = orderSettings.bankQr.qrBlobPath
@@ -157,9 +163,62 @@ export const businessRouter = router({
         gmailError: biz.gmailError ?? null,
         responseUsage: {
           used: creditsUsed,
-          max: 50_000,
+          max: getBusinessMessageUsageLimit(biz.messageUsageTier),
+          tier: normalizeBusinessMessageUsageTier(biz.messageUsageTier),
         },
       };
+    }),
+
+  updateMessageUsageTier: businessProcedure
+    .input(
+      z.object({
+        email: z.string().email(),
+        businessId: z.string().min(1),
+        messageUsageTier: businessMessageUsageTierSchema,
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.userEmail && input.email !== ctx.userEmail) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
+      }
+      if (input.businessId !== ctx.businessId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
+      }
+
+      const [updated] = await db
+        .update(businesses)
+        .set({
+          messageUsageTier: input.messageUsageTier,
+          updatedAt: new Date(),
+        })
+        .where(eq(businesses.id, input.businessId))
+        .returning({
+          id: businesses.id,
+          messageUsageTier: businesses.messageUsageTier,
+        });
+
+      if (!updated) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
+      }
+
+      recordBusinessEvent({
+        event: "business.message_usage_tier_updated",
+        action: "updateMessageUsageTier",
+        area: "business",
+        businessId: ctx.businessId,
+        entity: "business",
+        entityId: updated.id,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: "success",
+        attributes: {
+          message_usage_tier: updated.messageUsageTier,
+          monthly_limit: getBusinessMessageUsageLimit(updated.messageUsageTier),
+        },
+      });
+
+      return updated;
     }),
 
   updateBookingConfig: businessProcedure

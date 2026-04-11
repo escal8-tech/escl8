@@ -1,4 +1,4 @@
-import { sum, eq } from "drizzle-orm";
+import { and, eq, gte, sum, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import { aiUsageEvents } from "@/../drizzle/schema";
 
@@ -24,12 +24,17 @@ export async function recordAiUsageEvent(input: {
   });
 }
 
-export async function getBusinessAiCreditsUsed(businessId: string): Promise<number> {
+export async function getBusinessAiCreditsUsedThisMonth(businessId: string): Promise<number> {
   const [row] = await db
     .select({
       used: sum(aiUsageEvents.credits),
     })
     .from(aiUsageEvents)
-    .where(eq(aiUsageEvents.businessId, businessId));
+    .where(
+      and(
+        eq(aiUsageEvents.businessId, businessId),
+        gte(aiUsageEvents.createdAt, sql`date_trunc('month', now())`),
+      ),
+    );
   return Number(row?.used ?? 0);
 }
