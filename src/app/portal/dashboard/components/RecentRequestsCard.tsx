@@ -181,8 +181,8 @@ export function RecentRequestsCard({
           />
           <Link
             href="/requests"
-            className="btn btn-ghost btn-sm"
-            style={{ height: 34, display: "inline-flex", alignItems: "center" }}
+            className="btn btn-ghost"
+            style={{ display: "inline-flex", alignItems: "center" }}
           >
             View all
           </Link>
