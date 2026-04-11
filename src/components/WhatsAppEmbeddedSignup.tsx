@@ -243,14 +243,15 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
         event: "whatsapp.facebook_login_not_authorized",
         action: "portal-whatsapp-embedded-signup",
         area: "whatsapp",
-        level: "error",
-        outcome: "flow_broken",
+        level: "warn",
+        outcome: "handled_failure",
         route,
         error: new Error(`Facebook login was not authorized (${String(response?.status || "unknown")}).`),
-        captureInSentry: true,
+        captureInSentry: false,
         attributes: {
           email_domain: emailDomain,
           fb_status: response?.status,
+          likely_user_or_browser_abort: response?.status === "unknown" ? true : undefined,
         },
       });
     } else {
