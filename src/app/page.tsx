@@ -3,8 +3,8 @@ import { PortalLogin } from "@/app/portal/components/PortalLogin";
 import { PortalThemeProvider } from "@/app/portal/components/PortalThemeProvider";
 
 export const metadata: Metadata = {
-  title: "Escl8 Concierge Login",
-  description: "Sign in to the Escl8 Concierge application.",
+  title: "Concierge Login",
+  description: "Sign in to the Escal8 Concierge application.",
 };
 
 export default function Home() {
