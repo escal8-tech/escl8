@@ -4,6 +4,7 @@ export type OrderFlowSettings = {
   ticketToOrderEnabled: boolean;
   paymentMethod: OrderPaymentMethod;
   paymentProofAiEnabled: boolean;
+  paymentSlipRequired: boolean;
   currency: string;
   bankQr: {
     showQr: boolean;
@@ -21,6 +22,7 @@ export const DEFAULT_ORDER_FLOW_SETTINGS: OrderFlowSettings = {
   ticketToOrderEnabled: true,
   paymentMethod: "manual",
   paymentProofAiEnabled: true,
+  paymentSlipRequired: true,
   currency: "LKR",
   bankQr: {
     showQr: true,
@@ -66,6 +68,7 @@ export function normalizeOrderFlowSettings(raw: unknown): OrderFlowSettings {
   const nested =
     asObject(root.orderFlow).ticketToOrderEnabled != null ||
     asObject(root.orderFlow).paymentMethod != null ||
+    asObject(root.orderFlow).paymentSlipRequired != null ||
     asObject(root.orderFlow).currency != null
       ? asObject(root.orderFlow)
       : asObject(root.orders);
@@ -76,6 +79,7 @@ export function normalizeOrderFlowSettings(raw: unknown): OrderFlowSettings {
     ticketToOrderEnabled: true,
     paymentMethod,
     paymentProofAiEnabled: asBool(nested.paymentProofAiEnabled, DEFAULT_ORDER_FLOW_SETTINGS.paymentProofAiEnabled),
+    paymentSlipRequired: asBool(nested.paymentSlipRequired, DEFAULT_ORDER_FLOW_SETTINGS.paymentSlipRequired),
     currency: asString(nested.currency, DEFAULT_ORDER_FLOW_SETTINGS.currency).toUpperCase().slice(0, 10),
     bankQr: {
       showQr: asBool(bankQrRaw.showQr, DEFAULT_ORDER_FLOW_SETTINGS.bankQr.showQr),
@@ -100,6 +104,7 @@ export function mergeOrderFlowSettings(
       ticketToOrderEnabled: true,
       paymentMethod: nextOrderFlow.paymentMethod,
       paymentProofAiEnabled: nextOrderFlow.paymentProofAiEnabled,
+      paymentSlipRequired: nextOrderFlow.paymentSlipRequired,
       currency: nextOrderFlow.currency,
       bankQr: {
         showQr: nextOrderFlow.bankQr.showQr,

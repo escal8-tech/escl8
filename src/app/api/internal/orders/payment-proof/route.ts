@@ -205,12 +205,26 @@ export async function POST(request: Request) {
     if (!normalized) return true;
     return normalized === "true" || normalized === "1" || normalized === "yes";
   })();
+  const paymentSlipRequired = (() => {
+    const raw = orderFlow?.paymentSlipRequired;
+    if (typeof raw === "boolean") return raw;
+    if (typeof raw === "number") return raw === 1;
+    const normalized = String(raw ?? "").trim().toLowerCase();
+    if (!normalized) return true;
+    return normalized === "true" || normalized === "1" || normalized === "yes";
+  })();
 
   const allowedStatuses = new Set(["awaiting_payment", "payment_submitted", "payment_rejected"]);
   if (!allowedStatuses.has(String(orderRow.status || "").trim().toLowerCase())) {
     return NextResponse.json(
       { success: false, error: "Order is not accepting payment proof submissions." },
       { status: 409 },
+    );
+  }
+  if (paymentSlipRequired && !file && !hasStagedProof) {
+    return NextResponse.json(
+      { success: false, error: "A payment slip image or PDF is required for this business." },
+      { status: 400 },
     );
   }
 

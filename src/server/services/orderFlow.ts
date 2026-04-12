@@ -256,7 +256,11 @@ export function buildOrderApprovalMessages(input: {
   const bankQr = input.orderSettings.bankQr;
   if (input.orderSettings.paymentMethod === "bank_qr") {
     const qrImageUrl = resolveOrderQrImageUrl(input.orderSettings);
-    const paymentLines = ["Please complete the payment and send the payment slip image or PDF in this chat."];
+    const paymentLines = [
+      input.orderSettings.paymentSlipRequired
+        ? "Please complete the payment and send the payment slip image or PDF in this chat."
+        : "Please complete the payment and reply in this chat once the transfer is done. You can also send the payment slip image or PDF here.",
+    ];
     if (bankQr.showBankDetails) {
       if (bankQr.bankName) paymentLines.push(`Bank: ${bankQr.bankName}`);
       if (bankQr.accountName) paymentLines.push(`Account name: ${bankQr.accountName}`);
@@ -309,7 +313,11 @@ export function buildOrderApprovalEmail(input: {
   let imageUrl: string | null = null;
   if (input.orderSettings.paymentMethod === "bank_qr") {
     const qrImageUrl = resolveOrderQrImageUrl(input.orderSettings);
-    lines.push("Please complete the payment and reply to the same WhatsApp chat with the payment slip image or PDF.");
+    lines.push(
+      input.orderSettings.paymentSlipRequired
+        ? "Please complete the payment and reply to the same WhatsApp chat with the payment slip image or PDF."
+        : "Please complete the payment and reply to the same WhatsApp chat once the transfer is done. You can also send the payment slip image or PDF there."
+    );
     if (input.orderSettings.bankQr.showBankDetails) {
       if (input.orderSettings.bankQr.bankName) lines.push(`Bank: ${input.orderSettings.bankQr.bankName}`);
       if (input.orderSettings.bankQr.accountName) lines.push(`Account name: ${input.orderSettings.bankQr.accountName}`);
@@ -425,7 +433,7 @@ export function buildFulfillmentStatusMessages(input: {
   } else if (input.fulfillmentStatus === "out_for_delivery") {
     lines.push(`Your order ${ref} is out for delivery.`);
   } else if (input.fulfillmentStatus === "delivered") {
-    lines.push(`Your order ${ref} has been marked as delivered.`);
+    return [];
   } else if (input.fulfillmentStatus === "failed_delivery") {
     lines.push(`We could not complete the delivery for order ${ref} on this attempt.`);
   } else if (input.fulfillmentStatus === "returned") {
