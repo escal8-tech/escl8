@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { db } from "../db/client";
-import { messageOutbox } from "../../../drizzle/schema";
+import { messageOutbox, whatsappIdentities } from "../../../drizzle/schema";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { captureSentryException } from "@/lib/sentry-monitoring";
-import { sendWhatsAppMessagesViaBot, type BotSendMessage } from "./botApi";
+import { observeAssistantMessageViaBot, sendWhatsAppMessagesViaBot, type BotSendMessage } from "./botApi";
 import { sendBusinessGmailMessage, type BusinessEmailMessage } from "./companyGmail";
 import { persistOutboundThreadMessage, sanitizePhoneDigits } from "./orderFlow";
 
@@ -70,6 +70,34 @@ function normalizeOutboxEmail(value: unknown): BusinessEmailMessage | null {
     text,
     html: html || null,
   };
+}
+
+function buildOutboxAssistantObservation(input: {
+  source: string;
+  message: BotSendMessage;
+}): { text: string; intent: string } | null {
+  const source = String(input.source || "").trim().toLowerCase();
+  const message = input.message;
+  const text = (
+    message.type === "text"
+      ? message.text
+      : message.type === "image"
+        ? (message.caption || "")
+        : (message.caption || message.filename || "")
+  ).trim();
+  if (!text) return null;
+  if (
+    source.startsWith("order_approved")
+    || source.startsWith("order_payment_approved")
+    || source.startsWith("order_payment_rejected")
+    || source.startsWith("order_manual_payment_collected")
+  ) {
+    return { text, intent: "paymentstatus" };
+  }
+  if (source === "order_fulfillment_update") {
+    return { text, intent: "orderstatus" };
+  }
+  return { text, intent: "general" };
 }
 
 export function buildOutboxMessageKey(baseKey: string, index: number): string {
@@ -252,6 +280,7 @@ export async function drainBusinessOutbox(input: {
   let sentCount = 0;
   let failedCount = 0;
   let firstError: string | null = null;
+  const identityAiDisabledCache = new Map<string, boolean>();
 
   for (const row of rows) {
     const now = new Date();
@@ -355,6 +384,59 @@ export async function drainBusinessOutbox(input: {
                   : message.caption ?? `[document${message.type === "document" && message.filename ? `: ${message.filename}` : ""}]`,
             externalMessageId: result?.messageId ?? null,
             meta: messageMeta,
+          });
+        }
+
+        try {
+          const observation = buildOutboxAssistantObservation({
+            source: String(claimed.source || ""),
+            message,
+          });
+          const identityKey = String(claimed.whatsappIdentityId || "").trim();
+          let aiDisabled = false;
+          if (identityKey) {
+            if (identityAiDisabledCache.has(identityKey)) {
+              aiDisabled = Boolean(identityAiDisabledCache.get(identityKey));
+            } else {
+              const [identityRow] = await db
+                .select({ aiDisabled: whatsappIdentities.aiDisabled })
+                .from(whatsappIdentities)
+                .where(
+                  and(
+                    eq(whatsappIdentities.businessId, claimed.businessId),
+                    eq(whatsappIdentities.phoneNumberId, identityKey),
+                  ),
+                )
+                .limit(1);
+              aiDisabled = Boolean(identityRow?.aiDisabled);
+              identityAiDisabledCache.set(identityKey, aiDisabled);
+            }
+          }
+          if (observation && claimed.whatsappIdentityId && claimed.recipient && !aiDisabled) {
+            await observeAssistantMessageViaBot({
+              businessId: claimed.businessId,
+              phoneNumberId: claimed.whatsappIdentityId,
+              to: claimed.recipient,
+              text: observation.text,
+              intent: observation.intent,
+            });
+          }
+        } catch (error) {
+          recordBusinessEvent({
+            event: "outbox.assistant_observe_failed",
+            action: "deliver",
+            area: "message_outbox",
+            businessId: claimed.businessId,
+            entity: claimed.entityType,
+            entityId: claimed.entityId,
+            actorType: "system",
+            outcome: "degraded",
+            status: "assistant_observe_failed",
+            attributes: {
+              idempotency_key: claimed.idempotencyKey,
+              whatsapp_identity_id: claimed.whatsappIdentityId ?? undefined,
+              source: claimed.source,
+            },
           });
         }
 

@@ -347,6 +347,7 @@ export const businessRouter = router({
         ticketToOrderEnabled: z.boolean().optional(),
         paymentMethod: z.enum(["manual", "cod", "bank_qr"]),
         paymentProofAiEnabled: z.boolean().optional(),
+        paymentSlipRequired: z.boolean().optional(),
         currency: z.string().min(1).max(10),
         bankQr: z.object({
           showQr: z.boolean(),
@@ -378,6 +379,7 @@ export const businessRouter = router({
           ticketToOrderEnabled: true,
           paymentMethod: input.paymentMethod,
           paymentProofAiEnabled: input.paymentProofAiEnabled ?? true,
+          paymentSlipRequired: input.paymentSlipRequired ?? true,
           currency: input.currency,
           bankQr: input.bankQr,
         },

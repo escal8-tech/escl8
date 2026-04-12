@@ -813,6 +813,7 @@ export default function SettingsPage() {
   const [savingAllTicketTypes, setSavingAllTicketTypes] = useState(false);
   const [orderPaymentMethod, setOrderPaymentMethod] = useState<OrderPaymentMethod>("manual");
   const [paymentProofAiEnabled, setPaymentProofAiEnabled] = useState(true);
+  const [paymentSlipRequired, setPaymentSlipRequired] = useState(true);
   const [orderCurrency, setOrderCurrency] = useState("LKR");
   const [qrBlobPath, setQrBlobPath] = useState("");
   const [bankQrImageUrl, setBankQrImageUrl] = useState("");
@@ -937,6 +938,7 @@ export default function SettingsPage() {
       const orderSettings = businessQuery.data.orderSettings;
       setOrderPaymentMethod((orderSettings?.paymentMethod as OrderPaymentMethod | undefined) ?? "manual");
       setPaymentProofAiEnabled(orderSettings?.paymentProofAiEnabled ?? true);
+      setPaymentSlipRequired(orderSettings?.paymentSlipRequired ?? true);
       setOrderCurrency(orderSettings?.currency ?? "LKR");
       setQrBlobPath(orderSettings?.bankQr?.qrBlobPath ?? "");
       setBankQrImageUrl(orderSettings?.bankQr?.qrImageUrl ?? "");
@@ -1144,6 +1146,7 @@ export default function SettingsPage() {
       ticketToOrderEnabled: true,
       paymentMethod: orderPaymentMethod,
       paymentProofAiEnabled,
+      paymentSlipRequired,
       currency: orderCurrency.trim() || "LKR",
       bankQr: {
         showQr: orderPaymentMethod === "bank_qr" && hasQr,
@@ -1618,6 +1621,16 @@ export default function SettingsPage() {
                     </span>
                   </div>
                   <Toggle checked={paymentProofAiEnabled} onChange={setPaymentProofAiEnabled} />
+                </div>
+                <div style={{ ...styles.toggleRow, marginTop: 14 }}>
+                  <div style={styles.toggleInfo}>
+                    <span style={styles.toggleLabel}>Require Payment Slip</span>
+                    <span style={styles.toggleDescription}>
+                      When enabled, customers must send a payment slip image or PDF. When disabled, staff can also track plain
+                      text confirmations like "payment done" in the payment review queue.
+                    </span>
+                  </div>
+                  <Toggle checked={paymentSlipRequired} onChange={setPaymentSlipRequired} />
                 </div>
                 {bankQrImageUrl ? (
                   <Image
