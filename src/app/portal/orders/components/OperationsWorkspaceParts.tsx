@@ -4,6 +4,8 @@ import { useState } from "react";
 import { trpc } from "@/utils/trpc";
 import {
   asRecord,
+  canEditPaymentSetup,
+  canReopenPaidOrderForPaymentReview,
   describeFinanceState,
   financeToneClass,
   formatDate,
@@ -16,6 +18,7 @@ import {
   getFulfillmentStatus,
   getOrderStatus,
   normalizeStatusLabel,
+  needsPaymentDetailsWorkflow,
   numericAmount,
   resolveOrderAmount,
   shortId,
@@ -365,6 +368,8 @@ export function OrderWorkspaceDrawer({
   onApproveDraftOrder,
   onUpdateFulfillment,
   onUpdatePaymentSetup,
+  onSendPaymentDetails,
+  onReopenPaidOrderForPaymentReview,
   onUpdateRefundStatus,
   busy,
 }: {
@@ -411,6 +416,8 @@ export function OrderWorkspaceDrawer({
     customerEmail?: string | null;
     notes?: string | null;
   }) => Promise<void>;
+  onSendPaymentDetails: (order: OrderRow) => Promise<void>;
+  onReopenPaidOrderForPaymentReview: (order: OrderRow) => Promise<void>;
   onUpdateRefundStatus: (order: OrderRow, action: "mark_pending" | "mark_refunded" | "cancel") => Promise<void>;
   busy: boolean;
 }) {
@@ -456,6 +463,8 @@ export function OrderWorkspaceDrawer({
   const snapshotFields = asRecord(snapshot.fields);
   const isDraftOrder = getOrderStatus(order) === "pending_approval";
   const showPaymentSetup = mode === "payments" && !isDraftOrder;
+  const paymentSetupEditable = canEditPaymentSetup(order);
+  const canResendPaymentInstructions = needsPaymentDetailsWorkflow(order);
   const showDeliveryDetails = mode === "status";
   const showInvoicePanel = mode !== "status" && !isDraftOrder;
   const canApproveLatestPayment = canStaffApprovePayment(order, latestPayment);
@@ -612,17 +621,22 @@ export function OrderWorkspaceDrawer({
                 <div className="card-body" style={{ display: "grid", gap: 10 }}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>Payment Setup</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-                    <Field label="Amount Due" value={expectedAmount} onChange={setExpectedAmount} placeholder="0.00" />
-                    <Field label="Payment Reference" value={paymentReference} onChange={setPaymentReference} placeholder="Reference shown to customer" />
-                    <Field label="Customer Email" value={customerEmail} onChange={setCustomerEmail} placeholder="Email for closed-window fallback" />
+                    <Field label="Amount Due" value={expectedAmount} onChange={setExpectedAmount} placeholder="0.00" disabled={!paymentSetupEditable} />
+                    <Field label="Payment Reference" value={paymentReference} onChange={setPaymentReference} placeholder="Reference shown to customer" disabled={!paymentSetupEditable} />
+                    <Field label="Customer Email" value={customerEmail} onChange={setCustomerEmail} placeholder="Email for closed-window fallback" disabled={!paymentSetupEditable} />
                     <Field label="Invoice Status" value={normalizeStatusLabel(order.invoiceStatus)} onChange={() => {}} placeholder="" disabled />
                   </div>
-                  <TextAreaField label="Internal Notes" value={orderNotes} onChange={setOrderNotes} placeholder="Order notes visible to staff only" />
+                  <TextAreaField label="Internal Notes" value={orderNotes} onChange={setOrderNotes} placeholder="Order notes visible to staff only" disabled={!paymentSetupEditable} />
+                  {!paymentSetupEditable ? (
+                    <div className="text-muted" style={{ fontSize: 12 }}>
+                      Payment setup locks once the customer has already submitted payment for review.
+                    </div>
+                  ) : null}
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <button
                       type="button"
                       className="btn btn-primary"
-                      disabled={busy}
+                      disabled={busy || !paymentSetupEditable}
                       onClick={() => void onUpdatePaymentSetup({
                         orderId: order.id,
                         expectedUpdatedAt,
@@ -634,6 +648,16 @@ export function OrderWorkspaceDrawer({
                     >
                       Save Payment Details
                     </button>
+                    {canResendPaymentInstructions ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={busy}
+                        onClick={() => void onSendPaymentDetails(order)}
+                      >
+                        Send Payment Details
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -822,6 +846,11 @@ export function OrderWorkspaceDrawer({
               </button>
             ) : null}
             {getOrderStatus(order) === "paid" ? (
+              <button type="button" className="btn btn-ghost" disabled={busy || !canReopenPaidOrderForPaymentReview(order)} onClick={() => void onReopenPaidOrderForPaymentReview(order)}>
+                Reopen Payment Review
+              </button>
+            ) : null}
+            {getOrderStatus(order) === "paid" ? (
               <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onUpdateRefundStatus(order, "mark_pending")}>
                 Start Refund
               </button>
@@ -888,11 +917,13 @@ function TextAreaField({
   value,
   onChange,
   placeholder,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  disabled?: boolean;
 }) {
   return (
     <label className="portal-field">
@@ -901,6 +932,7 @@ function TextAreaField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
+        disabled={disabled}
         rows={3}
         style={{ resize: "vertical" }}
       />

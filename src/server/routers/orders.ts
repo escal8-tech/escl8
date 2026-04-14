@@ -34,6 +34,8 @@ import {
   buildPaymentReviewMessages,
   buildRefundStatusMessages,
   buildStoredOrderFlowSettings,
+  canReopenPaidOrderForPaymentReview,
+  canResendPaymentDetails,
   canCaptureManualPayment,
   cleanOptionalText,
   cleanOptionalUrl,
@@ -444,8 +446,11 @@ export const ordersRouter = router({
         if (String(orderRow.paymentMethod || "").trim().toLowerCase() !== "bank_qr") {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Payment details can only be sent for Bank / QR orders." });
         }
-        if (!["awaiting_payment", "payment_rejected"].includes(String(orderRow.status || "").trim().toLowerCase())) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Payment details can only be resent while the order is awaiting payment." });
+        if (!canResendPaymentDetails(orderRow)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Payment details can only be resent while the order is awaiting payment or under payment review.",
+          });
         }
 
         const windowState = await getThreadWhatsappWindowState(tx, orderRow.threadId);
@@ -1904,6 +1909,143 @@ export const ordersRouter = router({
       }
       await flushBusinessOutbox(ctx.businessId);
       return { order: result.updatedOrder, delivery };
+    }),
+
+  reopenPaidOrderForPaymentReview: businessProcedure
+    .input(
+      z.object({
+        orderId: z.string().min(1),
+        reason: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const settings = await getBusinessOrderSettings(ctx.businessId);
+      if (!settings.ticketToOrderEnabled) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
+      }
+      const now = new Date();
+      const normalizedReason = input.reason?.trim() || "Payment approval was reopened by staff.";
+      const result = await db.transaction(async (tx) => {
+        await lockWorkflowKey(tx, `${ctx.businessId}::order::${input.orderId}`);
+        await enforceOrderOperationThrottle(tx, ctx, "reviewPayment", input.orderId);
+
+        const [orderRow] = await tx
+          .select()
+          .from(orders)
+          .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, input.orderId)))
+          .limit(1);
+        if (!orderRow) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
+        }
+        if (!canReopenPaidOrderForPaymentReview(orderRow)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Only paid orders that have not entered delivery can be moved back into payment review.",
+          });
+        }
+
+        const [latestPayment] = await tx
+          .select()
+          .from(orderPayments)
+          .where(and(eq(orderPayments.businessId, ctx.businessId), eq(orderPayments.orderId, orderRow.id)))
+          .orderBy(desc(orderPayments.createdAt), desc(orderPayments.id))
+          .limit(1);
+
+        let updatedPayment = latestPayment ?? null;
+        let nextOrderStatus: "approved" | "awaiting_payment" | "payment_submitted" =
+          String(orderRow.paymentMethod || "").trim().toLowerCase() === "bank_qr" ? "awaiting_payment" : "approved";
+
+        if (latestPayment) {
+          nextOrderStatus = "payment_submitted";
+          const nextNotes = [normalizedReason, latestPayment.aiCheckNotes?.trim() || ""]
+            .filter(Boolean)
+            .join(" ");
+          const [reopenedPayment] = await tx
+            .update(orderPayments)
+            .set({
+              status: "submitted",
+              aiCheckStatus: "manual_review",
+              aiCheckNotes: nextNotes || null,
+              updatedAt: now,
+            })
+            .where(eq(orderPayments.id, latestPayment.id))
+            .returning();
+          updatedPayment = reopenedPayment ?? latestPayment;
+        }
+
+        const [updatedOrder] = await tx
+          .update(orders)
+          .set({
+            status: nextOrderStatus,
+            fulfillmentStatus: "on_hold",
+            fulfillmentUpdatedAt: now,
+            paidAmount:
+              nextOrderStatus === "payment_submitted"
+                ? (updatedPayment?.paidAmount ?? orderRow.paidAmount)
+                : null,
+            paymentApprovedAt: null,
+            paymentRejectedAt: null,
+            invoiceNumber: null,
+            invoiceUrl: null,
+            invoiceStoragePath: null,
+            invoiceFileName: null,
+            invoiceStatus: "not_sent",
+            invoiceDeliveryMethod: null,
+            invoiceGeneratedAt: null,
+            invoiceSentAt: null,
+            updatedAt: now,
+          })
+          .where(eq(orders.id, orderRow.id))
+          .returning();
+
+        if (!updatedOrder) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to reopen paid order." });
+        }
+
+        return { updatedOrder, updatedPayment };
+      });
+
+      await logOrderEvent({
+        businessId: ctx.businessId,
+        orderId: result.updatedOrder.id,
+        eventType: "payment_reopened",
+        actorType: "user",
+        actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+        actorLabel: ctx.userEmail ?? "user",
+        payload: {
+          reason: normalizedReason,
+          nextStatus: result.updatedOrder.status,
+          paymentId: result.updatedPayment?.id ?? null,
+        },
+      });
+
+      await publishPortalEvent({
+        businessId: ctx.businessId,
+        entity: "order",
+        op: "upsert",
+        entityId: result.updatedOrder.id,
+        payload: { order: result.updatedOrder as any },
+        createdAt: result.updatedOrder.updatedAt ?? now,
+      });
+
+      recordBusinessEvent({
+        event: "order.payment_reopened",
+        action: "reopenPaidOrderForPaymentReview",
+        area: "order",
+        businessId: ctx.businessId,
+        entity: "order",
+        entityId: result.updatedOrder.id,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: "success",
+        status: result.updatedOrder.status,
+        attributes: {
+          payment_id: result.updatedPayment?.id ?? null,
+        },
+      });
+
+      return { order: result.updatedOrder, payment: result.updatedPayment };
     }),
 
   updateRefundStatus: businessProcedure

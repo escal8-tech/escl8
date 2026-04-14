@@ -68,6 +68,88 @@ export const messagesRouter = router({
       return rows;
     }),
 
+  listRecentThreadsPage: businessProcedure
+    .input(
+      z.object({
+        limit: z.number().int().min(1).max(200).optional().default(50),
+        whatsappIdentityId: z.string().nullish(),
+        query: z.string().trim().max(120).optional(),
+        cursorThreadId: z.string().optional(),
+        cursorSortAt: z.string().datetime().optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const whereConditions = [
+        eq(messageThreads.businessId, ctx.businessId),
+        isNull(messageThreads.deletedAt),
+        eq(customers.businessId, ctx.businessId),
+        isNull(customers.deletedAt),
+      ];
+
+      if (input.whatsappIdentityId) {
+        whereConditions.push(eq(messageThreads.whatsappIdentityId, input.whatsappIdentityId));
+      }
+
+      const trimmedQuery = String(input.query || "").trim();
+      if (trimmedQuery) {
+        const pattern = `%${trimmedQuery}%`;
+        whereConditions.push(
+          or(
+            ilike(customers.name, pattern),
+            ilike(customers.phone, pattern),
+            ilike(customers.externalId, pattern),
+          )!,
+        );
+      }
+
+      const sortAtExpr = sql<Date>`coalesce(${messageThreads.lastMessageAt}, ${messageThreads.createdAt})`;
+      if (input.cursorThreadId && input.cursorSortAt) {
+        const cursorSortAt = new Date(input.cursorSortAt);
+        whereConditions.push(
+          or(
+            lt(sortAtExpr, cursorSortAt),
+            and(eq(sortAtExpr, cursorSortAt), lt(messageThreads.id, input.cursorThreadId)),
+          )!,
+        );
+      }
+
+      const rows = await db
+        .select({
+          threadId: messageThreads.id,
+          customerId: customers.id,
+          customerName: customers.name,
+          customerExternalId: customers.externalId,
+          customerPhone: customers.phone,
+          customerSource: customers.source,
+          status: messageThreads.status,
+          lastMessageAt: messageThreads.lastMessageAt,
+          threadCreatedAt: messageThreads.createdAt,
+          whatsappIdentityId: messageThreads.whatsappIdentityId,
+          sortAt: sortAtExpr,
+        })
+        .from(messageThreads)
+        .innerJoin(customers, eq(messageThreads.customerId, customers.id))
+        .where(and(...whereConditions))
+        .orderBy(desc(sortAtExpr), desc(messageThreads.id))
+        .limit(input.limit + 1);
+
+      const hasMore = rows.length > input.limit;
+      const items = hasMore ? rows.slice(0, input.limit) : rows;
+      const lastItem = items[items.length - 1];
+
+      return {
+        items,
+        hasMore,
+        nextCursor:
+          hasMore && lastItem
+            ? {
+                threadId: lastItem.threadId,
+                sortAt: lastItem.sortAt instanceof Date ? lastItem.sortAt.toISOString() : new Date(lastItem.sortAt).toISOString(),
+              }
+            : null,
+      };
+    }),
+
   /**
    * Search customers by phone/externalId for the current business.
    * Defaults to WhatsApp customers.

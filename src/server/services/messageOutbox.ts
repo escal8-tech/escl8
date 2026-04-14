@@ -72,7 +72,7 @@ function normalizeOutboxEmail(value: unknown): BusinessEmailMessage | null {
   };
 }
 
-function buildOutboxAssistantObservation(input: {
+export function buildOutboxAssistantObservation(input: {
   source: string;
   message: BotSendMessage;
 }): { text: string; intent: string } | null {
@@ -87,12 +87,17 @@ function buildOutboxAssistantObservation(input: {
   ).trim();
   if (!text) return null;
   if (
-    source.startsWith("order_approved")
+    source.startsWith("order_ticket_approval")
+    || source.startsWith("order_approved")
+    || source.startsWith("order_payment_details_manual_send")
     || source.startsWith("order_payment_approved")
     || source.startsWith("order_payment_rejected")
     || source.startsWith("order_manual_payment_collected")
   ) {
     return { text, intent: "paymentstatus" };
+  }
+  if (source.startsWith("order_ticket_denied")) {
+    return { text, intent: "orderstatus" };
   }
   if (source === "order_fulfillment_update") {
     return { text, intent: "orderstatus" };

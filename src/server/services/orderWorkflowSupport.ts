@@ -84,10 +84,28 @@ export type OrderWorkspaceFilter = PaymentQueueFilter | OrderStatusQueueFilter |
 const PAYMENT_SETUP_EDITABLE_ORDER_STATUSES = new Set([
   "approved",
   "awaiting_payment",
-  "payment_submitted",
   "payment_rejected",
 ]);
 const FULFILLMENT_MUTABLE_ORDER_STATUSES = new Set(["paid", "refund_pending", "refunded"]);
+
+export function canResendPaymentDetails(orderRow: {
+  paymentMethod?: string | null;
+  status?: string | null;
+}): boolean {
+  const method = String(orderRow.paymentMethod || "").trim().toLowerCase();
+  const status = String(orderRow.status || "").trim().toLowerCase();
+  return method === "bank_qr" && ["awaiting_payment", "payment_submitted", "payment_rejected"].includes(status);
+}
+
+export function canReopenPaidOrderForPaymentReview(orderRow: {
+  status?: string | null;
+  fulfillmentStatus?: string | null;
+}): boolean {
+  const status = String(orderRow.status || "").trim().toLowerCase();
+  if (status !== "paid") return false;
+  const fulfillment = normalizeOrderFulfillmentStatus(orderRow.fulfillmentStatus);
+  return !["dispatched", "out_for_delivery", "delivered", "failed_delivery", "returned"].includes(fulfillment);
+}
 
 export function resolveOrderLedgerAmount(
   orderRow: {

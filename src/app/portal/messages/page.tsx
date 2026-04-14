@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
@@ -109,6 +109,7 @@ export default function MessagesPage() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "thread" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
@@ -132,6 +133,22 @@ export default function MessagesPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [threadItems, setThreadItems] = useState<Array<{
+    threadId: string;
+    customerId: string;
+    customerName: string | null;
+    customerExternalId: string | null;
+    customerPhone: string | null;
+    customerSource: string | null;
+    status: string | null;
+    lastMessageAt: Date | null;
+    threadCreatedAt: Date;
+    whatsappIdentityId: string | null;
+    sortAt: Date;
+  }>>([]);
+  const [threadCursor, setThreadCursor] = useState<{ threadId: string; sortAt: string } | null>(null);
+  const [threadHasMore, setThreadHasMore] = useState(false);
+  const [isLoadingMoreThreads, setIsLoadingMoreThreads] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
 
@@ -142,23 +159,53 @@ export default function MessagesPage() {
     }),
     [selectedPhoneNumberId],
   );
-  const recentThreadsQuery = trpc.messages.listRecentThreads.useQuery(threadListInput);
+  const threadPageInput = useMemo(
+    () => ({
+      limit: 50,
+      ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
+      ...(deferredSearchQuery.trim() ? { query: deferredSearchQuery.trim() } : {}),
+      ...(threadCursor ? { cursorThreadId: threadCursor.threadId, cursorSortAt: threadCursor.sortAt } : {}),
+    }),
+    [selectedPhoneNumberId, deferredSearchQuery, threadCursor],
+  );
+  const threadPageQuery = trpc.messages.listRecentThreadsPage.useQuery(threadPageInput);
   const sendTextMutation = trpc.messages.sendText.useMutation();
   const sendMediaMutation = trpc.messages.sendMedia.useMutation();
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const attachmentsRef = useRef<ComposerAttachment[]>([]);
 
-  const filteredThreads = useMemo(() => {
-    const threads = recentThreadsQuery.data ?? [];
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return threads;
-    return threads.filter((t) => {
-      const name = (t.customerName ?? "").toLowerCase();
-      const phone = (t.customerPhone ?? "").toLowerCase();
-      const extId = (t.customerExternalId ?? "").toLowerCase();
-      return name.includes(q) || phone.includes(q) || extId.includes(q);
+  useEffect(() => {
+    setThreadItems([]);
+    setThreadCursor(null);
+    setThreadHasMore(false);
+    setIsLoadingMoreThreads(false);
+  }, [selectedPhoneNumberId, deferredSearchQuery]);
+
+  useEffect(() => {
+    const data = threadPageQuery.data;
+    if (!data) return;
+    setThreadItems((prev) => {
+      const incoming = data.items.map((item) => ({
+        ...item,
+        lastMessageAt: item.lastMessageAt ? new Date(item.lastMessageAt) : null,
+        threadCreatedAt: new Date(item.threadCreatedAt),
+        sortAt: new Date(item.sortAt),
+      }));
+      if (!prev.length || !threadCursor) return incoming;
+      const merged = [...prev];
+      for (const item of incoming) {
+        const index = merged.findIndex((existing) => existing.threadId === item.threadId);
+        if (index >= 0) merged[index] = item;
+        else merged.push(item);
+      }
+      merged.sort((a, b) => b.sortAt.getTime() - a.sortAt.getTime() || b.threadId.localeCompare(a.threadId));
+      return merged;
     });
-  }, [recentThreadsQuery.data, searchQuery]);
+    setThreadHasMore(Boolean(data.hasMore));
+    setIsLoadingMoreThreads(false);
+  }, [threadPageQuery.data, threadCursor]);
+
+  const filteredThreads = threadItems;
 
   const deepLinkThreadId = useMemo(() => {
     if (!filteredThreads.length) return null;
@@ -178,6 +225,8 @@ export default function MessagesPage() {
   }, [filteredThreads, searchParams]);
 
   const activeThreadId = useMemo(() => {
+    const requestedThreadId = String(searchParams?.get("threadId") || "").trim();
+    if (requestedThreadId) return requestedThreadId;
     if (deepLinkThreadId && filteredThreads.some((t) => t.threadId === deepLinkThreadId)) {
       return deepLinkThreadId;
     }
@@ -185,7 +234,7 @@ export default function MessagesPage() {
       return selectedThreadId;
     }
     return null;
-  }, [selectedThreadId, deepLinkThreadId, filteredThreads]);
+  }, [selectedThreadId, deepLinkThreadId, filteredThreads, searchParams]);
   const selectedThread = useMemo(() => {
     if (!activeThreadId) return null;
     return filteredThreads.find((t) => t.threadId === activeThreadId) ?? null;
@@ -552,7 +601,7 @@ export default function MessagesPage() {
 
         {/* Contact list */}
         <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-          {recentThreadsQuery.isLoading ? (
+          {threadPageQuery.isLoading && !threadItems.length ? (
             <div style={{ color: "var(--muted)", padding: 20, fontSize: 13, textAlign: "center" }}>
               Loading conversations…
             </div>
@@ -561,7 +610,8 @@ export default function MessagesPage() {
               {searchQuery.trim() ? "No conversations match your search" : "No conversations yet"}
             </div>
           ) : (
-            filteredThreads.map((t) => {
+            <>
+            {filteredThreads.map((t) => {
               const isSelected = t.threadId === activeThreadId;
               const displayName = t.customerName;
               const phone = t.customerPhone ? `+${t.customerPhone}` : t.customerExternalId;
@@ -622,7 +672,38 @@ export default function MessagesPage() {
                   </div>
                 </div>
               );
-            })
+            })}
+            {threadHasMore ? (
+              <div style={{ padding: isMobile ? "12px" : "12px 16px", display: "flex", justifyContent: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isLoadingMoreThreads || !threadHasMore || !threadItems.length) return;
+                    const lastThread = threadItems[threadItems.length - 1];
+                    setIsLoadingMoreThreads(true);
+                    setThreadCursor({
+                      threadId: lastThread.threadId,
+                      sortAt: lastThread.sortAt.toISOString(),
+                    });
+                  }}
+                  disabled={isLoadingMoreThreads}
+                  style={{
+                    minWidth: 148,
+                    height: 36,
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    background: "rgba(255,255,255,0.03)",
+                    color: "var(--foreground)",
+                    fontSize: 13,
+                    cursor: isLoadingMoreThreads ? "not-allowed" : "pointer",
+                    opacity: isLoadingMoreThreads ? 0.6 : 1,
+                  }}
+                >
+                  {isLoadingMoreThreads ? "Loading…" : "Load More"}
+                </button>
+              </div>
+            ) : null}
+            </>
           )}
         </div>
       </div>
