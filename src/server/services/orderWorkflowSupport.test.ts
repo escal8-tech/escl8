@@ -4,6 +4,8 @@ import {
   assertOrderAllowsFulfillmentUpdates,
   assertPaymentReviewAllowed,
   assertPaymentSetupEditable,
+  canReopenPaidOrderForPaymentReview,
+  canResendPaymentDetails,
   nextFulfillmentTimestamps,
   resolveRefundAmount,
 } from "@/server/services/orderWorkflowSupport";
@@ -44,7 +46,20 @@ test("manual payments can still be approved", () => {
 
 test("payment setup editing is blocked after payment is finalized", () => {
   assert.throws(() => assertPaymentSetupEditable({ status: "paid" }), /before the payment is approved/i);
-  assert.doesNotThrow(() => assertPaymentSetupEditable({ status: "payment_submitted" }));
+  assert.throws(() => assertPaymentSetupEditable({ status: "payment_submitted" }), /before the payment is approved/i);
+  assert.doesNotThrow(() => assertPaymentSetupEditable({ status: "payment_rejected" }));
+});
+
+test("payment detail resend stays available during payment review", () => {
+  assert.equal(canResendPaymentDetails({ paymentMethod: "bank_qr", status: "awaiting_payment" }), true);
+  assert.equal(canResendPaymentDetails({ paymentMethod: "bank_qr", status: "payment_submitted" }), true);
+  assert.equal(canResendPaymentDetails({ paymentMethod: "bank_qr", status: "paid" }), false);
+});
+
+test("paid orders can only reopen payment review before delivery starts", () => {
+  assert.equal(canReopenPaidOrderForPaymentReview({ status: "paid", fulfillmentStatus: "queued" }), true);
+  assert.equal(canReopenPaidOrderForPaymentReview({ status: "paid", fulfillmentStatus: "out_for_delivery" }), false);
+  assert.equal(canReopenPaidOrderForPaymentReview({ status: "awaiting_payment", fulfillmentStatus: "on_hold" }), false);
 });
 
 test("fulfillment updates are restricted to paid and refund-tracked orders", () => {

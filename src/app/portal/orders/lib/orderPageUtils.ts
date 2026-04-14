@@ -223,10 +223,20 @@ export function canRecordManualPayment(order: OrderRow): boolean {
   return isManualCollectionOrder(order) && getOrderStatus(order) === "approved";
 }
 
+export function canEditPaymentSetup(order: OrderRow): boolean {
+  return ["approved", "awaiting_payment", "payment_rejected"].includes(getOrderStatus(order));
+}
+
 export function needsPaymentDetailsWorkflow(order: OrderRow): boolean {
   const method = String(order.paymentMethod || "").trim().toLowerCase();
   const status = getOrderStatus(order);
-  return method === "bank_qr" && ["awaiting_payment", "payment_rejected"].includes(status);
+  return method === "bank_qr" && ["awaiting_payment", "payment_submitted", "payment_rejected"].includes(status);
+}
+
+export function canReopenPaidOrderForPaymentReview(order: OrderRow): boolean {
+  if (getOrderStatus(order) !== "paid") return false;
+  const fulfillment = getFulfillmentStatus(order);
+  return !["dispatched", "out_for_delivery", "delivered", "failed_delivery", "returned"].includes(fulfillment);
 }
 
 function resolveWhatsAppWindowExpiresAt(order: OrderRow): Date | null {

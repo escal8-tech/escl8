@@ -16,6 +16,7 @@ import {
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import { trpc } from "@/utils/trpc";
 import {
+  canReopenPaidOrderForPaymentReview,
   formatMoney,
   resolveOrderAmount,
   toDateTimeLocalValue,
@@ -166,6 +167,16 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
       ]);
     },
   });
+  const sendPaymentDetails = trpc.orders.sendPaymentDetails.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.orders.listOrdersPage.invalidate(),
+        utils.orders.getOverview.invalidate(),
+        utils.orders.getOrderById.invalidate(),
+        utils.orders.getOrderEvents.invalidate(),
+      ]);
+    },
+  });
   const reviewPayment = trpc.orders.reviewPayment.useMutation({
     onSuccess: async () => {
       await Promise.all([
@@ -219,6 +230,17 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
       ]);
     },
   });
+  const reopenPaidOrderForPaymentReview = trpc.orders.reopenPaidOrderForPaymentReview.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.orders.listOrdersPage.invalidate(),
+        utils.orders.getOverview.invalidate(),
+        utils.orders.getOrderById.invalidate(),
+        utils.orders.getOrderPayments.invalidate(),
+        utils.orders.getOrderEvents.invalidate(),
+      ]);
+    },
+  });
 
   useLivePortalEvents({
     orderLedgerInput,
@@ -260,11 +282,13 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
     updateDraftOrder.isPending
     || approveOrderTicket.isPending
     || updatePaymentSetup.isPending
+    || sendPaymentDetails.isPending
     || reviewPayment.isPending
     || updateFulfillment.isPending
     || captureManualPayment.isPending
     || denyPendingPaymentOrder.isPending
-    || updateRefundStatus.isPending;
+    || updateRefundStatus.isPending
+    || reopenPaidOrderForPaymentReview.isPending;
 
   const summaryCards = useMemo(() => {
     if (mode === "payments") {
@@ -396,6 +420,50 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
       showErrorToast(toast, {
         title: "Could not save payment details",
         message: error instanceof Error ? error.message : "Payment setup update failed.",
+      });
+    }
+  };
+
+  const handleSendPaymentDetails = async (order: OrderRow) => {
+    try {
+      const result = await sendPaymentDetails.mutateAsync({ orderId: order.id });
+      showSuccessToast(toast, {
+        title: "Payment details sent",
+        message: result.ok
+          ? "The customer received the payment instructions again."
+          : (result.error || "Payment instructions could not be delivered."),
+      });
+    } catch (error) {
+      showErrorToast(toast, {
+        title: "Could not send payment details",
+        message: error instanceof Error ? error.message : "Payment details resend failed.",
+      });
+    }
+  };
+
+  const handleReopenPaidOrder = async (order: OrderRow) => {
+    if (!canReopenPaidOrderForPaymentReview(order)) {
+      showErrorToast(toast, {
+        title: "Cannot reopen payment review",
+        message: "Only paid orders that have not entered delivery can be moved back into payment review.",
+      });
+      return;
+    }
+    const reason = window.prompt("Reason for reopening this paid order", "Payment approval was added by mistake");
+    if (reason === null) return;
+    try {
+      await reopenPaidOrderForPaymentReview.mutateAsync({
+        orderId: order.id,
+        reason: reason.trim() || undefined,
+      });
+      showSuccessToast(toast, {
+        title: "Moved back to payment queue",
+        message: "The order is back under payment review and will no longer stay in order status.",
+      });
+    } catch (error) {
+      showErrorToast(toast, {
+        title: "Could not reopen payment review",
+        message: error instanceof Error ? error.message : "Reopening the paid order failed.",
       });
     }
   };
@@ -631,6 +699,8 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
         onApproveDraftOrder={handleApproveDraftOrder}
         onUpdateFulfillment={handleFulfillmentUpdate}
         onUpdatePaymentSetup={handleSavePaymentSetup}
+        onSendPaymentDetails={handleSendPaymentDetails}
+        onReopenPaidOrderForPaymentReview={handleReopenPaidOrder}
         onUpdateRefundStatus={handleRefundAction}
         busy={isBusy}
       />

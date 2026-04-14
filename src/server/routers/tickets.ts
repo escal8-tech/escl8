@@ -8,6 +8,7 @@ import {
   businesses,
   customers,
   orders,
+  orderPayments,
   supportTicketEvents,
   supportTicketTypes,
   supportTickets,
@@ -1295,18 +1296,38 @@ export const ticketsRouter = router({
         });
 
         const [existingOrder] = await tx
-          .select({
-            id: orders.id,
-            status: orders.status,
-          })
+          .select()
           .from(orders)
           .where(and(eq(orders.businessId, ctx.businessId), eq(orders.supportTicketId, input.id)))
           .limit(1);
+        let deniedOrder: typeof orders.$inferSelect | null = null;
         if (existingOrder) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Ticket already has a linked order (${existingOrder.status || "existing"}) and cannot be denied.`,
-          });
+          await tx
+            .update(orderPayments)
+            .set({
+              status: "rejected",
+              aiCheckNotes: normalizedReason,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(orderPayments.businessId, ctx.businessId),
+                eq(orderPayments.orderId, existingOrder.id),
+                eq(orderPayments.status, "submitted"),
+              ),
+            );
+
+          const [updatedOrder] = await tx
+            .update(orders)
+            .set({
+              status: "denied",
+              paymentApprovedAt: null,
+              paymentRejectedAt: now,
+              updatedAt: now,
+            })
+            .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, existingOrder.id)))
+            .returning();
+          deniedOrder = updatedOrder ?? existingOrder;
         }
 
         const [ticketRow] = await tx
@@ -1354,7 +1375,7 @@ export const ticketsRouter = router({
 
         return {
           ticket: ticketRow ?? null,
-          order: null,
+          order: deniedOrder,
           notification,
         };
       });
@@ -1372,9 +1393,33 @@ export const ticketsRouter = router({
         actorLabel: ctx.userEmail ?? "user",
         payload: {
           reason: normalizedReason,
-          orderId: null,
+          orderId: result.order?.id ?? null,
         },
       });
+      if (result.order) {
+        await logOrderEvent({
+          businessId: ctx.businessId,
+          orderId: result.order.id,
+          eventType: "denied",
+          actorType: "user",
+          actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+          actorLabel: ctx.userEmail ?? "user",
+          payload: {
+            reason: normalizedReason,
+            supportTicketId: result.ticket.id,
+          },
+        });
+        await publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "order",
+          op: "upsert",
+          entityId: result.order.id,
+          payload: {
+            order: result.order as any,
+          },
+          createdAt: result.order.updatedAt ?? now,
+        });
+      }
 
       let delivery: {
         ok: boolean;
@@ -1440,7 +1485,7 @@ export const ticketsRouter = router({
         outcome: delivery.ok ? "success" : "degraded",
         status: "denied",
         attributes: {
-          order_id: null,
+          order_id: result.order?.id ?? null,
           reason: normalizedReason,
           delivery_ok: delivery.ok,
           delivery_phone_source: delivery.recipientSource,
