@@ -17,6 +17,7 @@ import {
   getDeliverySummary,
   getFulfillmentStatus,
   getOrderStatus,
+  isPickupOrder,
   normalizeStatusLabel,
   needsPaymentDetailsWorkflow,
   numericAmount,
@@ -66,6 +67,8 @@ function simpleFulfillmentBucket(order: OrderRow): "pending" | "out_for_delivery
 
 function simpleFulfillmentLabel(order: OrderRow): string {
   const bucket = simpleFulfillmentBucket(order);
+  if (isPickupOrder(order) && bucket === "pending") return "Pickup";
+  if (isPickupOrder(order) && bucket === "completed") return "Picked Up";
   if (bucket === "out_for_delivery") return "Out For Delivery";
   if (bucket === "completed") return "Completed";
   return "Pending";
@@ -73,6 +76,7 @@ function simpleFulfillmentLabel(order: OrderRow): string {
 
 function simpleFulfillmentTone(order: OrderRow): string {
   const bucket = simpleFulfillmentBucket(order);
+  if (isPickupOrder(order) && bucket === "pending") return "portal-pill portal-pill--info";
   if (bucket === "completed") return "portal-pill portal-pill--success";
   if (bucket === "out_for_delivery") return "portal-pill portal-pill--info";
   return "portal-pill portal-pill--warning";
@@ -229,6 +233,7 @@ export function StatusTable({
       <tbody>
         {rows.map((order) => {
           const bucket = simpleFulfillmentBucket(order);
+          const pickupOrder = isPickupOrder(order);
           return (
             <tr key={order.id} onClick={() => onOpen(order.id)} style={{ cursor: "pointer" }}>
               <td data-label="Order">
@@ -263,7 +268,9 @@ export function StatusTable({
               <td data-label="Updated" className="portal-meta-text">{formatDate(order.updatedAt)}</td>
               <td data-label="Action" style={{ textAlign: "right" }} onClick={(event) => event.stopPropagation()}>
                 {bucket === "pending" ? (
-                  <button type="button" className="btn btn-primary" disabled={busy} onClick={() => onDispatch(order)}>Dispatch</button>
+                  <button type="button" className="btn btn-primary" disabled={busy} onClick={() => (pickupOrder ? onComplete(order) : onDispatch(order))}>
+                    {pickupOrder ? "Complete Pickup" : "Dispatch"}
+                  </button>
                 ) : bucket === "out_for_delivery" ? (
                   <button type="button" className="btn btn-primary" disabled={busy} onClick={() => onComplete(order)}>Complete</button>
                 ) : (
@@ -445,7 +452,7 @@ export function OrderWorkspaceDrawer({
   const [recipientName, setRecipientName] = useState(() => String(order?.recipientName || order?.customerName || "").trim());
   const [recipientPhone, setRecipientPhone] = useState(() => String(order?.recipientPhone || order?.customerPhone || "").trim());
   const [shippingAddress, setShippingAddress] = useState(() => String(order?.shippingAddress || "").trim());
-  const [deliveryArea, setDeliveryArea] = useState(() => String(order?.deliveryArea || "").trim());
+  const [deliveryArea, setDeliveryArea] = useState(() => String(order?.deliveryArea || order?.shippingAddress || "").trim());
   const [deliveryNotes, setDeliveryNotes] = useState(() => String(order?.deliveryNotes || "").trim());
   const [courierName, setCourierName] = useState(() => String(order?.courierName || "").trim());
   const [trackingNumber, setTrackingNumber] = useState(() => String(order?.trackingNumber || "").trim());
@@ -455,6 +462,7 @@ export function OrderWorkspaceDrawer({
   const [fulfillmentNotes, setFulfillmentNotes] = useState(() => String(order?.fulfillmentNotes || "").trim());
 
   if (!order) return null;
+  const pickupOrder = isPickupOrder(order);
 
   const expectedUpdatedAt = toMutationDate(order.updatedAt);
   const payments = (paymentsQuery.data ?? []) as OrderPaymentRow[];
@@ -666,26 +674,37 @@ export function OrderWorkspaceDrawer({
             {showDeliveryDetails ? (
               <div className="card">
                 <div className="card-body" style={{ display: "grid", gap: 10 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>Delivery Details</div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{pickupOrder ? "Pickup Details" : "Delivery Details"}</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                     <Field label="Recipient Name" value={recipientName} onChange={setRecipientName} placeholder="Receiver name" />
                     <Field label="Recipient Phone" value={recipientPhone} onChange={setRecipientPhone} placeholder="Receiver phone" />
-                    <Field label="Delivery Area" value={deliveryArea} onChange={setDeliveryArea} placeholder="Area" />
-                    <Field
-                      label="Scheduled Delivery"
-                      value={scheduledDeliveryAt}
-                      onChange={setScheduledDeliveryAt}
-                      placeholder=""
-                      type="datetime-local"
-                      className="portal-field--full"
-                    />
-                    <Field label="Courier Name" value={courierName} onChange={setCourierName} placeholder="Courier" />
-                    <Field label="Tracking Number" value={trackingNumber} onChange={setTrackingNumber} placeholder="Tracking number" />
-                    <Field label="Dispatch Reference" value={dispatchReference} onChange={setDispatchReference} placeholder="Dispatch reference" />
-                    <Field label="Tracking URL" value={trackingUrl} onChange={setTrackingUrl} placeholder="https://..." />
+                    {pickupOrder ? (
+                      <div className="portal-field portal-field--full">
+                        <div className="portal-field__label">Collection Method</div>
+                        <div className="portal-detail-value">Pickup</div>
+                      </div>
+                    ) : (
+                      <>
+                        <Field label="Delivery Area" value={deliveryArea} onChange={setDeliveryArea} placeholder="Area" />
+                        <Field
+                          label="Scheduled Delivery"
+                          value={scheduledDeliveryAt}
+                          onChange={setScheduledDeliveryAt}
+                          placeholder=""
+                          type="datetime-local"
+                          className="portal-field--full"
+                        />
+                        <Field label="Courier Name" value={courierName} onChange={setCourierName} placeholder="Courier" />
+                        <Field label="Tracking Number" value={trackingNumber} onChange={setTrackingNumber} placeholder="Tracking number" />
+                        <Field label="Dispatch Reference" value={dispatchReference} onChange={setDispatchReference} placeholder="Dispatch reference" />
+                        <Field label="Tracking URL" value={trackingUrl} onChange={setTrackingUrl} placeholder="https://..." />
+                      </>
+                    )}
                   </div>
-                  <TextAreaField label="Shipping Address" value={shippingAddress} onChange={setShippingAddress} placeholder="Delivery address" />
-                  <TextAreaField label="Delivery Notes" value={deliveryNotes} onChange={setDeliveryNotes} placeholder="Landmarks or instructions" />
+                  {!pickupOrder ? (
+                    <TextAreaField label="Shipping Address" value={shippingAddress} onChange={setShippingAddress} placeholder="Delivery address" />
+                  ) : null}
+                  <TextAreaField label={pickupOrder ? "Pickup Notes" : "Delivery Notes"} value={deliveryNotes} onChange={setDeliveryNotes} placeholder={pickupOrder ? "Pickup instructions" : "Landmarks or instructions"} />
                   <TextAreaField label="Fulfilment Notes" value={fulfillmentNotes} onChange={setFulfillmentNotes} placeholder="Internal notes for dispatch" />
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <button
@@ -701,15 +720,15 @@ export function OrderWorkspaceDrawer({
                         deliveryArea,
                         deliveryNotes,
                         courierName,
-                        trackingNumber,
-                        trackingUrl,
-                        dispatchReference,
-                        scheduledDeliveryAt: toIsoFromDateTimeLocal(scheduledDeliveryAt),
+                        trackingNumber: pickupOrder ? "" : trackingNumber,
+                        trackingUrl: pickupOrder ? "" : trackingUrl,
+                        dispatchReference: pickupOrder ? "" : dispatchReference,
+                        scheduledDeliveryAt: pickupOrder ? undefined : toIsoFromDateTimeLocal(scheduledDeliveryAt),
                         fulfillmentNotes,
                         notifyCustomer: false,
                       })}
                     >
-                      Save Delivery Details
+                      {pickupOrder ? "Save Pickup Details" : "Save Delivery Details"}
                     </button>
                   </div>
                 </div>
@@ -791,22 +810,22 @@ export function OrderWorkspaceDrawer({
                 onClick={() => void onUpdateFulfillment({
                   orderId: order.id,
                   expectedUpdatedAt,
-                  fulfillmentStatus: "out_for_delivery",
+                  fulfillmentStatus: pickupOrder ? "delivered" : "out_for_delivery",
                   recipientName,
                   recipientPhone,
                   shippingAddress,
                   deliveryArea,
                   deliveryNotes,
-                  courierName,
-                  trackingNumber,
-                  trackingUrl,
-                  dispatchReference,
-                  scheduledDeliveryAt: toIsoFromDateTimeLocal(scheduledDeliveryAt),
+                  courierName: pickupOrder ? "" : courierName,
+                  trackingNumber: pickupOrder ? "" : trackingNumber,
+                  trackingUrl: pickupOrder ? "" : trackingUrl,
+                  dispatchReference: pickupOrder ? "" : dispatchReference,
+                  scheduledDeliveryAt: pickupOrder ? undefined : toIsoFromDateTimeLocal(scheduledDeliveryAt),
                   fulfillmentNotes,
                   notifyCustomer: true,
                 })}
               >
-                Dispatch
+                {pickupOrder ? "Complete Pickup" : "Dispatch"}
               </button>
             ) : null}
             {showDeliveryDetails && simpleFulfillmentBucket(order) === "out_for_delivery" ? (

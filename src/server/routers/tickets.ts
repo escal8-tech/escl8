@@ -23,10 +23,12 @@ import { drainBusinessOutbox, enqueueEmailOutboxMessages, enqueueWhatsAppOutboxM
 import {
   buildOrderApprovalEmail,
   buildOrderApprovalMessages,
+  buildOrderDeliveryDetailsRequestMessages,
   computeOrderExpectedAmount,
   extractOrderFulfillmentSeed,
   formatOrderItemsSummary,
   logOrderEvent,
+  missingRequiredOrderDeliveryFields,
   sanitizePhoneDigits,
 } from "../services/orderFlow";
 import {
@@ -792,13 +794,7 @@ export const ticketsRouter = router({
       const customerEmail = coalesceText(requestedCustomerEmail, contactContext.customerEmail);
       const approvalRecipient = sanitizePhoneDigits(contactContext.approvalRecipient);
       const now = new Date();
-      const nextOrderStatus = orderSettings.paymentMethod === "bank_qr" ? "awaiting_payment" : "approved";
       const initialFulfillmentStatus = resolveInitialFulfillmentStatus(orderSettings.paymentMethod);
-      const fulfillmentSeed = extractOrderFulfillmentSeed({
-        fields,
-        customerName: contactContext.customerName ?? ticket.customerName,
-        customerPhone: contactContext.customerPhone ?? ticket.customerPhone,
-      });
       const ticketSnapshot = {
         ticketId: ticket.id,
         title: ticket.title ?? null,
@@ -806,11 +802,6 @@ export const ticketsRouter = router({
         fields,
         notes: ticket.notes ?? null,
         priority: ticket.priority ?? null,
-      };
-      const paymentConfigSnapshot = {
-        paymentMethod: orderSettings.paymentMethod,
-        currency: orderSettings.currency,
-        bankQr: orderSettings.bankQr,
       };
 
       const result = await db.transaction(async (tx) => {
@@ -871,11 +862,43 @@ export const ticketsRouter = router({
           });
         }
 
+        const fulfillmentSeed = extractOrderFulfillmentSeed({
+          fields,
+          customerName: contactContext.customerName ?? ticket.customerName,
+          customerPhone: contactContext.customerPhone ?? ticket.customerPhone,
+          useContactFallback: !shouldSendApprovalViaWhatsapp,
+        });
+        const missingDeliveryFields =
+          shouldSendApprovalViaWhatsapp && orderSettings.paymentMethod === "bank_qr"
+            ? missingRequiredOrderDeliveryFields({
+                recipientName: fulfillmentSeed.recipientName,
+                recipientPhone: fulfillmentSeed.recipientPhone,
+                shippingAddress: fulfillmentSeed.shippingAddress,
+              })
+            : [];
+        const shouldCollectDeliveryDetails =
+          shouldSendApprovalViaWhatsapp &&
+          orderSettings.paymentMethod === "bank_qr" &&
+          missingDeliveryFields.length > 0;
+        const nextOrderStatus =
+          shouldCollectDeliveryDetails
+            ? "approved"
+            : orderSettings.paymentMethod === "bank_qr"
+              ? "awaiting_payment"
+              : "approved";
+
         const orderId = existingOrder?.id ?? randomUUID();
         const paymentReference =
           orderSettings.paymentMethod === "bank_qr"
             ? coalesceText(existingOrder?.paymentReference, `ORD-${orderId.slice(0, 8).toUpperCase()}`)
             : null;
+        const paymentConfigSnapshot = {
+          paymentMethod: orderSettings.paymentMethod,
+          currency: orderSettings.currency,
+          bankQr: orderSettings.bankQr,
+          deliveryDetailsCollectionRequired: shouldCollectDeliveryDetails,
+          deliveryDetailsMissingFields: missingDeliveryFields,
+        };
 
         const baseOrderValues = {
           businessId: ctx.businessId,
@@ -991,6 +1014,13 @@ export const ticketsRouter = router({
           paymentReference: orderRow?.paymentReference ?? paymentReference,
           orderSettings,
         });
+        const deliveryDetailsMessages = buildOrderDeliveryDetailsRequestMessages({
+          orderId: orderRow?.id ?? orderId,
+          itemsSummary,
+          expectedAmount,
+          currency: orderSettings.currency,
+          missingFields: missingDeliveryFields,
+        });
         const approvalEmail = buildOrderApprovalEmail({
           orderId: orderRow?.id ?? orderId,
           customerName: contactContext.customerName ?? ticket.customerName,
@@ -1012,7 +1042,7 @@ export const ticketsRouter = router({
               whatsappIdentitySource: contactContext.whatsappIdentitySource,
               source: "order_ticket_approval",
               idempotencyBaseKey: `order_ticket:${ticket.id}:approval:${orderRow?.id ?? orderId}`,
-              messages: approvalMessages,
+              messages: shouldCollectDeliveryDetails ? deliveryDetailsMessages : approvalMessages,
             })
           : {
               ok: true as const,

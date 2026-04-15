@@ -80,6 +80,20 @@ export type OrderEventRow = {
   createdAt?: Date | string | null;
 };
 
+function normalizePickupMarker(value: unknown): string {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function isPickupOrder(order: OrderRow): boolean {
+  const shipping = normalizePickupMarker(order.shippingAddress);
+  const area = normalizePickupMarker(order.deliveryArea);
+  const notes = normalizePickupMarker(order.deliveryNotes);
+  return shipping === "pickup"
+    || area === "pickup"
+    || notes.includes("[pickup]")
+    || notes.startsWith("customer pickup");
+}
+
 export const PAGE_SIZE = 20;
 export const PROGRESS_FLOW: OrderFulfillmentStatus[] = [
   "on_hold",
@@ -358,6 +372,7 @@ export function fulfillmentToneClass(value: unknown): string {
 }
 
 export function getDeliverySummary(order: OrderRow): string {
+  if (isPickupOrder(order)) return "Pickup";
   const area = String(order.deliveryArea || "").trim();
   const address = String(order.shippingAddress || "").trim();
   const courier = String(order.courierName || "").trim();
@@ -371,6 +386,10 @@ export function getDeliverySummary(order: OrderRow): string {
 }
 
 export function getDeliveryHint(order: OrderRow): string {
+  if (isPickupOrder(order)) {
+    const contact = [order.recipientName, order.recipientPhone].filter(Boolean).join(" • ");
+    return contact || "Customer pickup";
+  }
   if (order.trackingUrl) return "Tracking link available";
   if (order.scheduledDeliveryAt) return `Scheduled ${formatDate(order.scheduledDeliveryAt)}`;
   if (order.recipientName || order.recipientPhone) {

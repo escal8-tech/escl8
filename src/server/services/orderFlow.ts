@@ -113,6 +113,14 @@ export type OrderFulfillmentSeed = {
   deliveryNotes: string | null;
 };
 
+export const REQUIRED_ORDER_DELIVERY_FIELDS = [
+  "recipient_name",
+  "recipient_phone",
+  "shipping_address",
+] as const;
+
+export type RequiredOrderDeliveryField = (typeof REQUIRED_ORDER_DELIVERY_FIELDS)[number];
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -290,6 +298,51 @@ export function buildOrderApprovalMessages(input: {
   return messages;
 }
 
+export function missingRequiredOrderDeliveryFields(input: {
+  recipientName?: string | null;
+  recipientPhone?: string | null;
+  shippingAddress?: string | null;
+}): RequiredOrderDeliveryField[] {
+  const missing: RequiredOrderDeliveryField[] = [];
+  if (!String(input.recipientName ?? "").trim()) missing.push("recipient_name");
+  if (!String(input.recipientPhone ?? "").trim()) missing.push("recipient_phone");
+  if (!String(input.shippingAddress ?? "").trim()) missing.push("shipping_address");
+  return missing;
+}
+
+function formatDeliveryFieldLabel(value: RequiredOrderDeliveryField): string {
+  if (value === "recipient_name") return "Full name";
+  if (value === "recipient_phone") return "Phone number";
+  return "Full delivery address";
+}
+
+export function buildOrderDeliveryDetailsRequestMessages(input: {
+  orderId: string;
+  itemsSummary: string;
+  expectedAmount: string | null;
+  currency?: string | null;
+  missingFields: RequiredOrderDeliveryField[];
+}): OrderApprovalMessage[] {
+  const missingFields = input.missingFields.length ? input.missingFields : [...REQUIRED_ORDER_DELIVERY_FIELDS];
+  const introLines = [
+    "Your order has been approved.",
+    `Order number: ${input.orderId.slice(0, 8).toUpperCase()}`,
+    `Items: ${input.itemsSummary}`,
+  ];
+  if (input.expectedAmount) {
+    introLines.push(`Total due: ${String(input.currency || "LKR").trim() || "LKR"} ${input.expectedAmount}`);
+  }
+  const detailLines = [
+    "Before I send the payment details, please reply in this chat with these delivery details:",
+    ...missingFields.map((field, index) => `${index + 1}. ${formatDeliveryFieldLabel(field)}`),
+    "You can send everything in one message.",
+  ];
+  return [
+    { type: "text", text: introLines.join("\n") },
+    { type: "text", text: detailLines.join("\n") },
+  ];
+}
+
 export function buildOrderApprovalEmail(input: {
   orderId: string;
   customerName?: string | null;
@@ -388,19 +441,23 @@ export function extractOrderFulfillmentSeed(input: {
   fields: Record<string, unknown>;
   customerName?: string | null;
   customerPhone?: string | null;
+  useContactFallback?: boolean;
 }): OrderFulfillmentSeed {
   const fields = input.fields;
+  const useContactFallback = input.useContactFallback !== false;
+  const shippingAddress =
+    findFieldValue(fields, "shippingaddress", "deliveryaddress", "address", "deliverylocation", "location");
+  const deliveryArea =
+    findFieldValue(fields, "deliveryarea", "area", "city", "town", "district", "region") ?? shippingAddress;
   return {
     recipientName:
       findFieldValue(fields, "recipientname", "receivername", "contactname", "deliveryname", "name") ??
-      (String(input.customerName ?? "").trim() || null),
+      (useContactFallback ? (String(input.customerName ?? "").trim() || null) : null),
     recipientPhone:
       findFieldValue(fields, "recipientphone", "receiverphone", "deliveryphone", "contactphone", "phone", "phonenumber") ??
-      (String(input.customerPhone ?? "").trim() || null),
-    shippingAddress:
-      findFieldValue(fields, "shippingaddress", "deliveryaddress", "address", "deliverylocation", "location"),
-    deliveryArea:
-      findFieldValue(fields, "deliveryarea", "area", "city", "town", "district", "region"),
+      (useContactFallback ? (String(input.customerPhone ?? "").trim() || null) : null),
+    shippingAddress,
+    deliveryArea,
     deliveryNotes:
       findFieldValue(fields, "deliverynotes", "deliverynote", "notes", "note", "landmark", "instructions"),
   };

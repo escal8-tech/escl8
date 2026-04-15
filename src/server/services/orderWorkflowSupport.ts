@@ -21,7 +21,7 @@ import {
 } from "../../../drizzle/schema";
 import { type BotSendMessage } from "@/server/services/botApi";
 import type { OrderEmailMessage } from "@/server/services/orderFlow";
-import { sanitizePhoneDigits } from "@/server/services/orderFlow";
+import { missingRequiredOrderDeliveryFields, sanitizePhoneDigits } from "@/server/services/orderFlow";
 
 const WHATSAPP_WINDOW_MS = 24 * 60 * 60 * 1000;
 const ORDER_OPERATION_LIMITS = {
@@ -91,10 +91,20 @@ const FULFILLMENT_MUTABLE_ORDER_STATUSES = new Set(["paid", "refund_pending", "r
 export function canResendPaymentDetails(orderRow: {
   paymentMethod?: string | null;
   status?: string | null;
+  recipientName?: string | null;
+  recipientPhone?: string | null;
+  shippingAddress?: string | null;
 }): boolean {
   const method = String(orderRow.paymentMethod || "").trim().toLowerCase();
   const status = String(orderRow.status || "").trim().toLowerCase();
-  return method === "bank_qr" && ["awaiting_payment", "payment_submitted", "payment_rejected"].includes(status);
+  if (method !== "bank_qr") return false;
+  if (["awaiting_payment", "payment_submitted", "payment_rejected"].includes(status)) return true;
+  if (status !== "approved") return false;
+  return missingRequiredOrderDeliveryFields({
+    recipientName: orderRow.recipientName,
+    recipientPhone: orderRow.recipientPhone,
+    shippingAddress: orderRow.shippingAddress,
+  }).length === 0;
 }
 
 export function canReopenPaidOrderForPaymentReview(orderRow: {

@@ -20,6 +20,7 @@ import {
   buildManualCollectionEmail,
   formatOrderItemsSummary,
   logOrderEvent,
+  missingRequiredOrderDeliveryFields,
   parseMoneyValue,
   sanitizePhoneDigits,
 } from "../services/orderFlow";
@@ -72,6 +73,23 @@ import {
 const reviewActionSchema = z.enum(["approve", "reject"]);
 const refundActionSchema = z.enum(["mark_pending", "mark_refunded", "cancel"]);
 const fulfillmentStatusSchema = z.enum(ORDER_FULFILLMENT_STATUSES);
+
+function resolveFulfillmentPrefill(orderRow: {
+  recipientName?: string | null;
+  recipientPhone?: string | null;
+  shippingAddress?: string | null;
+  deliveryArea?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+}) {
+  const shippingAddress = cleanOptionalText(orderRow.shippingAddress, 1200);
+  return {
+    recipientName: cleanOptionalText(orderRow.recipientName ?? orderRow.customerName, 160),
+    recipientPhone: cleanOptionalText(orderRow.recipientPhone ?? orderRow.customerPhone, 50),
+    shippingAddress,
+    deliveryArea: cleanOptionalText(orderRow.deliveryArea, 200) ?? shippingAddress,
+  };
+}
 
 export const ordersRouter = router({
   listOrders: businessProcedure
@@ -446,23 +464,61 @@ export const ordersRouter = router({
         if (String(orderRow.paymentMethod || "").trim().toLowerCase() !== "bank_qr") {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Payment details can only be sent for Bank / QR orders." });
         }
+        const missingDeliveryFields = missingRequiredOrderDeliveryFields({
+          recipientName: orderRow.recipientName,
+          recipientPhone: orderRow.recipientPhone,
+          shippingAddress: orderRow.shippingAddress,
+        });
         if (!canResendPaymentDetails(orderRow)) {
+          if (
+            String(orderRow.status || "").trim().toLowerCase() === "approved" &&
+            missingDeliveryFields.length > 0
+          ) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Delivery details are still missing for this order. Collect the customer's name, phone number, and address before sending payment details.",
+            });
+          }
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: "Payment details can only be resent while the order is awaiting payment or under payment review.",
           });
         }
 
-        const windowState = await getThreadWhatsappWindowState(tx, orderRow.threadId);
+        let effectiveOrderRow = orderRow;
+        if (String(orderRow.status || "").trim().toLowerCase() === "approved") {
+          const fulfillmentPrefill = resolveFulfillmentPrefill(orderRow);
+          const [updatedOrder] = await tx
+            .update(orders)
+            .set({
+              status: "awaiting_payment",
+              recipientName: fulfillmentPrefill.recipientName,
+              recipientPhone: fulfillmentPrefill.recipientPhone,
+              shippingAddress: fulfillmentPrefill.shippingAddress,
+              deliveryArea: fulfillmentPrefill.deliveryArea,
+              updatedAt: now,
+            })
+            .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, orderRow.id)))
+            .returning();
+          if (!updatedOrder) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Failed to move the order into the payment stage.",
+            });
+          }
+          effectiveOrderRow = updatedOrder;
+        }
+
+        const windowState = await getThreadWhatsappWindowState(tx, effectiveOrderRow.threadId);
 
         const contactContext = await resolveOrderNotificationContext({
           businessId: ctx.businessId,
-          customerId: orderRow.customerId ?? null,
-          threadId: orderRow.threadId ?? null,
-          whatsappIdentityId: orderRow.whatsappIdentityId ?? null,
-          customerName: orderRow.customerName ?? null,
-          customerEmail: orderRow.customerEmail ?? null,
-          customerPhone: orderRow.customerPhone ?? null,
+          customerId: effectiveOrderRow.customerId ?? null,
+          threadId: effectiveOrderRow.threadId ?? null,
+          whatsappIdentityId: effectiveOrderRow.whatsappIdentityId ?? null,
+          customerName: effectiveOrderRow.customerName ?? null,
+          customerEmail: effectiveOrderRow.customerEmail ?? null,
+          customerPhone: effectiveOrderRow.customerPhone ?? null,
         });
         const shouldSendViaWhatsapp = windowState.whatsappWindowOpen;
         const recipient = sanitizePhoneDigits(contactContext.approvalRecipient);
@@ -476,30 +532,30 @@ export const ordersRouter = router({
           });
         }
 
-        const orderSettings = buildStoredOrderFlowSettings(orderRow);
-        const snapshot = asRecord(orderRow.ticketSnapshot);
+        const orderSettings = buildStoredOrderFlowSettings(effectiveOrderRow);
+        const snapshot = asRecord(effectiveOrderRow.ticketSnapshot);
         const messages = buildOrderApprovalMessages({
-          orderId: orderRow.id,
-          customerName: contactContext.customerName ?? orderRow.customerName,
+          orderId: effectiveOrderRow.id,
+          customerName: contactContext.customerName ?? effectiveOrderRow.customerName,
           itemsSummary: formatOrderItemsSummary(snapshot),
-          expectedAmount: orderRow.expectedAmount?.toString() ?? null,
-          paymentReference: orderRow.paymentReference,
+          expectedAmount: effectiveOrderRow.expectedAmount?.toString() ?? null,
+          paymentReference: effectiveOrderRow.paymentReference,
           orderSettings,
         });
         const emailMessage = buildOrderApprovalEmail({
-          orderId: orderRow.id,
-          customerName: contactContext.customerName ?? orderRow.customerName,
+          orderId: effectiveOrderRow.id,
+          customerName: contactContext.customerName ?? effectiveOrderRow.customerName,
           itemsSummary: formatOrderItemsSummary(snapshot),
-          expectedAmount: orderRow.expectedAmount?.toString() ?? null,
-          paymentReference: orderRow.paymentReference,
+          expectedAmount: effectiveOrderRow.expectedAmount?.toString() ?? null,
+          paymentReference: effectiveOrderRow.paymentReference,
           orderSettings,
         });
         const notification = shouldSendViaWhatsapp
           ? await enqueueWhatsAppOutboxMessages(tx, {
               businessId: ctx.businessId,
               entityType: "order",
-              entityId: orderRow.id,
-              customerId: orderRow.customerId ?? null,
+              entityId: effectiveOrderRow.id,
+              customerId: effectiveOrderRow.customerId ?? null,
               threadId: contactContext.threadId ?? null,
               whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
               recipient: contactContext.approvalRecipient,
@@ -525,8 +581,8 @@ export const ordersRouter = router({
           : await enqueueEmailOutboxMessages(tx, {
               businessId: ctx.businessId,
               entityType: "order",
-              entityId: orderRow.id,
-              customerId: orderRow.customerId ?? null,
+              entityId: effectiveOrderRow.id,
+              customerId: effectiveOrderRow.customerId ?? null,
               recipientEmail: contactContext.customerEmail,
               source: "order_payment_details_manual_send_email",
               idempotencyBaseKey: `order:${orderRow.id}:payment_details_manual_send_email:${now.toISOString()}`,
@@ -535,7 +591,7 @@ export const ordersRouter = router({
         const deliveryChannel: "whatsapp" | "email" = shouldSendViaWhatsapp ? "whatsapp" : "email";
 
         return {
-          orderRow,
+          orderRow: effectiveOrderRow,
           notification,
           emailNotification,
           deliveryChannel,
@@ -711,6 +767,7 @@ export const ordersRouter = router({
           .where(eq(orderPayments.id, paymentRow.id))
           .returning();
 
+        const fulfillmentPrefill = resolveFulfillmentPrefill(orderRow);
         const [updatedOrder] = await tx
           .update(orders)
           .set({
@@ -723,6 +780,10 @@ export const ordersRouter = router({
             paidAmount: paymentRow.paidAmount ?? orderRow.paidAmount,
             paymentApprovedAt: input.action === "approve" ? now : null,
             paymentRejectedAt: input.action === "reject" ? now : null,
+            recipientName: fulfillmentPrefill.recipientName,
+            recipientPhone: fulfillmentPrefill.recipientPhone,
+            shippingAddress: fulfillmentPrefill.shippingAddress,
+            deliveryArea: fulfillmentPrefill.deliveryArea,
             updatedAt: now,
           })
           .where(eq(orders.id, orderRow.id))
@@ -1460,12 +1521,17 @@ export const ordersRouter = router({
             updatedAt: now,
           })
           .returning();
+        const fulfillmentPrefill = resolveFulfillmentPrefill(orderRow);
         const [updatedOrder] = await tx
           .update(orders)
           .set({
             status: "paid",
             paidAmount,
             paymentApprovedAt: now,
+            recipientName: fulfillmentPrefill.recipientName,
+            recipientPhone: fulfillmentPrefill.recipientPhone,
+            shippingAddress: fulfillmentPrefill.shippingAddress,
+            deliveryArea: fulfillmentPrefill.deliveryArea,
             updatedAt: now,
           })
           .where(eq(orders.id, orderRow.id))
