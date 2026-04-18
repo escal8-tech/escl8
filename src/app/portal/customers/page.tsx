@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
@@ -17,6 +17,7 @@ function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId
   const searchParams = useSearchParams();
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [sourceFilter, setSourceFilter] = useState<Source | "all">("all");
   const [sortKey, setSortKey] = useState<CustomerSortKey>("lastMessageAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -31,12 +32,12 @@ function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId
       ...baseFilter,
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
-      search: searchQuery.trim() || undefined,
+      search: deferredSearchQuery.trim() || undefined,
       source: sourceFilter !== "all" ? sourceFilter : undefined,
       sortKey,
       sortDir,
     }),
-    [baseFilter, page, searchQuery, sortDir, sortKey, sourceFilter],
+    [baseFilter, deferredSearchQuery, page, sortDir, sortKey, sourceFilter],
   );
 
   useLivePortalEvents({ customerPageInput: pageInput });
@@ -82,57 +83,37 @@ function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId
         flexDirection: "column",
       }}
     >
-      {totalCount === 0 ? (
-        <div
-          style={{
-            flex: 1,
-            textAlign: "center",
-            padding: 60,
-            color: "var(--muted)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <p style={{ fontSize: 18, marginBottom: 8 }}>No customers yet</p>
-          <p style={{ fontSize: 14, opacity: 0.7 }}>
-            Customers will appear here when they message you.
-          </p>
-        </div>
-      ) : (
-        <CustomersTable
-          rows={typedCustomers}
-          totalCount={totalCount}
-          page={safePage}
-          totalPages={totalPages}
-          searchQuery={searchQuery}
-          onSearchQueryChange={(value) => {
-            setSearchQuery(value);
-            setPage(0);
-          }}
-          sourceFilter={sourceFilter}
-          onSourceFilterChange={(value) => {
-            setSourceFilter(value);
-            setPage(0);
-          }}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          onSortChange={(nextKey) => {
-            setPage(0);
-            if (sortKey === nextKey) {
-              setSortDir((direction) => (direction === "asc" ? "desc" : "asc"));
-              return;
-            }
-            setSortKey(nextKey);
-            setSortDir("desc");
-          }}
-          onPageChange={setPage}
-          onSelect={(id) => setSelectedCustomerId(id)}
-          pageInput={pageInput}
-          countsInput={baseFilter}
-        />
-      )}
+      <CustomersTable
+        rows={typedCustomers}
+        totalCount={totalCount}
+        page={safePage}
+        totalPages={totalPages}
+        searchQuery={searchQuery}
+        onSearchQueryChange={(value) => {
+          setSearchQuery(value);
+          setPage(0);
+        }}
+        sourceFilter={sourceFilter}
+        onSourceFilterChange={(value) => {
+          setSourceFilter(value);
+          setPage(0);
+        }}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        onSortChange={(nextKey) => {
+          setPage(0);
+          if (sortKey === nextKey) {
+            setSortDir((direction) => (direction === "asc" ? "desc" : "asc"));
+            return;
+          }
+          setSortKey(nextKey);
+          setSortDir("desc");
+        }}
+        onPageChange={setPage}
+        onSelect={(id) => setSelectedCustomerId(id)}
+        pageInput={pageInput}
+        countsInput={baseFilter}
+      />
 
       <CustomerDrawer
         key={customer?.id ?? "none"}

@@ -9,6 +9,7 @@ import { observeAssistantMessageViaBot, sendWhatsAppMessagesViaBot } from "../se
 import { recordAiUsageEvent } from "../services/aiUsage";
 
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
+const digitsOnly = (value: string) => value.replace(/\D+/g, "");
 const mediaPartSchema = z.union([
   z.object({ type: z.literal("text"), text: z.string().min(1).max(4096) }),
   z.object({ type: z.literal("image"), imageUrl: z.string().url(), caption: z.string().max(1024).optional() }),
@@ -93,11 +94,19 @@ export const messagesRouter = router({
       const trimmedQuery = String(input.query || "").trim();
       if (trimmedQuery) {
         const pattern = `%${trimmedQuery}%`;
+        const digitsQuery = digitsOnly(trimmedQuery);
+        const digitPattern = `%${digitsQuery}%`;
         whereConditions.push(
           or(
             ilike(customers.name, pattern),
             ilike(customers.phone, pattern),
             ilike(customers.externalId, pattern),
+            ...(digitsQuery
+              ? [
+                  sql`regexp_replace(coalesce(${customers.phone}, ''), '[^0-9]+', '', 'g') ilike ${digitPattern}`,
+                  sql`regexp_replace(coalesce(${customers.externalId}, ''), '[^0-9]+', '', 'g') ilike ${digitPattern}`,
+                ]
+              : []),
           )!,
         );
       }
@@ -165,6 +174,8 @@ export const messagesRouter = router({
     .query(async ({ ctx, input }) => {
       const q = input.query.trim();
       const pattern = `%${q}%`;
+      const digitsQuery = digitsOnly(q);
+      const digitPattern = `%${digitsQuery}%`;
 
       const rows = await db
         .select({
@@ -181,7 +192,16 @@ export const messagesRouter = router({
             eq(customers.businessId, ctx.businessId),
             eq(customers.source, input.source),
             isNull(customers.deletedAt),
-            or(ilike(customers.externalId, pattern), ilike(customers.phone, pattern)),
+            or(
+              ilike(customers.externalId, pattern),
+              ilike(customers.phone, pattern),
+              ...(digitsQuery
+                ? [
+                    sql`regexp_replace(coalesce(${customers.externalId}, ''), '[^0-9]+', '', 'g') ilike ${digitPattern}`,
+                    sql`regexp_replace(coalesce(${customers.phone}, ''), '[^0-9]+', '', 'g') ilike ${digitPattern}`,
+                  ]
+                : []),
+            ),
           ),
         )
         .orderBy(desc(customers.lastMessageAt))
