@@ -17,6 +17,7 @@ const routeLabels: Record<string, string> = {
   sync: "Sync",
   settings: "Settings",
   revenue: "Revenue",
+  flowbuilder: "Flow Builder",
 };
 
 export default function Breadcrumbs() {

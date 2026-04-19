@@ -24,6 +24,21 @@ const nextConfig: NextConfig = {
         destination: "/:path*",
         permanent: true,
       },
+      {
+        source: "/revenue/flow-builder",
+        destination: "/settings?tab=flowbuilder",
+        permanent: true,
+      },
+      {
+        source: "/upload",
+        destination: "/settings?tab=documents",
+        permanent: true,
+      },
+      {
+        source: "/flowbuilder",
+        destination: "/settings?tab=flowbuilder",
+        permanent: true,
+      },
     ];
   },
 
@@ -42,7 +57,7 @@ const nextConfig: NextConfig = {
         { source: "/tickets", destination: "/portal/tickets" },
         { source: "/payments", destination: "/portal/payments" },
         { source: "/orders", destination: "/portal/orders" },
-        { source: "/revenue/flow-builder", destination: "/portal/revenue/flow-builder" },
+        { source: "/flowbuilder", destination: "/portal/flowbuilder" },
         { source: "/revenue", destination: "/portal/revenue" },
       ],
     };

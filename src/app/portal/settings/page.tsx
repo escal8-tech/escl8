@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { fetchWithFirebaseAuth, getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
 import { describeCompanyGmailError } from "@/lib/company-gmail";
@@ -20,6 +20,8 @@ import {
 import type { OrderPaymentMethod } from "@/lib/order-settings";
 import { buildWebsiteWidgetSnippet, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
+import { UploadContent } from "@/app/portal/upload/components/UploadContent";
+import { FlowBuilderContent } from "@/app/portal/flowbuilder/FlowBuilderContent";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ICONS (inline SVGs for clean dependency-free icons)
@@ -128,6 +130,23 @@ const Icons = {
     <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
       <path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V9z" />
       <path d="M9 9v12" />
+    </svg>
+  ),
+  upload: (
+    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  ),
+  flow: (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="6" height="6" rx="2" />
+      <rect x="15" y="4" width="6" height="6" rx="2" />
+      <rect x="9" y="15" width="6" height="6" rx="2" />
+      <path d="M9 7h6" />
+      <path d="M12 10v5" />
+      <path d="M18 10v2a3 3 0 0 1-3 3" />
     </svg>
   ),
 };
@@ -780,14 +799,20 @@ function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onC
 /* ─────────────────────────────────────────────────────────────────────────────
    SETTINGS PAGE TABS
 ───────────────────────────────────────────────────────────────────────────── */
-type SettingsTab = "profile" | "booking" | "tickets" | "integrations";
+type SettingsTab = "profile" | "booking" | "tickets" | "integrations" | "documents" | "flowbuilder";
 
 const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "profile", label: "Profile", icon: Icons.user },
   { id: "booking", label: "Booking", icon: Icons.calendar },
   { id: "tickets", label: "Tickets", icon: Icons.ticket },
   { id: "integrations", label: "Integrations", icon: Icons.whatsapp },
+  { id: "documents", label: "Documents", icon: Icons.upload },
+  { id: "flowbuilder", label: "Flow Builder", icon: Icons.flow },
 ];
+
+function isSettingsTab(value: string): value is SettingsTab {
+  return tabConfig.some((tab) => tab.id === value);
+}
 
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -796,6 +821,8 @@ const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
 export default function SettingsPage() {
   const auth = getFirebaseAuth();
   const toast = useToast();
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
@@ -951,10 +978,17 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const requestedTab = String(searchParams?.get("tab") || "").trim().toLowerCase();
-    if (requestedTab === "profile" || requestedTab === "booking" || requestedTab === "tickets" || requestedTab === "integrations") {
+    if (isSettingsTab(requestedTab)) {
       setActiveTab(requestedTab);
     }
   }, [searchParams]);
+
+  const handleTabSelect = (tab: SettingsTab) => {
+    setActiveTab(tab);
+    const params = new URLSearchParams(searchParams?.toString() || "");
+    params.set("tab", tab);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2090,6 +2124,10 @@ export default function SettingsPage() {
     );
   };
 
+  const renderDocumentsTab = () => <UploadContent />;
+
+  const renderFlowBuilderTab = () => <FlowBuilderContent />;
+
   const renderTabContent = () => {
     switch (activeTab) {
       case "profile":
@@ -2100,6 +2138,10 @@ export default function SettingsPage() {
         return renderTicketsTab();
       case "integrations":
         return renderIntegrationsTab();
+      case "documents":
+        return renderDocumentsTab();
+      case "flowbuilder":
+        return renderFlowBuilderTab();
       default:
         return null;
     }
@@ -2182,7 +2224,7 @@ export default function SettingsPage() {
               ...styles.tab,
               ...(activeTab === tab.id ? styles.tabActive : {}),
             }}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => handleTabSelect(tab.id)}
           >
             <span style={{ opacity: activeTab === tab.id ? 1 : 0.6 }}>{tab.icon}</span>
             {tab.label}

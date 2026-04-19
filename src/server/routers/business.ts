@@ -23,6 +23,7 @@ export const businessRouter = router({
       .select({
         phoneNumberId: whatsappIdentities.phoneNumberId,
         displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
+        botType: whatsappIdentities.botType,
         isActive: whatsappIdentities.isActive,
         autoReplyPaused: whatsappIdentities.autoReplyPaused,
         aiDisabled: whatsappIdentities.aiDisabled,

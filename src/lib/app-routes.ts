@@ -13,6 +13,7 @@ export const APP_PROTECTED_ROUTE_PREFIXES = [
   "/orders",
   "/payments",
   "/revenue",
+  "/flowbuilder",
   "/tickets",
 ] as const;
 
