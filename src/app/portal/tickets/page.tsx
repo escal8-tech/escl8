@@ -12,6 +12,7 @@ import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
 import { PortalBotToggleButton } from "@/app/portal/components/PortalBotToggleButton";
 import { PortalHeaderCard, PortalMetricCard } from "@/app/portal/components/PortalSurfacePrimitives";
+import { ManualOrderLauncher } from "@/app/portal/orders/components/ManualOrderLauncher";
 import { TicketDetailsDrawer } from "@/app/portal/tickets/components/TicketDetailsDrawer";
 import {
   OUTCOME_OPTIONS,
@@ -187,7 +188,9 @@ export default function TicketsPage() {
       showSuccessToast(toast, {
         title: "Ticket approved",
         message:
-          String(result.order?.paymentMethod || "").toLowerCase() === "bank_qr"
+          result.delivery?.channel === "none"
+            ? "Manual order approved. No customer notification was sent."
+            : String(result.order?.paymentMethod || "").toLowerCase() === "bank_qr"
             ? result.delivery?.channel === "email"
               ? "Ticket was approved and payment instructions were emailed to the customer."
               : "Ticket was approved and payment instructions were sent to the customer."
@@ -378,6 +381,17 @@ export default function TicketsPage() {
           <PortalHeaderCard
             title={pageTitle}
             description={pageDescription}
+            controls={
+              isOrderTicketView ? (
+                <ManualOrderLauncher
+                  onCreated={(ticketId) => {
+                    setFiltersByType((prev) => ({ ...prev, [activeFilterKey]: "pending_approval" }));
+                    setPage(0);
+                    setSelectedTicketId(ticketId);
+                  }}
+                />
+              ) : null
+            }
           />
 
           <div className="portal-summary-grid">

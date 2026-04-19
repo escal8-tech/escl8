@@ -205,15 +205,6 @@ export async function POST(request: Request) {
     if (!normalized) return true;
     return normalized === "true" || normalized === "1" || normalized === "yes";
   })();
-  const paymentSlipRequired = (() => {
-    const raw = orderFlow?.paymentSlipRequired;
-    if (typeof raw === "boolean") return raw;
-    if (typeof raw === "number") return raw === 1;
-    const normalized = String(raw ?? "").trim().toLowerCase();
-    if (!normalized) return true;
-    return normalized === "true" || normalized === "1" || normalized === "yes";
-  })();
-
   const allowedStatuses = new Set(["awaiting_payment", "payment_submitted", "payment_rejected"]);
   if (!allowedStatuses.has(String(orderRow.status || "").trim().toLowerCase())) {
     return NextResponse.json(
@@ -221,13 +212,6 @@ export async function POST(request: Request) {
       { status: 409 },
     );
   }
-  if (paymentSlipRequired && !file && !hasStagedProof) {
-    return NextResponse.json(
-      { success: false, error: "A payment slip image or PDF is required for this business." },
-      { status: 400 },
-    );
-  }
-
   let storedProof:
     | {
         url: string;
@@ -298,12 +282,12 @@ export async function POST(request: Request) {
   });
   const aiCheckStatus = shouldRunPaymentProofAi
     ? assessed.aiCheckStatus
-    : "manual_review";
+    : "confirmed";
   const aiCheckNotes = shouldRunPaymentProofAi
-    ? (assessed.aiCheckNotes || "Payment proof received.")
+    ? (assessed.aiCheckNotes || "Customer payment update received.")
     : (storedProof?.url
-        ? "Payment proof received and queued for manual review."
-        : "Customer said payment is done. Staff review is still required.");
+        ? "Customer sent payment proof. Staff should check the bank before approving payment."
+        : "Customer said payment is done. Staff should check the bank before approving payment.");
   const now = new Date();
   const txResult = await db.transaction(async (tx) => {
     const [paymentRow] = await tx
