@@ -106,7 +106,6 @@ const navItems = [
   { href: "/requests", label: "Requests", icon: "requests" },
   { href: "/customers", label: "Customers", icon: "customers" },
   { href: "/messages", label: "Messages", icon: "messages" },
-  { href: "/upload", label: "Documents", icon: "upload" },
   { href: "/bookings", label: "Bookings", icon: "calendar" },
 ];
 interface SidebarProps {
@@ -234,16 +233,6 @@ export default function Sidebar({
               {!collapsed && <span>{item.label}</span>}
             </Link>
           ))}
-          <Link
-            href="/revenue/flow-builder"
-            className={`sidebar-nav-item sidebar-nav-subitem ${isActive("/revenue/flow-builder") ? "active" : ""}`}
-            title={collapsed ? "Flow Builder" : undefined}
-            onClick={onMobileClose}
-            style={{ position: "relative" }}
-          >
-            <span className="sidebar-nav-icon">{Icons.flow}</span>
-            {!collapsed && <span>Flow Builder</span>}
-          </Link>
         </div>
 
         <div className="sidebar-nav-group">

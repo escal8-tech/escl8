@@ -1,7 +1,5 @@
-"use client";
-
-import { UploadContent } from "./components/UploadContent";
+import { redirect } from "next/navigation";
 
 export default function PortalUploadPage() {
-  return <UploadContent />;
+  redirect("/settings?tab=documents");
 }
