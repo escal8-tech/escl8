@@ -43,6 +43,9 @@ export type TicketRow = {
   outcome?: string | null;
   lossReason?: string | null;
   slaDueAt?: Date | string | null;
+  lastInboundAt?: Date | string | null;
+  whatsappWindowExpiresAt?: Date | string | null;
+  whatsappWindowOpen?: boolean | null;
 };
 
 export const STATUS_OPTIONS: TicketStatus[] = ["open", "in_progress", "resolved"];
@@ -121,6 +124,26 @@ export function formatSlaCountdown(
   const mins = minutes % 60;
   const compact = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
   if (diffMs < 0) return { label: `Overdue by ${compact}`, tone: "danger" };
+  if (diffMs < 60 * 60 * 1000) return { label: `${compact} left`, tone: "warn" };
+  return { label: `${compact} left`, tone: "ok" };
+}
+
+export function formatChatWindowCountdown(
+  expiresAtValue: Date | string | null | undefined,
+  isOpenValue: unknown,
+  nowMs: number,
+): { label: string; tone: "ok" | "warn" | "danger" | "muted" } {
+  if (!expiresAtValue) return { label: "No chat", tone: "muted" };
+  const expiresAt = new Date(expiresAtValue).getTime();
+  if (!Number.isFinite(expiresAt)) return { label: "No chat", tone: "muted" };
+  const diffMs = expiresAt - nowMs;
+  const isOpen = Boolean(isOpenValue) && diffMs > 0;
+  const abs = Math.abs(diffMs);
+  const minutes = Math.floor(abs / 60000);
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  const compact = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  if (!isOpen) return { label: "Closed", tone: "danger" };
   if (diffMs < 60 * 60 * 1000) return { label: `${compact} left`, tone: "warn" };
   return { label: `${compact} left`, tone: "ok" };
 }

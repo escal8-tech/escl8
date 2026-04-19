@@ -1,6 +1,7 @@
-import { and, desc, eq, getTableColumns, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
-import { orders, supportTicketTypes, supportTickets } from "@/../drizzle/schema";
+import { orders, supportTicketTypes, supportTickets, threadMessages } from "@/../drizzle/schema";
+import { whatsappWindowState } from "@/server/services/orderWorkflowSupport";
 import { ensureDefaultTicketTypes } from "@/server/services/ticketDefaults";
 import { getHydratedTicketRow, normalizeKey } from "@/server/services/ticketWorkflowSupport";
 
@@ -107,9 +108,36 @@ export async function listTicketLedgerForBusiness(args: {
     .limit(args.limit)
     .offset(args.offset);
 
+  const threadIds = [...new Set(rows.map((row) => String(row.threadId || "").trim()).filter(Boolean))];
+  const threadWindowRows = threadIds.length
+    ? await db
+        .select({
+          threadId: threadMessages.threadId,
+          lastInboundAt: sql<Date | null>`
+            max(${threadMessages.createdAt})
+            filter (
+              where lower(coalesce(${threadMessages.direction}, '')) in ('inbound', 'incoming', 'customer', 'user')
+            )
+          `,
+          lastMessageAt: sql<Date | null>`max(${threadMessages.createdAt})`,
+        })
+        .from(threadMessages)
+        .where(inArray(threadMessages.threadId, threadIds))
+        .groupBy(threadMessages.threadId)
+    : [];
+  const windowStateByThread = new Map(
+    threadWindowRows.map((row) => [
+      row.threadId,
+      whatsappWindowState(row.lastInboundAt ?? row.lastMessageAt),
+    ]),
+  );
+
   return {
     totalCount: countRow?.count ?? 0,
-    items: rows,
+    items: rows.map((row) => ({
+      ...row,
+      ...(row.threadId ? windowStateByThread.get(row.threadId) ?? {} : {}),
+    })),
   };
 }
 

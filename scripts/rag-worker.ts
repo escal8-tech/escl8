@@ -173,6 +173,7 @@ async function processJob(job: RagJobRow) {
     blobPath: doc.blobPath,
     filename: doc.originalFilename,
     contentType: doc.contentType ?? undefined,
+    trainingDocumentId: doc.id,
   });
 
   const [indexedDoc] = await db

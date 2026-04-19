@@ -3,6 +3,8 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
+import { useToast } from "@/components/ToastProvider";
+import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import { useIsMobileViewport } from "@/app/portal/hooks/useIsMobileViewport";
 import { readMediaInfo } from "@/app/portal/messages/mediaInfo";
@@ -104,6 +106,8 @@ function ProfileIcon({ name, size = 40 }: { name?: string | null; size?: number 
 
 export default function MessagesPage() {
   const isMobile = useIsMobileViewport();
+  const toast = useToast();
+  const utils = trpc.useUtils();
   const { selectedPhoneNumberId } = usePhoneFilter();
   const searchParams = useSearchParams();
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -169,6 +173,7 @@ export default function MessagesPage() {
     [selectedPhoneNumberId, deferredSearchQuery, threadCursor],
   );
   const threadPageQuery = trpc.messages.listRecentThreadsPage.useQuery(threadPageInput);
+  const createEscalatedOrderTicket = trpc.tickets.createTicket.useMutation();
   const sendTextMutation = trpc.messages.sendText.useMutation();
   const sendMediaMutation = trpc.messages.sendMedia.useMutation();
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -404,6 +409,67 @@ export default function MessagesPage() {
         : "Free-form window expired. Use a WhatsApp template to re-open the conversation.",
     };
   }, [sessionWindowQuery.data, nowMs]);
+
+  const handleEscalateOrder = useCallback(async () => {
+    if (!activeThreadId || !selectedThread) {
+      showErrorToast(toast, {
+        title: "No thread selected",
+        message: "Select a customer conversation before escalating an order.",
+      });
+      return;
+    }
+    const customerPhone = String(selectedThread.customerPhone || selectedThread.customerExternalId || "").trim();
+    const displayCustomer = String(selectedThread.customerName || customerPhone || "Customer").trim();
+    try {
+      const ticket = await createEscalatedOrderTicket.mutateAsync({
+        ticketTypeKey: "ordercreation",
+        title: `Escalated order - ${displayCustomer}`,
+        summary: "Manual order escalated from the messages inbox. Staff should fill the order details before approval.",
+        priority: "urgent",
+        source: "staff_escalation",
+        customerId: selectedThread.customerId,
+        threadId: activeThreadId,
+        whatsappIdentityId: selectedThread.whatsappIdentityId || undefined,
+        customerName: selectedThread.customerName || undefined,
+        customerPhone: customerPhone || undefined,
+        fields: {
+          escalated_order: true,
+          staff_created: true,
+          source: "messages",
+          name: displayCustomer,
+          customer_name: displayCustomer,
+          ...(customerPhone ? { phone: customerPhone, customer_phone: customerPhone } : {}),
+          items: [],
+          quantity: [],
+          line_items: [],
+          internal_notes: "Created from Messages using Escalate Order. Fill the order items before approval.",
+        },
+        notes: "Created from Messages using Escalate Order. Fill the order items before approval.",
+        createdBy: "user",
+      });
+      await Promise.all([
+        utils.tickets.listTickets.invalidate(),
+        utils.tickets.listTicketLedger.invalidate(),
+        utils.tickets.getTicketById.invalidate(),
+        utils.tickets.getPerformance.invalidate(),
+      ]);
+      setLatestTicketNotice({
+        id: ticket.id,
+        typeKey: "ordercreation",
+        status: ticket.status || "open",
+        summary: ticket.summary || ticket.title || "",
+      });
+      showSuccessToast(toast, {
+        title: "Order escalated",
+        message: "A new order ticket was created in the Orders tab for this customer.",
+      });
+    } catch (error) {
+      showErrorToast(toast, {
+        title: "Could not escalate order",
+        message: error instanceof Error ? error.message : "Order escalation failed.",
+      });
+    }
+  }, [activeThreadId, createEscalatedOrderTicket, selectedThread, toast, utils]);
 
   const handleSend = useCallback(async () => {
     if (!activeThreadId) return;
@@ -833,6 +899,21 @@ export default function MessagesPage() {
                   </div>
                 )}
               </div>
+              {isWhatsAppThread(selectedThread) && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => void handleEscalateOrder()}
+                  disabled={createEscalatedOrderTicket.isPending}
+                  style={{
+                    flexShrink: 0,
+                    minHeight: 34,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {createEscalatedOrderTicket.isPending ? "Escalating..." : "Escalate Order"}
+                </button>
+              )}
               {isWhatsAppThread(selectedThread) && (
                 <div
                   title={sessionWindow.helper}

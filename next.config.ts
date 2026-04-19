@@ -42,6 +42,7 @@ const nextConfig: NextConfig = {
         { source: "/tickets", destination: "/portal/tickets" },
         { source: "/payments", destination: "/portal/payments" },
         { source: "/orders", destination: "/portal/orders" },
+        { source: "/revenue/flow-builder", destination: "/portal/revenue/flow-builder" },
         { source: "/revenue", destination: "/portal/revenue" },
       ],
     };
