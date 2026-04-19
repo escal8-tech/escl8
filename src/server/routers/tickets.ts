@@ -9,6 +9,7 @@ import {
   customers,
   orders,
   orderPayments,
+  requests,
   supportTicketEvents,
   supportTicketTypes,
   supportTickets,
@@ -29,6 +30,7 @@ import {
   formatOrderItemsSummary,
   logOrderEvent,
   missingRequiredOrderDeliveryFields,
+  parseMoneyValue,
   sanitizePhoneDigits,
 } from "../services/orderFlow";
 import {
@@ -62,6 +64,7 @@ import {
 const ticketStatusSchema = z.enum(["open", "in_progress", "resolved"]);
 const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const ticketOutcomeSchema = z.enum(["pending", "won", "lost"]);
+const manualOrderChannelSchema = z.enum(["walkin", "phone", "website", "other"]);
 const orderStageSchema = z.enum([
   "pending_approval",
   "edit_required",
@@ -74,6 +77,84 @@ const orderStageSchema = z.enum([
   "refunded",
   "denied",
 ]);
+
+function normalizeOptionalText(value: string | null | undefined): string | null {
+  const text = String(value ?? "").trim();
+  return text || null;
+}
+
+function normalizeManualExternalId(input: {
+  phone?: string | null;
+  email?: string | null;
+  name?: string | null;
+}) {
+  const phone = sanitizePhoneDigits(input.phone);
+  if (phone) return phone;
+  const email = String(input.email ?? "").trim().toLowerCase();
+  if (email) return email;
+  const name = String(input.name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return `manual-${name || randomUUID().slice(0, 8)}-${Date.now()}`;
+}
+
+function parseManualQuantity(value: string | undefined): string {
+  const parsed = Number(String(value ?? "1").replace(/[^\d]/g, "") || "1");
+  return String(Math.max(1, Number.isFinite(parsed) ? parsed : 1));
+}
+
+function buildManualOrderFields(input: {
+  channel: z.infer<typeof manualOrderChannelSchema>;
+  customerName: string;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
+  notes?: string | null;
+  deliveryArea?: string | null;
+  shippingAddress?: string | null;
+  lineItems: Array<{ item: string; quantity?: string; unitPrice?: string }>;
+  total?: string | null;
+}) {
+  const lineItems = input.lineItems
+    .map((line) => {
+      const item = String(line.item ?? "").trim();
+      if (!item) return null;
+      const quantity = parseManualQuantity(line.quantity);
+      const unitPrice = parseMoneyValue(line.unitPrice);
+      const row: Record<string, unknown> = { item, quantity };
+      if (unitPrice) {
+        row.unit_price = unitPrice;
+        row.line_total = (Number(unitPrice) * Number(quantity)).toFixed(2);
+      }
+      return row;
+    })
+    .filter((line): line is Record<string, unknown> => Boolean(line));
+  const pricedLineItems = lineItems.filter((line) => typeof line.unit_price === "string");
+  const total =
+    parseMoneyValue(input.total) ??
+    (pricedLineItems.length === lineItems.length && lineItems.length
+      ? lineItems.reduce((sum, line) => sum + Number(line.line_total ?? 0), 0).toFixed(2)
+      : null);
+
+  return {
+    manual_order: true,
+    manual_channel: input.channel,
+    staff_created: true,
+    suppress_customer_notifications: true,
+    name: input.customerName,
+    customer_name: input.customerName,
+    phone: normalizeOptionalText(input.customerPhone),
+    customer_phone: normalizeOptionalText(input.customerPhone),
+    email: normalizeOptionalText(input.customerEmail),
+    customer_email: normalizeOptionalText(input.customerEmail),
+    items: lineItems.map((line) => String(line.item)),
+    product: String(lineItems[0]?.item ?? ""),
+    quantity: lineItems.map((line) => String(line.quantity ?? "1")),
+    line_items: lineItems,
+    ...(pricedLineItems.length === lineItems.length && lineItems.length ? { priced_line_items: lineItems } : {}),
+    ...(total ? { total } : {}),
+    ...(normalizeOptionalText(input.shippingAddress) ? { shipping_address: normalizeOptionalText(input.shippingAddress) } : {}),
+    ...(normalizeOptionalText(input.deliveryArea) ? { delivery_area: normalizeOptionalText(input.deliveryArea) } : {}),
+    ...(normalizeOptionalText(input.notes) ? { internal_notes: normalizeOptionalText(input.notes) } : {}),
+  };
+}
 
 export const ticketsRouter = router({
   listTypes: businessProcedure
@@ -281,6 +362,255 @@ export const ticketsRouter = router({
         });
       }
       return created;
+    }),
+
+  createManualOrderTicket: businessProcedure
+    .input(
+      z.object({
+        channel: manualOrderChannelSchema.default("walkin"),
+        customerName: z.string().trim().min(1).max(160),
+        customerPhone: z.string().trim().max(40).optional(),
+        customerEmail: z.string().trim().email().or(z.literal("")).optional(),
+        priority: ticketPrioritySchema.default("urgent"),
+        notes: z.string().trim().max(2000).optional(),
+        deliveryArea: z.string().trim().max(240).optional(),
+        shippingAddress: z.string().trim().max(1000).optional(),
+        lineItems: z
+          .array(
+            z.object({
+              item: z.string().trim().min(1).max(240),
+              quantity: z.string().trim().max(20).optional(),
+              unitPrice: z.string().trim().max(40).optional(),
+            }),
+          )
+          .min(1)
+          .max(20),
+        total: z.string().trim().max(40).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await ensureDefaultTicketTypes(ctx.businessId);
+      const now = new Date();
+      const phoneDigits = sanitizePhoneDigits(input.customerPhone);
+      const customerEmail = normalizeOptionalText(input.customerEmail);
+      const externalId = normalizeManualExternalId({
+        phone: phoneDigits,
+        email: customerEmail,
+        name: input.customerName,
+      });
+      const fields = buildManualOrderFields({
+        channel: input.channel,
+        customerName: input.customerName,
+        customerPhone: phoneDigits,
+        customerEmail,
+        notes: input.notes,
+        deliveryArea: input.deliveryArea,
+        shippingAddress: input.shippingAddress,
+        lineItems: input.lineItems,
+        total: input.total,
+      });
+      const expectedAmount = computeOrderExpectedAmount(fields);
+      const summary = `Manual ${input.channel} order: ${formatOrderItemsSummary(fields)}`;
+
+      const result = await db.transaction(async (tx) => {
+        const [typeRow] = await tx
+          .select()
+          .from(supportTicketTypes)
+          .where(and(eq(supportTicketTypes.businessId, ctx.businessId), eq(supportTicketTypes.key, "ordercreation")))
+          .limit(1);
+        if (!typeRow) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Order ticket type is not configured." });
+        }
+
+        const [existingCustomer] = await tx
+          .select()
+          .from(customers)
+          .where(
+            and(
+              eq(customers.businessId, ctx.businessId),
+              eq(customers.source, "other"),
+              eq(customers.externalId, externalId),
+            ),
+          )
+          .limit(1);
+
+        const nextTags = Array.from(new Set([...(existingCustomer?.tags ?? []), "manual", input.channel]));
+        const [customerRow] = existingCustomer
+          ? await tx
+              .update(customers)
+              .set({
+                name: input.customerName,
+                phone: phoneDigits || existingCustomer.phone,
+                email: customerEmail ?? existingCustomer.email,
+                tags: nextTags,
+                botPaused: true,
+                status: "active",
+                updatedAt: now,
+              })
+              .where(and(eq(customers.businessId, ctx.businessId), eq(customers.id, existingCustomer.id)))
+              .returning()
+          : await tx
+              .insert(customers)
+              .values({
+                businessId: ctx.businessId,
+                source: "other",
+                externalId,
+                name: input.customerName,
+                phone: phoneDigits || null,
+                email: customerEmail,
+                tags: ["manual", input.channel],
+                botPaused: true,
+                status: "active",
+                platformMeta: {
+                  source: "manual_order",
+                  channel: input.channel,
+                  suppressCustomerNotifications: true,
+                },
+                firstMessageAt: now,
+                lastMessageAt: now,
+                createdAt: now,
+                updatedAt: now,
+              })
+              .returning();
+        if (!customerRow) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create manual customer." });
+        }
+
+        const [ticketRow] = await tx
+          .insert(supportTickets)
+          .values({
+            businessId: ctx.businessId,
+            ticketTypeId: typeRow.id,
+            ticketTypeKey: "ordercreation",
+            title: `Manual order - ${input.customerName}`,
+            summary,
+            status: "open",
+            priority: input.priority,
+            source: "staff_manual",
+            customerId: customerRow.id,
+            threadId: null,
+            whatsappIdentityId: null,
+            customerName: input.customerName,
+            customerPhone: phoneDigits || null,
+            fields: sanitizeTicketFields(fields),
+            notes: normalizeOptionalText(input.notes),
+            createdBy: "user",
+            outcome: "pending",
+            slaDueAt: getSlaDueAt(input.priority),
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
+        if (!ticketRow) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create manual order ticket." });
+        }
+
+        const [requestRow] = await tx
+          .insert(requests)
+          .values({
+            businessId: ctx.businessId,
+            customerId: customerRow.id,
+            customerNumber: phoneDigits || null,
+            source: "other",
+            sourceMeta: {
+              source: "manual_order",
+              channel: input.channel,
+              ticketId: ticketRow.id,
+              suppressCustomerNotifications: true,
+            },
+            sentiment: "neutral",
+            status: "ongoing",
+            type: "high_intent_lead",
+            price: expectedAmount ?? "0",
+            paid: false,
+            summary,
+            botVersion: "staff_manual",
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
+
+        const [finalCustomerRow] = await tx
+          .update(customers)
+          .set({
+            totalRequests: sql`${customers.totalRequests} + 1`,
+            leadScore: sql`${customers.leadScore} + 20`,
+            isHighIntent: true,
+            updatedAt: now,
+          })
+          .where(and(eq(customers.businessId, ctx.businessId), eq(customers.id, customerRow.id)))
+          .returning();
+
+        await logTicketEvent({
+          businessId: ctx.businessId,
+          ticketId: ticketRow.id,
+          eventType: "created",
+          actorType: "user",
+          actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+          actorLabel: ctx.userEmail ?? "user",
+          payload: {
+            source: "staff_manual",
+            channel: input.channel,
+            customerId: customerRow.id,
+            requestId: requestRow?.id ?? null,
+            suppressCustomerNotifications: true,
+          },
+        });
+
+        return { customerRow: finalCustomerRow ?? customerRow, ticketRow, requestRow: requestRow ?? null };
+      });
+
+      await Promise.all([
+        publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "customer",
+          op: "upsert",
+          entityId: result.customerRow.id,
+          payload: { customer: JSON.parse(JSON.stringify(result.customerRow)) as any },
+          createdAt: result.customerRow.updatedAt ?? now,
+        }),
+        publishHydratedTicketUpsert({
+          businessId: ctx.businessId,
+          ticketId: result.ticketRow.id,
+          createdAt: result.ticketRow.updatedAt ?? now,
+        }),
+        result.requestRow
+          ? publishPortalEvent({
+              businessId: ctx.businessId,
+              entity: "request",
+              op: "upsert",
+              entityId: result.requestRow.id,
+              payload: { request: JSON.parse(JSON.stringify(result.requestRow)) as any },
+              createdAt: result.requestRow.updatedAt ?? now,
+            })
+          : Promise.resolve(null),
+      ]);
+
+      recordBusinessEvent({
+        event: "ticket.manual_order_created",
+        action: "createManualOrderTicket",
+        area: "ticket",
+        businessId: ctx.businessId,
+        entity: "ticket",
+        entityId: result.ticketRow.id,
+        userId: ctx.userId,
+        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+        actorType: "user",
+        outcome: "success",
+        attributes: {
+          source: "staff_manual",
+          channel: input.channel,
+          customer_id: result.customerRow.id,
+          request_id: result.requestRow?.id ?? null,
+          expected_amount: expectedAmount,
+        },
+      });
+
+      return {
+        ticket: result.ticketRow,
+        customer: result.customerRow,
+        request: result.requestRow,
+      };
     }),
 
   updateTicket: businessProcedure
@@ -774,6 +1104,10 @@ export const ticketsRouter = router({
       });
 
       const fields = asRecord(ticket.fields);
+      const suppressCustomerNotifications =
+        String(ticket.source || "").trim().toLowerCase() === "staff_manual" ||
+        fields.manual_order === true ||
+        fields.suppress_customer_notifications === true;
       const requestedCustomerEmail = extractCustomerEmail(fields);
       const itemsSummary = formatOrderItemsSummary(fields);
       const expectedAmount = computeOrderExpectedAmount(fields);
@@ -830,7 +1164,7 @@ export const ticketsRouter = router({
           outcome: currentTicket.outcome,
         });
         const windowState = await getThreadWhatsappWindowState(tx, contactContext.threadId);
-        const shouldSendApprovalViaWhatsapp = windowState.whatsappWindowOpen;
+        const shouldSendApprovalViaWhatsapp = !suppressCustomerNotifications && windowState.whatsappWindowOpen;
         if (shouldSendApprovalViaWhatsapp && (!contactContext.whatsappIdentityId || !approvalRecipient)) {
           throw new TRPCError({
             code: "BAD_REQUEST",
@@ -855,7 +1189,7 @@ export const ticketsRouter = router({
           });
         }
         const effectiveCustomerEmail = coalesceText(customerEmail, existingOrder?.customerEmail);
-        if (!shouldSendApprovalViaWhatsapp && !effectiveCustomerEmail) {
+        if (!suppressCustomerNotifications && !shouldSendApprovalViaWhatsapp && !effectiveCustomerEmail) {
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: "Order approval requires the customer's email after the WhatsApp window closes.",
@@ -1051,7 +1385,7 @@ export const ticketsRouter = router({
               whatsappIdentitySource: null,
               idempotencyKeys: [] as string[],
             };
-        const emailNotification = shouldSendApprovalViaWhatsapp
+        const emailNotification = shouldSendApprovalViaWhatsapp || suppressCustomerNotifications
           ? {
               ok: true as const,
               error: null,
@@ -1067,7 +1401,11 @@ export const ticketsRouter = router({
               idempotencyBaseKey: `order_ticket:${ticket.id}:approval_email:${orderRow?.id ?? orderId}`,
               messages: [approvalEmail],
             });
-        const deliveryChannel: "whatsapp" | "email" = shouldSendApprovalViaWhatsapp ? "whatsapp" : "email";
+        const deliveryChannel: "whatsapp" | "email" | "none" = suppressCustomerNotifications
+          ? "none"
+          : shouldSendApprovalViaWhatsapp
+            ? "whatsapp"
+            : "email";
 
         return {
           order: orderRow ?? null,
@@ -1115,6 +1453,7 @@ export const ticketsRouter = router({
             recipient: maskPhoneNumber(approvalRecipient),
             recipientSource: contactContext.recipientSource,
             whatsappIdentitySource: contactContext.whatsappIdentitySource,
+            suppressCustomerNotifications,
           },
         }),
       ]);
@@ -1122,7 +1461,7 @@ export const ticketsRouter = router({
       let delivery: {
         ok: boolean;
         error: string | null;
-        channel: "whatsapp" | "email";
+        channel: "whatsapp" | "email" | "none";
         recipientSource: string | null;
         whatsappIdentitySource: string | null;
       } = {
@@ -1132,7 +1471,15 @@ export const ticketsRouter = router({
         recipientSource: result.notification.recipientSource,
         whatsappIdentitySource: result.notification.whatsappIdentitySource,
       };
-      if (result.deliveryChannel === "whatsapp" && !result.notification.ok) {
+      if (result.deliveryChannel === "none") {
+        delivery = {
+          ok: true,
+          error: null,
+          channel: "none",
+          recipientSource: null,
+          whatsappIdentitySource: null,
+        };
+      } else if (result.deliveryChannel === "whatsapp" && !result.notification.ok) {
         delivery = {
           ok: false,
           error: result.notification.error,
@@ -1230,6 +1577,7 @@ export const ticketsRouter = router({
           delivery_channel: delivery.channel,
           order_id: result.order.id,
           payment_method: result.order.paymentMethod,
+          suppress_customer_notifications: suppressCustomerNotifications,
           delivery_phone_source: delivery.recipientSource,
           delivery_identity_source: delivery.whatsappIdentitySource,
         },

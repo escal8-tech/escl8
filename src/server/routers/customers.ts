@@ -12,6 +12,7 @@ type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]:
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
 const customerSortKeySchema = z.enum(["source", "name", "lastMessageAt"]);
 const sortDirectionSchema = z.enum(["asc", "desc"]);
+const digitsOnly = (value: string) => value.replace(/\D+/g, "");
 
 export const customersRouter = router({
   /**
@@ -108,12 +109,20 @@ export const customersRouter = router({
       const searchPattern = String(input.search ?? "").trim().toLowerCase();
       if (searchPattern) {
         const pattern = `%${searchPattern}%`;
+        const digitsQuery = digitsOnly(searchPattern);
+        const digitPattern = `%${digitsQuery}%`;
         conditions.push(
           or(
             ilike(customers.name, pattern),
             ilike(customers.externalId, pattern),
             ilike(customers.email, pattern),
             ilike(customers.phone, pattern),
+            ...(digitsQuery
+              ? [
+                  sql`regexp_replace(coalesce(${customers.externalId}, ''), '[^0-9]+', '', 'g') ilike ${digitPattern}`,
+                  sql`regexp_replace(coalesce(${customers.phone}, ''), '[^0-9]+', '', 'g') ilike ${digitPattern}`,
+                ]
+              : []),
           )!,
         );
       }

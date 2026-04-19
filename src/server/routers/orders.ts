@@ -74,6 +74,14 @@ const reviewActionSchema = z.enum(["approve", "reject"]);
 const refundActionSchema = z.enum(["mark_pending", "mark_refunded", "cancel"]);
 const fulfillmentStatusSchema = z.enum(ORDER_FULFILLMENT_STATUSES);
 
+function isStaffManualOrder(orderRow: { source?: string | null; ticketSnapshot?: Record<string, unknown> | null }) {
+  const snapshot = asRecord(orderRow.ticketSnapshot);
+  const fields = asRecord(snapshot.fields);
+  return String(orderRow.source || "").trim().toLowerCase() === "staff_manual"
+    || fields.manual_order === true
+    || fields.suppress_customer_notifications === true;
+}
+
 function resolveFulfillmentPrefill(orderRow: {
   recipientName?: string | null;
   recipientPhone?: string | null;
@@ -460,6 +468,12 @@ export const ordersRouter = router({
           .limit(1);
         if (!orderRow) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
+        }
+        if (isStaffManualOrder(orderRow)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Manual staff orders do not send payment details to customers. Handle payment in-house.",
+          });
         }
         if (String(orderRow.paymentMethod || "").trim().toLowerCase() !== "bank_qr") {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Payment details can only be sent for Bank / QR orders." });
@@ -1283,7 +1297,7 @@ export const ordersRouter = router({
           });
         }
 
-        const shouldNotifyCustomer = Boolean(input.notifyCustomer) && statusChanged;
+        const shouldNotifyCustomer = Boolean(input.notifyCustomer) && statusChanged && !isStaffManualOrder(updatedOrder);
         let notification: {
           ok: boolean;
           error: string | null;
@@ -1549,6 +1563,7 @@ export const ordersRouter = router({
           },
           issuedAt: now,
         });
+        const suppressCustomerNotifications = isStaffManualOrder(updatedOrder);
         const [invoiceUpdatedOrder] = await tx
           .update(orders)
           .set({
@@ -1556,7 +1571,7 @@ export const ordersRouter = router({
             invoiceUrl: invoiceArtifact.url,
             invoiceStoragePath: invoiceArtifact.storagePath,
             invoiceFileName: invoiceArtifact.fileName,
-            invoiceStatus: "sent",
+            invoiceStatus: suppressCustomerNotifications ? "generated" : "sent",
             invoiceDeliveryMethod: null,
             invoiceGeneratedAt: invoiceArtifact.generatedAt,
             invoiceSentAt: null,
@@ -1578,8 +1593,10 @@ export const ordersRouter = router({
         const windowState = await getThreadWhatsappWindowState(tx, currentOrder.threadId);
         const hasWhatsappRoute = Boolean(contactContext.whatsappIdentityId && sanitizePhoneDigits(contactContext.approvalRecipient));
         const hasEmailRoute = Boolean(contactContext.customerEmail);
-        const deliveryChannel: "whatsapp" | "email" =
-          windowState.whatsappWindowOpen && hasWhatsappRoute
+        const deliveryChannel: "whatsapp" | "email" | "none" =
+          suppressCustomerNotifications
+            ? "none"
+            : windowState.whatsappWindowOpen && hasWhatsappRoute
             ? "whatsapp"
             : hasEmailRoute
               ? "email"
@@ -1661,7 +1678,7 @@ export const ordersRouter = router({
       let delivery: {
         ok: boolean;
         error: string | null;
-        channel: "whatsapp" | "email";
+        channel: "whatsapp" | "email" | "none";
         recipientSource: string | null;
         whatsappIdentitySource: string | null;
       } = {
@@ -1671,7 +1688,15 @@ export const ordersRouter = router({
         recipientSource: result.notification.recipientSource,
         whatsappIdentitySource: result.notification.whatsappIdentitySource,
       };
-      if (result.deliveryChannel === "whatsapp" && !result.notification.ok) {
+      if (result.deliveryChannel === "none") {
+        delivery = {
+          ok: true,
+          error: null,
+          channel: "none",
+          recipientSource: null,
+          whatsappIdentitySource: null,
+        };
+      } else if (result.deliveryChannel === "whatsapp" && !result.notification.ok) {
         delivery = {
           ok: false,
           error: result.notification.error,
@@ -1709,7 +1734,7 @@ export const ordersRouter = router({
         }
       }
       await flushBusinessOutbox(ctx.businessId);
-      if (delivery.ok) {
+      if (delivery.ok && delivery.channel !== "none") {
         await db
           .update(orders)
           .set({

@@ -36,7 +36,18 @@ test("resolvePaymentProofAssessment upgrades sufficient rounded payment to confi
   assert.match(out.aiCheckNotes, /covers the order total/i);
 });
 
-test("resolvePaymentProofAssessment keeps underpayment in review", () => {
+test("resolvePaymentProofAssessment confirms customer payment update when amount is unknown", () => {
+  const out = resolvePaymentProofAssessment({
+    analysis: null,
+    expectedAmount: "14950.00",
+    paidAmount: null,
+    currency: "LKR",
+  });
+  assert.equal(out.aiCheckStatus, "confirmed");
+  assert.equal(out.balance.state, "unknown");
+});
+
+test("resolvePaymentProofAssessment marks underpayment invalid", () => {
   const out = resolvePaymentProofAssessment({
     analysis: {
       status: "passed",

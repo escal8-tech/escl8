@@ -67,13 +67,10 @@ export function resolvePaymentProofAssessment(input: {
   balance: PaymentBalance;
 } {
   const analysis = input.analysis ?? null;
-  const checks = analysis?.checks ?? null;
   const balance = computePaymentBalance(input.expectedAmount, input.paidAmount);
   const currency = String(input.currency || "LKR").trim() || "LKR";
-  const supportingChecksOkay = Boolean(checks?.proofPresent) && Boolean(checks?.dateFormatValid) && Boolean(checks?.dateNotFuture);
-  let aiCheckStatus: "confirmed" | "invalid" | "manual_review" =
-    String(analysis?.status || "").trim().toLowerCase() === "passed" ? "confirmed" : "manual_review";
-  let aiCheckNotes = String(analysis?.summary || "").trim() || "Payment proof received.";
+  let aiCheckStatus: "confirmed" | "invalid" | "manual_review" = "confirmed";
+  let aiCheckNotes = String(analysis?.summary || "").trim() || "Customer payment update received.";
 
   if (balance.amountSufficient === false) {
     const shortBy = Number(balance.delta || "0");
@@ -83,9 +80,6 @@ export function resolvePaymentProofAssessment(input: {
       `Detected amount is short by ${currency} ${Math.abs(shortBy).toFixed(2)} compared with the amount due.`,
     );
   } else if (balance.amountSufficient === true) {
-    if (supportingChecksOkay) {
-      aiCheckStatus = "confirmed";
-    }
     if (balance.state === "excess") {
       aiCheckNotes = appendSentence(
         aiCheckNotes,
