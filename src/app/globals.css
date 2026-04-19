@@ -3182,6 +3182,23 @@ html.portal-theme-light {
   align-items: center;
 }
 
+.sidebar-nav-subitem {
+  min-height: 32px;
+  margin-left: 22px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: rgba(203, 213, 225, 0.78);
+}
+
+.sidebar-nav-subitem .sidebar-nav-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.portal-sidebar.collapsed .sidebar-nav-subitem {
+  margin-left: 0;
+}
+
 .sidebar-footer {
   padding: 14px;
   border-top: 1px solid var(--portal-border);

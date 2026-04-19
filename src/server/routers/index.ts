@@ -8,6 +8,7 @@ import { customersRouter } from "./customers";
 import { messagesRouter } from "./messages";
 import { ticketsRouter } from "./tickets";
 import { ordersRouter } from "./orders";
+import { flowBuilderRouter } from "./flowBuilder";
 
 export const appRouter = router({
   user: userRouter,
@@ -19,6 +20,7 @@ export const appRouter = router({
   messages: messagesRouter,
   tickets: ticketsRouter,
   orders: ordersRouter,
+  flowBuilder: flowBuilderRouter,
 });
 
 export type AppRouter = typeof appRouter;

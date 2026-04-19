@@ -1627,7 +1627,7 @@ export default function SettingsPage() {
                     <span style={styles.toggleLabel}>Require Payment Slip</span>
                     <span style={styles.toggleDescription}>
                       When enabled, customers must send a payment slip image or PDF. When disabled, staff can also track plain
-                      text confirmations like "payment done" in the payment review queue.
+                      text confirmations like &quot;payment done&quot; in the payment review queue.
                     </span>
                   </div>
                   <Toggle checked={paymentSlipRequired} onChange={setPaymentSlipRequired} />

@@ -44,6 +44,8 @@ export interface SmartChunk {
   contextAfter: string;        // Brief context of following content
   inventoryData?: {
     fields?: Record<string, string>;
+    productId?: string;
+    sourceRowKey?: string;
     itemCode?: string;
     product?: string;
     specification?: string;

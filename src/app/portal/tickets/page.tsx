@@ -13,6 +13,7 @@ import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
 import { PortalBotToggleButton } from "@/app/portal/components/PortalBotToggleButton";
 import { PortalHeaderCard, PortalMetricCard } from "@/app/portal/components/PortalSurfacePrimitives";
 import { ManualOrderLauncher } from "@/app/portal/orders/components/ManualOrderLauncher";
+import { ManualSupportTicketLauncher } from "@/app/portal/tickets/components/ManualSupportTicketLauncher";
 import { TicketDetailsDrawer } from "@/app/portal/tickets/components/TicketDetailsDrawer";
 import {
   OUTCOME_OPTIONS,
@@ -22,9 +23,9 @@ import {
   canDenyOrderStage,
   firstFieldText,
   formatDate,
+  formatChatWindowCountdown,
   formatItemsCell,
   formatOrderStage,
-  formatSlaCountdown,
   formatTicketReference,
   getTicketFields,
   getTicketString,
@@ -251,6 +252,10 @@ export default function TicketsPage() {
       ),
     [effectiveTypeKey, typeOptions],
   );
+  const activeTypeRequiredFields = useMemo(() => {
+    const row = ticketTypesData.find((type) => type.key === effectiveTypeKey);
+    return Array.isArray(row?.requiredFields) ? row.requiredFields.map((field) => String(field)) : [];
+  }, [effectiveTypeKey, ticketTypesData]);
   const typeRequiresNameMap = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const type of ticketTypesData as Array<Record<string, unknown>>) {
@@ -315,7 +320,26 @@ export default function TicketsPage() {
   const pageTitle = effectiveTypeKey ? getTicketTypeLabel(effectiveTypeKey) : "Tickets";
   const pageDescription = isOrderTicketView
     ? "Tracks order ticket review, approvals, and queue health from one workflow."
-    : "Tracks ticket workflow, SLA health, and routing in one place.";
+    : "Tracks ticket workflow, chat windows, and routing in one place.";
+  const pageWindowSummary = useMemo(() => {
+    let open = 0;
+    let closed = 0;
+    for (const row of pageRows) {
+      const expiresAt = getTicketValue(row, "whatsappWindowExpiresAt", "whatsapp_window_expires_at");
+      if (!expiresAt) continue;
+      const expiresAtMs = new Date(String(expiresAt)).getTime();
+      if (Boolean(getTicketValue(row, "whatsappWindowOpen", "whatsapp_window_open")) && Number.isFinite(expiresAtMs) && expiresAtMs > nowMs) {
+        open += 1;
+      } else {
+        closed += 1;
+      }
+    }
+    return { open, closed };
+  }, [nowMs, pageRows]);
+  const activeRowsOnPage = useMemo(
+    () => pageRows.filter((row) => ["open", "in_progress"].includes(getTicketString(row, "status").toLowerCase())).length,
+    [pageRows],
+  );
   const summaryCards = useMemo(
     () => [
       {
@@ -324,9 +348,9 @@ export default function TicketsPage() {
         hint: `Won ${performanceQuery.data?.wonCount ?? 0} / Lost ${performanceQuery.data?.lostCount ?? 0}`,
       },
       {
-        label: "SLA On-Time",
-        value: `${performanceQuery.data?.slaOnTimeRate ?? 0}%`,
-        hint: `${performanceQuery.data?.resolvedOnTime ?? 0} on-time / ${performanceQuery.data?.resolvedTotal ?? 0} resolved`,
+        label: "Chat Windows",
+        value: String(pageWindowSummary.open),
+        hint: `${pageWindowSummary.closed} closed on this page`,
       },
       {
         label: "Tickets (30d)",
@@ -334,12 +358,12 @@ export default function TicketsPage() {
         hint: activeGroup?.label ?? "All types",
       },
       {
-        label: "Overdue Open",
-        value: String(performanceQuery.data?.overdueOpen ?? 0),
-        hint: "Needs attention now",
+        label: "Active On Page",
+        value: String(activeRowsOnPage),
+        hint: `${totalCount} in this view`,
       },
     ],
-    [activeGroup?.label, performanceQuery.data],
+    [activeGroup?.label, activeRowsOnPage, pageWindowSummary, performanceQuery.data, totalCount],
   );
 
   const handleApproveTicket = async (ticket: TicketRow) => {
@@ -384,8 +408,20 @@ export default function TicketsPage() {
             controls={
               isOrderTicketView ? (
                 <ManualOrderLauncher
+                  buttonLabel="New Order"
                   onCreated={(ticketId) => {
                     setFiltersByType((prev) => ({ ...prev, [activeFilterKey]: "pending_approval" }));
+                    setPage(0);
+                    setSelectedTicketId(ticketId);
+                  }}
+                />
+              ) : activeGroup ? (
+                <ManualSupportTicketLauncher
+                  ticketTypeKey={activeGroup.typeKey}
+                  ticketTypeLabel={activeGroup.label}
+                  requiredFields={activeTypeRequiredFields}
+                  onCreated={(ticketId) => {
+                    setFiltersByType((prev) => ({ ...prev, [activeFilterKey]: "open" }));
                     setPage(0);
                     setSelectedTicketId(ticketId);
                   }}
@@ -477,7 +513,7 @@ export default function TicketsPage() {
                           <th style={{ textAlign: "left", width: "18%" }}>Customer</th>
                           <th style={{ textAlign: "left", width: "21%" }}>Items</th>
                           <th style={{ textAlign: "left", width: "10%" }}>Priority</th>
-                          <th style={{ textAlign: "left", width: "8%" }}>SLA</th>
+                          <th style={{ textAlign: "left", width: "8%" }}>Window</th>
                           <th style={{ textAlign: "left", width: "10%" }}>Stage</th>
                           <th style={{ textAlign: "right", width: "11%" }}>Action</th>
                         </tr>
@@ -488,7 +524,7 @@ export default function TicketsPage() {
                           <th style={{ textAlign: "left", width: "18%" }}>Customer</th>
                           <th style={{ textAlign: "left", width: "22%" }}>Items</th>
                           <th style={{ textAlign: "left", width: "11%" }}>Priority</th>
-                          <th style={{ textAlign: "left", width: "10%" }}>SLA</th>
+                          <th style={{ textAlign: "left", width: "10%" }}>Window</th>
                           <th style={{ textAlign: "left", width: "11%" }}>Status</th>
                           <th style={{ textAlign: "left", width: "11%" }}>Outcome</th>
                           <th style={{ textAlign: "right", width: "8%" }}>Action</th>
@@ -558,16 +594,17 @@ export default function TicketsPage() {
                     </span>
                   </td>
                 );
-                const slaCell = (
-                  <td data-label="SLA">
+                const windowCell = (
+                  <td data-label="Window">
                     {(() => {
-                      const sla = formatSlaCountdown(
-                        getTicketValue(ticket, "slaDueAt", "sla_due_at") as Date | string | null | undefined,
+                      const windowTimer = formatChatWindowCountdown(
+                        getTicketValue(ticket, "whatsappWindowExpiresAt", "whatsapp_window_expires_at") as Date | string | null | undefined,
+                        getTicketValue(ticket, "whatsappWindowOpen", "whatsapp_window_open"),
                         nowMs,
                       );
                       const toneColor =
-                        sla.tone === "danger" ? "#fca5a5" : sla.tone === "warn" ? "#fdba74" : sla.tone === "ok" ? "#86efac" : "var(--muted)";
-                      return <span style={{ fontSize: 12, color: toneColor }}>{sla.label}</span>;
+                        windowTimer.tone === "danger" ? "#fca5a5" : windowTimer.tone === "warn" ? "#fdba74" : windowTimer.tone === "ok" ? "#86efac" : "var(--muted)";
+                      return <span style={{ fontSize: 12, color: toneColor }}>{windowTimer.label}</span>;
                     })()}
                   </td>
                 );
@@ -656,7 +693,7 @@ export default function TicketsPage() {
                         {customerCell}
                         {itemsCell}
                         {priorityCell}
-                        {slaCell}
+                        {windowCell}
                         <td data-label="Stage">
                           <span className={orderStagePillClass(orderStage)}>{formatOrderStage(orderStage)}</span>
                         </td>
@@ -669,7 +706,7 @@ export default function TicketsPage() {
                         {customerCell}
                         {itemsCell}
                         {priorityCell}
-                        {slaCell}
+                        {windowCell}
                         <td data-label="Status" className="portal-ledger-cell portal-ledger-cell--status">
                           <TableSelect
                             className="portal-ticket-row-select"

@@ -7,6 +7,11 @@ import { smartChunkText, classifyChunksWithLLM, SmartChunk } from "./smartChunk"
 import { embedTexts } from "./embed";
 import { summarizeInventoryRow } from "./inventoryFields";
 import { getPineconeIndex } from "./pinecone";
+import {
+  replaceInventoryProductsForRows,
+  sourceRowKeyForSpreadsheetRow,
+  type IndexedProductRef,
+} from "./productCatalog";
 
 function sha256Hex(buf: Buffer): string {
   return crypto.createHash("sha256").update(buf).digest("hex");
@@ -248,7 +253,10 @@ function buildInventoryRowChunks(rows: string[]): SmartChunk[] {
   return chunks;
 }
 
-function buildInventoryStructuredRowChunks(rows: SpreadsheetRow[]): SmartChunk[] {
+function buildInventoryStructuredRowChunks(
+  rows: SpreadsheetRow[],
+  opts: { source: string; productRefs?: Map<string, IndexedProductRef> },
+): SmartChunk[] {
   const chunks: SmartChunk[] = [];
   const rowTexts = rows.map((r) => r.text);
   let charOffset = 0;
@@ -258,6 +266,8 @@ function buildInventoryStructuredRowChunks(rows: SpreadsheetRow[]): SmartChunk[]
     const summary = summarizeInventoryRow(row);
     const rowText = (summary.displayText || row.text || "").trim();
     if (!rowText) continue;
+    const sourceRowKey = sourceRowKeyForSpreadsheetRow({ source: opts.source, row });
+    const productRef = opts.productRefs?.get(sourceRowKey);
 
     const charStart = charOffset;
     const charEnd = charStart + rowText.length;
@@ -279,6 +289,8 @@ function buildInventoryStructuredRowChunks(rows: SpreadsheetRow[]): SmartChunk[]
       contextAfter: i < rows.length - 1 ? getShortContext(rowTexts, i + 1) : "",
       inventoryData: {
         fields: row.fields,
+        productId: productRef?.productId,
+        sourceRowKey,
         itemCode: summary.itemCode,
         product: summary.product,
         specification: summary.specification,
@@ -371,6 +383,7 @@ export async function indexSingleDocType(params: {
   blobPath: string;
   filename: string;
   contentType?: string;
+  trainingDocumentId?: string | null;
 }): Promise<{ chunkCount: number; sha256: string }>
 {
   const { businessId, docType, blobPath, filename } = params;
@@ -399,6 +412,23 @@ export async function indexSingleDocType(params: {
     const rawBlobPath = `${businessId}/${docType}/raw.txt`;
     await uploadTextToBlob({ blobPath: rawBlobPath, text, contentType: "text/plain" });
   }
+
+  let productRefs: Map<string, IndexedProductRef> | undefined;
+  if (docType === "inventory" && extracted.structuredRows && extracted.structuredRows.length > 0) {
+    try {
+      productRefs = await replaceInventoryProductsForRows({
+        businessId,
+        trainingDocumentId: params.trainingDocumentId ?? null,
+        source: blobPath,
+        sourceFilename: filename,
+        rows: extracted.structuredRows,
+      });
+      console.log(`[rag:index] canonical inventory products=${productRefs.size}`);
+    } catch (err: any) {
+      console.error(`[rag:index] canonical inventory product indexing failed; continuing with vector metadata only: ${err?.message || String(err)}`);
+      productRefs = undefined;
+    }
+  }
   
   // Use page-wise chunking for better context preservation
   // Pass pages array if available for page-boundary-aware chunking
@@ -415,7 +445,7 @@ export async function indexSingleDocType(params: {
       ? buildConversationHierarchicalChunks(text, extracted.pages)
       : docType === "inventory"
         ? (extracted.structuredRows && extracted.structuredRows.length > 0
-            ? buildInventoryStructuredRowChunks(extracted.structuredRows)
+            ? buildInventoryStructuredRowChunks(extracted.structuredRows, { source: blobPath, productRefs })
             : extracted.rows && extracted.rows.length > 0
               ? buildInventoryRowChunks(extracted.rows)
             : buildInventoryHierarchicalChunks(text, extracted.pages))
@@ -485,6 +515,8 @@ export async function indexSingleDocType(params: {
           contextBefore: truncate(chunk.contextBefore, MAX_CONTEXT_CHARS),
           contextAfter: truncate(chunk.contextAfter, MAX_CONTEXT_CHARS),
           inventoryItemCode: truncate(chunk.inventoryData?.itemCode, 120),
+          inventoryProductId: truncate(chunk.inventoryData?.productId, 80),
+          inventorySourceRowKey: truncate(chunk.inventoryData?.sourceRowKey, 120),
           inventoryProduct: truncate(chunk.inventoryData?.product, 500),
           inventorySpecification: truncate(chunk.inventoryData?.specification, 500),
           inventoryDisplayText: truncate(chunk.inventoryData?.displayText || chunk.text, MAX_TEXT_CHARS),

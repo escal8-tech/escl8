@@ -13,7 +13,6 @@ import {
   RevenueTable,
   StatusTable,
 } from "@/app/portal/orders/components/OperationsWorkspaceParts";
-import { ManualOrderLauncher } from "@/app/portal/orders/components/ManualOrderLauncher";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import { trpc } from "@/utils/trpc";
 import {
@@ -526,7 +525,6 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
             description={modeDescription(mode)}
             controls={
               <>
-                <ManualOrderLauncher />
                 <PortalSelect
                   value={dateField}
                   onValueChange={(value) => {

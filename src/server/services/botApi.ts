@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { normalizeServiceBaseUrl } from "@/server/internalSecurity";
+import type { FlowBuilderManifest } from "@/lib/flow-builder/registry";
 
 export type BotSendMessage =
   | { type: "text"; text: string }
@@ -24,6 +25,8 @@ export type BotWebChatResult = {
   threadId?: string | null;
   messages?: BotWebChatMessage[];
 };
+
+export type BotFlowBuilderManifest = FlowBuilderManifest;
 
 function getBotBaseUrl(): string {
   try {
@@ -172,4 +175,38 @@ export async function sendWebChatMessageViaBot(input: {
   }
 
   return payload;
+}
+
+export async function getFlowBuilderManifestViaBot() {
+  const baseUrl = getBotBaseUrl();
+  const apiKey = getBotApiKey();
+  if (!baseUrl) {
+    throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_BASE_URL." });
+  }
+  if (!apiKey) {
+    throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_API_KEY." });
+  }
+
+  const response = await fetch(`${baseUrl}/internal/flow-builder/manifest`, {
+    method: "GET",
+    headers: {
+      "x-api-key": apiKey,
+    },
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    success?: boolean;
+    manifest?: BotFlowBuilderManifest;
+    error?: string;
+    message?: string;
+  };
+  if (!response.ok || !payload?.manifest || !Array.isArray(payload.manifest.agents)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: String(payload?.error || payload?.message || "Bot flow-builder manifest unavailable."),
+    });
+  }
+
+  return payload.manifest;
 }

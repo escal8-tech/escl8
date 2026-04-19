@@ -77,6 +77,16 @@ const Icons = {
       <path d="M12 6.5v11" />
     </svg>
   ),
+  flow: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="6" height="6" rx="2" />
+      <rect x="15" y="4" width="6" height="6" rx="2" />
+      <rect x="9" y="15" width="6" height="6" rx="2" />
+      <path d="M9 7h6" />
+      <path d="M12 10v5" />
+      <path d="M18 10v2a3 3 0 0 1-3 3" />
+    </svg>
+  ),
   home: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -215,7 +225,7 @@ export default function Sidebar({
             <Link
               key={item.href}
               href={item.href}
-              className={`sidebar-nav-item ${isActive(item.href) ? "active" : ""}`}
+              className={`sidebar-nav-item ${(item.href === "/revenue" ? pathname === "/revenue" : isActive(item.href)) ? "active" : ""}`}
               title={collapsed ? item.label : undefined}
               onClick={onMobileClose}
               style={{ position: "relative" }}
@@ -224,6 +234,16 @@ export default function Sidebar({
               {!collapsed && <span>{item.label}</span>}
             </Link>
           ))}
+          <Link
+            href="/revenue/flow-builder"
+            className={`sidebar-nav-item sidebar-nav-subitem ${isActive("/revenue/flow-builder") ? "active" : ""}`}
+            title={collapsed ? "Flow Builder" : undefined}
+            onClick={onMobileClose}
+            style={{ position: "relative" }}
+          >
+            <span className="sidebar-nav-icon">{Icons.flow}</span>
+            {!collapsed && <span>Flow Builder</span>}
+          </Link>
         </div>
 
         <div className="sidebar-nav-group">
