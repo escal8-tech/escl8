@@ -7,6 +7,45 @@ import { captureSentryException } from "@/lib/sentry-monitoring";
 
 export const runtime = "nodejs";
 
+function sanitizeErrorDetail(value: string): string {
+  return value
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+\b/gi, "Bearer [redacted]")
+    .replace(/\bBasic\s+[A-Za-z0-9+/=]+\b/gi, "Basic [redacted]")
+    .replace(/([?&](?:access_token|authorization|code|id_token|refresh_token|token)=)[^&\s]+/gi, "$1[redacted]")
+    .trim()
+    .slice(0, 500);
+}
+
+function getErrorAttribute(error: unknown, key: "code" | "message" | "name"): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const value = (error as Record<string, unknown>)[key];
+  if (typeof value !== "string") return undefined;
+  const sanitized = sanitizeErrorDetail(value);
+  return sanitized || undefined;
+}
+
+function getErrorNumberAttribute(error: unknown, key: "status" | "statusCode"): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const value = (error as Record<string, unknown>)[key];
+  return typeof value === "number" ? value : undefined;
+}
+
+function getErrorDiagnostics(error: unknown): Record<string, string | number | undefined> {
+  if (!error || typeof error !== "object") {
+    return typeof error === "string" && error.trim()
+      ? { error_message: sanitizeErrorDetail(error) }
+      : {};
+  }
+
+  return {
+    error_code: getErrorAttribute(error, "code"),
+    error_message: getErrorAttribute(error, "message"),
+    error_name: getErrorAttribute(error, "name"),
+    error_status: getErrorNumberAttribute(error, "status"),
+    error_status_code: getErrorNumberAttribute(error, "statusCode"),
+  };
+}
+
 async function getAuthedIdentity(req: Request): Promise<{ businessId: string; userId: string } | null> {
   const authed = await getAuthedUserFromRequest(req);
   if (!authed?.businessId) return null;
@@ -94,6 +133,7 @@ export async function GET(req: Request) {
       entity: "realtime_session",
       attributes: {
         dependency: "@azure/web-pubsub",
+        ...getErrorDiagnostics(error),
       },
     });
     captureSentryException(error, {
@@ -140,6 +180,7 @@ export async function GET(req: Request) {
       status: "token_generation_failed",
       entity: "realtime_session",
       attributes: {
+        ...getErrorDiagnostics(error),
         duration_ms: Date.now() - startedAt,
         hub,
       },

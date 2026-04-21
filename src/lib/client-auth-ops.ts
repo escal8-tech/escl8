@@ -37,6 +37,37 @@ type AuthenticatedFetchOptions = ClientAuthOperationOptions & {
   requestFailureEvent?: string;
 };
 
+function sanitizeErrorDetail(value: string): string {
+  return value
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+\b/gi, "Bearer [redacted]")
+    .replace(/\bBasic\s+[A-Za-z0-9+/=]+\b/gi, "Basic [redacted]")
+    .replace(/([?&](?:access_token|authorization|code|id_token|refresh_token|token)=)[^&\s]+/gi, "$1[redacted]")
+    .trim()
+    .slice(0, 500);
+}
+
+function getErrorAttribute(error: unknown, key: "code" | "message" | "name"): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const value = (error as Record<string, unknown>)[key];
+  if (typeof value !== "string") return undefined;
+  const sanitized = sanitizeErrorDetail(value);
+  return sanitized || undefined;
+}
+
+function getErrorDiagnostics(error: unknown): MonitoringAttributes {
+  if (!error || typeof error !== "object") {
+    return typeof error === "string" && error.trim()
+      ? { error_message: sanitizeErrorDetail(error) }
+      : {};
+  }
+
+  return {
+    error_code: getErrorAttribute(error, "code"),
+    error_message: getErrorAttribute(error, "message"),
+    error_name: getErrorAttribute(error, "name"),
+  };
+}
+
 function resolveRoute(route?: string | null): string | null {
   if (typeof route === "string" && route.trim()) return route;
   if (typeof window !== "undefined" && window.location?.pathname) return window.location.pathname;
@@ -54,22 +85,30 @@ function reportClientFailure(
 ) {
   if (isClientErrorReported(error)) return;
 
+  const report: ClientFailureReport = {
+    ...input,
+    attributes: {
+      ...(input.attributes || {}),
+      ...getErrorDiagnostics(error),
+    },
+  };
+
   if (input.onFailure) {
-    input.onFailure(error, input);
+    input.onFailure(error, report);
     markClientErrorReported(error);
     return;
   }
 
   recordClientBusinessEvent({
-    action: input.action,
-    area: input.area || "app",
-    attributes: input.attributes,
-    captureInSentry: input.captureInSentry,
+    action: report.action,
+    area: report.area || "app",
+    attributes: report.attributes,
+    captureInSentry: report.captureInSentry,
     error,
-    event: input.event,
-    level: input.level,
-    outcome: input.outcome,
-    route: resolveRoute(input.route),
+    event: report.event,
+    level: report.level,
+    outcome: report.outcome,
+    route: resolveRoute(report.route),
   });
 
   markClientErrorReported(error);
