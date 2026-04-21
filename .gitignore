@@ -34,6 +34,9 @@ yarn-error.log*
 .env
 .env.local
 
+# local operational runbooks with secrets
+LOCAL_*RUNBOOK*.md
+
 # vercel
 .vercel
 
