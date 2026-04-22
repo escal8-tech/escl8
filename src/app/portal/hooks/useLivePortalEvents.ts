@@ -195,6 +195,75 @@ function getRealtimeSocketHost(url: string): string | undefined {
   }
 }
 
+type BrowserNetworkInformation = {
+  downlink?: number;
+  effectiveType?: string;
+  rtt?: number;
+  saveData?: boolean;
+};
+
+type RealtimeLogAttributes = Record<string, string | number | boolean | null | undefined>;
+
+function sanitizeRealtimeDetail(value: string): string {
+  return value
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+\b/gi, "Bearer [redacted]")
+    .replace(/\bBasic\s+[A-Za-z0-9+/=]+\b/gi, "Basic [redacted]")
+    .replace(/([?&](?:access_token|authorization|code|id_token|refresh_token|token)=)[^&\s]+/gi, "$1[redacted]")
+    .trim()
+    .slice(0, 500);
+}
+
+function getRealtimeRuntimeAttributes(): RealtimeLogAttributes {
+  const connection =
+    typeof navigator !== "undefined"
+      ? ((navigator as Navigator & { connection?: BrowserNetworkInformation }).connection)
+      : undefined;
+
+  return {
+    browser_online: typeof navigator !== "undefined" ? navigator.onLine : undefined,
+    document_visibility: typeof document !== "undefined" ? document.visibilityState : undefined,
+    network_downlink_mbps: typeof connection?.downlink === "number" ? connection.downlink : undefined,
+    network_effective_type: typeof connection?.effectiveType === "string" ? connection.effectiveType : undefined,
+    network_rtt_ms: typeof connection?.rtt === "number" ? connection.rtt : undefined,
+    network_save_data: typeof connection?.saveData === "boolean" ? connection.saveData : undefined,
+  };
+}
+
+async function getRealtimeHttpFailureAttributes(response: Response): Promise<RealtimeLogAttributes> {
+  const contentType = response.headers.get("content-type") || undefined;
+  const attributes: RealtimeLogAttributes = {
+    http_content_type: contentType,
+    http_status_text: response.statusText || undefined,
+  };
+
+  try {
+    const text = await response.text();
+    if (!text.trim()) return attributes;
+
+    if (contentType?.includes("application/json")) {
+      try {
+        const parsed = JSON.parse(text) as { error?: unknown; message?: unknown };
+        const errorText =
+          typeof parsed.error === "string"
+            ? parsed.error
+            : typeof parsed.message === "string"
+              ? parsed.message
+              : text;
+        attributes.http_error = sanitizeRealtimeDetail(errorText);
+        return attributes;
+      } catch {
+        // Fall through to the plain-text body below.
+      }
+    }
+
+    attributes.http_error = sanitizeRealtimeDetail(text);
+  } catch (error) {
+    attributes.http_error_read_failed = error instanceof Error ? error.name : "unknown_error";
+  }
+
+  return attributes;
+}
+
 function normalizeStatus(raw: unknown): "ONGOING" | "NEEDS_FOLLOWUP" | "FAILED" | "COMPLETED" {
   const value = String(raw ?? "").toLowerCase();
   if (value === "ongoing") return "ONGOING";
@@ -395,11 +464,12 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     let lastOrderStatsInvalidateAt = 0;
     let hasConnectedOnce = false;
     let lastRealtimeClientFailureAt = 0;
+    let connectAttempt = 0;
     const recentEventKeys = new Map<string, number>();
 
     const reportRealtimeClientFailure = (
       message: string,
-      attributes: Record<string, string | number | boolean | undefined> = {},
+      attributes: RealtimeLogAttributes = {},
       captureInSentry = true,
       level: "warn" | "error" = "error",
     ) => {
@@ -799,9 +869,12 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       if (cancelled) return;
 
       try {
+        const attempt = ++connectAttempt;
+        const connectStartedAt = Date.now();
         let connectionFailureReported = false;
         let socketOpened = false;
         let socketErrored = false;
+        let socketOpenedAt = 0;
         const response = await fetchWithFirebaseAuth("/api/events/negotiate", {
           cache: "no-store",
         }, {
@@ -813,7 +886,10 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
           onFailure: (_error, report) => {
             reportRealtimeClientFailure(report.event, {
               ...(report.attributes || {}),
+              ...getRealtimeRuntimeAttributes(),
+              connect_attempt: attempt,
               hub: "portal",
+              negotiate_elapsed_ms: Date.now() - connectStartedAt,
             }, report.captureInSentry, report.level);
             connectionFailureReported = true;
           },
@@ -822,11 +898,17 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         });
 
         if (!response.ok) {
+          const httpFailureAttributes = await getRealtimeHttpFailureAttributes(response);
           reportRealtimeClientFailure(
             "realtime.negotiate_failed",
             {
+              ...httpFailureAttributes,
+              ...getRealtimeRuntimeAttributes(),
+              connect_attempt: attempt,
               hub: "portal",
               http_status: response.status,
+              negotiate_elapsed_ms: Date.now() - connectStartedAt,
+              reconnect_delay_ms: 2000,
             },
             response.status >= 500,
           );
@@ -844,8 +926,12 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
           reportRealtimeClientFailure(
             "realtime.negotiate_payload_invalid",
             {
+              ...getRealtimeRuntimeAttributes(),
+              connect_attempt: attempt,
               group_present: Boolean(group),
               hub,
+              negotiate_elapsed_ms: Date.now() - connectStartedAt,
+              reconnect_delay_ms: 2000,
               url_present: Boolean(url),
             },
             false,
@@ -859,6 +945,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         ws.onopen = () => {
           if (!ws || cancelled) return;
           socketOpened = true;
+          socketOpenedAt = Date.now();
           if (pendingSocketErrorTimer) {
             clearTimeout(pendingSocketErrorTimer);
             pendingSocketErrorTimer = null;
@@ -907,14 +994,19 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
               reportRealtimeClientFailure(
                 message,
                 {
+                  ...getRealtimeRuntimeAttributes(),
                   close_code: event.code,
                   close_code_label: describeWebSocketCloseCode(event.code),
                   close_clean: event.wasClean,
                   close_reason: event.reason || undefined,
+                  connect_attempt: attempt,
+                  connect_elapsed_ms: socketOpenedAt ? socketOpenedAt - connectStartedAt : Date.now() - connectStartedAt,
                   group,
                   hub,
                   opened_once: socketOpened,
+                  open_duration_ms: socketOpenedAt ? Date.now() - socketOpenedAt : undefined,
                   ready_state: describeWebSocketReadyState(ws?.readyState),
+                  reconnect_delay_ms: 1500,
                   socket_errored: socketErrored,
                   subprotocol: ws?.protocol || subprotocol,
                   websocket_host: socketHost,
@@ -937,11 +1029,16 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
               reportRealtimeClientFailure(
                 "realtime.websocket_error",
                 {
+                  ...getRealtimeRuntimeAttributes(),
+                  connect_attempt: attempt,
+                  connect_elapsed_ms: socketOpenedAt ? socketOpenedAt - connectStartedAt : Date.now() - connectStartedAt,
                   error_without_close: true,
                   group,
                   hub,
                   opened_once: socketOpened,
+                  open_duration_ms: socketOpenedAt ? Date.now() - socketOpenedAt : undefined,
                   ready_state: describeWebSocketReadyState(ws?.readyState),
+                  reconnect_delay_ms: 1500,
                   socket_errored: true,
                   subprotocol: ws?.protocol || subprotocol,
                   websocket_host: socketHost,
@@ -960,9 +1057,12 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
           reportRealtimeClientFailure(
             "realtime.connect_exception",
             {
+              ...getRealtimeRuntimeAttributes(),
+              connect_attempt: connectAttempt,
               hub: "portal",
-              error_message: error instanceof Error ? error.message : String(error),
+              error_message: sanitizeRealtimeDetail(error instanceof Error ? error.message : String(error)),
               error_name: error instanceof Error ? error.name : undefined,
+              reconnect_delay_ms: 1500,
             },
             true,
           );
