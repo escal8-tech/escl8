@@ -1,7 +1,7 @@
 # Summary
 
 ## Linear
-- Issue: <!-- Example: ENG-123 or paste Linear URL -->
+- Issue: <!-- Example: ESC-123 or paste Linear URL -->
 
 ## Scope
 - Product/repo area:
@@ -21,4 +21,3 @@
 - Rollback or mitigation path:
 
 ## Notes for reviewer
-
