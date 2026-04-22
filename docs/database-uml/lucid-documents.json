@@ -1,0 +1,22 @@
+{
+  "activeLucidDocuments": {
+    "grandScaleUml": {
+      "title": "Escal8 Databases UML",
+      "documentId": "26253683-f4a8-4799-a68b-8f866d27dee5",
+      "editUrl": "https://lucid.app/lucidchart/26253683-f4a8-4799-a68b-8f866d27dee5/edit",
+      "viewUrl": "https://lucid.app/lucidchart/26253683-f4a8-4799-a68b-8f866d27dee5/view",
+      "createdAt": "2026-04-21T09:08:01Z",
+      "source": "docs/database-uml/suite-databases-lucid-clean-cross-standard-import.json",
+      "purpose": "High-level cross-database UML showing the Control Plane, Agent, and Reservation databases plus cross-system links."
+    },
+    "routedInternalErd": {
+      "title": "Escal8 Databases UML - Full ERD Routed",
+      "documentId": "265bb154-890a-4e18-b4be-acac062ecdcb",
+      "editUrl": "https://lucid.app/lucidchart/265bb154-890a-4e18-b4be-acac062ecdcb/edit",
+      "viewUrl": "https://lucid.app/lucidchart/265bb154-890a-4e18-b4be-acac062ecdcb/view",
+      "createdAt": "2026-04-21T09:32:53Z",
+      "source": "docs/database-uml/suite-databases-full-erd-routed-standard-import.json",
+      "purpose": "Detailed routed ERD with isolated database pages, all table attributes, and internal FK relationships."
+    }
+  }
+}

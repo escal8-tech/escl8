@@ -1,0 +1,3826 @@
+{
+  "title": "Agent Database UML",
+  "schemaHash": "dab4ab662ea713a1",
+  "schemaPath": "drizzle/schema.ts",
+  "tables": [
+    {
+      "name": "ai_usage_events",
+      "exportName": "aiUsageEvents",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "whatsappIdentityId",
+          "name": "whatsapp_identity_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "customerId",
+          "name": "customer_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "threadId",
+          "name": "thread_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "eventType",
+          "name": "event_type",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "source",
+          "name": "source",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "credits",
+          "name": "credits",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "metadata",
+          "name": "metadata",
+          "type": "jsonb",
+          "primary": false,
+          "required": false,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "bookings",
+      "exportName": "bookings",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "userId",
+          "name": "user_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "startTime",
+          "name": "start_time",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "durationMinutes",
+          "name": "duration_minutes",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "unitsBooked",
+          "name": "units_booked",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "phoneNumber",
+          "name": "phone_number",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "notes",
+          "name": "notes",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "deletedAt",
+          "name": "deleted_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "businesses",
+      "exportName": "businesses",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "suiteTenantId",
+          "name": "suite_tenant_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "name",
+          "name": "name",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "isActive",
+          "name": "is_active",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "instructions",
+          "name": "instructions",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "ragTopK",
+          "name": "rag_top_k",
+          "type": "integer",
+          "primary": false,
+          "required": false,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "promotionsEnabled",
+          "name": "promotions_enabled",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "bookingsEnabled",
+          "name": "bookings_enabled",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "bookingUnitCapacity",
+          "name": "booking_unit_capacity",
+          "type": "integer",
+          "primary": false,
+          "required": false,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "bookingTimeslotMinutes",
+          "name": "booking_timeslot_minutes",
+          "type": "integer",
+          "primary": false,
+          "required": false,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "bookingOpenTime",
+          "name": "booking_open_time",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "bookingCloseTime",
+          "name": "booking_close_time",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "messageUsageTier",
+          "name": "message_usage_tier",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "settings",
+          "name": "settings",
+          "type": "jsonb",
+          "primary": false,
+          "required": false,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "gmailConnected",
+          "name": "gmail_connected",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "gmailEmail",
+          "name": "gmail_email",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "gmailRefreshToken",
+          "name": "gmail_refresh_token",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "gmailAccessToken",
+          "name": "gmail_access_token",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "gmailAccessTokenExpiresAt",
+          "name": "gmail_access_token_expires_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "gmailScope",
+          "name": "gmail_scope",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "gmailConnectedAt",
+          "name": "gmail_connected_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "gmailError",
+          "name": "gmail_error",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "customers",
+      "exportName": "customers",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "whatsappIdentityId",
+          "name": "whatsapp_identity_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "source",
+          "name": "source",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "externalId",
+          "name": "external_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "name",
+          "name": "name",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "email",
+          "name": "email",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "phone",
+          "name": "phone",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "profilePictureUrl",
+          "name": "profile_picture_url",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "platformMeta",
+          "name": "platform_meta",
+          "type": "jsonb",
+          "primary": false,
+          "required": false,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "botPaused",
+          "name": "bot_paused",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "totalRequests",
+          "name": "total_requests",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "totalRevenue",
+          "name": "total_revenue",
+          "type": "numeric",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "successfulRequests",
+          "name": "successful_requests",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "leadScore",
+          "name": "lead_score",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "isHighIntent",
+          "name": "is_high_intent",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "lastSentiment",
+          "name": "last_sentiment",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "firstMessageAt",
+          "name": "first_message_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "lastMessageAt",
+          "name": "last_message_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "tags",
+          "name": "tags",
+          "type": "jsonb",
+          "primary": false,
+          "required": false,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "notes",
+          "name": "notes",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "assignedToUserId",
+          "name": "assigned_to_user_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "status",
+          "name": "status",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "deletedAt",
+          "name": "deleted_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "inventory_product_price_options",
+      "exportName": "inventoryProductPriceOptions",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "productId",
+          "name": "product_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "sourceKey",
+          "name": "source_key",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "label",
+          "name": "label",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "valueText",
+          "name": "value_text",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "amount",
+          "name": "amount",
+          "type": "numeric",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "currency",
+          "name": "currency",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "sortOrder",
+          "name": "sort_order",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "inventory_products",
+      "exportName": "inventoryProducts",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "trainingDocumentId",
+          "name": "training_document_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "source",
+          "name": "source",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "sourceFilename",
+          "name": "source_filename",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "sourceSheet",
+          "name": "source_sheet",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "sourceRowNumber",
+          "name": "source_row_number",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "sourceRowKey",
+          "name": "source_row_key",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "itemCode",
+          "name": "item_code",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "name",
+          "name": "name",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "specification",
+          "name": "specification",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "description",
+          "name": "description",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "category",
+          "name": "category",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "brand",
+          "name": "brand",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "model",
+          "name": "model",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "mediaUrl",
+          "name": "media_url",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "mediaType",
+          "name": "media_type",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "mediaFilename",
+          "name": "media_filename",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "searchText",
+          "name": "search_text",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "rawFields",
+          "name": "raw_fields",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "status",
+          "name": "status",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "indexedAt",
+          "name": "indexed_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "message_outbox",
+      "exportName": "messageOutbox",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "entityType",
+          "name": "entity_type",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "entityId",
+          "name": "entity_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "customerId",
+          "name": "customer_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "threadId",
+          "name": "thread_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "whatsappIdentityId",
+          "name": "whatsapp_identity_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "recipient",
+          "name": "recipient",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "channel",
+          "name": "channel",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "source",
+          "name": "source",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "messageType",
+          "name": "message_type",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "payload",
+          "name": "payload",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "status",
+          "name": "status",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "attempts",
+          "name": "attempts",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "lastError",
+          "name": "last_error",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "providerMessageId",
+          "name": "provider_message_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "providerResponse",
+          "name": "provider_response",
+          "type": "jsonb",
+          "primary": false,
+          "required": false,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "idempotencyKey",
+          "name": "idempotency_key",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "lockedAt",
+          "name": "locked_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "sentAt",
+          "name": "sent_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "message_threads",
+      "exportName": "messageThreads",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "customerId",
+          "name": "customer_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "whatsappIdentityId",
+          "name": "whatsapp_identity_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "status",
+          "name": "status",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "lastMessageAt",
+          "name": "last_message_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "meta",
+          "name": "meta",
+          "type": "jsonb",
+          "primary": false,
+          "required": false,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "deletedAt",
+          "name": "deleted_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "operation_throttles",
+      "exportName": "operationThrottles",
+      "columns": [
+        {
+          "propertyName": "scopeKey",
+          "name": "scope_key",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "bucket",
+          "name": "bucket",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "hitCount",
+          "name": "hit_count",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "resetAt",
+          "name": "reset_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "order_events",
+      "exportName": "orderEvents",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "orderId",
+          "name": "order_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "eventType",
+          "name": "event_type",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "actorType",
+          "name": "actor_type",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "actorId",
+          "name": "actor_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "actorLabel",
+          "name": "actor_label",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "payload",
+          "name": "payload",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "order_payments",
+      "exportName": "orderPayments",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "orderId",
+          "name": "order_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "customerId",
+          "name": "customer_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "threadId",
+          "name": "thread_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "whatsappIdentityId",
+          "name": "whatsapp_identity_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "paymentMethod",
+          "name": "payment_method",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "status",
+          "name": "status",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "currency",
+          "name": "currency",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "expectedAmount",
+          "name": "expected_amount",
+          "type": "numeric",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "paidAmount",
+          "name": "paid_amount",
+          "type": "numeric",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "paidDate",
+          "name": "paid_date",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "referenceCode",
+          "name": "reference_code",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "proofUrl",
+          "name": "proof_url",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "aiCheckStatus",
+          "name": "ai_check_status",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "aiCheckNotes",
+          "name": "ai_check_notes",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "details",
+          "name": "details",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "orders",
+      "exportName": "orders",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "supportTicketId",
+          "name": "support_ticket_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "source",
+          "name": "source",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "customerId",
+          "name": "customer_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "threadId",
+          "name": "thread_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "whatsappIdentityId",
+          "name": "whatsapp_identity_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "customerName",
+          "name": "customer_name",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "customerPhone",
+          "name": "customer_phone",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "customerEmail",
+          "name": "customer_email",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "status",
+          "name": "status",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "fulfillmentStatus",
+          "name": "fulfillment_status",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "fulfillmentUpdatedAt",
+          "name": "fulfillment_updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "recipientName",
+          "name": "recipient_name",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "recipientPhone",
+          "name": "recipient_phone",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "shippingAddress",
+          "name": "shipping_address",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "deliveryArea",
+          "name": "delivery_area",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "deliveryNotes",
+          "name": "delivery_notes",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "courierName",
+          "name": "courier_name",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "trackingNumber",
+          "name": "tracking_number",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "trackingUrl",
+          "name": "tracking_url",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "dispatchReference",
+          "name": "dispatch_reference",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "scheduledDeliveryAt",
+          "name": "scheduled_delivery_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "fulfillmentNotes",
+          "name": "fulfillment_notes",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "packedAt",
+          "name": "packed_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "dispatchedAt",
+          "name": "dispatched_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "outForDeliveryAt",
+          "name": "out_for_delivery_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "deliveredAt",
+          "name": "delivered_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "failedDeliveryAt",
+          "name": "failed_delivery_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "returnedAt",
+          "name": "returned_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "paymentMethod",
+          "name": "payment_method",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "currency",
+          "name": "currency",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "expectedAmount",
+          "name": "expected_amount",
+          "type": "numeric",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "paidAmount",
+          "name": "paid_amount",
+          "type": "numeric",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "paymentReference",
+          "name": "payment_reference",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "ticketSnapshot",
+          "name": "ticket_snapshot",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "paymentConfigSnapshot",
+          "name": "payment_config_snapshot",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "notes",
+          "name": "notes",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "approvedAt",
+          "name": "approved_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "paymentApprovedAt",
+          "name": "payment_approved_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "paymentRejectedAt",
+          "name": "payment_rejected_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "invoiceNumber",
+          "name": "invoice_number",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "invoiceUrl",
+          "name": "invoice_url",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "invoiceStoragePath",
+          "name": "invoice_storage_path",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "invoiceFileName",
+          "name": "invoice_file_name",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "invoiceStatus",
+          "name": "invoice_status",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "invoiceDeliveryMethod",
+          "name": "invoice_delivery_method",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "invoiceGeneratedAt",
+          "name": "invoice_generated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "invoiceSentAt",
+          "name": "invoice_sent_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "refundRequestedAt",
+          "name": "refund_requested_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "refundedAt",
+          "name": "refunded_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "refundAmount",
+          "name": "refund_amount",
+          "type": "numeric",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "refundReason",
+          "name": "refund_reason",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "rag_jobs",
+      "exportName": "ragJobs",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "docType",
+          "name": "doc_type",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "trainingDocumentId",
+          "name": "training_document_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "status",
+          "name": "status",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "attempts",
+          "name": "attempts",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "startedAt",
+          "name": "started_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "finishedAt",
+          "name": "finished_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "error",
+          "name": "error",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "requests",
+      "exportName": "requests",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "customerId",
+          "name": "customer_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "customerNumber",
+          "name": "customer_number",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "source",
+          "name": "source",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "sourceMeta",
+          "name": "source_meta",
+          "type": "jsonb",
+          "primary": false,
+          "required": false,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "sentiment",
+          "name": "sentiment",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "status",
+          "name": "status",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "type",
+          "name": "type",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "price",
+          "name": "price",
+          "type": "numeric",
+          "primary": false,
+          "required": false,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "paid",
+          "name": "paid",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "summary",
+          "name": "summary",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "botVersion",
+          "name": "bot_version",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "deletedAt",
+          "name": "deleted_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "support_ticket_events",
+      "exportName": "supportTicketEvents",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "ticketId",
+          "name": "ticket_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "eventType",
+          "name": "event_type",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "actorType",
+          "name": "actor_type",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "actorId",
+          "name": "actor_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "actorLabel",
+          "name": "actor_label",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "payload",
+          "name": "payload",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "support_ticket_types",
+      "exportName": "supportTicketTypes",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "key",
+          "name": "key",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "label",
+          "name": "label",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "enabled",
+          "name": "enabled",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "requiredFields",
+          "name": "required_fields",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "sortOrder",
+          "name": "sort_order",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "support_tickets",
+      "exportName": "supportTickets",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "ticketNumber",
+          "name": "ticket_number",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "ticketTypeId",
+          "name": "ticket_type_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "ticketTypeKey",
+          "name": "ticket_type_key",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "status",
+          "name": "status",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "priority",
+          "name": "priority",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "outcome",
+          "name": "outcome",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "lossReason",
+          "name": "loss_reason",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "slaDueAt",
+          "name": "sla_due_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "source",
+          "name": "source",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "customerId",
+          "name": "customer_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "threadId",
+          "name": "thread_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "whatsappIdentityId",
+          "name": "whatsapp_identity_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "customerName",
+          "name": "customer_name",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "customerPhone",
+          "name": "customer_phone",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "idempotencyKey",
+          "name": "idempotency_key",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "title",
+          "name": "title",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "summary",
+          "name": "summary",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "fields",
+          "name": "fields",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "notes",
+          "name": "notes",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "createdBy",
+          "name": "created_by",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "resolvedAt",
+          "name": "resolved_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "closedAt",
+          "name": "closed_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "thread_messages",
+      "exportName": "threadMessages",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "threadId",
+          "name": "thread_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "externalMessageId",
+          "name": "external_message_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "direction",
+          "name": "direction",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "messageType",
+          "name": "message_type",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "textBody",
+          "name": "text_body",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "meta",
+          "name": "meta",
+          "type": "jsonb",
+          "primary": false,
+          "required": false,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "training_documents",
+      "exportName": "trainingDocuments",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "docType",
+          "name": "doc_type",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "blobPath",
+          "name": "blob_path",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "blobUrl",
+          "name": "blob_url",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "originalFilename",
+          "name": "original_filename",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "contentType",
+          "name": "content_type",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "sizeBytes",
+          "name": "size_bytes",
+          "type": "integer",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "sha256Hex",
+          "name": "sha256_hex",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "indexingStatus",
+          "name": "indexing_status",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "lastIndexedAt",
+          "name": "last_indexed_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "lastError",
+          "name": "last_error",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "uploadedByUserId",
+          "name": "uploaded_by_user_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "uploadedAt",
+          "name": "uploaded_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "users",
+      "exportName": "users",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "email",
+          "name": "email",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "firebaseUid",
+          "name": "firebase_uid",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "suiteUserId",
+          "name": "suite_user_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "whatsappConnected",
+          "name": "whatsapp_connected",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "whatsapp_identities",
+      "exportName": "whatsappIdentities",
+      "columns": [
+        {
+          "propertyName": "phoneNumberId",
+          "name": "phone_number_id",
+          "type": "text",
+          "primary": true,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "businessId",
+          "name": "business_id",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "connectedByUserId",
+          "name": "connected_by_user_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "botType",
+          "name": "bot_type",
+          "type": "text",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "wabaId",
+          "name": "waba_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "displayPhoneNumber",
+          "name": "display_phone_number",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "autoReplyPaused",
+          "name": "auto_reply_paused",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "aiDisabled",
+          "name": "ai_disabled",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "twoStepPin",
+          "name": "two_step_pin",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "webhookSubscribedAt",
+          "name": "webhook_subscribed_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "registeredAt",
+          "name": "registered_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "creditLineSharedAt",
+          "name": "credit_line_shared_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "creditLineAllocationConfigId",
+          "name": "credit_line_allocation_config_id",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "wabaCurrency",
+          "name": "waba_currency",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "isActive",
+          "name": "is_active",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "connectedAt",
+          "name": "connected_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "disconnectedAt",
+          "name": "disconnected_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "fromTable": "ai_usage_events",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "bookings",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "restrict",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "customers",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "restrict",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "inventory_product_price_options",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "inventory_products",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "message_outbox",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "message_threads",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "restrict",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "operation_throttles",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "order_events",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "order_payments",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "orders",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "rag_jobs",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "restrict",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "requests",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "restrict",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "support_ticket_events",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "support_ticket_types",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "support_tickets",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "training_documents",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "restrict",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "users",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "restrict",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "whatsapp_identities",
+      "fromColumns": [
+        "business_id"
+      ],
+      "toTable": "businesses",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "restrict",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "ai_usage_events",
+      "fromColumns": [
+        "customer_id"
+      ],
+      "toTable": "customers",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "message_outbox",
+      "fromColumns": [
+        "customer_id"
+      ],
+      "toTable": "customers",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "message_threads",
+      "fromColumns": [
+        "customer_id"
+      ],
+      "toTable": "customers",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "order_payments",
+      "fromColumns": [
+        "customer_id"
+      ],
+      "toTable": "customers",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "orders",
+      "fromColumns": [
+        "customer_id"
+      ],
+      "toTable": "customers",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "requests",
+      "fromColumns": [
+        "customer_id"
+      ],
+      "toTable": "customers",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "support_tickets",
+      "fromColumns": [
+        "customer_id"
+      ],
+      "toTable": "customers",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "inventory_product_price_options",
+      "fromColumns": [
+        "product_id"
+      ],
+      "toTable": "inventory_products",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "ai_usage_events",
+      "fromColumns": [
+        "thread_id"
+      ],
+      "toTable": "message_threads",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "message_outbox",
+      "fromColumns": [
+        "thread_id"
+      ],
+      "toTable": "message_threads",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "order_payments",
+      "fromColumns": [
+        "thread_id"
+      ],
+      "toTable": "message_threads",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "orders",
+      "fromColumns": [
+        "thread_id"
+      ],
+      "toTable": "message_threads",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "support_tickets",
+      "fromColumns": [
+        "thread_id"
+      ],
+      "toTable": "message_threads",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "thread_messages",
+      "fromColumns": [
+        "thread_id"
+      ],
+      "toTable": "message_threads",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "order_events",
+      "fromColumns": [
+        "order_id"
+      ],
+      "toTable": "orders",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "order_payments",
+      "fromColumns": [
+        "order_id"
+      ],
+      "toTable": "orders",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "support_tickets",
+      "fromColumns": [
+        "ticket_type_id"
+      ],
+      "toTable": "support_ticket_types",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "orders",
+      "fromColumns": [
+        "support_ticket_id"
+      ],
+      "toTable": "support_tickets",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "support_ticket_events",
+      "fromColumns": [
+        "ticket_id"
+      ],
+      "toTable": "support_tickets",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "inventory_products",
+      "fromColumns": [
+        "training_document_id"
+      ],
+      "toTable": "training_documents",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "rag_jobs",
+      "fromColumns": [
+        "training_document_id"
+      ],
+      "toTable": "training_documents",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "customers",
+      "fromColumns": [
+        "assigned_to_user_id"
+      ],
+      "toTable": "users",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "training_documents",
+      "fromColumns": [
+        "uploaded_by_user_id"
+      ],
+      "toTable": "users",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    },
+    {
+      "fromTable": "whatsapp_identities",
+      "fromColumns": [
+        "connected_by_user_id"
+      ],
+      "toTable": "users",
+      "toColumns": [
+        "id"
+      ],
+      "required": false,
+      "onDelete": "set null",
+      "onUpdate": "cascade"
+    }
+  ]
+}

@@ -1,0 +1,424 @@
+{
+  "title": "Control Database UML",
+  "schemaHash": "10e184a8373e95a9",
+  "schemaPath": "src/server/control/schema.ts",
+  "tables": [
+    {
+      "name": "suite_app_links",
+      "exportName": "suiteAppLinks",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "uuid",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "suiteTenantId",
+          "name": "suite_tenant_id",
+          "type": "uuid",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "sourceModule",
+          "name": "source_module",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "sourceEntityId",
+          "name": "source_entity_id",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "targetModule",
+          "name": "target_module",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "targetEntityId",
+          "name": "target_entity_id",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "isActive",
+          "name": "is_active",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "metadata",
+          "name": "metadata",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "suite_entitlements",
+      "exportName": "suiteEntitlements",
+      "columns": [
+        {
+          "propertyName": "suiteTenantId",
+          "name": "suite_tenant_id",
+          "type": "uuid",
+          "primary": true,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "module",
+          "name": "module",
+          "type": "varchar",
+          "primary": true,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "status",
+          "name": "status",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "startsAt",
+          "name": "starts_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "endsAt",
+          "name": "ends_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "metadata",
+          "name": "metadata",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "suite_memberships",
+      "exportName": "suiteMemberships",
+      "columns": [
+        {
+          "propertyName": "suiteTenantId",
+          "name": "suite_tenant_id",
+          "type": "uuid",
+          "primary": true,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "suiteUserId",
+          "name": "suite_user_id",
+          "type": "uuid",
+          "primary": true,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "role",
+          "name": "role",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "isActive",
+          "name": "is_active",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "suite_tenants",
+      "exportName": "suiteTenants",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "uuid",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "name",
+          "name": "name",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "externalRef",
+          "name": "external_ref",
+          "type": "varchar",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "metadata",
+          "name": "metadata",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "suite_users",
+      "exportName": "suiteUsers",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "uuid",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "firebaseUid",
+          "name": "firebase_uid",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": true
+        },
+        {
+          "propertyName": "email",
+          "name": "email",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": true
+        },
+        {
+          "propertyName": "displayName",
+          "name": "display_name",
+          "type": "varchar",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "isActive",
+          "name": "is_active",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "fromTable": "suite_app_links",
+      "fromColumns": [
+        "suite_tenant_id"
+      ],
+      "toTable": "suite_tenants",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "no action"
+    },
+    {
+      "fromTable": "suite_entitlements",
+      "fromColumns": [
+        "suite_tenant_id"
+      ],
+      "toTable": "suite_tenants",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "no action"
+    },
+    {
+      "fromTable": "suite_memberships",
+      "fromColumns": [
+        "suite_tenant_id"
+      ],
+      "toTable": "suite_tenants",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "no action"
+    },
+    {
+      "fromTable": "suite_memberships",
+      "fromColumns": [
+        "suite_user_id"
+      ],
+      "toTable": "suite_users",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "no action"
+    }
+  ]
+}
