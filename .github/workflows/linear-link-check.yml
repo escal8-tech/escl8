@@ -1,0 +1,29 @@
+name: Linear Link Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+jobs:
+  require-linear-key:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require Linear issue key in PR title, body, or branch
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BRANCH: ${{ github.head_ref }}
+        run: |
+          combined="${PR_TITLE}
+          ${PR_BODY}
+          ${PR_BRANCH}"
+
+          if echo "$combined" | grep -Eiq '([A-Z][A-Z0-9]{1,9}-[0-9]+)'; then
+            echo "Linear issue key found."
+            exit 0
+          fi
+
+          echo "Missing Linear issue key."
+          echo "Add a Linear key like ENG-123 to the branch name, PR title, or PR body."
+          echo "If this work truly has no issue yet, create one in Linear or use the admin triage flow before merge."
+          exit 1
