@@ -19,7 +19,6 @@ import {
   getOrderStatus,
   isPickupOrder,
   normalizeStatusLabel,
-  needsPaymentDetailsWorkflow,
   numericAmount,
   resolveOrderAmount,
   shortId,
@@ -375,10 +374,10 @@ export function OrderWorkspaceDrawer({
   onApproveDraftOrder,
   onUpdateFulfillment,
   onUpdatePaymentSetup,
-  onSendPaymentDetails,
   onReopenPaidOrderForPaymentReview,
   onUpdateRefundStatus,
   busy,
+  variant = "drawer",
 }: {
   mode: OperationsWorkspaceMode;
   title: string;
@@ -423,10 +422,10 @@ export function OrderWorkspaceDrawer({
     customerEmail?: string | null;
     notes?: string | null;
   }) => Promise<void>;
-  onSendPaymentDetails: (order: OrderRow) => Promise<void>;
   onReopenPaidOrderForPaymentReview: (order: OrderRow) => Promise<void>;
   onUpdateRefundStatus: (order: OrderRow, action: "mark_pending" | "mark_refunded" | "cancel") => Promise<void>;
   busy: boolean;
+  variant?: "drawer" | "page";
 }) {
   const paymentsQuery = trpc.orders.getOrderPayments.useQuery(
     { orderId: order?.id ?? "" },
@@ -441,7 +440,7 @@ export function OrderWorkspaceDrawer({
   const [paymentReference, setPaymentReference] = useState(() => String(order?.paymentReference || "").trim());
   const [customerEmail, setCustomerEmail] = useState(() => String(order?.customerEmail || "").trim());
   const [orderNotes, setOrderNotes] = useState(() => String(order?.notes || "").trim());
-  const [draftTitle, setDraftTitle] = useState(() => String(asRecord(order?.ticketSnapshot).title || "").trim());
+  const draftTitle = String(asRecord(order?.ticketSnapshot).title || "").trim();
   const [draftSummary, setDraftSummary] = useState(() => String(asRecord(order?.ticketSnapshot).summary || "").trim());
   const [draftCustomerName, setDraftCustomerName] = useState(() => String(order?.customerName || "").trim());
   const [draftCustomerPhone, setDraftCustomerPhone] = useState(() => String(order?.customerPhone || "").trim());
@@ -472,7 +471,6 @@ export function OrderWorkspaceDrawer({
   const isDraftOrder = getOrderStatus(order) === "pending_approval";
   const showPaymentSetup = mode === "payments" && !isDraftOrder;
   const paymentSetupEditable = canEditPaymentSetup(order);
-  const canResendPaymentInstructions = needsPaymentDetailsWorkflow(order);
   const showDeliveryDetails = mode === "status";
   const showInvoicePanel = mode !== "status" && !isDraftOrder;
   const canApproveLatestPayment = canStaffApprovePayment(order, latestPayment);
@@ -485,6 +483,13 @@ export function OrderWorkspaceDrawer({
       : mode === "status"
         ? "Order Actions"
         : "Transaction And Refund";
+  const isPage = variant === "page";
+  const showHeaderActions = isPage && (
+    isDraftOrder ||
+    (mode === "payments" && canApproveLatestPayment) ||
+    (showDeliveryDetails && simpleFulfillmentBucket(order) === "pending") ||
+    (showDeliveryDetails && simpleFulfillmentBucket(order) === "out_for_delivery")
+  );
 
   const saveDraftOrder = async () => {
     const nextFields = applyOrderEditorToFields(snapshotFields, draftOrderLines, computedDraftOrderTotal);
@@ -501,43 +506,163 @@ export function OrderWorkspaceDrawer({
     });
   };
 
-  return (
-    <>
-      <div className="drawer-backdrop open" onClick={onClose} />
-      <div className="drawer open portal-drawer-shell">
-        <div className="drawer-header">
-          <div className="portal-drawer-heading">
-            <div>
-              <div className="portal-drawer-eyebrow">{title}</div>
+  const shell = (
+      <div className={isPage ? "portal-detail-page-card portal-drawer-shell portal-order-page-card" : "drawer open portal-drawer-shell"}>
+        <div className={isPage ? "drawer-header portal-workbench-header" : "drawer-header"}>
+          <div className={isPage ? "portal-workbench-titlebar" : "portal-drawer-heading"}>
+            {isPage ? (
+              <button className="portal-workbench-back" onClick={onClose} aria-label="Back to queue" title="Back to queue">
+                <OrderBackIcon />
+              </button>
+            ) : null}
+            <div className="portal-workbench-titleblock">
+              {!isPage ? <div className="portal-drawer-eyebrow">{title}</div> : null}
               <div className="portal-drawer-title">Order #{shortId(order.id)}</div>
-              <div className="portal-drawer-copy">{order.customerName || order.recipientName || "Unknown customer"} · {formatOrderItems(snapshot)}</div>
+              {isPage ? (
+                <div className="portal-workbench-title-tags">
+                  <span className={financeToneClass(order)}>{describeFinanceState(order, latestPayment)}</span>
+                  <span className={mode === "status" ? simpleFulfillmentTone(order) : fulfillmentToneClass(getFulfillmentStatus(order))}>
+                    {mode === "status" ? simpleFulfillmentLabel(order) : normalizeStatusLabel(order.fulfillmentStatus)}
+                  </span>
+                </div>
+              ) : null}
+              {!isPage ? (
+                <div className="portal-drawer-copy">{order.customerName || order.recipientName || "Unknown customer"} · {formatOrderItems(snapshot)}</div>
+              ) : null}
             </div>
-            <button className="portal-drawer-close" onClick={onClose} aria-label="Close details">
-              ×
-            </button>
+            {!isPage ? (
+              <button className="portal-drawer-close" onClick={onClose} aria-label="Close details">
+                ×
+              </button>
+            ) : null}
+            {isPage ? (
+              <div className="portal-workbench-header-meta">
+                {showHeaderActions ? (
+                  <div className="portal-workbench-header-actions">
+                    {isDraftOrder ? (
+                      <button
+                        type="button"
+                        className="portal-workbench-action portal-workbench-action--approve"
+                        disabled={busy}
+                        onClick={() => void onApproveDraftOrder(order)}
+                        aria-label="Approve draft"
+                        title="Approve draft"
+                      >
+                        Approve
+                      </button>
+                    ) : null}
+                    {mode === "payments" && canApproveLatestPayment ? (
+                      <>
+                        <button
+                          type="button"
+                          className="portal-workbench-action portal-workbench-action--approve"
+                          disabled={busy}
+                          onClick={() => void onApprovePayment(order, latestPayment?.id)}
+                          aria-label="Approve payment"
+                          title="Approve payment"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          className="portal-workbench-action portal-workbench-action--deny"
+                          disabled={busy}
+                          onClick={() => void onRejectPayment(order, latestPayment?.id)}
+                          aria-label="Deny payment"
+                          title="Deny payment"
+                        >
+                          Deny
+                        </button>
+                      </>
+                    ) : null}
+                    {showDeliveryDetails && simpleFulfillmentBucket(order) === "pending" ? (
+                      <button
+                        type="button"
+                        className="portal-workbench-action portal-workbench-action--approve"
+                        disabled={busy}
+                        onClick={() => void onUpdateFulfillment({
+                          orderId: order.id,
+                          expectedUpdatedAt,
+                          fulfillmentStatus: pickupOrder ? "delivered" : "out_for_delivery",
+                          recipientName,
+                          recipientPhone,
+                          shippingAddress,
+                          deliveryArea,
+                          deliveryNotes,
+                          courierName: pickupOrder ? "" : courierName,
+                          trackingNumber: pickupOrder ? "" : trackingNumber,
+                          trackingUrl: pickupOrder ? "" : trackingUrl,
+                          dispatchReference: pickupOrder ? "" : dispatchReference,
+                          scheduledDeliveryAt: pickupOrder ? undefined : toIsoFromDateTimeLocal(scheduledDeliveryAt),
+                          fulfillmentNotes,
+                          notifyCustomer: true,
+                        })}
+                      >
+                        {pickupOrder ? "Complete" : "Dispatch"}
+                      </button>
+                    ) : null}
+                    {showDeliveryDetails && simpleFulfillmentBucket(order) === "out_for_delivery" ? (
+                      <button
+                        type="button"
+                        className="portal-workbench-action portal-workbench-action--approve"
+                        disabled={busy}
+                        onClick={() => void onUpdateFulfillment({
+                          orderId: order.id,
+                          expectedUpdatedAt,
+                          fulfillmentStatus: "delivered",
+                          recipientName,
+                          recipientPhone,
+                          shippingAddress,
+                          deliveryArea,
+                          deliveryNotes,
+                          courierName,
+                          trackingNumber,
+                          trackingUrl,
+                          dispatchReference,
+                          scheduledDeliveryAt: toIsoFromDateTimeLocal(scheduledDeliveryAt),
+                          fulfillmentNotes,
+                          notifyCustomer: true,
+                        })}
+                      >
+                        Complete
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-          <div className="portal-drawer-tags">
-            <span className={financeToneClass(order)}>{describeFinanceState(order, latestPayment)}</span>
-            <span className={mode === "status" ? simpleFulfillmentTone(order) : fulfillmentToneClass(getFulfillmentStatus(order))}>
-              {mode === "status" ? simpleFulfillmentLabel(order) : normalizeStatusLabel(order.fulfillmentStatus)}
-            </span>
-          </div>
+          {!isPage ? (
+            <div className="portal-drawer-tags">
+              <span className={financeToneClass(order)}>{describeFinanceState(order, latestPayment)}</span>
+              <span className={mode === "status" ? simpleFulfillmentTone(order) : fulfillmentToneClass(getFulfillmentStatus(order))}>
+                {mode === "status" ? simpleFulfillmentLabel(order) : normalizeStatusLabel(order.fulfillmentStatus)}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         <div className="drawer-body">
-          <div className="portal-rows">
+          <div className={isPage ? "portal-rows portal-workbench-body" : "portal-rows"}>
             {isDraftOrder ? (
-              <div className="card">
+              <div className="card portal-card--order-draft">
                 <div className="card-body" style={{ display: "grid", gap: 12 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>Manual Order Draft</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-                    <Field label="Title" value={draftTitle} onChange={setDraftTitle} placeholder="Manual order follow-up" />
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Ticket And Order Draft</div>
+                  <div
+                    className="portal-order-draft-identity-grid"
+                    style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, alignItems: "end" }}
+                  >
                     <Field label="Customer Name" value={draftCustomerName} onChange={setDraftCustomerName} placeholder="Customer name" />
                     <Field label="Customer Phone" value={draftCustomerPhone} onChange={setDraftCustomerPhone} placeholder="Customer phone" />
                     <Field label="Customer Email" value={draftCustomerEmail} onChange={setDraftCustomerEmail} placeholder="Customer email" type="email" />
                   </div>
-                  <TextAreaField label="Summary" value={draftSummary} onChange={setDraftSummary} placeholder="What the customer wants to buy" />
-                  <TextAreaField label="Internal Notes" value={orderNotes} onChange={setOrderNotes} placeholder="Staff-only notes for this draft order" />
+                  <div
+                    className="portal-order-draft-notes-grid"
+                    style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}
+                  >
+                    <TextAreaField label="Summary" value={draftSummary} onChange={setDraftSummary} placeholder="What the customer wants to buy" />
+                    <TextAreaField label="Internal Notes" value={orderNotes} onChange={setOrderNotes} placeholder="Staff-only notes for this draft order" />
+                  </div>
 
                   <div style={{ display: "grid", gap: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -628,11 +753,10 @@ export function OrderWorkspaceDrawer({
               <div className="card">
                 <div className="card-body" style={{ display: "grid", gap: 10 }}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>Payment Setup</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                  <div className="portal-payment-setup-grid">
                     <Field label="Amount Due" value={expectedAmount} onChange={setExpectedAmount} placeholder="0.00" disabled={!paymentSetupEditable} />
                     <Field label="Payment Reference" value={paymentReference} onChange={setPaymentReference} placeholder="Reference shown to customer" disabled={!paymentSetupEditable} />
                     <Field label="Customer Email" value={customerEmail} onChange={setCustomerEmail} placeholder="Email for closed-window fallback" disabled={!paymentSetupEditable} />
-                    <Field label="Invoice Status" value={normalizeStatusLabel(order.invoiceStatus)} onChange={() => {}} placeholder="" disabled />
                   </div>
                   <TextAreaField label="Internal Notes" value={orderNotes} onChange={setOrderNotes} placeholder="Order notes visible to staff only" disabled={!paymentSetupEditable} />
                   {!paymentSetupEditable ? (
@@ -654,18 +778,8 @@ export function OrderWorkspaceDrawer({
                         notes: orderNotes,
                       })}
                     >
-                      Save Payment Details
+                      Save Details
                     </button>
-                    {canResendPaymentInstructions ? (
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={busy}
-                        onClick={() => void onSendPaymentDetails(order)}
-                      >
-                        Send Payment Details
-                      </button>
-                    ) : null}
                   </div>
                 </div>
               </div>
@@ -737,19 +851,24 @@ export function OrderWorkspaceDrawer({
 
             {showInvoicePanel ? (
               <div className="card">
-                <div className="card-body" style={{ display: "grid", gap: 10 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>Invoice</div>
-                  <Detail label="Invoice Number" value={order.invoiceNumber || "Not generated"} />
-                  <Detail label="Sent Via" value={normalizeStatusLabel(order.invoiceDeliveryMethod) || "-"} />
-                  <Detail label="Generated" value={formatDate(order.invoiceGeneratedAt)} />
-                  <Detail label="Sent" value={formatDate(order.invoiceSentAt)} />
+                <div className="card-body portal-invoice-card">
+                  <div className="portal-invoice-card__header">
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>Invoice</div>
+                    {!order.invoiceUrl ? (
+                      <div className="text-muted" style={{ fontSize: 12 }}>Generated after payment approval.</div>
+                    ) : null}
+                  </div>
+                  <div className="portal-invoice-card__grid">
+                    <Detail label="Invoice Number" value={order.invoiceNumber || "Not generated"} />
+                    <Detail label="Sent Via" value={normalizeStatusLabel(order.invoiceDeliveryMethod) || "-"} />
+                    <Detail label="Generated" value={formatDate(order.invoiceGeneratedAt)} />
+                    <Detail label="Sent" value={formatDate(order.invoiceSentAt)} />
+                  </div>
                   {order.invoiceUrl ? (
                     <a href={order.invoiceUrl} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ width: "fit-content" }}>
                       Open Invoice
                     </a>
-                  ) : (
-                    <div className="text-muted" style={{ fontSize: 12 }}>The invoice will appear here after payment approval.</div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -794,6 +913,7 @@ export function OrderWorkspaceDrawer({
             </div>
           </div>
         </div>
+        {!isPage ? (
         <div className="portal-drawer-footer">
           <div className="portal-drawer-footer__label">{footerActionLabel}</div>
           <div className="portal-drawer-footer__actions">
@@ -886,7 +1006,16 @@ export function OrderWorkspaceDrawer({
             ) : null}
           </div>
         </div>
+        ) : null}
       </div>
+  );
+
+  if (variant === "page") return shell;
+
+  return (
+    <>
+      <div className="drawer-backdrop open" onClick={onClose} />
+      {shell}
     </>
   );
 }
@@ -897,6 +1026,15 @@ function Detail({ label, value }: { label: string; value: string }) {
       <div className="portal-detail-label">{label}</div>
       <div className="portal-detail-value">{value}</div>
     </div>
+  );
+}
+
+function OrderBackIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m15 18-6-6 6-6" />
+      <path d="M9 12h11" />
+    </svg>
   );
 }
 

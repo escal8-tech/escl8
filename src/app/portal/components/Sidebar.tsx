@@ -166,19 +166,19 @@ export default function Sidebar({
   const ticketNavItems = [
     ...(orderTicketType
       ? [{
-          href: `/tickets?type=${orderTicketType.key}`,
+          href: "/orders",
           label: orderTicketType.navLabel,
           icon: "tickets" as const,
-          active: pathname === "/tickets" && activeTicketType === orderTicketType.key,
+          active: isActive("/orders"),
         }]
       : []),
     { href: "/payments", label: "Payment Status", icon: "revenue" as const, active: isActive("/payments") },
-    { href: "/orders", label: "Order Status", icon: "sync" as const, active: isActive("/orders") },
+    { href: "/status", label: "Order Status", icon: "sync" as const, active: isActive("/status") },
     ...supportTicketTypes.map((type) => ({
-      href: `/tickets?type=${type.key}`,
+      href: `/ticket?type=${type.key}`,
       label: type.navLabel,
       icon: "tickets" as const,
-      active: pathname === "/tickets" && activeTicketType === type.key,
+      active: (pathname === "/ticket" || pathname.startsWith("/ticket/") || pathname === "/tickets" || pathname.startsWith("/tickets/")) && activeTicketType === type.key,
     })),
   ];
 

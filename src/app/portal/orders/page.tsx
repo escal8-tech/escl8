@@ -1,9 +1,7 @@
 "use client";
 
-import { OrdersPageScreen } from "@/app/portal/orders/components/OperationsWorkspace";
+import { TicketsPageScreen } from "@/app/portal/tickets/page";
 
 export default function OrdersPage() {
-  return <OrdersPageScreen mode="status" />;
+  return <TicketsPageScreen forcedTypeKey="ordercreation" basePath="/orders" />;
 }
-
-export { OrdersPageScreen };

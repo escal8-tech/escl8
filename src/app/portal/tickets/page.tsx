@@ -14,7 +14,6 @@ import { PortalBotToggleButton } from "@/app/portal/components/PortalBotToggleBu
 import { PortalHeaderCard, PortalMetricCard } from "@/app/portal/components/PortalSurfacePrimitives";
 import { ManualOrderLauncher } from "@/app/portal/orders/components/ManualOrderLauncher";
 import { ManualSupportTicketLauncher } from "@/app/portal/tickets/components/ManualSupportTicketLauncher";
-import { TicketDetailsDrawer } from "@/app/portal/tickets/components/TicketDetailsDrawer";
 import {
   OUTCOME_OPTIONS,
   PAGE_SIZE,
@@ -49,7 +48,13 @@ function toMutationDate(value: unknown): Date | undefined {
   return Number.isNaN(normalized.getTime()) ? undefined : normalized;
 }
 
-export default function TicketsPage() {
+export function TicketsPageScreen({
+  forcedTypeKey,
+  basePath = "/ticket",
+}: {
+  forcedTypeKey?: string;
+  basePath?: string;
+} = {}) {
   const utils = trpc.useUtils();
   const toast = useToast();
   const router = useRouter();
@@ -63,10 +68,9 @@ export default function TicketsPage() {
   const [pendingBotCustomerIds, setPendingBotCustomerIds] = useState<Record<string, boolean>>({});
   const [botPausedOverrides, setBotPausedOverrides] = useState<Record<string, boolean>>({});
   const [page, setPage] = useState(0);
-  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const searchParams = useSearchParams();
-  const queryTypeKey = (searchParams?.get("type") || "").toLowerCase();
+  const queryTypeKey = (forcedTypeKey || searchParams?.get("type") || "").toLowerCase();
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
     return () => window.clearInterval(id);
@@ -87,10 +91,11 @@ export default function TicketsPage() {
   );
   const allowedTypeKeys = useMemo(() => new Set(typeOptions.map((type) => type.typeKey)), [typeOptions]);
   const effectiveTypeKey = useMemo(() => {
+    if (forcedTypeKey) return forcedTypeKey.toLowerCase();
     if (queryTypeKey && allowedTypeKeys.has(queryTypeKey)) return queryTypeKey;
     if (!typeOptions.length) return null;
     return typeOptions[0]?.typeKey ?? null;
-  }, [allowedTypeKeys, queryTypeKey, typeOptions]);
+  }, [allowedTypeKeys, forcedTypeKey, queryTypeKey, typeOptions]);
   const activeFilterKey = effectiveTypeKey ?? "__all";
   const isOrderTicketView = effectiveTypeKey === "ordercreation";
   const statusFilter = filtersByType[activeFilterKey] ?? (isOrderTicketView ? "pending_approval" : "all");
@@ -163,7 +168,7 @@ export default function TicketsPage() {
     },
   });
   const approveOrderTicket = trpc.tickets.approveOrderTicket.useMutation({
-    onSuccess: async (result, vars) => {
+    onSuccess: async (result) => {
       await Promise.all([
         utils.tickets.listTickets.invalidate(),
         utils.tickets.listTicketLedger.invalidate(),
@@ -175,9 +180,6 @@ export default function TicketsPage() {
         utils.orders.getOverview.invalidate(),
         utils.orders.getStats.invalidate(),
       ]);
-      if (selectedTicketId === vars.id) {
-        setSelectedTicketId(null);
-      }
       if (result.delivery && !result.delivery.ok && result.delivery.error) {
         showInfoToast(toast, {
           title: "Ticket approved",
@@ -207,7 +209,7 @@ export default function TicketsPage() {
     onSettled: () => setOrderActionTicketId(null),
   });
   const denyOrderTicket = trpc.tickets.denyOrderTicket.useMutation({
-    onSuccess: async (_result, vars) => {
+    onSuccess: async () => {
       await Promise.all([
         utils.tickets.listTickets.invalidate(),
         utils.tickets.listTicketLedger.invalidate(),
@@ -219,9 +221,6 @@ export default function TicketsPage() {
         utils.orders.getOverview.invalidate(),
         utils.orders.getStats.invalidate(),
       ]);
-      if (selectedTicketId === vars.id) {
-        setSelectedTicketId(null);
-      }
       setDenyDialogTicket(null);
       showSuccessToast(toast, {
         title: "Ticket denied",
@@ -299,16 +298,9 @@ export default function TicketsPage() {
   useLivePortalEvents({
     ticketLedgerInput,
     ticketPerformanceInput: performanceInput,
-    activeTicketId: selectedTicketId,
     onCatchup: invalidateTickets,
     onEvent: syncCustomerBotPausedState,
   });
-  const selectedTicketQuery = trpc.tickets.getTicketById.useQuery(
-    { ticketId: selectedTicketId ?? "" },
-    { enabled: Boolean(selectedTicketId) },
-  );
-  const selectedTicket = selectedTicketQuery.data
-    ?? (selectedTicketId ? pageRows.find((ticket) => ticket.id === selectedTicketId) ?? null : null);
   const getThreadHref = useCallback((ticket: TicketRow) => {
     const params = new URLSearchParams();
     if (ticket.threadId) params.set("threadId", ticket.threadId);
@@ -398,6 +390,14 @@ export default function TicketsPage() {
     }
   };
 
+  const openTicketWorkbench = useCallback((ticket: TicketRow | string) => {
+    const id = typeof ticket === "string" ? ticket : ticket.id;
+    const params = new URLSearchParams();
+    if (!forcedTypeKey && effectiveTypeKey) params.set("type", effectiveTypeKey);
+    const query = params.toString();
+    router.push(query ? `${basePath}/${encodeURIComponent(id)}?${query}` : `${basePath}/${encodeURIComponent(id)}`);
+  }, [basePath, effectiveTypeKey, forcedTypeKey, router]);
+
   return (
     <>
       <div className="portal-page-shell">
@@ -407,12 +407,12 @@ export default function TicketsPage() {
             description={pageDescription}
             controls={
               isOrderTicketView ? (
-                <ManualOrderLauncher
+                  <ManualOrderLauncher
                   buttonLabel="New Order"
                   onCreated={(ticketId) => {
                     setFiltersByType((prev) => ({ ...prev, [activeFilterKey]: "pending_approval" }));
                     setPage(0);
-                    setSelectedTicketId(ticketId);
+                    openTicketWorkbench(ticketId);
                   }}
                 />
               ) : activeGroup ? (
@@ -423,7 +423,7 @@ export default function TicketsPage() {
                   onCreated={(ticketId) => {
                     setFiltersByType((prev) => ({ ...prev, [activeFilterKey]: "open" }));
                     setPage(0);
-                    setSelectedTicketId(ticketId);
+                    openTicketWorkbench(ticketId);
                   }}
                 />
               ) : null
@@ -653,7 +653,7 @@ export default function TicketsPage() {
                           [
                             {
                               label: "Open Details",
-                              onSelect: () => setSelectedTicketId(ticket.id),
+                              onSelect: () => openTicketWorkbench(ticket as TicketRow),
                             },
                             {
                               label: "Open Thread",
@@ -682,7 +682,7 @@ export default function TicketsPage() {
                         "button, a, input, textarea, select, [role='button'], .portal-select-trigger, .portal-select-content, .portal-select-item",
                       );
                       if (interactive) return;
-                      setSelectedTicketId(ticket.id);
+                      openTicketWorkbench(ticket as TicketRow);
                     }}
                     style={{ cursor: "pointer" }}
                   >
@@ -792,16 +792,6 @@ export default function TicketsPage() {
           </div>
         </div>
       </div>
-      <TicketDetailsDrawer
-        key={selectedTicket ? `${selectedTicket.id}:${String(getTicketValue(selectedTicket, "updatedAt", "updated_at") ?? "")}` : "ticket-details"}
-        ticket={selectedTicket}
-        onClose={() => setSelectedTicketId(null)}
-        threadHref={selectedTicket ? getThreadHref(selectedTicket) : "/messages"}
-        nowMs={nowMs}
-        onApproveOrderTicket={handleApproveTicket}
-        onDenyOrderTicket={openDenyDialog}
-        orderActionPending={orderActionTicketId !== null}
-      />
     {denyDialogTicket ? (
       <>
         <div className="drawer-backdrop open" onClick={() => setDenyDialogTicket(null)} />
@@ -856,6 +846,10 @@ export default function TicketsPage() {
     ) : null}
     </>
   );
+}
+
+export default function TicketsPage() {
+  return <TicketsPageScreen />;
 }
 
 function TicketCheckIcon() {

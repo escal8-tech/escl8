@@ -12,8 +12,11 @@ const routeLabels: Record<string, string> = {
   messages: "Messages",
   upload: "Documents",
   bookings: "Bookings",
-  orders: "Order Status",
+  ticket: "Tickets",
+  tickets: "Tickets",
+  orders: "Orders",
   payments: "Payment Status",
+  status: "Order Status",
   sync: "Sync",
   settings: "Settings",
   revenue: "Revenue",
@@ -26,18 +29,16 @@ export default function Breadcrumbs() {
   const appPath = normalizeAppPath(pathname);
   const segments = appPath.split("/").filter(Boolean);
   const leaf = segments[segments.length - 1] || "dashboard";
-  const isTickets = appPath === "/tickets"
-    || appPath.startsWith("/tickets/")
-    || appPath === "/orders"
-    || appPath.startsWith("/orders/")
-    || appPath === "/payments"
-    || appPath.startsWith("/payments/");
+  const isTicketPage = appPath === "/ticket"
+    || appPath.startsWith("/ticket/")
+    || appPath === "/tickets"
+    || appPath.startsWith("/tickets/");
 
-  const sectionLabel = isTickets ? "Tickets" : "Menu";
+  const sectionLabel = isTicketPage ? "Tickets" : "Menu";
   const ticketType = (searchParams?.get("type") || "").toLowerCase();
-  const currentTitle = appPath === "/tickets" || appPath.startsWith("/tickets/")
+  const currentTitle = isTicketPage
     ? getPortalTicketTypeLabel(ticketType)
-    : routeLabels[leaf] || leaf.charAt(0).toUpperCase() + leaf.slice(1);
+    : routeLabels[segments[0] || leaf] || routeLabels[leaf] || leaf.charAt(0).toUpperCase() + leaf.slice(1);
 
   return (
     <nav className="breadcrumbs" aria-label="Breadcrumb">
