@@ -19,7 +19,6 @@ import {
   getOrderStatus,
   isPickupOrder,
   normalizeStatusLabel,
-  needsPaymentDetailsWorkflow,
   numericAmount,
   resolveOrderAmount,
   shortId,
@@ -49,6 +48,23 @@ const RejectIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
     <path d="M4.5 4.5 11.5 11.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     <path d="M11.5 4.5 4.5 11.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const AddItemIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M12 5v14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const RemoveItemIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M8 6V4h8v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M10 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -375,10 +391,10 @@ export function OrderWorkspaceDrawer({
   onApproveDraftOrder,
   onUpdateFulfillment,
   onUpdatePaymentSetup,
-  onSendPaymentDetails,
   onReopenPaidOrderForPaymentReview,
   onUpdateRefundStatus,
   busy,
+  variant = "drawer",
 }: {
   mode: OperationsWorkspaceMode;
   title: string;
@@ -423,10 +439,10 @@ export function OrderWorkspaceDrawer({
     customerEmail?: string | null;
     notes?: string | null;
   }) => Promise<void>;
-  onSendPaymentDetails: (order: OrderRow) => Promise<void>;
   onReopenPaidOrderForPaymentReview: (order: OrderRow) => Promise<void>;
   onUpdateRefundStatus: (order: OrderRow, action: "mark_pending" | "mark_refunded" | "cancel") => Promise<void>;
   busy: boolean;
+  variant?: "drawer" | "page";
 }) {
   const paymentsQuery = trpc.orders.getOrderPayments.useQuery(
     { orderId: order?.id ?? "" },
@@ -437,18 +453,23 @@ export function OrderWorkspaceDrawer({
     { enabled: Boolean(order?.id) },
   );
 
-  const [expectedAmount, setExpectedAmount] = useState(() => String(order?.expectedAmount || "").trim());
+  const initialSnapshotFields = asRecord(asRecord(order?.ticketSnapshot).fields);
+  const initialDraftOrderLines = buildOrderEditorLines(initialSnapshotFields);
+  const initialComputedDraftOrderTotal = computeOrderEditorTotal(initialDraftOrderLines);
+  const initialExpectedAmount = String(order?.expectedAmount || "").trim();
+  const [expectedAmount, setExpectedAmount] = useState(() => initialExpectedAmount);
+  const [expectedAmountManuallyEdited, setExpectedAmountManuallyEdited] = useState(
+    () => Boolean(initialExpectedAmount && initialExpectedAmount !== initialComputedDraftOrderTotal),
+  );
   const [paymentReference, setPaymentReference] = useState(() => String(order?.paymentReference || "").trim());
   const [customerEmail, setCustomerEmail] = useState(() => String(order?.customerEmail || "").trim());
   const [orderNotes, setOrderNotes] = useState(() => String(order?.notes || "").trim());
-  const [draftTitle, setDraftTitle] = useState(() => String(asRecord(order?.ticketSnapshot).title || "").trim());
+  const draftTitle = String(asRecord(order?.ticketSnapshot).title || "").trim();
   const [draftSummary, setDraftSummary] = useState(() => String(asRecord(order?.ticketSnapshot).summary || "").trim());
   const [draftCustomerName, setDraftCustomerName] = useState(() => String(order?.customerName || "").trim());
   const [draftCustomerPhone, setDraftCustomerPhone] = useState(() => String(order?.customerPhone || "").trim());
   const [draftCustomerEmail, setDraftCustomerEmail] = useState(() => String(order?.customerEmail || "").trim());
-  const [draftOrderLines, setDraftOrderLines] = useState<OrderEditorLine[]>(() =>
-    buildOrderEditorLines(asRecord(asRecord(order?.ticketSnapshot).fields)),
-  );
+  const [draftOrderLines, setDraftOrderLines] = useState<OrderEditorLine[]>(() => initialDraftOrderLines);
   const [recipientName, setRecipientName] = useState(() => String(order?.recipientName || order?.customerName || "").trim());
   const [recipientPhone, setRecipientPhone] = useState(() => String(order?.recipientPhone || order?.customerPhone || "").trim());
   const [shippingAddress, setShippingAddress] = useState(() => String(order?.shippingAddress || "").trim());
@@ -461,6 +482,13 @@ export function OrderWorkspaceDrawer({
   const [scheduledDeliveryAt, setScheduledDeliveryAt] = useState(() => toDateTimeLocalValue(order?.scheduledDeliveryAt));
   const [fulfillmentNotes, setFulfillmentNotes] = useState(() => String(order?.fulfillmentNotes || "").trim());
 
+  const computedDraftOrderTotal = computeOrderEditorTotal(draftOrderLines);
+  const isDraftOrder = order ? getOrderStatus(order) === "pending_approval" : false;
+  const showPaymentSetup = Boolean(order) && mode === "payments" && !isDraftOrder;
+  const resolvedExpectedAmount = showPaymentSetup && !expectedAmountManuallyEdited
+    ? computedDraftOrderTotal
+    : expectedAmount;
+
   if (!order) return null;
   const pickupOrder = isPickupOrder(order);
 
@@ -469,14 +497,15 @@ export function OrderWorkspaceDrawer({
   const latestPayment = payments[0] ?? order.latestPayment ?? null;
   const snapshot = asRecord(order.ticketSnapshot);
   const snapshotFields = asRecord(snapshot.fields);
-  const isDraftOrder = getOrderStatus(order) === "pending_approval";
-  const showPaymentSetup = mode === "payments" && !isDraftOrder;
   const paymentSetupEditable = canEditPaymentSetup(order);
-  const canResendPaymentInstructions = needsPaymentDetailsWorkflow(order);
   const showDeliveryDetails = mode === "status";
   const showInvoicePanel = mode !== "status" && !isDraftOrder;
   const canApproveLatestPayment = canStaffApprovePayment(order, latestPayment);
-  const computedDraftOrderTotal = computeOrderEditorTotal(draftOrderLines);
+  const isPage = variant === "page";
+  const showBottomRefundActions =
+    isPage &&
+    showDeliveryDetails &&
+    (getOrderStatus(order) === "paid" || getOrderStatus(order) === "refund_pending");
   const footerActionLabel =
     isDraftOrder
       ? "Draft Actions"
@@ -485,6 +514,12 @@ export function OrderWorkspaceDrawer({
       : mode === "status"
         ? "Order Actions"
         : "Transaction And Refund";
+  const showHeaderActions = isPage && (
+    isDraftOrder ||
+    (mode === "payments" && canApproveLatestPayment) ||
+    (showDeliveryDetails && simpleFulfillmentBucket(order) === "pending") ||
+    (showDeliveryDetails && simpleFulfillmentBucket(order) === "out_for_delivery")
+  );
 
   const saveDraftOrder = async () => {
     const nextFields = applyOrderEditorToFields(snapshotFields, draftOrderLines, computedDraftOrderTotal);
@@ -501,43 +536,186 @@ export function OrderWorkspaceDrawer({
     });
   };
 
-  return (
-    <>
-      <div className="drawer-backdrop open" onClick={onClose} />
-      <div className="drawer open portal-drawer-shell">
-        <div className="drawer-header">
-          <div className="portal-drawer-heading">
-            <div>
-              <div className="portal-drawer-eyebrow">{title}</div>
+  const savePaymentSetupWithItems = async () => {
+    const nextFields = applyOrderEditorToFields(snapshotFields, draftOrderLines, computedDraftOrderTotal);
+    await onUpdateDraftOrder({
+      orderId: order.id,
+      expectedUpdatedAt,
+      title: draftTitle,
+      summary: draftSummary,
+      notes: orderNotes,
+      customerName: draftCustomerName,
+      customerPhone: draftCustomerPhone,
+      customerEmail: cleanPaymentCustomerEmail(customerEmail, draftCustomerEmail),
+      fields: nextFields,
+    });
+    await onUpdatePaymentSetup({
+      orderId: order.id,
+      expectedUpdatedAt,
+      expectedAmount: resolvedExpectedAmount,
+      paymentReference,
+      customerEmail,
+      notes: orderNotes,
+    });
+  };
+
+  const shell = (
+      <div className={isPage ? "portal-detail-page-card portal-drawer-shell portal-order-page-card" : "drawer open portal-drawer-shell"}>
+        <div className={isPage ? "drawer-header portal-workbench-header" : "drawer-header"}>
+          <div className={isPage ? "portal-workbench-titlebar" : "portal-drawer-heading"}>
+            {isPage ? (
+              <button className="portal-workbench-back" onClick={onClose} aria-label="Back to queue" title="Back to queue">
+                <OrderBackIcon />
+              </button>
+            ) : null}
+            <div className="portal-workbench-titleblock">
+              {!isPage ? <div className="portal-drawer-eyebrow">{title}</div> : null}
               <div className="portal-drawer-title">Order #{shortId(order.id)}</div>
-              <div className="portal-drawer-copy">{order.customerName || order.recipientName || "Unknown customer"} · {formatOrderItems(snapshot)}</div>
+              {isPage ? (
+                <div className="portal-workbench-title-tags">
+                  <span className={financeToneClass(order)}>{describeFinanceState(order, latestPayment)}</span>
+                  <span className={mode === "status" ? simpleFulfillmentTone(order) : fulfillmentToneClass(getFulfillmentStatus(order))}>
+                    {mode === "status" ? simpleFulfillmentLabel(order) : normalizeStatusLabel(order.fulfillmentStatus)}
+                  </span>
+                </div>
+              ) : null}
+              {!isPage ? (
+                <div className="portal-drawer-copy">{order.customerName || order.recipientName || "Unknown customer"} · {formatOrderItems(snapshot)}</div>
+              ) : null}
             </div>
-            <button className="portal-drawer-close" onClick={onClose} aria-label="Close details">
-              ×
-            </button>
+            {!isPage ? (
+              <button className="portal-drawer-close" onClick={onClose} aria-label="Close details">
+                ×
+              </button>
+            ) : null}
+            {isPage ? (
+              <div className="portal-workbench-header-meta">
+                {showHeaderActions ? (
+                  <div className="portal-workbench-header-actions">
+                    {isDraftOrder ? (
+                      <button
+                        type="button"
+                        className="portal-workbench-action portal-workbench-action--approve"
+                        disabled={busy}
+                        onClick={() => void onApproveDraftOrder(order)}
+                        aria-label="Approve draft"
+                        title="Approve draft"
+                      >
+                        Approve
+                      </button>
+                    ) : null}
+                    {mode === "payments" && canApproveLatestPayment ? (
+                      <>
+                        <button
+                          type="button"
+                          className="portal-workbench-action portal-workbench-action--approve"
+                          disabled={busy}
+                          onClick={() => void onApprovePayment(order, latestPayment?.id)}
+                          aria-label="Approve payment"
+                          title="Approve payment"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          className="portal-workbench-action portal-workbench-action--deny"
+                          disabled={busy}
+                          onClick={() => void onRejectPayment(order, latestPayment?.id)}
+                          aria-label="Deny payment"
+                          title="Deny payment"
+                        >
+                          Deny
+                        </button>
+                      </>
+                    ) : null}
+                    {showDeliveryDetails && simpleFulfillmentBucket(order) === "pending" ? (
+                      <button
+                        type="button"
+                        className="portal-workbench-action portal-workbench-action--approve"
+                        disabled={busy}
+                        onClick={() => void onUpdateFulfillment({
+                          orderId: order.id,
+                          expectedUpdatedAt,
+                          fulfillmentStatus: pickupOrder ? "delivered" : "out_for_delivery",
+                          recipientName,
+                          recipientPhone,
+                          shippingAddress,
+                          deliveryArea,
+                          deliveryNotes,
+                          courierName: pickupOrder ? "" : courierName,
+                          trackingNumber: pickupOrder ? "" : trackingNumber,
+                          trackingUrl: pickupOrder ? "" : trackingUrl,
+                          dispatchReference: pickupOrder ? "" : dispatchReference,
+                          scheduledDeliveryAt: pickupOrder ? undefined : toIsoFromDateTimeLocal(scheduledDeliveryAt),
+                          fulfillmentNotes,
+                          notifyCustomer: true,
+                        })}
+                      >
+                        {pickupOrder ? "Complete" : "Dispatch"}
+                      </button>
+                    ) : null}
+                    {showDeliveryDetails && simpleFulfillmentBucket(order) === "out_for_delivery" ? (
+                      <button
+                        type="button"
+                        className="portal-workbench-action portal-workbench-action--approve"
+                        disabled={busy}
+                        onClick={() => void onUpdateFulfillment({
+                          orderId: order.id,
+                          expectedUpdatedAt,
+                          fulfillmentStatus: "delivered",
+                          recipientName,
+                          recipientPhone,
+                          shippingAddress,
+                          deliveryArea,
+                          deliveryNotes,
+                          courierName,
+                          trackingNumber,
+                          trackingUrl,
+                          dispatchReference,
+                          scheduledDeliveryAt: toIsoFromDateTimeLocal(scheduledDeliveryAt),
+                          fulfillmentNotes,
+                          notifyCustomer: true,
+                        })}
+                      >
+                        Complete
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-          <div className="portal-drawer-tags">
-            <span className={financeToneClass(order)}>{describeFinanceState(order, latestPayment)}</span>
-            <span className={mode === "status" ? simpleFulfillmentTone(order) : fulfillmentToneClass(getFulfillmentStatus(order))}>
-              {mode === "status" ? simpleFulfillmentLabel(order) : normalizeStatusLabel(order.fulfillmentStatus)}
-            </span>
-          </div>
+          {!isPage ? (
+            <div className="portal-drawer-tags">
+              <span className={financeToneClass(order)}>{describeFinanceState(order, latestPayment)}</span>
+              <span className={mode === "status" ? simpleFulfillmentTone(order) : fulfillmentToneClass(getFulfillmentStatus(order))}>
+                {mode === "status" ? simpleFulfillmentLabel(order) : normalizeStatusLabel(order.fulfillmentStatus)}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         <div className="drawer-body">
-          <div className="portal-rows">
+          <div className={isPage ? "portal-rows portal-workbench-body" : "portal-rows"}>
             {isDraftOrder ? (
-              <div className="card">
+              <div className="card portal-card--order-draft">
                 <div className="card-body" style={{ display: "grid", gap: 12 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>Manual Order Draft</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-                    <Field label="Title" value={draftTitle} onChange={setDraftTitle} placeholder="Manual order follow-up" />
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Ticket And Order Draft</div>
+                  <div
+                    className="portal-order-draft-identity-grid"
+                    style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, alignItems: "end" }}
+                  >
                     <Field label="Customer Name" value={draftCustomerName} onChange={setDraftCustomerName} placeholder="Customer name" />
                     <Field label="Customer Phone" value={draftCustomerPhone} onChange={setDraftCustomerPhone} placeholder="Customer phone" />
                     <Field label="Customer Email" value={draftCustomerEmail} onChange={setDraftCustomerEmail} placeholder="Customer email" type="email" />
                   </div>
-                  <TextAreaField label="Summary" value={draftSummary} onChange={setDraftSummary} placeholder="What the customer wants to buy" />
-                  <TextAreaField label="Internal Notes" value={orderNotes} onChange={setOrderNotes} placeholder="Staff-only notes for this draft order" />
+                  <div
+                    className="portal-order-draft-notes-grid"
+                    style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}
+                  >
+                    <TextAreaField label="Summary" value={draftSummary} onChange={setDraftSummary} placeholder="What the customer wants to buy" />
+                    <TextAreaField label="Internal Notes" value={orderNotes} onChange={setOrderNotes} placeholder="Staff-only notes for this draft order" />
+                  </div>
 
                   <div style={{ display: "grid", gap: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -626,13 +804,144 @@ export function OrderWorkspaceDrawer({
 
             {showPaymentSetup ? (
               <div className="card">
+                <div className="card-body" style={{ display: "grid", gap: 14 }}>
+                  <div className="portal-order-items-panel__header">
+                    <div className="portal-section-head">
+                      <div className="portal-section-title" style={{ fontSize: 14 }}>Order Items</div>
+                      <div className="portal-section-caption">
+                        Review the amount due breakdown before sending payment instructions. Editing items updates the computed total.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="portal-order-items-add"
+                      disabled={!paymentSetupEditable || busy}
+                      onClick={() => setDraftOrderLines((current) => [...current, { item: "", quantity: "1", unitPrice: "" }])}
+                    >
+                      <AddItemIcon />
+                      <span>Add Item</span>
+                    </button>
+                  </div>
+
+                  {draftOrderLines.length ? (
+                    <div className="portal-order-items-table">
+                      <div className="portal-order-items-table__head">
+                        <div>Item</div>
+                        <div>Qty</div>
+                        <div>Unit Price</div>
+                        <div>Line Total</div>
+                        <div className="portal-order-items-table__actions-heading">Actions</div>
+                      </div>
+                      <div className="portal-order-items-table__body">
+                        {draftOrderLines.map((line, index) => (
+                          <div key={`payment-order-line-${index}`} className="portal-order-items-row">
+                            <div className="portal-order-items-cell portal-order-items-cell--item">
+                              <div className="portal-order-items-cell__label">Item</div>
+                              <input
+                                type="text"
+                                value={line.item}
+                                placeholder="Inventory item or service"
+                                aria-label={`Order item ${index + 1}`}
+                                disabled={!paymentSetupEditable}
+                                onChange={(event) =>
+                                  setDraftOrderLines((current) =>
+                                    current.map((entry, entryIndex) =>
+                                      entryIndex === index ? { ...entry, item: event.target.value } : entry,
+                                    ),
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="portal-order-items-cell">
+                              <div className="portal-order-items-cell__label">Qty</div>
+                              <input
+                                type="number"
+                                min={1}
+                                value={line.quantity}
+                                aria-label={`Quantity for item ${index + 1}`}
+                                disabled={!paymentSetupEditable}
+                                onChange={(event) =>
+                                  setDraftOrderLines((current) =>
+                                    current.map((entry, entryIndex) =>
+                                      entryIndex === index ? { ...entry, quantity: event.target.value } : entry,
+                                    ),
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="portal-order-items-cell">
+                              <div className="portal-order-items-cell__label">Unit Price</div>
+                              <input
+                                type="text"
+                                value={line.unitPrice}
+                                placeholder="0.00"
+                                aria-label={`Unit price for item ${index + 1}`}
+                                disabled={!paymentSetupEditable}
+                                onChange={(event) =>
+                                  setDraftOrderLines((current) =>
+                                    current.map((entry, entryIndex) =>
+                                      entryIndex === index ? { ...entry, unitPrice: event.target.value } : entry,
+                                    ),
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="portal-order-items-cell portal-order-items-cell--total">
+                              <div className="portal-order-items-cell__label">Line Total</div>
+                              <div className="portal-order-items-row__total">{formatOrderLineTotal(line.quantity, line.unitPrice)}</div>
+                            </div>
+                            <div className="portal-order-items-row__actions">
+                              <button
+                                type="button"
+                                className="portal-ledger-action portal-ledger-action--reject portal-order-item-icon-button"
+                                aria-label={`Remove item ${index + 1}`}
+                                title="Remove order item"
+                                disabled={!paymentSetupEditable || busy}
+                                onClick={() =>
+                                  setDraftOrderLines((current) => current.filter((_, entryIndex) => entryIndex !== index))
+                                }
+                              >
+                                <RemoveItemIcon />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="portal-order-items-empty">
+                      <div className="portal-order-items-empty__title">No order items yet</div>
+                      <div className="portal-order-items-empty__copy">Add the products or services before sending payment details to the customer.</div>
+                    </div>
+                  )}
+
+                  <div className="portal-order-items-footer">
+                    <div className="portal-order-editor-total">
+                      <div className="portal-field-label">Computed Total</div>
+                      <div className="portal-order-editor-total__value">{computedDraftOrderTotal || "-"}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {showPaymentSetup ? (
+              <div className="card">
                 <div className="card-body" style={{ display: "grid", gap: 10 }}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>Payment Setup</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-                    <Field label="Amount Due" value={expectedAmount} onChange={setExpectedAmount} placeholder="0.00" disabled={!paymentSetupEditable} />
+                  <div className="portal-payment-setup-grid">
+                    <Field
+                      label="Amount Due"
+                      value={resolvedExpectedAmount}
+                      onChange={(value) => {
+                        setExpectedAmountManuallyEdited(true);
+                        setExpectedAmount(value);
+                      }}
+                      placeholder="0.00"
+                      disabled={!paymentSetupEditable}
+                    />
                     <Field label="Payment Reference" value={paymentReference} onChange={setPaymentReference} placeholder="Reference shown to customer" disabled={!paymentSetupEditable} />
                     <Field label="Customer Email" value={customerEmail} onChange={setCustomerEmail} placeholder="Email for closed-window fallback" disabled={!paymentSetupEditable} />
-                    <Field label="Invoice Status" value={normalizeStatusLabel(order.invoiceStatus)} onChange={() => {}} placeholder="" disabled />
                   </div>
                   <TextAreaField label="Internal Notes" value={orderNotes} onChange={setOrderNotes} placeholder="Order notes visible to staff only" disabled={!paymentSetupEditable} />
                   {!paymentSetupEditable ? (
@@ -645,27 +954,58 @@ export function OrderWorkspaceDrawer({
                       type="button"
                       className="btn btn-primary"
                       disabled={busy || !paymentSetupEditable}
-                      onClick={() => void onUpdatePaymentSetup({
-                        orderId: order.id,
-                        expectedUpdatedAt,
-                        expectedAmount,
-                        paymentReference,
-                        customerEmail,
-                        notes: orderNotes,
-                      })}
+                      onClick={() => void savePaymentSetupWithItems()}
                     >
-                      Save Payment Details
+                      Save Details
                     </button>
-                    {canResendPaymentInstructions ? (
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={busy}
-                        onClick={() => void onSendPaymentDetails(order)}
-                      >
-                        Send Payment Details
-                      </button>
-                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {showDeliveryDetails ? (
+              <div className="card">
+                <div className="card-body" style={{ display: "grid", gap: 10 }}>
+                  <div className="portal-order-items-panel__header">
+                    <div className="portal-section-head">
+                      <div className="portal-section-title" style={{ fontSize: 14 }}>Order Items</div>
+                      <div className="portal-section-caption">
+                        Final approved item breakdown for fulfillment and customer amount review.
+                      </div>
+                    </div>
+                  </div>
+                  {draftOrderLines.length ? (
+                    <div className="portal-order-items-table portal-order-items-table--readonly">
+                      <div className="portal-order-items-table__head">
+                        <div>Item</div>
+                        <div>Qty</div>
+                        <div>Unit Price</div>
+                        <div>Line Total</div>
+                      </div>
+                      <div className="portal-order-items-table__body">
+                        {draftOrderLines.map((line, index) => (
+                          <div key={`status-order-line-${index}`} className="portal-order-items-row portal-order-items-row--readonly">
+                            <div className="portal-order-items-read-cell">{line.item || "-"}</div>
+                            <div className="portal-order-items-read-cell">{line.quantity || "-"}</div>
+                            <div className="portal-order-items-read-cell">{line.unitPrice || "-"}</div>
+                            <div className="portal-order-items-read-cell portal-order-items-read-cell--total">
+                              {formatOrderLineTotal(line.quantity, line.unitPrice)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="portal-order-items-empty">
+                      <div className="portal-order-items-empty__title">No order items recorded</div>
+                      <div className="portal-order-items-empty__copy">This order has no item breakdown saved yet.</div>
+                    </div>
+                  )}
+                  <div className="portal-order-items-footer">
+                    <div className="portal-order-editor-total">
+                      <div className="portal-field-label">Order Total</div>
+                      <div className="portal-order-editor-total__value">{computedDraftOrderTotal || "-"}</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -675,32 +1015,40 @@ export function OrderWorkspaceDrawer({
               <div className="card">
                 <div className="card-body" style={{ display: "grid", gap: 10 }}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>{pickupOrder ? "Pickup Details" : "Delivery Details"}</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                  <div className="portal-status-delivery-top-grid">
                     <Field label="Recipient Name" value={recipientName} onChange={setRecipientName} placeholder="Receiver name" />
                     <Field label="Recipient Phone" value={recipientPhone} onChange={setRecipientPhone} placeholder="Receiver phone" />
                     {pickupOrder ? (
-                      <div className="portal-field portal-field--full">
+                      <div className="portal-field">
                         <div className="portal-field__label">Collection Method</div>
                         <div className="portal-detail-value">Pickup</div>
                       </div>
                     ) : (
                       <>
                         <Field label="Delivery Area" value={deliveryArea} onChange={setDeliveryArea} placeholder="Area" />
+                      </>
+                    )}
+                  </div>
+                  {!pickupOrder ? (
+                    <>
+                      <div className="portal-status-scheduled-row">
                         <Field
                           label="Scheduled Delivery"
                           value={scheduledDeliveryAt}
                           onChange={setScheduledDeliveryAt}
                           placeholder=""
                           type="datetime-local"
-                          className="portal-field--full"
+                          className="portal-status-datetime-field"
                         />
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                         <Field label="Courier Name" value={courierName} onChange={setCourierName} placeholder="Courier" />
                         <Field label="Tracking Number" value={trackingNumber} onChange={setTrackingNumber} placeholder="Tracking number" />
                         <Field label="Dispatch Reference" value={dispatchReference} onChange={setDispatchReference} placeholder="Dispatch reference" />
                         <Field label="Tracking URL" value={trackingUrl} onChange={setTrackingUrl} placeholder="https://..." />
-                      </>
-                    )}
-                  </div>
+                      </div>
+                    </>
+                  ) : null}
                   {!pickupOrder ? (
                     <TextAreaField label="Shipping Address" value={shippingAddress} onChange={setShippingAddress} placeholder="Delivery address" />
                   ) : null}
@@ -737,19 +1085,24 @@ export function OrderWorkspaceDrawer({
 
             {showInvoicePanel ? (
               <div className="card">
-                <div className="card-body" style={{ display: "grid", gap: 10 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>Invoice</div>
-                  <Detail label="Invoice Number" value={order.invoiceNumber || "Not generated"} />
-                  <Detail label="Sent Via" value={normalizeStatusLabel(order.invoiceDeliveryMethod) || "-"} />
-                  <Detail label="Generated" value={formatDate(order.invoiceGeneratedAt)} />
-                  <Detail label="Sent" value={formatDate(order.invoiceSentAt)} />
+                <div className="card-body portal-invoice-card">
+                  <div className="portal-invoice-card__header">
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>Invoice</div>
+                    {!order.invoiceUrl ? (
+                      <div className="text-muted" style={{ fontSize: 12 }}>Generated after payment approval.</div>
+                    ) : null}
+                  </div>
+                  <div className="portal-invoice-card__grid">
+                    <Detail label="Invoice Number" value={order.invoiceNumber || "Not generated"} />
+                    <Detail label="Sent Via" value={normalizeStatusLabel(order.invoiceDeliveryMethod) || "-"} />
+                    <Detail label="Generated" value={formatDate(order.invoiceGeneratedAt)} />
+                    <Detail label="Sent" value={formatDate(order.invoiceSentAt)} />
+                  </div>
                   {order.invoiceUrl ? (
                     <a href={order.invoiceUrl} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ width: "fit-content" }}>
                       Open Invoice
                     </a>
-                  ) : (
-                    <div className="text-muted" style={{ fontSize: 12 }}>The invoice will appear here after payment approval.</div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -792,8 +1145,37 @@ export function OrderWorkspaceDrawer({
                 )}
               </div>
             </div>
+
+            {showBottomRefundActions ? (
+              <div className="card">
+                <div className="card-body portal-bottom-action-card">
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Refund</div>
+                  <div className="text-muted" style={{ fontSize: 12 }}>
+                    Use refund actions only after reviewing delivery, payment state, and item totals above.
+                  </div>
+                  <div className="portal-bottom-action-row">
+                    {getOrderStatus(order) === "paid" ? (
+                      <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onUpdateRefundStatus(order, "mark_pending")}>
+                        Start Refund
+                      </button>
+                    ) : null}
+                    {getOrderStatus(order) === "refund_pending" ? (
+                      <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void onUpdateRefundStatus(order, "mark_refunded")}>
+                        Mark Refunded
+                      </button>
+                    ) : null}
+                    {getOrderStatus(order) === "refund_pending" ? (
+                      <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onUpdateRefundStatus(order, "cancel")}>
+                        Cancel Refund
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
+        {!isPage ? (
         <div className="portal-drawer-footer">
           <div className="portal-drawer-footer__label">{footerActionLabel}</div>
           <div className="portal-drawer-footer__actions">
@@ -886,7 +1268,16 @@ export function OrderWorkspaceDrawer({
             ) : null}
           </div>
         </div>
+        ) : null}
       </div>
+  );
+
+  if (variant === "page") return shell;
+
+  return (
+    <>
+      <div className="drawer-backdrop open" onClick={onClose} />
+      {shell}
     </>
   );
 }
@@ -897,6 +1288,29 @@ function Detail({ label, value }: { label: string; value: string }) {
       <div className="portal-detail-label">{label}</div>
       <div className="portal-detail-value">{value}</div>
     </div>
+  );
+}
+
+function formatOrderLineTotal(quantity: string, unitPrice: string): string {
+  const qty = Number.parseFloat(quantity || "0");
+  const price = Number.parseFloat(unitPrice || "0");
+  if (!Number.isFinite(qty) || !Number.isFinite(price) || qty <= 0 || price < 0) return "-";
+  return (qty * price).toFixed(2);
+}
+
+function cleanPaymentCustomerEmail(paymentEmail: string, draftEmail: string): string | null {
+  const normalizedPaymentEmail = String(paymentEmail || "").trim();
+  if (normalizedPaymentEmail) return normalizedPaymentEmail;
+  const normalizedDraftEmail = String(draftEmail || "").trim();
+  return normalizedDraftEmail || null;
+}
+
+function OrderBackIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m15 18-6-6 6-6" />
+      <path d="M9 12h11" />
+    </svg>
   );
 }
 

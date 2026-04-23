@@ -2,6 +2,7 @@ import { getPortalTicketTypeLabel } from "@/app/portal/lib/ticketTypes";
 
 export type TicketStatus = "open" | "in_progress" | "resolved";
 export type TicketOutcome = "pending" | "won" | "lost";
+export type SupportTicketState = "open" | "completed" | "failed";
 
 export type TicketEventRow = {
   id: string;
@@ -50,6 +51,7 @@ export type TicketRow = {
 
 export const STATUS_OPTIONS: TicketStatus[] = ["open", "in_progress", "resolved"];
 export const OUTCOME_OPTIONS: TicketOutcome[] = ["pending", "won", "lost"];
+export const SUPPORT_STATE_OPTIONS: SupportTicketState[] = ["open", "completed", "failed"];
 export const ORDER_STAGE_OPTIONS = [
   "pending_approval",
   "edit_required",
@@ -64,7 +66,7 @@ export const ORDER_STAGE_OPTIONS = [
 ] as const;
 
 export type OrderStage = (typeof ORDER_STAGE_OPTIONS)[number];
-export type TicketListFilter = "all" | TicketStatus | OrderStage;
+export type TicketListFilter = "all" | TicketStatus | SupportTicketState | OrderStage;
 
 export const LOSS_REASON_OPTIONS = [
   "Price too high",
@@ -177,6 +179,26 @@ export function getTicketFields(ticket: TicketRow): Record<string, unknown> {
 
 export function formatStatus(status: string): string {
   return status.replace(/_/g, " ");
+}
+
+export function resolveSupportTicketState(ticket: TicketRow): SupportTicketState {
+  const status = getTicketString(ticket, "status").toLowerCase();
+  const outcome = getTicketString(ticket, "outcome", "outcome").toLowerCase();
+  if (outcome === "lost") return "failed";
+  if (status === "resolved" || status === "closed" || outcome === "won") return "completed";
+  return "open";
+}
+
+export function formatSupportTicketState(state: SupportTicketState): string {
+  if (state === "completed") return "Completed";
+  if (state === "failed") return "Failed";
+  return "Open";
+}
+
+export function supportTicketStatePillClass(state: SupportTicketState): string {
+  if (state === "completed") return "portal-pill portal-pill--success";
+  if (state === "failed") return "portal-pill portal-pill--danger";
+  return "portal-pill portal-pill--warning";
 }
 
 function toStringList(value: unknown): string[] {

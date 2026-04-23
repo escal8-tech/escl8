@@ -50,6 +50,7 @@ export async function listTicketLedgerForBusiness(args: {
   businessId: string;
   typeKey?: string;
   status?: "open" | "in_progress" | "resolved";
+  supportState?: "open" | "completed" | "failed";
   orderStage?: "pending_approval" | "edit_required" | "approved" | "awaiting_payment" | "payment_submitted" | "payment_rejected" | "paid" | "refund_pending" | "refunded" | "denied";
   search?: string;
   limit: number;
@@ -59,6 +60,11 @@ export async function listTicketLedgerForBusiness(args: {
     eq(supportTickets.businessId, args.businessId),
   ];
   const normalizedStatusExpr = sql<string>`case when lower(coalesce(${supportTickets.status}, '')) = 'closed' then 'resolved' else lower(coalesce(${supportTickets.status}, '')) end`;
+  const supportStateExpr = sql<string>`case
+    when ${normalizedStatusExpr} <> 'resolved' then 'open'
+    when lower(coalesce(${supportTickets.outcome}, '')) = 'lost' then 'failed'
+    else 'completed'
+  end`;
   const orderStageExpr = sql<string>`case
     when lower(coalesce(${orders.status}, '')) in ('pending_approval', 'edit_required', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'paid', 'refund_pending', 'refunded', 'denied')
       then lower(coalesce(${orders.status}, ''))
@@ -68,6 +74,7 @@ export async function listTicketLedgerForBusiness(args: {
   end`;
   if (args.typeKey) conditions.push(eq(supportTickets.ticketTypeKey, normalizeKey(args.typeKey)));
   if (args.status) conditions.push(sql<boolean>`${normalizedStatusExpr} = ${args.status}`);
+  if (args.supportState) conditions.push(sql<boolean>`${supportStateExpr} = ${args.supportState}`);
   if (args.orderStage) conditions.push(sql<boolean>`${orderStageExpr} = ${args.orderStage}`);
 
   const searchPattern = String(args.search ?? "").trim().replace(/^#/, "");

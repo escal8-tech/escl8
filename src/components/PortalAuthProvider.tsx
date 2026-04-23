@@ -14,7 +14,7 @@ type Props = { children: ReactNode };
 
 export default function PortalAuthProvider({ children }: Props) {
   const auth = getFirebaseAuth();
-  const [user, setUser] = useState<User | null | undefined>(() => (auth ? undefined : null));
+  const [user, setUser] = useState<User | null | undefined>(undefined);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pathname = usePathname();
@@ -27,7 +27,10 @@ export default function PortalAuthProvider({ children }: Props) {
   }, [pathname]);
 
   useEffect(() => {
-    if (!auth) return;
+    if (!auth) {
+      setUser(null);
+      return;
+    }
     const timeout = setTimeout(() => setUser(null), 5000);
 
     const unsub = onAuthStateChanged(auth, (u) => {

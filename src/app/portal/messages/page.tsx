@@ -951,7 +951,11 @@ export default function MessagesPage() {
                   {latestTicketNotice.summary ? ` ${latestTicketNotice.summary}` : ""}
                 </div>
                 <Link
-                  href={`/tickets?type=${encodeURIComponent(latestTicketNotice.typeKey)}`}
+                  href={
+                    latestTicketNotice.typeKey === "ordercreation"
+                      ? "/orders"
+                      : `/ticket?type=${encodeURIComponent(latestTicketNotice.typeKey)}`
+                  }
                   style={{
                     flexShrink: 0,
                     fontSize: 12,

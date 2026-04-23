@@ -15,9 +15,12 @@ type CustomerSortKey = "source" | "name" | "lastMessageAt";
 function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId: string | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryCustomerId = String(searchParams?.get("customerId") || "").trim();
+  const queryPhone = String(searchParams?.get("phone") || "").trim();
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const [searchQuery, setSearchQuery] = useState(queryPhone);
+  const activeSearchQuery = queryPhone || searchQuery;
+  const deferredSearchQuery = useDeferredValue(activeSearchQuery);
   const [sourceFilter, setSourceFilter] = useState<Source | "all">("all");
   const [sortKey, setSortKey] = useState<CustomerSortKey>("lastMessageAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -60,8 +63,11 @@ function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId
     }
   }, [page, safePage]);
 
-  const queryCustomerId = String(searchParams?.get("customerId") || "").trim();
-  const effectiveSelectedCustomerId = selectedCustomerId || queryCustomerId || null;
+  const queryPhoneDigits = queryPhone.replace(/[^\d]/g, "");
+  const phoneMatchedCustomer = queryPhoneDigits
+    ? typedCustomers.find((c) => String(c.phone || "").replace(/[^\d]/g, "") === queryPhoneDigits)
+    : null;
+  const effectiveSelectedCustomerId = selectedCustomerId || queryCustomerId || phoneMatchedCustomer?.id || null;
   const selectedCustomerQuery = trpc.customers.get.useQuery(
     { id: effectiveSelectedCustomerId ?? "" },
     {
@@ -88,8 +94,9 @@ function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId
         totalCount={totalCount}
         page={safePage}
         totalPages={totalPages}
-        searchQuery={searchQuery}
+        searchQuery={activeSearchQuery}
         onSearchQueryChange={(value) => {
+          if (queryPhone) router.replace("/customers");
           setSearchQuery(value);
           setPage(0);
         }}
@@ -120,7 +127,7 @@ function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId
         customer={customer ?? null}
         onClose={() => {
           setSelectedCustomerId(null);
-          if (queryCustomerId) {
+          if (queryCustomerId || queryPhone) {
             router.replace("/customers");
           }
         }}
