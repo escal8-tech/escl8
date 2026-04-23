@@ -6,7 +6,7 @@ import { showErrorToast, showInfoToast, showSuccessToast } from "@/components/to
 import { trpc } from "@/utils/trpc";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PortalSelect } from "@/app/portal/components/PortalSelect";
-import { TableSearchControl, TableSelect } from "@/app/portal/components/TableToolbarControls";
+import { TableSearchControl } from "@/app/portal/components/TableToolbarControls";
 import { TablePagination } from "@/app/portal/components/TablePagination";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
 import { RowActionsMenu } from "@/app/portal/components/RowActionsMenu";
@@ -15,12 +15,11 @@ import { PortalHeaderCard, PortalMetricCard } from "@/app/portal/components/Port
 import { ManualOrderLauncher } from "@/app/portal/orders/components/ManualOrderLauncher";
 import { ManualSupportTicketLauncher } from "@/app/portal/tickets/components/ManualSupportTicketLauncher";
 import {
-  OUTCOME_OPTIONS,
   PAGE_SIZE,
-  STATUS_OPTIONS,
   canApproveOrderStage,
   canDenyOrderStage,
   firstFieldText,
+  formatSupportTicketState,
   formatDate,
   formatChatWindowCountdown,
   formatItemsCell,
@@ -34,12 +33,13 @@ import {
   orderStagePillClass,
   priorityPillClass,
   resolveOrderStage,
+  resolveSupportTicketState,
+  supportTicketStatePillClass,
   toLooseStringList,
   type OrderStage,
+  type SupportTicketState,
   type TicketListFilter,
-  type TicketOutcome,
   type TicketRow,
-  type TicketStatus,
 } from "@/app/portal/tickets/lib/ticketPageUtils";
 
 function toMutationDate(value: unknown): Date | undefined {
@@ -60,8 +60,7 @@ export function TicketsPageScreen({
   const router = useRouter();
   const [filtersByType, setFiltersByType] = useState<Record<string, TicketListFilter>>({});
   const [ticketIdQuery, setTicketIdQuery] = useState("");
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [updatingOutcomeId, setUpdatingOutcomeId] = useState<string | null>(null);
+  const [resolvingSupportTicketId, setResolvingSupportTicketId] = useState<string | null>(null);
   const [orderActionTicketId, setOrderActionTicketId] = useState<string | null>(null);
   const [denyDialogTicket, setDenyDialogTicket] = useState<TicketRow | null>(null);
   const [denyReasonDraft, setDenyReasonDraft] = useState("Out of stock");
@@ -107,7 +106,7 @@ export function TicketsPageScreen({
       offset: page * PAGE_SIZE,
       ...(isOrderTicketView
         ? { orderStage: statusFilter !== "all" ? (statusFilter as OrderStage) : undefined }
-        : { status: statusFilter !== "all" ? (statusFilter as TicketStatus) : undefined }),
+        : { supportState: statusFilter !== "all" ? (statusFilter as SupportTicketState) : undefined }),
     }),
     [effectiveTypeKey, isOrderTicketView, page, statusFilter, ticketIdQuery],
   );
@@ -118,17 +117,11 @@ export function TicketsPageScreen({
     () => (effectiveTypeKey ? { typeKey: effectiveTypeKey, windowDays: 30 } : { windowDays: 30 }),
     [effectiveTypeKey],
   );
-  const updateStatus = trpc.tickets.updateTicketStatus.useMutation({
-    onSuccess: async () => {
-      await ticketsQuery.refetch();
-    },
-    onSettled: () => setUpdatingId(null),
-  });
-  const updateOutcome = trpc.tickets.updateTicketOutcome.useMutation({
+  const resolveSupportTicket = trpc.tickets.resolveSupportTicket.useMutation({
     onSuccess: async () => {
       await Promise.all([ticketsQuery.refetch(), performanceQuery.refetch()]);
     },
-    onSettled: () => setUpdatingOutcomeId(null),
+    onSettled: () => setResolvingSupportTicketId(null),
   });
   const invalidateTickets = useCallback(async () => {
     await Promise.all([
@@ -329,8 +322,10 @@ export function TicketsPageScreen({
     return { open, closed };
   }, [nowMs, pageRows]);
   const activeRowsOnPage = useMemo(
-    () => pageRows.filter((row) => ["open", "in_progress"].includes(getTicketString(row, "status").toLowerCase())).length,
-    [pageRows],
+    () => pageRows.filter((row) => (isOrderTicketView
+      ? ["open", "in_progress"].includes(getTicketString(row, "status").toLowerCase())
+      : resolveSupportTicketState(row) === "open")).length,
+    [isOrderTicketView, pageRows],
   );
   const summaryCards = useMemo(
     () => [
@@ -397,6 +392,30 @@ export function TicketsPageScreen({
     const query = params.toString();
     router.push(query ? `${basePath}/${encodeURIComponent(id)}?${query}` : `${basePath}/${encodeURIComponent(id)}`);
   }, [basePath, effectiveTypeKey, forcedTypeKey, router]);
+
+  const handleResolveSupportTicket = async (ticket: TicketRow, resolution: SupportTicketState) => {
+    if (resolution === "open") return;
+    setResolvingSupportTicketId(ticket.id);
+    try {
+      await resolveSupportTicket.mutateAsync({
+        id: ticket.id,
+        expectedUpdatedAt: toMutationDate(getTicketValue(ticket, "updatedAt", "updated_at")),
+        resolution,
+        failureReason: resolution === "failed" ? getTicketString(ticket, "lossReason", "loss_reason") || "Not completable" : undefined,
+      });
+      showSuccessToast(toast, {
+        title: resolution === "completed" ? "Ticket completed" : "Ticket failed",
+        message: resolution === "completed"
+          ? "The ticket was marked complete."
+          : "The ticket was marked failed.",
+      });
+    } catch (error) {
+      showErrorToast(toast, {
+        title: "Update failed",
+        message: error instanceof Error ? error.message : "The ticket could not be updated.",
+      });
+    }
+  };
 
   return (
     <>
@@ -476,8 +495,8 @@ export function TicketsPageScreen({
                       : [
                           { value: "all", label: "All Statuses" },
                           { value: "open", label: "Open" },
-                          { value: "in_progress", label: "In Progress" },
-                          { value: "resolved", label: "Resolved" },
+                          { value: "completed", label: "Completed" },
+                          { value: "failed", label: "Failed" },
                         ]
                   }
                   ariaLabel={isOrderTicketView ? "Order stage filter" : "Ticket status filter"}
@@ -525,8 +544,7 @@ export function TicketsPageScreen({
                           <th style={{ textAlign: "left", width: "22%" }}>Items</th>
                           <th style={{ textAlign: "left", width: "11%" }}>Priority</th>
                           <th style={{ textAlign: "left", width: "10%" }}>Window</th>
-                          <th style={{ textAlign: "left", width: "11%" }}>Status</th>
-                          <th style={{ textAlign: "left", width: "11%" }}>Outcome</th>
+                          <th style={{ textAlign: "left", width: "14%" }}>Status</th>
                           <th style={{ textAlign: "right", width: "8%" }}>Action</th>
                         </tr>
                       )}
@@ -554,7 +572,7 @@ export function TicketsPageScreen({
                   ? (customerPhone && customerPhone !== customerPrimary ? customerPhone : (!customerPhone ? "No phone" : ""))
                   : (!customerPhone ? "No phone" : ""));
                 const itemsLabel = formatItemsCell(fields);
-                const normalizedTicketStatus = (ticket.status === "closed" ? "resolved" : ticket.status) as TicketStatus;
+                const supportState = resolveSupportTicketState(ticket as TicketRow);
                 const ticketDate = formatDate(
                   (getTicketValue(ticket as TicketRow, "updatedAt", "updated_at") as Date | string | null | undefined) ?? ticket.createdAt,
                 );
@@ -626,25 +644,45 @@ export function TicketsPageScreen({
                     <div className="portal-ledger-actions">
                       <button
                         type="button"
-                        className={`portal-ledger-action portal-ledger-action--approve${isOrderRow && canApproveOrderStage(orderStage) ? "" : " is-hidden"}`}
-                        disabled={!isOrderRow || orderActionTicketId !== null || !canApproveOrderStage(orderStage)}
+                        className={`portal-ledger-action portal-ledger-action--approve${isOrderRow
+                          ? (canApproveOrderStage(orderStage) ? "" : " is-hidden")
+                          : (supportState === "open" ? "" : " is-hidden")}`}
+                        disabled={isOrderRow
+                          ? (!isOrderRow || orderActionTicketId !== null || !canApproveOrderStage(orderStage))
+                          : (resolvingSupportTicketId !== null || supportState !== "open")}
                         onClick={(e) => {
                           e.stopPropagation();
-                          void handleApproveTicket(ticket as TicketRow);
+                          if (isOrderRow) {
+                            void handleApproveTicket(ticket as TicketRow);
+                            return;
+                          }
+                          void handleResolveSupportTicket(ticket as TicketRow, "completed");
                         }}
-                        aria-label={isOrderRow && canApproveOrderStage(orderStage) ? "Approve order ticket" : undefined}
+                        aria-label={isOrderRow
+                          ? (canApproveOrderStage(orderStage) ? "Approve order ticket" : undefined)
+                          : (supportState === "open" ? "Complete support ticket" : undefined)}
                       >
                         <TicketCheckIcon />
                       </button>
                       <button
                         type="button"
-                        className={`portal-ledger-action portal-ledger-action--reject${isOrderRow && canDenyOrderStage(orderStage) ? "" : " is-hidden"}`}
-                        disabled={!isOrderRow || orderActionTicketId !== null || !canDenyOrderStage(orderStage)}
+                        className={`portal-ledger-action portal-ledger-action--reject${isOrderRow
+                          ? (canDenyOrderStage(orderStage) ? "" : " is-hidden")
+                          : (supportState === "open" ? "" : " is-hidden")}`}
+                        disabled={isOrderRow
+                          ? (!isOrderRow || orderActionTicketId !== null || !canDenyOrderStage(orderStage))
+                          : (resolvingSupportTicketId !== null || supportState !== "open")}
                         onClick={(e) => {
                           e.stopPropagation();
-                          openDenyDialog(ticket as TicketRow);
+                          if (isOrderRow) {
+                            openDenyDialog(ticket as TicketRow);
+                            return;
+                          }
+                          void handleResolveSupportTicket(ticket as TicketRow, "failed");
                         }}
-                        aria-label={isOrderRow && canDenyOrderStage(orderStage) ? "Deny order ticket" : undefined}
+                        aria-label={isOrderRow
+                          ? (canDenyOrderStage(orderStage) ? "Deny order ticket" : undefined)
+                          : (supportState === "open" ? "Fail support ticket" : undefined)}
                       >
                         <TicketCloseIcon />
                       </button>
@@ -708,56 +746,9 @@ export function TicketsPageScreen({
                         {priorityCell}
                         {windowCell}
                         <td data-label="Status" className="portal-ledger-cell portal-ledger-cell--status">
-                          <TableSelect
-                            className="portal-ticket-row-select"
-                            style={{ width: "100%", maxWidth: 136 }}
-                            value={normalizedTicketStatus}
-                            disabled={updatingId === ticket.id}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              const nextStatus = e.target.value as TicketStatus;
-                              setUpdatingId(ticket.id);
-                              updateStatus.mutate({
-                                id: ticket.id,
-                                expectedUpdatedAt: toMutationDate(getTicketValue(ticket, "updatedAt", "updated_at")),
-                                status: nextStatus,
-                              });
-                            }}
-                          >
-                            {STATUS_OPTIONS.map((status) => (
-                              <option key={status} value={status}>
-                                {status}
-                              </option>
-                            ))}
-                          </TableSelect>
-                        </td>
-                        <td data-label="Outcome" className="portal-ledger-cell portal-ledger-cell--outcome">
-                          <TableSelect
-                            className="portal-ticket-row-select"
-                            style={{ width: "100%", maxWidth: 136 }}
-                            value={(getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome}
-                            disabled={updatingOutcomeId === ticket.id || normalizedTicketStatus !== "resolved"}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              const nextOutcome = e.target.value as TicketOutcome;
-                              setUpdatingOutcomeId(ticket.id);
-                              updateOutcome.mutate({
-                                id: ticket.id,
-                                expectedUpdatedAt: toMutationDate(getTicketValue(ticket, "updatedAt", "updated_at")),
-                                outcome: nextOutcome,
-                                lossReason:
-                                  nextOutcome === "lost"
-                                    ? getTicketString(ticket, "lossReason", "loss_reason") || "Other"
-                                    : undefined,
-                              });
-                            }}
-                          >
-                            {OUTCOME_OPTIONS.map((outcome) => (
-                              <option key={outcome} value={outcome}>
-                                {outcome}
-                              </option>
-                            ))}
-                          </TableSelect>
+                          <span className={supportTicketStatePillClass(supportState)}>
+                            {formatSupportTicketState(supportState)}
+                          </span>
                         </td>
                         {actionCell}
                       </>
@@ -767,7 +758,7 @@ export function TicketsPageScreen({
               })}
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={isOrderTicketView ? 8 : 9} style={{ color: "var(--muted)", textAlign: "center", padding: "24px 10px" }}>
+                  <td colSpan={isOrderTicketView ? 8 : 8} style={{ color: "var(--muted)", textAlign: "center", padding: "24px 10px" }}>
                     {ticketIdQuery ? "No ticket IDs match your search." : "No tickets match this view."}
                   </td>
                 </tr>

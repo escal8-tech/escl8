@@ -4,10 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ToastProvider";
 import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
-import { TableSelect } from "@/app/portal/components/TableToolbarControls";
 import {
-  LOSS_REASON_OPTIONS,
-  OUTCOME_OPTIONS,
   applyOrderEditorToFields,
   buildOrderEditorLines,
   canApproveOrderStage,
@@ -19,6 +16,7 @@ import {
   formatOrderStage,
   formatSlaCountdown,
   formatStatus,
+  formatSupportTicketState,
   formatTicketReference,
   getImportantFieldRows,
   getTicketFields,
@@ -28,10 +26,11 @@ import {
   orderStagePillClass,
   priorityPillClass,
   resolveOrderStage,
+  resolveSupportTicketState,
+  supportTicketStatePillClass,
   toDateTimeLocalValue,
   type OrderEditorLine,
   type TicketEventRow,
-  type TicketOutcome,
   type TicketRow,
 } from "@/app/portal/tickets/lib/ticketPageUtils";
 import { trpc } from "@/utils/trpc";
@@ -73,30 +72,31 @@ export function TicketDetailsDrawer({
   const router = useRouter();
   const toast = useToast();
   const utils = trpc.useUtils();
-  const [updatingOutcome, setUpdatingOutcome] = useState(false);
+  const [resolvingSupport, setResolvingSupport] = useState(false);
   const [updatingSla, setUpdatingSla] = useState(false);
   const [savingTicket, setSavingTicket] = useState(false);
   const ticketId = ticket?.id ?? "";
-  const updateOutcome = trpc.tickets.updateTicketOutcome.useMutation({
+  const resolveSupportTicket = trpc.tickets.resolveSupportTicket.useMutation({
     onSuccess: async () => {
       await Promise.all([
         utils.tickets.listTickets.invalidate(),
         utils.tickets.listTicketLedger.invalidate(),
         utils.tickets.getTicketById.invalidate(),
+        utils.tickets.listTicketEvents.invalidate(),
         utils.tickets.getPerformance.invalidate(),
       ]);
       showSuccessToast(toast, {
-        title: "Outcome updated",
-        message: "Ticket outcome saved successfully.",
+        title: "Ticket updated",
+        message: "Ticket resolution saved successfully.",
       });
     },
     onError: (error) => {
       showErrorToast(toast, {
         title: "Update failed",
-        message: error.message || "Ticket outcome could not be saved.",
+        message: error.message || "Ticket resolution could not be saved.",
       });
     },
-    onSettled: () => setUpdatingOutcome(false),
+    onSettled: () => setResolvingSupport(false),
   });
   const updateSlaDueAt = trpc.tickets.updateTicketSlaDueAt.useMutation({
     onSuccess: async () => {
@@ -179,8 +179,7 @@ export function TicketDetailsDrawer({
   const computedOrderTotal = computeOrderEditorTotal(draftOrderLines);
   const fieldRows = Object.entries(fields);
   const importantFieldRows = getImportantFieldRows(fields);
-  const status = getTicketString(ticket, "status") === "closed" ? "resolved" : getTicketString(ticket, "status");
-  const outcome = (getTicketString(ticket, "outcome", "outcome") || "pending") as TicketOutcome;
+  const supportState = resolveSupportTicketState(ticket);
   const lossReason = getTicketString(ticket, "lossReason", "loss_reason");
   const slaDueAt = slaDueAtRaw;
   const slaCountdown = formatSlaCountdown(slaDueAt, nowMs);
@@ -198,8 +197,19 @@ export function TicketDetailsDrawer({
   const expectedUpdatedAt = toMutationDate(updatedAt);
   const canApproveOrder = isOrderTicket && canApproveOrderStage(orderStage);
   const canDenyOrder = isOrderTicket && canDenyOrderStage(orderStage);
+  const canResolveSupport = !isOrderTicket && supportState === "open";
   const ticketReference = formatTicketReference(ticket);
   const isPage = variant === "page";
+
+  const handleResolveSupportTicket = (resolution: "completed" | "failed") => {
+    setResolvingSupport(true);
+    resolveSupportTicket.mutate({
+      id: ticket.id,
+      expectedUpdatedAt,
+      resolution,
+      failureReason: resolution === "failed" ? lossReason || "Not completable" : undefined,
+    });
+  };
 
   const handleSaveTicket = () => {
     let parsedFields: Record<string, unknown> = { ...fields };
@@ -241,8 +251,8 @@ export function TicketDetailsDrawer({
       ) : null}
       <div className="portal-detail-grid">
         <div className="portal-detail-item">
-          <div className="portal-detail-label">Outcome</div>
-          <div className="portal-detail-value">{isOrderTicket ? formatOrderStage(orderStage) : outcome}</div>
+          <div className="portal-detail-label">{isOrderTicket ? "Outcome" : "Status"}</div>
+          <div className="portal-detail-value">{isOrderTicket ? formatOrderStage(orderStage) : formatSupportTicketState(supportState)}</div>
         </div>
         <div className="portal-detail-item">
           <div className="portal-detail-label">SLA Due</div>
@@ -464,8 +474,8 @@ export function TicketDetailsDrawer({
               {isPage ? (
                 <div className="portal-workbench-title-tags">
                   <span className={priorityPillClass(priority || "normal")}>{formatStatus(priority || "normal")}</span>
-                  <span className={isOrderTicket ? orderStagePillClass(orderStage) : "portal-pill portal-pill--neutral"}>
-                    {isOrderTicket ? formatOrderStage(orderStage) : formatStatus(status || "open")}
+                  <span className={isOrderTicket ? orderStagePillClass(orderStage) : supportTicketStatePillClass(supportState)}>
+                    {isOrderTicket ? formatOrderStage(orderStage) : formatSupportTicketState(supportState)}
                   </span>
                 </div>
               ) : null}
@@ -505,6 +515,29 @@ export function TicketDetailsDrawer({
                       Deny
                     </button>
                   </div>
+                ) : canResolveSupport ? (
+                  <div className="portal-workbench-header-actions">
+                    <button
+                      type="button"
+                      className="portal-workbench-action portal-workbench-action--approve"
+                      disabled={resolvingSupport}
+                      onClick={() => handleResolveSupportTicket("completed")}
+                      aria-label="Complete"
+                      title="Complete"
+                    >
+                      Complete
+                    </button>
+                    <button
+                      type="button"
+                      className="portal-workbench-action portal-workbench-action--deny"
+                      disabled={resolvingSupport}
+                      onClick={() => handleResolveSupportTicket("failed")}
+                      aria-label="Fail"
+                      title="Fail"
+                    >
+                      Fail
+                    </button>
+                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -513,8 +546,8 @@ export function TicketDetailsDrawer({
             <>
               <div className="portal-drawer-tags">
                 <span className={priorityPillClass(priority || "normal")}>{formatStatus(priority || "normal")}</span>
-                <span className={isOrderTicket ? orderStagePillClass(orderStage) : "portal-pill portal-pill--neutral"}>
-                  {isOrderTicket ? formatOrderStage(orderStage) : formatStatus(status || "open")}
+                <span className={isOrderTicket ? orderStagePillClass(orderStage) : supportTicketStatePillClass(supportState)}>
+                  {isOrderTicket ? formatOrderStage(orderStage) : formatSupportTicketState(supportState)}
                 </span>
               </div>
               <div className="portal-drawer-metrics">
@@ -576,48 +609,13 @@ export function TicketDetailsDrawer({
                 </div>
 
                 <div className="portal-form-grid">
-                  <div className="portal-field">
-                    <div className="portal-field-label">Outcome</div>
-                    <TableSelect
-                      style={{ width: "100%" }}
-                      value={outcome}
-                      disabled={updatingOutcome || status !== "resolved"}
-                      onChange={(e) => {
-                        const nextOutcome = e.target.value as TicketOutcome;
-                        setUpdatingOutcome(true);
-                        updateOutcome.mutate({
-                          id: ticket.id,
-                          expectedUpdatedAt,
-                          outcome: nextOutcome,
-                          lossReason: nextOutcome === "lost" ? lossReason || "Other" : undefined,
-                        });
-                      }}
-                    >
-                      {OUTCOME_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </TableSelect>
+                  <div className="portal-detail-item">
+                    <div className="portal-detail-label">Ticket Status</div>
+                    <div className="portal-detail-value">{formatSupportTicketState(supportState)}</div>
                   </div>
-                  <div className="portal-field">
-                    <div className="portal-field-label">Loss reason</div>
-                    <TableSelect
-                      style={{ width: "100%" }}
-                      value={lossReason || "Other"}
-                      disabled={updatingOutcome || outcome !== "lost"}
-                      onChange={(e) => {
-                        setUpdatingOutcome(true);
-                        updateOutcome.mutate({
-                          id: ticket.id,
-                          expectedUpdatedAt,
-                          outcome: "lost",
-                          lossReason: e.target.value,
-                        });
-                      }}
-                    >
-                      {LOSS_REASON_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </TableSelect>
+                  <div className="portal-detail-item">
+                    <div className="portal-detail-label">Failure Reason</div>
+                    <div className="portal-detail-value">{supportState === "failed" ? (lossReason || "Not completable") : "-"}</div>
                   </div>
                 </div>
 
@@ -724,6 +722,26 @@ export function TicketDetailsDrawer({
                   onClick={() => onDenyOrderTicket(ticket)}
                 >
                   Deny Order
+                </button>
+              </>
+            ) : null}
+            {!isOrderTicket && !isPage && canResolveSupport ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={resolvingSupport}
+                  onClick={() => handleResolveSupportTicket("completed")}
+                >
+                  Complete Ticket
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary portal-button--danger"
+                  disabled={resolvingSupport}
+                  onClick={() => handleResolveSupportTicket("failed")}
+                >
+                  Fail Ticket
                 </button>
               </>
             ) : null}

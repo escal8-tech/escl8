@@ -51,6 +51,7 @@ type TicketListInput = {
 type TicketLedgerInput = {
   typeKey?: string;
   status?: "open" | "in_progress" | "resolved";
+  supportState?: "open" | "completed" | "failed";
   orderStage?: string;
   search?: string;
   limit?: number;
