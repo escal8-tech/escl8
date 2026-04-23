@@ -32,9 +32,11 @@ function buildThreadHref(ticket: TicketRow | null): string {
 export function TicketWorkbenchScreen({
   forcedTypeKey,
   backBasePath = "/ticket",
+  showDraftNarrativeFields = true,
 }: {
   forcedTypeKey?: string;
   backBasePath?: string;
+  showDraftNarrativeFields?: boolean;
 } = {}) {
   const params = useParams<{ ticketId?: string; orderId?: string }>();
   const searchParams = useSearchParams();
@@ -169,6 +171,7 @@ export function TicketWorkbenchScreen({
               onApproveOrderTicket={handleApproveTicket}
               onDenyOrderTicket={handleDenyTicket}
               orderActionPending={orderActionTicketId !== null}
+              showDraftNarrativeFields={showDraftNarrativeFields}
             />
           </main>
           <aside className="portal-workbench-thread">

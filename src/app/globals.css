@@ -4328,6 +4328,31 @@ html.portal-theme-light {
   border-bottom: 0;
 }
 
+.portal-order-items-table--readonly .portal-order-items-table__head,
+.portal-order-items-row--readonly {
+  grid-template-columns: minmax(0, 1.9fr) 108px 156px 132px;
+}
+
+.portal-order-items-read-cell {
+  min-width: 0;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  color: var(--portal-text);
+  font-size: 14px;
+  background: transparent;
+}
+
+.portal-order-items-read-cell + .portal-order-items-read-cell {
+  border-left: 1px solid var(--portal-border-soft);
+}
+
+.portal-order-items-read-cell--total {
+  color: #facc15;
+  font-weight: 700;
+}
+
 .portal-order-items-cell,
 .portal-order-items-row__actions {
   min-width: 0;
@@ -6776,6 +6801,37 @@ html.portal-theme-light {
   resize: none;
 }
 
+.portal-status-delivery-top-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.portal-status-scheduled-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 360px);
+  gap: 10px;
+}
+
+.portal-status-datetime-field input[type="datetime-local"] {
+  min-height: 46px;
+  padding: 0 14px;
+  line-height: 1.2;
+}
+
+.portal-bottom-action-card {
+  display: grid;
+  gap: 10px;
+}
+
+.portal-bottom-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .portal-workbench-body > .portal-card--order-draft,
 .portal-workbench-body > .portal-detail-panel--order-draft {
   order: -1;
@@ -6814,6 +6870,14 @@ html.portal-theme-light {
   }
 
   .portal-payment-setup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-status-delivery-top-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-status-scheduled-row {
     grid-template-columns: 1fr;
   }
 }
@@ -6855,6 +6919,11 @@ html.portal-theme-light {
   .portal-order-draft-identity-grid,
   .portal-order-draft-notes-grid {
     grid-template-columns: 1fr;
+  }
+
+  .portal-order-items-table--readonly .portal-order-items-table__head,
+  .portal-order-items-row--readonly {
+    grid-template-columns: 1.35fr 88px 112px 112px;
   }
 }
 

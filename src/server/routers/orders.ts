@@ -195,10 +195,7 @@ export const ordersRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
       }
       if (String(orderRow.status || "").trim().toLowerCase() !== "pending_approval") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Only pending approval draft orders can be edited here.",
-        });
+        assertPaymentSetupEditable(orderRow);
       }
       const snapshot = asRecord(orderRow.ticketSnapshot);
       const baseFields = asRecord(snapshot.fields);

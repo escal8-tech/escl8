@@ -57,6 +57,7 @@ export function TicketDetailsDrawer({
   onApproveOrderTicket,
   onDenyOrderTicket,
   orderActionPending,
+  showDraftNarrativeFields = true,
   variant = "drawer",
 }: {
   ticket: TicketRow | null;
@@ -66,6 +67,7 @@ export function TicketDetailsDrawer({
   onApproveOrderTicket: (ticket: TicketRow) => Promise<void>;
   onDenyOrderTicket: (ticket: TicketRow) => void;
   orderActionPending: boolean;
+  showDraftNarrativeFields?: boolean;
   variant?: "drawer" | "page";
 }) {
   const router = useRouter();
@@ -313,16 +315,18 @@ export function TicketDetailsDrawer({
         </div>
       </div>
 
-      <div className="portal-order-draft-notes-grid">
-        <div className="portal-field">
-          <div className="portal-field-label">Summary</div>
-          <textarea value={draftSummary} onChange={(e) => setDraftSummary(e.target.value)} />
+      {showDraftNarrativeFields ? (
+        <div className="portal-order-draft-notes-grid">
+          <div className="portal-field">
+            <div className="portal-field-label">Summary</div>
+            <textarea value={draftSummary} onChange={(e) => setDraftSummary(e.target.value)} />
+          </div>
+          <div className="portal-field">
+            <div className="portal-field-label">Internal Notes</div>
+            <textarea value={draftNotes} onChange={(e) => setDraftNotes(e.target.value)} />
+          </div>
         </div>
-        <div className="portal-field">
-          <div className="portal-field-label">Internal Notes</div>
-          <textarea value={draftNotes} onChange={(e) => setDraftNotes(e.target.value)} />
-        </div>
-      </div>
+      ) : null}
     </div>
   ) : null;
 
