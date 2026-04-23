@@ -42,6 +42,13 @@ function toMutationDate(value: unknown): Date | undefined {
   return Number.isNaN(normalized.getTime()) ? undefined : normalized;
 }
 
+function formatOrderLineTotal(quantity: string, unitPrice: string): string {
+  const qty = Number.parseFloat(quantity || "0");
+  const price = Number.parseFloat(unitPrice || "0");
+  if (!Number.isFinite(qty) || !Number.isFinite(price) || qty <= 0 || price < 0) return "-";
+  return (qty * price).toFixed(2);
+}
+
 export function TicketDetailsDrawer({
   ticket,
   onClose,
@@ -339,87 +346,84 @@ export function TicketDetailsDrawer({
       </div>
 
       {draftOrderLines.length ? (
-        <div className="portal-order-items-editor-wrap">
-          <div className="portal-table-scroll">
-            <table className="table portal-order-items-editor-table">
-              <thead>
-                <tr>
-                  <th style={{ width: "68%" }}>Item</th>
-                  <th style={{ width: "12%" }}>Qty</th>
-                  <th style={{ width: "16%" }}>Unit Price</th>
-                  <th style={{ width: "4%", textAlign: "center" }} aria-label="Actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {draftOrderLines.map((line, index) => (
-                  <tr key={`order-line-${index}`}>
-                    <td data-label="Item">
-                      <input
-                        className="portal-order-items-editor-input portal-order-items-editor-input--item"
-                        type="text"
-                        value={line.item}
-                        placeholder="Inventory item or service"
-                        aria-label={`Order item ${index + 1}`}
-                        onChange={(e) =>
-                          setDraftOrderLines((current) =>
-                            current.map((entry, entryIndex) =>
-                              entryIndex === index ? { ...entry, item: e.target.value } : entry,
-                            ),
-                          )
-                        }
-                      />
-                    </td>
-                    <td data-label="Qty">
-                      <input
-                        className="portal-order-items-editor-input portal-order-items-editor-input--qty"
-                        type="number"
-                        min={1}
-                        value={line.quantity}
-                        aria-label={`Quantity for item ${index + 1}`}
-                        onChange={(e) =>
-                          setDraftOrderLines((current) =>
-                            current.map((entry, entryIndex) =>
-                              entryIndex === index ? { ...entry, quantity: e.target.value } : entry,
-                            ),
-                          )
-                        }
-                      />
-                    </td>
-                    <td data-label="Unit Price">
-                      <input
-                        className="portal-order-items-editor-input portal-order-items-editor-input--money"
-                        type="text"
-                        value={line.unitPrice}
-                        placeholder="0.00"
-                        aria-label={`Unit price for item ${index + 1}`}
-                        onChange={(e) =>
-                          setDraftOrderLines((current) =>
-                            current.map((entry, entryIndex) =>
-                              entryIndex === index ? { ...entry, unitPrice: e.target.value } : entry,
-                            ),
-                          )
-                        }
-                      />
-                    </td>
-                    <td data-label="Actions" className="portal-order-items-editor-table__actions-cell">
-                      <div className="portal-order-items-row__actions">
-                        <button
-                          type="button"
-                          className="portal-ledger-action portal-ledger-action--reject portal-order-item-icon-button"
-                          aria-label={`Remove item ${index + 1}`}
-                          title="Remove order item"
-                          onClick={() =>
-                            setDraftOrderLines((current) => current.filter((_, entryIndex) => entryIndex !== index))
-                          }
-                        >
-                          <TicketTrashIcon />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="portal-order-items-table">
+          <div className="portal-order-items-table__head">
+            <div>Item</div>
+            <div>Qty</div>
+            <div>Unit Price</div>
+            <div>Line Total</div>
+            <div className="portal-order-items-table__actions-heading">Actions</div>
+          </div>
+          <div className="portal-order-items-table__body">
+            {draftOrderLines.map((line, index) => (
+              <div key={`order-line-${index}`} className="portal-order-items-row">
+                <div className="portal-order-items-cell portal-order-items-cell--item">
+                  <div className="portal-order-items-cell__label">Item</div>
+                  <input
+                    type="text"
+                    value={line.item}
+                    placeholder="Inventory item or service"
+                    aria-label={`Order item ${index + 1}`}
+                    onChange={(e) =>
+                      setDraftOrderLines((current) =>
+                        current.map((entry, entryIndex) =>
+                          entryIndex === index ? { ...entry, item: e.target.value } : entry,
+                        ),
+                      )
+                    }
+                  />
+                </div>
+                <div className="portal-order-items-cell">
+                  <div className="portal-order-items-cell__label">Qty</div>
+                  <input
+                    type="number"
+                    min={1}
+                    value={line.quantity}
+                    aria-label={`Quantity for item ${index + 1}`}
+                    onChange={(e) =>
+                      setDraftOrderLines((current) =>
+                        current.map((entry, entryIndex) =>
+                          entryIndex === index ? { ...entry, quantity: e.target.value } : entry,
+                        ),
+                      )
+                    }
+                  />
+                </div>
+                <div className="portal-order-items-cell">
+                  <div className="portal-order-items-cell__label">Unit Price</div>
+                  <input
+                    type="text"
+                    value={line.unitPrice}
+                    placeholder="0.00"
+                    aria-label={`Unit price for item ${index + 1}`}
+                    onChange={(e) =>
+                      setDraftOrderLines((current) =>
+                        current.map((entry, entryIndex) =>
+                          entryIndex === index ? { ...entry, unitPrice: e.target.value } : entry,
+                        ),
+                      )
+                    }
+                  />
+                </div>
+                <div className="portal-order-items-cell portal-order-items-cell--total">
+                  <div className="portal-order-items-cell__label">Line Total</div>
+                  <div className="portal-order-items-row__total">{formatOrderLineTotal(line.quantity, line.unitPrice)}</div>
+                </div>
+                <div className="portal-order-items-row__actions">
+                  <button
+                    type="button"
+                    className="portal-ledger-action portal-ledger-action--reject portal-order-item-icon-button"
+                    aria-label={`Remove item ${index + 1}`}
+                    title="Remove order item"
+                    onClick={() =>
+                      setDraftOrderLines((current) => current.filter((_, entryIndex) => entryIndex !== index))
+                    }
+                  >
+                    <TicketTrashIcon />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       ) : (
