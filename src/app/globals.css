@@ -6409,6 +6409,13 @@ html.portal-theme-light {
   cursor: pointer;
 }
 
+.portal-workbench-back svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+  transform: translateX(-1px);
+}
+
 .portal-workbench-back:hover {
   border-color: rgba(250, 204, 21, 0.58);
   background: rgba(250, 204, 21, 0.16);
