@@ -1,4 +1,5 @@
 import { recordGrafanaLog, type GrafanaLogLevel } from "@/lib/grafana-monitoring";
+import { enrichBusinessFailureTaxonomy } from "@/lib/failure-taxonomy";
 
 const APP_NAME = "escl8-agent-dashboard";
 
@@ -73,6 +74,15 @@ function normalizeBusinessLevel(level: GrafanaLogLevel | undefined, outcome: str
 export function recordBusinessEvent(input: BusinessEventInput): void {
   const event = String(input.event || "").trim() || "business.event";
   const level = normalizeBusinessLevel(input.level, input.outcome);
+  const attributes = enrichBusinessFailureTaxonomy({
+    event,
+    level,
+    action: input.action,
+    area: input.area,
+    outcome: input.outcome,
+    status: input.status,
+    attributes: input.attributes,
+  });
 
   recordGrafanaLog(
     level,
@@ -95,7 +105,7 @@ export function recordBusinessEvent(input: BusinessEventInput): void {
       phone_number_id: input.phoneNumberId,
       session_id: input.sessionId,
       status: input.status,
-      ...(input.attributes || {}),
+      ...attributes,
     }),
     {
       source: input.source || "business",

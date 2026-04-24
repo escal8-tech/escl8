@@ -1,4 +1,5 @@
 import { recordGrafanaLog, type GrafanaLogLevel } from "@/lib/grafana-monitoring";
+import { enrichBusinessFailureTaxonomy } from "@/lib/failure-taxonomy";
 import { captureSentryException } from "@/lib/sentry-monitoring";
 
 type MonitoringPrimitive = string | number | boolean | null | undefined;
@@ -78,6 +79,14 @@ export function recordClientBusinessEvent(input: {
 }): void {
   const level = normalizeClientBusinessLevel(input.level, input.outcome);
   const shouldCaptureInSentry = Boolean(input.captureInSentry) && input.outcome !== "handled_failure";
+  const taxonomyAttributes = enrichBusinessFailureTaxonomy({
+    event: input.event,
+    level,
+    action: input.action,
+    area: input.area,
+    outcome: input.outcome,
+    attributes: input.attributes,
+  });
   recordGrafanaLog(
     level,
     input.event,
@@ -90,7 +99,7 @@ export function recordClientBusinessEvent(input: {
       log_source: "business",
       outcome: input.outcome,
       route: input.route,
-      ...(input.attributes || {}),
+      ...taxonomyAttributes,
     },
     {
       forceClientDelivery: true,
