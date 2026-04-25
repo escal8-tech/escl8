@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/server/db/client";
-import { whatsappIdentities } from "../../../../../../drizzle/schema";
+import { businesses, whatsappIdentities } from "../../../../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 // decryptSecret removed — prefer plaintext storage
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
@@ -8,6 +8,8 @@ import { getAuthedUserFromRequest } from "@/server/apiAuth";
 import { checkRateLimit } from "@/server/rateLimit";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { captureSentryException } from "@/lib/sentry-monitoring";
+import { getTenantModuleAccess, tenantHasFeature } from "@/server/control/access";
+import { SUITE_FEATURES } from "@/server/control/subscription-features";
 
 export const runtime = "nodejs";
 
@@ -60,6 +62,20 @@ export async function POST(req: Request) {
     }
 
     const user = authed.user;
+    const business = user.businessId
+      ? await db.select().from(businesses).where(eq(businesses.id, user.businessId)).limit(1).then((rows) => rows[0] ?? null)
+      : null;
+    const access = business?.suiteTenantId ? await getTenantModuleAccess(business.suiteTenantId, "agent") : null;
+    if (!tenantHasFeature(access, SUITE_FEATURES.AGENT_WHATSAPP_SEND)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Outbound WhatsApp messaging is locked for this subscription. Upgrade or activate billing to send messages.",
+          code: "FEATURE_LOCKED",
+        },
+        { status: 402, headers: rl.headers },
+      );
+    }
 
     const identity = await db
       .select()

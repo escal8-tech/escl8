@@ -8,6 +8,7 @@ import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { onAuthStateChanged } from "firebase/auth";
 import { normalizeAppPath } from "@/lib/app-routes";
 import { PORTAL_TICKET_TYPES } from "@/app/portal/lib/ticketTypes";
+import { trpc } from "@/utils/trpc";
 
 // SVG Icons as components
 const Icons = {
@@ -128,6 +129,25 @@ function getDisplayName(email: string | null): string {
     .join(" ");
 }
 
+const FEATURE_KEYS = {
+  PORTAL_VIEW: "agent.portal.view",
+  SETTINGS_BASIC: "agent.settings.basic",
+  MESSAGES_VIEW: "agent.messages.view",
+  ANALYTICS_VIEW: "agent.analytics.view",
+} as const;
+
+function featureEnabled(features: Record<string, boolean> | undefined, featureKey: string) {
+  if (!features) return true;
+  return features[featureKey] !== false;
+}
+
+function readAccessFeatures(value: unknown): Record<string, boolean> | undefined {
+  if (!value || typeof value !== "object" || !("features" in value)) return undefined;
+  const features = (value as { features?: unknown }).features;
+  if (!features || typeof features !== "object") return undefined;
+  return features as Record<string, boolean>;
+}
+
 export default function Sidebar({ 
   collapsed, 
   mobileOpen, 
@@ -141,6 +161,10 @@ export default function Sidebar({
     const auth = getFirebaseAuth();
     return auth?.currentUser?.email ?? null;
   });
+  const accessStatusQuery = trpc.user.getAccessStatus.useQuery(
+    { email: userEmail ?? "" },
+    { enabled: Boolean(userEmail) },
+  );
   useEffect(() => {
     const auth = getFirebaseAuth();
     if (!auth) return;
@@ -157,10 +181,15 @@ export default function Sidebar({
   const userInitials = userEmail?.slice(0, 2).toUpperCase() || "U";
   const displayName = getDisplayName(userEmail);
   const sidebarWidth = collapsed ? 72 : 260;
+  const accessFeatures = readAccessFeatures(accessStatusQuery.data);
   const mainNavItems = [
     ...navItems,
     { href: "/revenue", label: "Revenue", icon: "revenue" as const },
-  ];
+  ].filter((item) => {
+    if (item.href === "/messages") return featureEnabled(accessFeatures, FEATURE_KEYS.MESSAGES_VIEW);
+    if (item.href === "/revenue") return featureEnabled(accessFeatures, FEATURE_KEYS.ANALYTICS_VIEW);
+    return featureEnabled(accessFeatures, FEATURE_KEYS.PORTAL_VIEW);
+  });
   const orderTicketType = PORTAL_TICKET_TYPES.find((type) => type.key === "ordercreation");
   const supportTicketTypes = PORTAL_TICKET_TYPES.filter((type) => type.key !== "ordercreation");
   const ticketNavItems = [
@@ -180,7 +209,8 @@ export default function Sidebar({
       icon: "tickets" as const,
       active: (pathname === "/ticket" || pathname.startsWith("/ticket/") || pathname === "/tickets" || pathname.startsWith("/tickets/")) && activeTicketType === type.key,
     })),
-  ];
+  ].filter(() => featureEnabled(accessFeatures, FEATURE_KEYS.PORTAL_VIEW));
+  const canAccessSettings = featureEnabled(accessFeatures, FEATURE_KEYS.SETTINGS_BASIC);
 
   return (
     <aside
@@ -265,14 +295,16 @@ export default function Sidebar({
             >
               {userInitials}
             </div>
-            <Link
-              href="/settings"
-              className={`sidebar-footer-icon-link ${isActive("/settings") ? "active" : ""}`}
-              title="Settings"
-              onClick={onMobileClose}
-            >
-              <span className="sidebar-nav-icon">{Icons.settings}</span>
-            </Link>
+            {canAccessSettings ? (
+              <Link
+                href="/settings"
+                className={`sidebar-footer-icon-link ${isActive("/settings") ? "active" : ""}`}
+                title="Settings"
+                onClick={onMobileClose}
+              >
+                <span className="sidebar-nav-icon">{Icons.settings}</span>
+              </Link>
+            ) : null}
           </div>
         ) : (
           <div
@@ -309,14 +341,16 @@ export default function Sidebar({
               </div>
             </div>
             <div className="sidebar-footer-actions">
-              <Link
-                href="/settings"
-                className={`sidebar-footer-icon-link sidebar-settings-btn ${isActive("/settings") ? "active" : ""}`}
-                title="Settings"
-                onClick={onMobileClose}
-              >
-                {Icons.settings}
-              </Link>
+              {canAccessSettings ? (
+                <Link
+                  href="/settings"
+                  className={`sidebar-footer-icon-link sidebar-settings-btn ${isActive("/settings") ? "active" : ""}`}
+                  title="Settings"
+                  onClick={onMobileClose}
+                >
+                  {Icons.settings}
+                </Link>
+              ) : null}
               <button
                 onClick={() => onCollapsedChange(true)}
                 title="Collapse sidebar"

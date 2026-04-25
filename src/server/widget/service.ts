@@ -3,6 +3,8 @@ import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { businesses, customers, messageThreads, threadMessages } from "@/../drizzle/schema";
 import { normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
 import { db } from "@/server/db/client";
+import { getTenantModuleAccess, tenantHasFeature } from "@/server/control/access";
+import { SUITE_FEATURES } from "@/server/control/subscription-features";
 
 export type WebsiteWidgetMessage = {
   id: string;
@@ -23,6 +25,7 @@ export async function getBusinessByWebsiteWidgetKey(key: string) {
       name: businesses.name,
       settings: businesses.settings,
       isActive: businesses.isActive,
+      suiteTenantId: businesses.suiteTenantId,
     })
     .from(businesses)
     .where(
@@ -37,6 +40,8 @@ export async function getBusinessByWebsiteWidgetKey(key: string) {
 
   const widget = normalizeWebsiteWidgetSettings(row.settings);
   if (!widget.enabled || widget.key !== normalizedKey) return null;
+  const access = row.suiteTenantId ? await getTenantModuleAccess(row.suiteTenantId, "agent") : null;
+  if (!tenantHasFeature(access, SUITE_FEATURES.AGENT_WIDGET_PUBLIC)) return null;
 
   return {
     businessId: row.id,

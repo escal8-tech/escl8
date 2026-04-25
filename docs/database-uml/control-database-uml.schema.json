@@ -1,6 +1,6 @@
 {
   "title": "Control Database UML",
-  "schemaHash": "10e184a8373e95a9",
+  "schemaHash": "0ca6a7f510cfd712",
   "schemaPath": "src/server/control/schema.ts",
   "tables": [
     {
@@ -238,6 +238,411 @@
       ]
     },
     {
+      "name": "suite_subscription_plans",
+      "exportName": "suiteSubscriptionPlans",
+      "columns": [
+        {
+          "propertyName": "code",
+          "name": "code",
+          "type": "varchar",
+          "primary": true,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "displayName",
+          "name": "display_name",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "description",
+          "name": "description",
+          "type": "text",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "grantKind",
+          "name": "grant_kind",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "grantsAgent",
+          "name": "grants_agent",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "grantsReservation",
+          "name": "grants_reservation",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "billingPeriodMonths",
+          "name": "billing_period_months",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "priceAmount",
+          "name": "price_amount",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "currency",
+          "name": "currency",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "isActive",
+          "name": "is_active",
+          "type": "boolean",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "sortOrder",
+          "name": "sort_order",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "features",
+          "name": "features",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "limits",
+          "name": "limits",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "metadata",
+          "name": "metadata",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "suite_tenant_payment_events",
+      "exportName": "suiteTenantPaymentEvents",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "uuid",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "subscriptionId",
+          "name": "subscription_id",
+          "type": "uuid",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "suiteTenantId",
+          "name": "suite_tenant_id",
+          "type": "uuid",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "status",
+          "name": "status",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "amount",
+          "name": "amount",
+          "type": "integer",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "currency",
+          "name": "currency",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "paidAt",
+          "name": "paid_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "dueAt",
+          "name": "due_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "reference",
+          "name": "reference",
+          "type": "varchar",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "metadata",
+          "name": "metadata",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "suite_tenant_subscriptions",
+      "exportName": "suiteTenantSubscriptions",
+      "columns": [
+        {
+          "propertyName": "id",
+          "name": "id",
+          "type": "uuid",
+          "primary": true,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "suiteTenantId",
+          "name": "suite_tenant_id",
+          "type": "uuid",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "planCode",
+          "name": "plan_code",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "status",
+          "name": "status",
+          "type": "varchar",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "startsAt",
+          "name": "starts_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "currentPeriodStart",
+          "name": "current_period_start",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "currentPeriodDueAt",
+          "name": "current_period_due_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "lastPaidAt",
+          "name": "last_paid_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "nextDueAt",
+          "name": "next_due_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "cancelledAt",
+          "name": "cancelled_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": false,
+          "hasDefault": false,
+          "unique": false
+        },
+        {
+          "propertyName": "featureOverrides",
+          "name": "feature_overrides",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "limitOverrides",
+          "name": "limit_overrides",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "metadata",
+          "name": "metadata",
+          "type": "jsonb",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "createdAt",
+          "name": "created_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        },
+        {
+          "propertyName": "updatedAt",
+          "name": "updated_at",
+          "type": "timestamptz",
+          "primary": false,
+          "required": true,
+          "hasDefault": true,
+          "unique": false
+        }
+      ]
+    },
+    {
       "name": "suite_tenants",
       "exportName": "suiteTenants",
       "columns": [
@@ -369,6 +774,32 @@
   ],
   "relationships": [
     {
+      "fromTable": "suite_tenant_subscriptions",
+      "fromColumns": [
+        "plan_code"
+      ],
+      "toTable": "suite_subscription_plans",
+      "toColumns": [
+        "code"
+      ],
+      "required": true,
+      "onDelete": "restrict",
+      "onUpdate": "no action"
+    },
+    {
+      "fromTable": "suite_tenant_payment_events",
+      "fromColumns": [
+        "subscription_id"
+      ],
+      "toTable": "suite_tenant_subscriptions",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "no action"
+    },
+    {
       "fromTable": "suite_app_links",
       "fromColumns": [
         "suite_tenant_id"
@@ -396,6 +827,32 @@
     },
     {
       "fromTable": "suite_memberships",
+      "fromColumns": [
+        "suite_tenant_id"
+      ],
+      "toTable": "suite_tenants",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "no action"
+    },
+    {
+      "fromTable": "suite_tenant_payment_events",
+      "fromColumns": [
+        "suite_tenant_id"
+      ],
+      "toTable": "suite_tenants",
+      "toColumns": [
+        "id"
+      ],
+      "required": true,
+      "onDelete": "cascade",
+      "onUpdate": "no action"
+    },
+    {
+      "fromTable": "suite_tenant_subscriptions",
       "fromColumns": [
         "suite_tenant_id"
       ],

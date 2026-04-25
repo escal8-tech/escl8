@@ -4,7 +4,7 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
 import { isClientErrorReported } from "@/lib/client-business-monitoring";
-import { APP_LOGIN_ROUTE, isAppPath } from "@/lib/app-routes";
+import { APP_ACCESS_ROUTE, APP_LOGIN_ROUTE, isAppPath } from "@/lib/app-routes";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { usePathname, useRouter } from "next/navigation";
 import { trpc } from "@/utils/trpc";
@@ -72,21 +72,30 @@ export default function PortalAuthProvider({ children }: Props) {
     // Ensure there's a corresponding DB user row before protected pages run queries.
     (async () => {
       try {
-        await getFirebaseIdTokenOrThrow({
+        const idToken = await getFirebaseIdTokenOrThrow({
           action: "portal.auth.ensureUser",
           area: "auth",
           attributes: {
             firebase_uid: user.uid ?? undefined,
           },
-        freshToken: true,
-        missingConfigEvent: "auth.user_bootstrap_failed",
-        missingSessionEvent: "auth.user_bootstrap_session_missing",
-        route: pathnameRef.current ?? APP_LOGIN_ROUTE,
-        tokenFailureEvent: "auth.user_bootstrap_failed",
-      });
+          freshToken: true,
+          missingConfigEvent: "auth.user_bootstrap_failed",
+          missingSessionEvent: "auth.user_bootstrap_session_missing",
+          route: pathnameRef.current ?? APP_LOGIN_ROUTE,
+          tokenFailureEvent: "auth.user_bootstrap_failed",
+        });
         const email = user.email;
         if (!email) throw new Error("Signed-in account is missing email.");
         await ensureUser({ email });
+        const statusRes = await fetch("/api/auth/status", {
+          headers: { authorization: `Bearer ${idToken}` },
+          cache: "no-store",
+        });
+        const status = statusRes.ok ? await statusRes.json().catch(() => null) : null;
+        if (status?.accessBlocked && status?.workspaceMode === "blocked") {
+          router.replace(APP_ACCESS_ROUTE);
+          return;
+        }
         if (!cancelled) setReady(true);
       } catch (e: unknown) {
         if (cancelled) return;

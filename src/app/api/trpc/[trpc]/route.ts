@@ -3,7 +3,8 @@ import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { db } from "@/server/db/client";
 import { businesses, users } from "@/../drizzle/schema";
 import { controlDb } from "@/server/control/db";
-import { suiteEntitlements, suiteMemberships, suiteTenants, suiteUsers } from "@/server/control/schema";
+import { suiteMemberships, suiteTenants, suiteUsers } from "@/server/control/schema";
+import { getTenantModuleAccess } from "@/server/control/access";
 import { and, eq, sql } from "drizzle-orm";
 import { syncFirebaseSuiteClaims, verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 import { checkRateLimit } from "@/server/rateLimit";
@@ -165,31 +166,8 @@ const handler = async (req: Request) => {
           return { userEmail, firebaseUid, userId: null, businessId: null };
         }
 
-        let entitlement = await controlDb
-          .select()
-          .from(suiteEntitlements)
-          .where(and(eq(suiteEntitlements.suiteTenantId, suiteTenantId), eq(suiteEntitlements.module, "agent")))
-          .then((r) => r[0] ?? null);
-        if (!entitlement) {
-          const existingEntitlements = await controlDb
-            .select({ count: sql<number>`count(*)::int` })
-            .from(suiteEntitlements)
-            .where(eq(suiteEntitlements.suiteTenantId, suiteTenantId));
-          const isFirstEntitlement = (existingEntitlements[0]?.count ?? 0) === 0;
-          if (isFirstEntitlement) {
-            const createdEntitlement = await controlDb
-              .insert(suiteEntitlements)
-              .values({
-                suiteTenantId,
-                module: "agent",
-                status: "active",
-                metadata: { seeded: true }
-              })
-              .returning();
-            entitlement = createdEntitlement[0] ?? null;
-          }
-        }
-        if (!entitlement || !["active", "trial"].includes(String(entitlement.status))) {
+        const access = await getTenantModuleAccess(suiteTenantId, "agent");
+        if (!access.allowed) {
           return { userEmail, firebaseUid, userId: null, businessId: null };
         }
 

@@ -7,7 +7,8 @@ import crypto from "crypto";
 import { and, eq, or } from "drizzle-orm";
 import { businesses, users } from "../../../drizzle/schema";
 import { controlDb } from "@/server/control/db";
-import { suiteEntitlements, suiteMemberships, suiteTenants, suiteUsers } from "@/server/control/schema";
+import { suiteMemberships, suiteTenants, suiteUsers } from "@/server/control/schema";
+import { getTenantModuleAccess } from "@/server/control/access";
 import { syncFirebaseSuiteClaims } from "@/server/firebaseAdmin";
 import { ensureDefaultTicketTypes } from "../services/ticketDefaults";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
@@ -63,34 +64,6 @@ async function ensureTenantOwnership(suiteTenantId: string, suiteUserId: string,
     .onConflictDoUpdate({
       target: [suiteMemberships.suiteTenantId, suiteMemberships.suiteUserId],
       set: { isActive: true, updatedAt: new Date() },
-    })
-    .returning();
-
-  return created[0] ?? null;
-}
-
-async function ensureAgentEntitlement(suiteTenantId: string) {
-  const existing = await controlDb
-    .select()
-    .from(suiteEntitlements)
-    .where(and(eq(suiteEntitlements.suiteTenantId, suiteTenantId), eq(suiteEntitlements.module, "agent")))
-    .then((r) => r[0] ?? null);
-
-  if (existing) return existing;
-
-  const created = await controlDb
-    .insert(suiteEntitlements)
-    .values({
-      suiteTenantId,
-      module: "agent",
-      status: "active",
-      metadata: { seeded: true },
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: [suiteEntitlements.suiteTenantId, suiteEntitlements.module],
-      set: { status: "active", updatedAt: new Date() },
     })
     .returning();
 
@@ -168,7 +141,10 @@ export const userRouter = router({
             ? await db.select().from(businesses).where(eq(businesses.id, existing.businessId)).then((r) => r[0] ?? null)
             : null;
           if (business?.suiteTenantId && existing.suiteUserId) {
-            void syncAgentClaims(firebaseUid, business.suiteTenantId, existing.suiteUserId).catch(() => {});
+            const access = await getTenantModuleAccess(business.suiteTenantId, "agent");
+            if (access.allowed) {
+              void syncAgentClaims(firebaseUid, business.suiteTenantId, existing.suiteUserId).catch(() => {});
+            }
           }
           return existing;
         }
@@ -202,15 +178,6 @@ export const userRouter = router({
             updatedAt: now,
           });
 
-          await controlDb.insert(suiteEntitlements).values({
-            suiteTenantId: suiteTenant.id,
-            module: "agent",
-            status: "active",
-            metadata: { seeded: true },
-            createdAt: now,
-            updatedAt: now,
-          });
-
           const [u] = await tx
             .insert(users)
             .values({
@@ -223,7 +190,6 @@ export const userRouter = router({
               updatedAt: now,
             })
             .returning();
-          void syncAgentClaims(firebaseUid, suiteTenant.id, suiteUser.id).catch(() => {});
           return { user: u, businessId: bizId };
         });
         await ensureDefaultTicketTypes(created.businessId);
@@ -292,6 +258,54 @@ export const userRouter = router({
       }
     }),
 
+  getAccessStatus: protectedProcedure
+    .input(z.object({ email: z.string().email() }))
+    .query(async ({ input, ctx }) => {
+      if (!ctx.userEmail || !ctx.firebaseUid) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
+      }
+      if (input.email !== ctx.userEmail) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
+      }
+
+      const user =
+        (await db.select().from(users).where(eq(users.firebaseUid, ctx.firebaseUid)).then((r) => r[0] ?? null)) ??
+        (await db.select().from(users).where(eq(users.email, input.email)).then((r) => r[0] ?? null));
+
+      if (!user?.businessId) {
+        return {
+          allowed: false,
+          canConnectWhatsapp: false,
+          isGrandfathered: false,
+          reason: "subscription_missing",
+          planCode: null,
+          planName: null,
+          subscriptionStatus: null,
+          grantKind: null,
+          lastPaidAt: null,
+          nextDueAt: null,
+        };
+      }
+
+      const business = await db.select().from(businesses).where(eq(businesses.id, user.businessId)).then((r) => r[0] ?? null);
+      if (!business?.suiteTenantId) {
+        return {
+          allowed: false,
+          canConnectWhatsapp: false,
+          isGrandfathered: false,
+          reason: "subscription_missing",
+          planCode: null,
+          planName: null,
+          subscriptionStatus: null,
+          grantKind: null,
+          lastPaidAt: null,
+          nextDueAt: null,
+        };
+      }
+
+      return getTenantModuleAccess(business.suiteTenantId, "agent");
+    }),
+
   upsert: protectedProcedure
     .input(
       z.object({
@@ -337,8 +351,10 @@ export const userRouter = router({
           }
 
           await ensureTenantOwnership(businessTenant.suiteTenantId, suiteUser.id, false);
-          await ensureAgentEntitlement(businessTenant.suiteTenantId);
-          void syncAgentClaims(ctx.firebaseUid, businessTenant.suiteTenantId, suiteUser.id).catch(() => {});
+          const access = await getTenantModuleAccess(businessTenant.suiteTenantId, "agent");
+          if (access.allowed) {
+            void syncAgentClaims(ctx.firebaseUid, businessTenant.suiteTenantId, suiteUser.id).catch(() => {});
+          }
 
           const [updated] = await db
             .update(users)
@@ -404,15 +420,6 @@ export const userRouter = router({
               updatedAt: now,
             });
 
-            await controlDb.insert(suiteEntitlements).values({
-              suiteTenantId: suiteTenant.id,
-              module: "agent",
-              status: "active",
-              metadata: { seeded: true },
-              createdAt: now,
-              updatedAt: now,
-            });
-
             const [created] = await tx
               .insert(users)
               .values({
@@ -425,7 +432,6 @@ export const userRouter = router({
                 updatedAt: now,
               })
               .returning();
-            void syncAgentClaims(ctx.firebaseUid, suiteTenant.id, suiteUser.id).catch(() => {});
             return { user: created, businessId: bizId };
           });
           await ensureDefaultTicketTypes(created.businessId);
@@ -455,8 +461,10 @@ export const userRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
         }
         await ensureTenantOwnership(businessTenant.suiteTenantId, suiteUser.id, false);
-        await ensureAgentEntitlement(businessTenant.suiteTenantId);
-        void syncAgentClaims(ctx.firebaseUid, businessTenant.suiteTenantId, suiteUser.id).catch(() => {});
+        const access = await getTenantModuleAccess(businessTenant.suiteTenantId, "agent");
+        if (access.allowed) {
+          void syncAgentClaims(ctx.firebaseUid, businessTenant.suiteTenantId, suiteUser.id).catch(() => {});
+        }
 
         const [created] = await db
           .insert(users)

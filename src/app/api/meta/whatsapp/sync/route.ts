@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { db } from "@/server/db/client";
-import { users, whatsappIdentities } from "../../../../../../drizzle/schema";
+import { businesses, users, whatsappIdentities } from "../../../../../../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { generateSixDigitPin } from "@/server/meta/crypto";
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
@@ -9,6 +9,7 @@ import { getAuthedUserFromRequest } from "@/server/apiAuth";
 import { checkRateLimit } from "@/server/rateLimit";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { captureSentryException } from "@/lib/sentry-monitoring";
+import { getTenantModuleAccess } from "@/server/control/access";
 import {
   type MetaPhoneNumberLookup,
   normalizeGraphId,
@@ -82,6 +83,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Email mismatch" }, { status: 403 });
     }
     const user = authed.user;
+    const business = user.businessId
+      ? await db.select().from(businesses).where(eq(businesses.id, user.businessId)).limit(1).then((rows) => rows[0] ?? null)
+      : null;
+    const access = business?.suiteTenantId ? await getTenantModuleAccess(business.suiteTenantId, "agent") : null;
+    if (!access?.canConnectWhatsapp) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "This tenant needs an active paid plan, demo grant, or partner grant before WhatsApp can be connected.",
+          code: "SUBSCRIPTION_REQUIRED",
+        },
+        { status: 402, headers: rl.headers },
+      );
+    }
 
     const metaAppId = process.env.META_APP_ID;
     const metaAppSecret = process.env.META_APP_SECRET;
