@@ -1,5 +1,6 @@
 export const APP_LOGIN_ROUTE = "/";
 export const APP_SIGNUP_ROUTE = "/signup";
+export const APP_ACCESS_ROUTE = "/access";
 export const APP_DEFAULT_AUTH_REDIRECT = "/upload";
 export const APP_PROTECTED_ROUTE_PREFIXES = [
   "/dashboard",
@@ -32,7 +33,7 @@ export function normalizeAppPath(pathname?: string | null): string {
 
 export function isAppAuthPath(pathname?: string | null): boolean {
   const normalized = normalizeAppPath(pathname);
-  return normalized === APP_LOGIN_ROUTE || normalized === APP_SIGNUP_ROUTE;
+  return normalized === APP_LOGIN_ROUTE || normalized === APP_SIGNUP_ROUTE || normalized === APP_ACCESS_ROUTE;
 }
 
 export function isAppPath(pathname?: string | null): boolean {

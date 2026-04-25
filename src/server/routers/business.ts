@@ -14,6 +14,8 @@ import { mergeOrderFlowSettings, normalizeOrderFlowSettings } from "@/lib/order-
 import { buildPrivateBlobReadUrl } from "@/lib/storage";
 import { mergeWebsiteWidgetSettings, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
 import { getBusinessAiCreditsUsedThisMonth } from "@/server/services/aiUsage";
+import { getTenantModuleAccess, tenantHasFeature } from "@/server/control/access";
+import { SUITE_FEATURES } from "@/server/control/subscription-features";
 
 const businessMessageUsageTierSchema = z.enum(["minimum", "standard", "enterprise"]);
 
@@ -142,6 +144,7 @@ export const businessRouter = router({
       if (!biz) return null;
 
       const creditsUsed = await getBusinessAiCreditsUsedThisMonth(ctx.businessId);
+      const access = biz.suiteTenantId ? await getTenantModuleAccess(biz.suiteTenantId, "agent") : null;
 
       const orderSettings = normalizeOrderFlowSettings(biz.settings);
       const qrPreviewUrl = orderSettings.bankQr.qrBlobPath
@@ -162,6 +165,7 @@ export const businessRouter = router({
         gmailEmail: biz.gmailEmail ?? null,
         gmailConnectedAt: biz.gmailConnectedAt ?? null,
         gmailError: biz.gmailError ?? null,
+        subscriptionAccess: access,
         responseUsage: {
           used: creditsUsed,
           max: getBusinessMessageUsageLimit(biz.messageUsageTier),
@@ -373,6 +377,10 @@ export const businessRouter = router({
       const [biz] = await db.select().from(businesses).where(eq(businesses.id, input.businessId)).limit(1);
       if (!biz) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
+      }
+      const access = biz.suiteTenantId ? await getTenantModuleAccess(biz.suiteTenantId, "agent") : null;
+      if (!tenantHasFeature(access, SUITE_FEATURES.AGENT_WIDGET_MANAGE)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Website widget is locked for this subscription." });
       }
 
       const normalized = normalizeOrderFlowSettings({

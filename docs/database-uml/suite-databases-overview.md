@@ -8,13 +8,16 @@ This document is generated from the Drizzle schema artifacts. It is organized as
 
 Suite tenancy, users, memberships, entitlements, and cross-app links.
 
-- Schema hash: 10e184a8373e95a9
-- Tables: 5
-- Foreign-key relationships: 4
+- Schema hash: 0ca6a7f510cfd712
+- Tables: 8
+- Foreign-key relationships: 8
 
 - suite_app_links: 10 columns, PK id
 - suite_entitlements: 8 columns, PK suite_tenant_id, module
 - suite_memberships: 6 columns, PK suite_tenant_id, suite_user_id
+- suite_subscription_plans: 16 columns, PK code
+- suite_tenant_payment_events: 12 columns, PK id
+- suite_tenant_subscriptions: 15 columns, PK id
 - suite_tenants: 6 columns, PK id
 - suite_users: 7 columns, PK id
 

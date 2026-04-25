@@ -70,6 +70,8 @@ type WhatsAppEmbeddedSignupButtonProps = {
   label?: string;
   syncedLabel?: string;
   connected?: boolean;
+  disabled?: boolean;
+  disabledReason?: string | null;
   className?: string;
   style?: React.CSSProperties;
 };
@@ -78,7 +80,17 @@ type SyncResponse =
   | { ok: true; stored: boolean; setupComplete: boolean; message?: string }
   | { ok: false; error: string; code?: string };
 
-export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, syncedLabel, connected: connectedProp, className, style }: WhatsAppEmbeddedSignupButtonProps = {}) {
+export function WhatsAppEmbeddedSignupButton({
+  email,
+  onConnected,
+  label,
+  syncedLabel,
+  connected: connectedProp,
+  disabled = false,
+  disabledReason = null,
+  className,
+  style,
+}: WhatsAppEmbeddedSignupButtonProps = {}) {
   const pathname = usePathname();
   const [sdkReady, setSdkReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -96,7 +108,7 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
   } | null>(null);
   const sentRef = useRef(false);
 
-  const canLaunch = useMemo(() => sdkReady && !busy, [sdkReady, busy]);
+  const canLaunch = useMemo(() => sdkReady && !busy && !disabled, [sdkReady, busy, disabled]);
   const route = pathname || "/settings";
   const emailDomain = useMemo(() => {
     const normalized = String(email || "").trim().toLowerCase();
@@ -109,6 +121,12 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
       setConnected(connectedProp);
     }
   }, [connectedProp]);
+
+  useEffect(() => {
+    if (disabled && disabledReason) {
+      setStatus(disabledReason);
+    }
+  }, [disabled, disabledReason]);
 
   // Initialize FB SDK once loaded
   useEffect(() => {
@@ -452,6 +470,11 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
   }, [email, emailDomain, onConnected, route]);
 
   const launchWhatsAppSignup = useCallback(() => {
+    if (disabled) {
+      setBusy(false);
+      setStatus(disabledReason || "This workspace needs an active plan before WhatsApp can be connected.");
+      return;
+    }
     if (!window.FB) {
       setBusy(false);
       setStatus("Facebook SDK is not ready yet. Please try again.");
@@ -513,7 +536,7 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
         },
       });
     }
-  }, [emailDomain, fbLoginCallback, route]);
+  }, [disabled, disabledReason, emailDomain, fbLoginCallback, route]);
 
   const baseStyle = {
     backgroundColor: "#1877f2",
@@ -554,7 +577,7 @@ export function WhatsAppEmbeddedSignupButton({ email, onConnected, label, synced
       <button
         onClick={launchWhatsAppSignup}
         disabled={!canLaunch}
-        title={!sdkReady ? "Loading Facebook SDK…" : undefined}
+        title={!sdkReady ? "Loading Facebook SDK…" : disabledReason || undefined}
         className={className}
         style={mergedStyle}
       >

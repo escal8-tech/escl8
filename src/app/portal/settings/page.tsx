@@ -810,8 +810,24 @@ const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "flowbuilder", label: "Flow Builder", icon: Icons.flow },
 ];
 
+const settingsTabFeatureMap: Partial<Record<SettingsTab, string>> = {
+  profile: "agent.settings.basic",
+  booking: "agent.settings.basic",
+  tickets: "agent.settings.basic",
+  integrations: "agent.whatsapp.connect",
+  documents: "agent.settings.basic",
+  flowbuilder: "agent.messages.view",
+};
+
 function isSettingsTab(value: string): value is SettingsTab {
   return tabConfig.some((tab) => tab.id === value);
+}
+
+function readAccessFeatures(value: unknown): Record<string, boolean> | undefined {
+  if (!value || typeof value !== "object" || !("features" in value)) return undefined;
+  const features = (value as { features?: unknown }).features;
+  if (!features || typeof features !== "object") return undefined;
+  return features as Record<string, boolean>;
 }
 
 
@@ -863,6 +879,9 @@ export default function SettingsPage() {
 
   const businessQuery = trpc.business.getMine.useQuery({ email: email ?? "" }, { enabled: !!email });
   const phoneNumbersQuery = trpc.business.listPhoneNumbers.useQuery(undefined, { enabled: !!email });
+  const accessStatusQuery = trpc.user.getAccessStatus.useQuery({ email: email ?? "" }, { enabled: !!email });
+  const accessFeatures = readAccessFeatures(accessStatusQuery.data);
+  const visibleTabs = tabConfig.filter((tab) => (accessFeatures ? accessFeatures[settingsTabFeatureMap[tab.id] ?? "agent.settings.basic"] !== false : true));
   const ticketTypesQuery = trpc.tickets.listTypes.useQuery({ includeDisabled: true }, { enabled: !!email });
   const ensureWebsiteWidget = trpc.business.ensureWebsiteWidget.useMutation();
   const updateBooking = trpc.business.updateBookingConfig.useMutation({
@@ -978,10 +997,15 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const requestedTab = String(searchParams?.get("tab") || "").trim().toLowerCase();
-    if (isSettingsTab(requestedTab)) {
+    if (isSettingsTab(requestedTab) && visibleTabs.some((tab) => tab.id === requestedTab)) {
       setActiveTab(requestedTab);
     }
-  }, [searchParams]);
+  }, [searchParams, visibleTabs]);
+
+  useEffect(() => {
+    if (visibleTabs.some((tab) => tab.id === activeTab)) return;
+    setActiveTab(visibleTabs[0]?.id ?? "profile");
+  }, [activeTab, visibleTabs]);
 
   const handleTabSelect = (tab: SettingsTab) => {
     setActiveTab(tab);
@@ -1864,9 +1888,14 @@ export default function SettingsPage() {
 
   const renderIntegrationsTab = () => {
     const phoneNumbers = phoneNumbersQuery.data ?? [];
+    const accessStatus = accessStatusQuery.data;
     const gmailConnected = Boolean(businessQuery.data?.gmailConnected);
     const gmailAddress = String(businessQuery.data?.gmailEmail || "").trim();
     const gmailError = describeCompanyGmailError(businessQuery.data?.gmailError);
+    const whatsappConnectBlocked = Boolean(accessStatus && !accessStatus.canConnectWhatsapp);
+    const whatsappConnectReason = whatsappConnectBlocked
+      ? "WhatsApp connection is blocked until this tenant has an active paid plan, demo grant, or partner grant."
+      : null;
     const integrationCards = [
       {
         key: "whatsapp",
@@ -1963,6 +1992,8 @@ export default function SettingsPage() {
                       <WhatsAppEmbeddedSignupButton
                         email={email ?? undefined}
                         connected={whatsappConnected}
+                        disabled={whatsappConnectBlocked}
+                        disabledReason={whatsappConnectReason}
                         onConnected={() => {
                           void phoneNumbersQuery.refetch();
                         }}
@@ -1994,6 +2025,22 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
+            {whatsappConnectBlocked ? (
+              <div
+                style={{
+                  marginTop: 14,
+                  borderRadius: 18,
+                  border: "1px solid rgba(245, 158, 11, 0.18)",
+                  background: "rgba(245, 158, 11, 0.08)",
+                  padding: "12px 14px",
+                  color: "var(--text-secondary)",
+                  fontSize: 13,
+                  lineHeight: 1.6,
+                }}
+              >
+                {whatsappConnectReason}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -2217,7 +2264,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <div style={styles.tabs}>
-        {tabConfig.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.id}
             style={{
