@@ -184,7 +184,7 @@ export const whatsappIdentities = pgTable(
     ),
     waIdentitiesBotTypeValid: check(
       "wa_identities_bot_type_valid",
-      sql`${t.botType} in ('AGENT', 'CONCIERGE', 'ORDER', 'RESERVATION')`,
+      sql`${t.botType} in ('AGENT', 'CONCIERGE', 'ORDER', 'ORDER2', 'RESERVATION')`,
     ),
 
     // lifecycle sanity (optional): if disconnectedAt exists, isActive should typically be false
