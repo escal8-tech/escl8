@@ -66,6 +66,7 @@ const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const ticketOutcomeSchema = z.enum(["pending", "won", "lost"]);
 const supportResolutionSchema = z.enum(["completed", "failed"]);
 const supportStateFilterSchema = z.enum(["open", "completed", "failed"]);
+const visibleSupportTicketTypeKeys = new Set(["complaint", "generalsupport"]);
 const manualOrderChannelSchema = z.enum(["walkin", "phone", "website", "other"]);
 const orderStageSchema = z.enum([
   "pending_approval",
@@ -161,7 +162,10 @@ function buildManualOrderFields(input: {
 export const ticketsRouter = router({
   listTypes: businessProcedure
     .input(z.object({ includeDisabled: z.boolean().optional() }).optional())
-    .query(async ({ ctx, input }) => listTicketTypesForBusiness({ businessId: ctx.businessId, includeDisabled: input?.includeDisabled })),
+    .query(async ({ ctx, input }) => {
+      const rows = await listTicketTypesForBusiness({ businessId: ctx.businessId, includeDisabled: input?.includeDisabled });
+      return rows.filter((row) => visibleSupportTicketTypeKeys.has(normalizeKey(row.key)));
+    }),
 
   upsertType: businessProcedure
     .input(
