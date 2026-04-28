@@ -24,6 +24,7 @@ import {
   formatChatWindowCountdown,
   formatItemsCell,
   formatOrderStage,
+  formatSupportTag,
   formatTicketReference,
   getTicketFields,
   getTicketString,
@@ -34,9 +35,11 @@ import {
   priorityPillClass,
   resolveOrderStage,
   resolveSupportTicketState,
+  SUPPORT_TAG_OPTIONS,
   supportTicketStatePillClass,
   toLooseStringList,
   type OrderStage,
+  type SupportTagFilter,
   type SupportTicketState,
   type TicketListFilter,
   type TicketRow,
@@ -59,6 +62,7 @@ export function TicketsPageScreen({
   const toast = useToast();
   const router = useRouter();
   const [filtersByType, setFiltersByType] = useState<Record<string, TicketListFilter>>({});
+  const [supportTagFiltersByType, setSupportTagFiltersByType] = useState<Record<string, SupportTagFilter>>({});
   const [ticketIdQuery, setTicketIdQuery] = useState("");
   const [resolvingSupportTicketId, setResolvingSupportTicketId] = useState<string | null>(null);
   const [orderActionTicketId, setOrderActionTicketId] = useState<string | null>(null);
@@ -98,6 +102,7 @@ export function TicketsPageScreen({
   const activeFilterKey = effectiveTypeKey ?? "__all";
   const isOrderTicketView = effectiveTypeKey === "ordercreation";
   const statusFilter = filtersByType[activeFilterKey] ?? (isOrderTicketView ? "pending_approval" : "all");
+  const supportTagFilter = supportTagFiltersByType[activeFilterKey] ?? "all";
   const ticketLedgerInput = useMemo(
     () => ({
       typeKey: effectiveTypeKey || undefined,
@@ -106,9 +111,12 @@ export function TicketsPageScreen({
       offset: page * PAGE_SIZE,
       ...(isOrderTicketView
         ? { orderStage: statusFilter !== "all" ? (statusFilter as OrderStage) : undefined }
-        : { supportState: statusFilter !== "all" ? (statusFilter as SupportTicketState) : undefined }),
+        : {
+            supportState: statusFilter !== "all" ? (statusFilter as SupportTicketState) : undefined,
+            supportTag: supportTagFilter !== "all" ? supportTagFilter : undefined,
+          }),
     }),
-    [effectiveTypeKey, isOrderTicketView, page, statusFilter, ticketIdQuery],
+    [effectiveTypeKey, isOrderTicketView, page, statusFilter, supportTagFilter, ticketIdQuery],
   );
   const ticketsQuery = trpc.tickets.listTicketLedger.useQuery(ticketLedgerInput, {
     enabled: Boolean(effectiveTypeKey),
@@ -503,6 +511,22 @@ export function TicketsPageScreen({
                   className="portal-toolbar-select"
                   style={{ width: isOrderTicketView ? "176px" : "160px" }}
                 />
+                {!isOrderTicketView ? (
+                  <PortalSelect
+                    value={supportTagFilter}
+                    onValueChange={(value) => {
+                      setSupportTagFiltersByType((prev) => ({ ...prev, [activeFilterKey]: value as SupportTagFilter }));
+                      setPage(0);
+                    }}
+                    options={[
+                      { value: "all", label: "All Tags" },
+                      ...SUPPORT_TAG_OPTIONS.map((tag) => ({ value: tag, label: formatSupportTag(tag) })),
+                    ]}
+                    ariaLabel="Support tag filter"
+                    className="portal-toolbar-select"
+                    style={{ width: "172px" }}
+                  />
+                ) : null}
               </div>
               <div className="portal-ledger-search">
                 <TableSearchControl
@@ -538,13 +562,14 @@ export function TicketsPageScreen({
                         </tr>
                       ) : (
                         <tr>
-                          <th style={{ textAlign: "left", width: "14%" }}>Ticket</th>
-                          <th style={{ textAlign: "center", width: "7%" }}>Bot</th>
-                          <th style={{ textAlign: "left", width: "18%" }}>Customer</th>
-                          <th style={{ textAlign: "left", width: "22%" }}>Items</th>
-                          <th style={{ textAlign: "left", width: "11%" }}>Priority</th>
-                          <th style={{ textAlign: "left", width: "10%" }}>Window</th>
-                          <th style={{ textAlign: "left", width: "14%" }}>Status</th>
+                          <th style={{ textAlign: "left", width: "12%" }}>Ticket</th>
+                          <th style={{ textAlign: "center", width: "6%" }}>Bot</th>
+                          <th style={{ textAlign: "left", width: "15%" }}>Customer</th>
+                          <th style={{ textAlign: "left", width: "18%" }}>Items</th>
+                          <th style={{ textAlign: "left", width: "12%" }}>Tag</th>
+                          <th style={{ textAlign: "left", width: "9%" }}>Priority</th>
+                          <th style={{ textAlign: "left", width: "8%" }}>Window</th>
+                          <th style={{ textAlign: "left", width: "12%" }}>Status</th>
                           <th style={{ textAlign: "right", width: "8%" }}>Action</th>
                         </tr>
                       )}
@@ -572,6 +597,9 @@ export function TicketsPageScreen({
                   ? (customerPhone && customerPhone !== customerPrimary ? customerPhone : (!customerPhone ? "No phone" : ""))
                   : (!customerPhone ? "No phone" : ""));
                 const itemsLabel = formatItemsCell(fields);
+                const supportTagLabel = formatSupportTag(
+                  firstFieldText(fields, ["support_tag", "supportTag", "tag", "category"]),
+                );
                 const supportState = resolveSupportTicketState(ticket as TicketRow);
                 const ticketDate = formatDate(
                   (getTicketValue(ticket as TicketRow, "updatedAt", "updated_at") as Date | string | null | undefined) ?? ticket.createdAt,
@@ -610,6 +638,11 @@ export function TicketsPageScreen({
                     <span className={priorityPillClass(getTicketString(ticket, "priority") || "normal")}>
                       {(getTicketString(ticket, "priority") || "normal")}
                     </span>
+                  </td>
+                );
+                const supportTagCell = (
+                  <td data-label="Tag" className="portal-ledger-cell">
+                    <span className="portal-pill portal-pill--neutral">{supportTagLabel}</span>
                   </td>
                 );
                 const windowCell = (
@@ -730,6 +763,7 @@ export function TicketsPageScreen({
                         {botCell}
                         {customerCell}
                         {itemsCell}
+                        {supportTagCell}
                         {priorityCell}
                         {windowCell}
                         <td data-label="Stage">
@@ -758,7 +792,7 @@ export function TicketsPageScreen({
               })}
               {pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={isOrderTicketView ? 8 : 8} style={{ color: "var(--muted)", textAlign: "center", padding: "24px 10px" }}>
+                  <td colSpan={isOrderTicketView ? 8 : 9} style={{ color: "var(--muted)", textAlign: "center", padding: "24px 10px" }}>
                     {ticketIdQuery ? "No ticket IDs match your search." : "No tickets match this view."}
                   </td>
                 </tr>

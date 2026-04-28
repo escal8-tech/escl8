@@ -51,6 +51,7 @@ export async function listTicketLedgerForBusiness(args: {
   typeKey?: string;
   status?: "open" | "in_progress" | "resolved";
   supportState?: "open" | "completed" | "failed";
+  supportTag?: string;
   orderStage?: "pending_approval" | "edit_required" | "approved" | "awaiting_payment" | "payment_submitted" | "payment_rejected" | "paid" | "refund_pending" | "refunded" | "denied";
   search?: string;
   limit: number;
@@ -75,6 +76,9 @@ export async function listTicketLedgerForBusiness(args: {
   if (args.typeKey) conditions.push(eq(supportTickets.ticketTypeKey, normalizeKey(args.typeKey)));
   if (args.status) conditions.push(sql<boolean>`${normalizedStatusExpr} = ${args.status}`);
   if (args.supportState) conditions.push(sql<boolean>`${supportStateExpr} = ${args.supportState}`);
+  if (args.supportTag) {
+    conditions.push(sql<boolean>`upper(coalesce(${supportTickets.fields}->>'support_tag', ${supportTickets.fields}->>'supportTag', '')) = ${args.supportTag}`);
+  }
   if (args.orderStage) conditions.push(sql<boolean>`${orderStageExpr} = ${args.orderStage}`);
 
   const searchPattern = String(args.search ?? "").trim().replace(/^#/, "");
