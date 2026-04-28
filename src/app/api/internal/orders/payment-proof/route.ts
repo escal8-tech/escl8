@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import { businesses, orderPayments, orders, whatsappIdentities } from "@/../drizzle/schema";
 import { storePrivateFileAtPath } from "@/lib/storage";
@@ -290,40 +290,72 @@ export async function POST(request: Request) {
         : "Customer said payment is done. Staff should check the bank before approving payment.");
   const now = new Date();
   const txResult = await db.transaction(async (tx) => {
-    const [paymentRow] = await tx
-      .insert(orderPayments)
-      .values({
-        businessId,
-        orderId: orderRow.id,
-        customerId: orderRow.customerId,
-        threadId: orderRow.threadId,
-        whatsappIdentityId: orderRow.whatsappIdentityId,
-        paymentMethod: orderRow.paymentMethod,
-        status: "submitted",
-        currency: orderRow.currency,
-        expectedAmount: orderRow.expectedAmount,
-        paidAmount: submittedAmount,
-        paidDate: analyzed?.extracted?.paymentDate ? String(analyzed.extracted.paymentDate) : null,
-        referenceCode: String(analyzed?.extracted?.reference || orderRow.paymentReference || "").trim() || null,
-        proofUrl: storedProof?.url ?? null,
-        aiCheckStatus,
-        aiCheckNotes,
-        details: {
-          analysis: analyzed ?? null,
-          paymentBalance: assessed.balance,
-          proofText: paymentText || null,
-          storage: storedProof
-            ? {
-                blobPath: storedProof.blobPath,
-                contentType: storedProof.contentType ?? null,
-                name: storedProof.name,
-              }
-            : null,
-        },
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
+    const proofDetails = {
+      analysis: analyzed ?? null,
+      paymentBalance: assessed.balance,
+      proofText: paymentText || null,
+      storage: storedProof
+        ? {
+            blobPath: storedProof.blobPath,
+            contentType: storedProof.contentType ?? null,
+            name: storedProof.name,
+          }
+        : null,
+    };
+    const [latestPayment] = await tx
+      .select()
+      .from(orderPayments)
+      .where(and(eq(orderPayments.businessId, businessId), eq(orderPayments.orderId, orderRow.id)))
+      .orderBy(desc(orderPayments.createdAt), desc(orderPayments.id))
+      .limit(1);
+    const latestStatus = String(latestPayment?.status || "").trim().toLowerCase();
+    const existingDetails =
+      latestPayment?.details && typeof latestPayment.details === "object" && !Array.isArray(latestPayment.details)
+        ? latestPayment.details
+        : {};
+    const [paymentRow] = (latestPayment && latestStatus === "pending")
+      ? await tx
+          .update(orderPayments)
+          .set({
+            status: "submitted",
+            paidAmount: submittedAmount,
+            paidDate: analyzed?.extracted?.paymentDate ? String(analyzed.extracted.paymentDate) : null,
+            referenceCode: String(analyzed?.extracted?.reference || orderRow.paymentReference || latestPayment.referenceCode || "").trim() || null,
+            proofUrl: storedProof?.url ?? null,
+            aiCheckStatus,
+            aiCheckNotes,
+            details: {
+              ...existingDetails,
+              ...proofDetails,
+              submittedFromPending: true,
+            },
+            updatedAt: now,
+          })
+          .where(and(eq(orderPayments.businessId, businessId), eq(orderPayments.id, latestPayment.id)))
+          .returning()
+      : await tx
+          .insert(orderPayments)
+          .values({
+            businessId,
+            orderId: orderRow.id,
+            customerId: orderRow.customerId,
+            threadId: orderRow.threadId,
+            whatsappIdentityId: orderRow.whatsappIdentityId,
+            paymentMethod: orderRow.paymentMethod,
+            status: "submitted",
+            currency: orderRow.currency,
+            expectedAmount: orderRow.expectedAmount,
+            paidAmount: submittedAmount,
+            paidDate: analyzed?.extracted?.paymentDate ? String(analyzed.extracted.paymentDate) : null,
+            referenceCode: String(analyzed?.extracted?.reference || orderRow.paymentReference || "").trim() || null,
+            proofUrl: storedProof?.url ?? null,
+            aiCheckStatus,
+            aiCheckNotes,
+            details: proofDetails,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
 
     const [updatedOrder] = await tx
       .update(orders)
