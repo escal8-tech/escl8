@@ -66,6 +66,19 @@ const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
 const ticketOutcomeSchema = z.enum(["pending", "won", "lost"]);
 const supportResolutionSchema = z.enum(["completed", "failed"]);
 const supportStateFilterSchema = z.enum(["open", "completed", "failed"]);
+const supportTagFilterSchema = z.enum([
+  "COMPLAINT",
+  "REFUND",
+  "WARRANTY",
+  "RETURN_EXCHANGE",
+  "REPAIR",
+  "DELIVERY",
+  "PAYMENT",
+  "ORDER_CHANGE",
+  "MEETUP",
+  "INVOICE_RECEIPT",
+  "SUPPORT",
+]);
 const visibleSupportTicketTypeKeys = new Set(["complaint", "generalsupport"]);
 const manualOrderChannelSchema = z.enum(["walkin", "phone", "website", "other"]);
 const orderStageSchema = z.enum([
@@ -246,6 +259,7 @@ export const ticketsRouter = router({
         typeKey: z.string().optional(),
         status: ticketStatusSchema.optional(),
         supportState: supportStateFilterSchema.optional(),
+        supportTag: supportTagFilterSchema.optional(),
         orderStage: orderStageSchema.optional(),
         search: z.string().optional(),
         limit: z.number().int().min(1).max(100).default(20),

@@ -18,6 +18,7 @@ import {
   type BusinessMessageUsageTier,
 } from "@/lib/business-usage";
 import type { OrderPaymentMethod } from "@/lib/order-settings";
+import { DEFAULT_CUSTOMIZATION_SETTINGS } from "@/lib/customization-settings";
 import { buildWebsiteWidgetSnippet, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
 import { UploadContent } from "@/app/portal/upload/components/UploadContent";
@@ -799,12 +800,13 @@ function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onC
 /* ─────────────────────────────────────────────────────────────────────────────
    SETTINGS PAGE TABS
 ───────────────────────────────────────────────────────────────────────────── */
-type SettingsTab = "profile" | "booking" | "tickets" | "integrations" | "documents" | "flowbuilder";
+type SettingsTab = "profile" | "booking" | "tickets" | "customization" | "integrations" | "documents" | "flowbuilder";
 
 const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "profile", label: "Profile", icon: Icons.user },
   { id: "booking", label: "Booking", icon: Icons.calendar },
   { id: "tickets", label: "Tickets", icon: Icons.ticket },
+  { id: "customization", label: "Customization", icon: Icons.building },
   { id: "integrations", label: "Integrations", icon: Icons.whatsapp },
   { id: "documents", label: "Documents", icon: Icons.upload },
   { id: "flowbuilder", label: "Flow Builder", icon: Icons.flow },
@@ -814,6 +816,7 @@ const settingsTabFeatureMap: Partial<Record<SettingsTab, string>> = {
   profile: "agent.settings.basic",
   booking: "agent.settings.basic",
   tickets: "agent.settings.basic",
+  customization: "agent.settings.basic",
   integrations: "agent.whatsapp.connect",
   documents: "agent.settings.basic",
   flowbuilder: "agent.messages.view",
@@ -864,8 +867,20 @@ export default function SettingsPage() {
   const [accountName, setAccountName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountInstructions, setAccountInstructions] = useState("");
+  const [customBusinessName, setCustomBusinessName] = useState("");
+  const [customLogoBlobPath, setCustomLogoBlobPath] = useState("");
+  const [customLogoContainer, setCustomLogoContainer] = useState("");
+  const [customLogoUrl, setCustomLogoUrl] = useState("");
+  const [customPrimaryColor, setCustomPrimaryColor] = useState(DEFAULT_CUSTOMIZATION_SETTINGS.primaryColor);
+  const [customSecondaryColor, setCustomSecondaryColor] = useState(DEFAULT_CUSTOMIZATION_SETTINGS.secondaryColor);
+  const [customAddress, setCustomAddress] = useState("");
+  const [customPhone, setCustomPhone] = useState("");
+  const [customEmail, setCustomEmail] = useState("");
+  const [customWebsite, setCustomWebsite] = useState("");
+  const [customInvoiceFooterNote, setCustomInvoiceFooterNote] = useState(DEFAULT_CUSTOMIZATION_SETTINGS.invoiceFooterNote);
   const [gmailConnectPending, setGmailConnectPending] = useState(false);
   const [qrUploadPending, setQrUploadPending] = useState(false);
+  const [logoUploadPending, setLogoUploadPending] = useState(false);
   const [widgetModalOpen, setWidgetModalOpen] = useState(false);
   const [widgetSnippet, setWidgetSnippet] = useState("");
 
@@ -917,6 +932,15 @@ export default function SettingsPage() {
       showSuccessToast(toast, {
         title: "Order settings updated",
         message: "Order flow settings saved successfully.",
+      });
+      businessQuery.refetch();
+    },
+  });
+  const updateCustomizationSettings = trpc.business.updateCustomizationSettings.useMutation({
+    onSuccess: () => {
+      showSuccessToast(toast, {
+        title: "Customization updated",
+        message: "Invoice branding and contact details were saved successfully.",
       });
       businessQuery.refetch();
     },
@@ -992,6 +1016,18 @@ export default function SettingsPage() {
       setAccountName(orderSettings?.bankQr?.accountName ?? "");
       setAccountNumber(orderSettings?.bankQr?.accountNumber ?? "");
       setAccountInstructions(orderSettings?.bankQr?.accountInstructions ?? "");
+      const customization = businessQuery.data.customizationSettings;
+      setCustomBusinessName(customization?.businessName || businessQuery.data.name || "");
+      setCustomLogoBlobPath(customization?.logoBlobPath ?? "");
+      setCustomLogoContainer(customization?.logoContainer ?? "");
+      setCustomLogoUrl(customization?.logoUrl ?? "");
+      setCustomPrimaryColor(customization?.primaryColor ?? DEFAULT_CUSTOMIZATION_SETTINGS.primaryColor);
+      setCustomSecondaryColor(customization?.secondaryColor ?? DEFAULT_CUSTOMIZATION_SETTINGS.secondaryColor);
+      setCustomAddress(customization?.address ?? "");
+      setCustomPhone(customization?.phone ?? "");
+      setCustomEmail(customization?.email ?? "");
+      setCustomWebsite(customization?.website ?? "");
+      setCustomInvoiceFooterNote(customization?.invoiceFooterNote ?? DEFAULT_CUSTOMIZATION_SETTINGS.invoiceFooterNote);
     }
   }, [businessQuery.data]);
 
@@ -1254,6 +1290,64 @@ export default function SettingsPage() {
       });
     } finally {
       setQrUploadPending(false);
+    }
+  };
+
+  const handleSaveCustomizationSettings = () => {
+    if (!email || !businessQuery.data?.id) return;
+    updateCustomizationSettings.mutate({
+      email,
+      businessId: businessQuery.data.id,
+      businessName: customBusinessName.trim(),
+      logoBlobPath: customLogoBlobPath.trim(),
+      logoContainer: customLogoContainer.trim(),
+      logoUrl: customLogoUrl.trim(),
+      primaryColor: customPrimaryColor.trim() || DEFAULT_CUSTOMIZATION_SETTINGS.primaryColor,
+      secondaryColor: customSecondaryColor.trim() || DEFAULT_CUSTOMIZATION_SETTINGS.secondaryColor,
+      address: customAddress.trim(),
+      phone: customPhone.trim(),
+      emailAddress: customEmail.trim(),
+      website: customWebsite.trim(),
+      invoiceFooterNote: customInvoiceFooterNote.trim(),
+    });
+  };
+
+  const handleUploadLogoImage = async (file: File) => {
+    if (!file) return;
+    setLogoUploadPending(true);
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      const response = await fetchWithFirebaseAuth(
+        "/api/settings/customization/logo-upload",
+        {
+          method: "POST",
+          body: form,
+        },
+        {
+          action: "settings-upload-custom-logo",
+          area: "business",
+          route: "/settings",
+        },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(payload?.error || "Logo upload failed."));
+      }
+      setCustomLogoBlobPath(String(payload?.logoBlobPath || "").trim());
+      setCustomLogoContainer(String(payload?.logoContainer || "").trim());
+      setCustomLogoUrl(String(payload?.logoUrl || "").trim());
+      showSuccessToast(toast, {
+        title: "Logo uploaded",
+        message: "The invoice logo is ready for branded order PDFs.",
+      });
+    } catch (error) {
+      showErrorToast(toast, {
+        title: "Upload failed",
+        message: error instanceof Error ? error.message : "Logo upload failed.",
+      });
+    } finally {
+      setLogoUploadPending(false);
     }
   };
 
@@ -2173,6 +2267,204 @@ export default function SettingsPage() {
 
   const renderDocumentsTab = () => <UploadContent />;
 
+  const renderCustomizationTab = () => (
+    <div style={styles.section}>
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <div style={{ ...styles.cardIcon, ...styles.cardIconSecondary }}>{Icons.building}</div>
+          <div>
+            <h3 style={styles.cardTitle}>Invoice Customization</h3>
+            <p style={styles.cardDescription}>Brand the ORDER2 invoice PDF with your logo, colors, address, and contact details.</p>
+          </div>
+        </div>
+        <div style={styles.cardBody}>
+          <div style={styles.splitGrid}>
+            <div style={styles.helperCard}>
+              <div style={styles.helperTitle}>Brand Identity</div>
+              <div style={styles.helperText}>These values are used on the invoice header, footer, and WhatsApp PDF sent after payment is marked complete.</div>
+              <div style={styles.formGrid}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Display Name</label>
+                  <input
+                    type="text"
+                    style={styles.input}
+                    value={customBusinessName}
+                    onChange={(e) => setCustomBusinessName(e.target.value)}
+                    placeholder="Transasia"
+                  />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Website</label>
+                  <input
+                    type="text"
+                    style={styles.input}
+                    value={customWebsite}
+                    onChange={(e) => setCustomWebsite(e.target.value)}
+                    placeholder="https://example.com"
+                  />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Primary Color</label>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <input
+                      type="color"
+                      value={customPrimaryColor}
+                      onChange={(e) => setCustomPrimaryColor(e.target.value)}
+                      style={{ width: 52, height: 44, border: "1px solid var(--border)", borderRadius: 12, background: "transparent" }}
+                    />
+                    <input
+                      type="text"
+                      style={styles.input}
+                      value={customPrimaryColor}
+                      onChange={(e) => setCustomPrimaryColor(e.target.value)}
+                      placeholder="#0E1B40"
+                    />
+                  </div>
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Secondary Color</label>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <input
+                      type="color"
+                      value={customSecondaryColor}
+                      onChange={(e) => setCustomSecondaryColor(e.target.value)}
+                      style={{ width: 52, height: 44, border: "1px solid var(--border)", borderRadius: 12, background: "transparent" }}
+                    />
+                    <input
+                      type="text"
+                      style={styles.input}
+                      value={customSecondaryColor}
+                      onChange={(e) => setCustomSecondaryColor(e.target.value)}
+                      placeholder="#D4A457"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ ...styles.formGroup, marginTop: 18 }}>
+                <label style={styles.label}>Logo</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                  <div
+                    style={{
+                      width: 96,
+                      height: 96,
+                      border: "1px solid var(--border)",
+                      borderRadius: 18,
+                      background: "var(--card-muted)",
+                      display: "grid",
+                      placeItems: "center",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {customLogoUrl ? (
+                      <Image src={customLogoUrl} alt="Invoice logo" width={96} height={96} unoptimized style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                    ) : (
+                      <span style={{ color: "var(--muted)", fontSize: 12 }}>No logo</span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                    <label style={{ ...styles.btnPrimary, position: "relative", overflow: "hidden" }}>
+                      {logoUploadPending ? "Uploading..." : customLogoUrl ? "Replace Logo" : "Upload Logo"}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,image/webp"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) {
+                            void handleUploadLogoImage(file);
+                          }
+                          event.currentTarget.value = "";
+                        }}
+                        disabled={logoUploadPending}
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          opacity: 0,
+                          cursor: logoUploadPending ? "not-allowed" : "pointer",
+                        }}
+                      />
+                    </label>
+                    {customLogoUrl || customLogoBlobPath ? (
+                      <button
+                        type="button"
+                        style={styles.btnSecondary}
+                        onClick={() => {
+                          setCustomLogoBlobPath("");
+                          setCustomLogoContainer("");
+                          setCustomLogoUrl("");
+                        }}
+                      >
+                        Remove Logo
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.helperCard}>
+              <div style={styles.helperTitle}>Invoice Contact Details</div>
+              <div style={styles.helperText}>Shown under the logo and in the invoice footer so customers can identify the seller clearly.</div>
+              <div style={styles.formGrid}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Phone Number</label>
+                  <input type="text" style={styles.input} value={customPhone} onChange={(e) => setCustomPhone(e.target.value)} placeholder="+94..." />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Email</label>
+                  <input type="email" style={styles.input} value={customEmail} onChange={(e) => setCustomEmail(e.target.value)} placeholder="sales@example.com" />
+                </div>
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Address</label>
+                <textarea
+                  style={{ ...styles.textarea, minHeight: 92 }}
+                  value={customAddress}
+                  onChange={(e) => setCustomAddress(e.target.value)}
+                  placeholder="Business address shown on invoice"
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Invoice Footer Note</label>
+                <textarea
+                  style={{ ...styles.textarea, minHeight: 92 }}
+                  value={customInvoiceFooterNote}
+                  onChange={(e) => setCustomInvoiceFooterNote(e.target.value)}
+                  placeholder="Thank you note or invoice terms"
+                />
+              </div>
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 18,
+                  overflow: "hidden",
+                  background: "var(--card)",
+                }}
+              >
+                <div style={{ height: 10, background: `linear-gradient(90deg, ${customPrimaryColor}, ${customSecondaryColor})` }} />
+                <div style={{ padding: 18 }}>
+                  <div style={{ fontWeight: 700, fontSize: 18 }}>{customBusinessName || "Invoice Preview"}</div>
+                  <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 8 }}>{customAddress || "Business address"}</div>
+                  <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>{[customPhone, customEmail].filter(Boolean).join(" | ") || "Phone | Email"}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style={styles.actions}>
+          <button
+            style={styles.btnPrimary}
+            onClick={handleSaveCustomizationSettings}
+            disabled={updateCustomizationSettings.isPending || logoUploadPending}
+          >
+            {Icons.save}
+            {updateCustomizationSettings.isPending ? "Saving..." : "Save Customization"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderFlowBuilderTab = () => <FlowBuilderContent />;
 
   const renderTabContent = () => {
@@ -2183,6 +2475,8 @@ export default function SettingsPage() {
         return renderBookingTab();
       case "tickets":
         return renderTicketsTab();
+      case "customization":
+        return renderCustomizationTab();
       case "integrations":
         return renderIntegrationsTab();
       case "documents":

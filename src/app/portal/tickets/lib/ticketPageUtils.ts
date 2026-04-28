@@ -52,6 +52,20 @@ export type TicketRow = {
 export const STATUS_OPTIONS: TicketStatus[] = ["open", "in_progress", "resolved"];
 export const OUTCOME_OPTIONS: TicketOutcome[] = ["pending", "won", "lost"];
 export const SUPPORT_STATE_OPTIONS: SupportTicketState[] = ["open", "completed", "failed"];
+export const SUPPORT_TAG_OPTIONS = [
+  "COMPLAINT",
+  "REFUND",
+  "WARRANTY",
+  "RETURN_EXCHANGE",
+  "REPAIR",
+  "DELIVERY",
+  "PAYMENT",
+  "ORDER_CHANGE",
+  "MEETUP",
+  "INVOICE_RECEIPT",
+  "SUPPORT",
+] as const;
+export type SupportTag = (typeof SUPPORT_TAG_OPTIONS)[number];
 export const ORDER_STAGE_OPTIONS = [
   "pending_approval",
   "edit_required",
@@ -67,6 +81,7 @@ export const ORDER_STAGE_OPTIONS = [
 
 export type OrderStage = (typeof ORDER_STAGE_OPTIONS)[number];
 export type TicketListFilter = "all" | TicketStatus | SupportTicketState | OrderStage;
+export type SupportTagFilter = "all" | SupportTag;
 
 export const LOSS_REASON_OPTIONS = [
   "Price too high",
@@ -199,6 +214,21 @@ export function supportTicketStatePillClass(state: SupportTicketState): string {
   if (state === "completed") return "portal-pill portal-pill--success";
   if (state === "failed") return "portal-pill portal-pill--danger";
   return "portal-pill portal-pill--warning";
+}
+
+export function normalizeSupportTag(value: unknown): SupportTag | "" {
+  const raw = String(value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return (SUPPORT_TAG_OPTIONS as readonly string[]).includes(raw) ? (raw as SupportTag) : "";
+}
+
+export function formatSupportTag(value: unknown): string {
+  const tag = normalizeSupportTag(value);
+  if (!tag) return "-";
+  return tag
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function toStringList(value: unknown): string[] {
