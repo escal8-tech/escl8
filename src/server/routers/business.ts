@@ -10,6 +10,7 @@ import {
   getBusinessMessageUsageLimit,
   normalizeBusinessMessageUsageTier,
 } from "@/lib/business-usage";
+import { mergeCustomizationSettings, normalizeCustomizationSettings } from "@/lib/customization-settings";
 import { mergeOrderFlowSettings, normalizeOrderFlowSettings } from "@/lib/order-settings";
 import { buildPrivateBlobReadUrl } from "@/lib/storage";
 import { mergeWebsiteWidgetSettings, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
@@ -147,8 +148,16 @@ export const businessRouter = router({
       const access = biz.suiteTenantId ? await getTenantModuleAccess(biz.suiteTenantId, "agent") : null;
 
       const orderSettings = normalizeOrderFlowSettings(biz.settings);
+      const customizationSettings = normalizeCustomizationSettings(biz.settings);
       const qrPreviewUrl = orderSettings.bankQr.qrBlobPath
         ? buildPrivateBlobReadUrl(orderSettings.bankQr.qrBlobPath, 24 * 30)
+        : null;
+      const logoPreviewUrl = customizationSettings.logoBlobPath
+        ? buildPrivateBlobReadUrl(
+            customizationSettings.logoBlobPath,
+            24 * 30,
+            customizationSettings.logoContainer || undefined,
+          )
         : null;
 
       return {
@@ -160,6 +169,10 @@ export const businessRouter = router({
             ...orderSettings.bankQr,
             qrImageUrl: qrPreviewUrl || orderSettings.bankQr.qrImageUrl,
           },
+        },
+        customizationSettings: {
+          ...customizationSettings,
+          logoUrl: logoPreviewUrl || customizationSettings.logoUrl,
         },
         gmailConnected: Boolean(biz.gmailConnected),
         gmailEmail: biz.gmailEmail ?? null,
@@ -419,6 +432,89 @@ export const businessRouter = router({
             currency: normalized.currency,
             payment_method: normalized.paymentMethod,
             ticket_to_order_enabled: normalized.ticketToOrderEnabled,
+          },
+        });
+      }
+
+      return updated ?? null;
+    }),
+
+  updateCustomizationSettings: businessProcedure
+    .input(
+      z.object({
+        email: z.string().email(),
+        businessId: z.string().min(1),
+        businessName: z.string().max(160).optional(),
+        logoBlobPath: z.string().max(1024).optional(),
+        logoContainer: z.string().max(80).optional(),
+        logoUrl: z.string().max(1200).optional(),
+        primaryColor: z.string().max(20),
+        secondaryColor: z.string().max(20),
+        address: z.string().max(500).optional(),
+        phone: z.string().max(120).optional(),
+        emailAddress: z.string().max(180).optional(),
+        website: z.string().max(240).optional(),
+        invoiceFooterNote: z.string().max(300).optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.userEmail && input.email !== ctx.userEmail) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
+      }
+      if (input.businessId !== ctx.businessId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
+      }
+
+      const [biz] = await db.select().from(businesses).where(eq(businesses.id, input.businessId)).limit(1);
+      if (!biz) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
+      }
+      const access = biz.suiteTenantId ? await getTenantModuleAccess(biz.suiteTenantId, "agent") : null;
+      if (!tenantHasFeature(access, SUITE_FEATURES.AGENT_SETTINGS_BASIC)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Settings are locked for this subscription." });
+      }
+
+      const normalized = normalizeCustomizationSettings({
+        customization: {
+          businessName: input.businessName ?? "",
+          logoBlobPath: input.logoBlobPath ?? "",
+          logoContainer: input.logoContainer ?? "",
+          logoUrl: input.logoUrl ?? "",
+          primaryColor: input.primaryColor,
+          secondaryColor: input.secondaryColor,
+          address: input.address ?? "",
+          phone: input.phone ?? "",
+          email: input.emailAddress ?? "",
+          website: input.website ?? "",
+          invoiceFooterNote: input.invoiceFooterNote ?? "",
+        },
+      });
+
+      const [updated] = await db
+        .update(businesses)
+        .set({
+          settings: mergeCustomizationSettings((biz.settings ?? {}) as Record<string, unknown>, normalized),
+          updatedAt: new Date(),
+        })
+        .where(eq(businesses.id, input.businessId))
+        .returning();
+
+      if (updated) {
+        recordBusinessEvent({
+          event: "business.customization_settings_updated",
+          action: "updateCustomizationSettings",
+          area: "business",
+          businessId: ctx.businessId,
+          entity: "business",
+          entityId: updated.id,
+          userId: ctx.userId,
+          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+          actorType: "user",
+          outcome: "success",
+          attributes: {
+            has_logo: Boolean(normalized.logoBlobPath || normalized.logoUrl),
+            primary_color: normalized.primaryColor,
+            secondary_color: normalized.secondaryColor,
           },
         });
       }

@@ -14,6 +14,7 @@ export type StoredFile = {
   size: number;
   url: string;
   blobPath: string;
+  containerName?: string;
   contentType?: string;
 };
 
@@ -40,13 +41,13 @@ function parseConnectionString(connectionString: string): { accountName: string;
   };
 }
 
-function buildReadUrl(blobUrl: string, blobPath: string, expiresOn: Date): string {
+function buildReadUrl(blobUrl: string, blobPath: string, expiresOn: Date, containerName = AZURE_CONTAINER): string {
   const creds = parseConnectionString(AZURE_CONN);
   if (!creds) return blobUrl;
   const sharedKey = new StorageSharedKeyCredential(creds.accountName, creds.accountKey);
   const sas = generateBlobSASQueryParameters(
     {
-      containerName: AZURE_CONTAINER,
+      containerName,
       blobName: blobPath,
       permissions: BlobSASPermissions.parse("r"),
       expiresOn,
@@ -56,16 +57,17 @@ function buildReadUrl(blobUrl: string, blobPath: string, expiresOn: Date): strin
   return `${blobUrl}?${sas}`;
 }
 
-export function buildPrivateBlobReadUrl(blobPath: string, readTtlHours = 72): string | null {
+export function buildPrivateBlobReadUrl(blobPath: string, readTtlHours = 72, containerName = AZURE_CONTAINER): string | null {
   const normalizedPath = normalizeBlobPath(blobPath);
   if (!AZURE_CONN || !normalizedPath) return null;
   const service = BlobServiceClient.fromConnectionString(AZURE_CONN);
-  const container = service.getContainerClient(AZURE_CONTAINER);
+  const container = service.getContainerClient(containerName || AZURE_CONTAINER);
   const blob = container.getBlockBlobClient(normalizedPath);
   return buildReadUrl(
     blob.url,
     normalizedPath,
     new Date(Date.now() + Math.max(1, Number(readTtlHours || 72)) * 60 * 60 * 1000),
+    containerName || AZURE_CONTAINER,
   );
 }
 
@@ -102,6 +104,7 @@ export async function storeFile(
     size: Number(props.contentLength || buffer.byteLength),
     url: blockBlob.url,
     blobPath,
+    containerName: AZURE_CONTAINER,
     contentType: contentType || props.contentType || undefined,
   };
 }
@@ -112,6 +115,7 @@ export async function storePrivateFileAtPath(params: {
   fileName: string;
   contentType?: string;
   readTtlHours?: number;
+  containerName?: string;
 }): Promise<StoredFile> {
   if (!AZURE_CONN) {
     throw new Error("Missing AZURE_BLOB_CONNECTION_STRING (blob storage is required)");
@@ -122,7 +126,8 @@ export async function storePrivateFileAtPath(params: {
   }
 
   const service = BlobServiceClient.fromConnectionString(AZURE_CONN);
-  const container = service.getContainerClient(AZURE_CONTAINER);
+  const resolvedContainer = params.containerName || AZURE_CONTAINER;
+  const container = service.getContainerClient(resolvedContainer);
   await container.createIfNotExists();
   const blockBlob = container.getBlockBlobClient(normalizedBlobPath);
   await blockBlob.uploadData(params.buffer, {
@@ -133,6 +138,7 @@ export async function storePrivateFileAtPath(params: {
     blockBlob.url,
     normalizedBlobPath,
     new Date(Date.now() + Math.max(1, Number(params.readTtlHours ?? 72)) * 60 * 60 * 1000),
+    resolvedContainer,
   );
 
   return {
@@ -140,6 +146,7 @@ export async function storePrivateFileAtPath(params: {
     size: Number(props.contentLength || params.buffer.byteLength),
     url: readUrl,
     blobPath: normalizedBlobPath,
+    containerName: resolvedContainer,
     contentType: params.contentType || props.contentType || undefined,
   };
 }
