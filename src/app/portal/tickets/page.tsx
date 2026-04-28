@@ -763,7 +763,6 @@ export function TicketsPageScreen({
                         {botCell}
                         {customerCell}
                         {itemsCell}
-                        {supportTagCell}
                         {priorityCell}
                         {windowCell}
                         <td data-label="Stage">
@@ -777,6 +776,7 @@ export function TicketsPageScreen({
                         {botCell}
                         {customerCell}
                         {itemsCell}
+                        {supportTagCell}
                         {priorityCell}
                         {windowCell}
                         <td data-label="Status" className="portal-ledger-cell portal-ledger-cell--status">
