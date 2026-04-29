@@ -562,7 +562,6 @@ export function buildManualCollectionMessages(input: {
   orderId: string;
   currency: string;
   paidAmount?: string | number | null;
-  invoiceUrl?: string | null;
 }): OrderApprovalMessage[] {
   const ref = String(input.orderId || "").slice(0, 8).toUpperCase();
   const lines = [
@@ -570,16 +569,7 @@ export function buildManualCollectionMessages(input: {
     input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
     "We will continue with fulfilment and keep you updated in this chat.",
   ].filter(Boolean);
-  const messages: OrderApprovalMessage[] = [{ type: "text", text: lines.join("\n") }];
-  if (String(input.invoiceUrl || "").trim()) {
-    messages.push({
-      type: "document",
-      documentUrl: String(input.invoiceUrl).trim(),
-      filename: `invoice-${ref}.pdf`,
-      caption: `Invoice for order ${ref}`,
-    });
-  }
-  return messages;
+  return [{ type: "text", text: lines.join("\n") }];
 }
 
 export function buildManualCollectionEmail(input: {
@@ -587,7 +577,6 @@ export function buildManualCollectionEmail(input: {
   orderId: string;
   currency: string;
   paidAmount?: string | number | null;
-  invoiceUrl?: string | null;
 }): OrderEmailMessage {
   const ref = String(input.orderId || "").slice(0, 8).toUpperCase();
   const lead = input.customerName
@@ -597,7 +586,6 @@ export function buildManualCollectionEmail(input: {
     input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}` : "",
     "Your order is now confirmed and queued for fulfilment.",
     "We will email you again when the order is dispatched.",
-    input.invoiceUrl ? `Invoice link: ${input.invoiceUrl}` : "",
   ].filter(Boolean);
   return {
     subject: `Order confirmed: ${ref}`,
