@@ -24,7 +24,6 @@ import {
   parseMoneyValue,
   sanitizePhoneDigits,
 } from "../services/orderFlow";
-import { createOrderInvoiceArtifact } from "../services/orderInvoice";
 import {
   ORDER_WORKSPACE_MODES,
   assertOrderAllowsFulfillmentUpdates,
@@ -49,7 +48,6 @@ import {
   maskPhoneNumber,
   nextFulfillmentTimestamps,
   parseOptionalDate,
-  refreshOrderInvoiceUrl,
   resolveOrderNotificationContext,
   resolveRefundAmount,
   requiresDispatchData,
@@ -817,36 +815,7 @@ export const ordersRouter = router({
             .where(and(eq(supportTickets.businessId, ctx.businessId), eq(supportTickets.id, updatedOrder.supportTicketId)));
         }
 
-        let finalizedOrder = updatedOrder;
-        let invoiceArtifact: Awaited<ReturnType<typeof createOrderInvoiceArtifact>> | null = null;
-        if (input.action === "approve") {
-          invoiceArtifact = await createOrderInvoiceArtifact({
-            businessId: ctx.businessId,
-            order: {
-              ...updatedOrder,
-              paidAmount: updatedPayment.paidAmount ?? updatedOrder.paidAmount,
-            },
-            issuedAt: now,
-          });
-          const [invoiceUpdatedOrder] = await tx
-            .update(orders)
-            .set({
-              invoiceNumber: invoiceArtifact.invoiceNumber,
-              invoiceUrl: invoiceArtifact.url,
-              invoiceStoragePath: invoiceArtifact.storagePath,
-              invoiceFileName: invoiceArtifact.fileName,
-              invoiceStatus: "sent",
-              invoiceDeliveryMethod: null,
-              invoiceGeneratedAt: invoiceArtifact.generatedAt,
-              invoiceSentAt: null,
-              updatedAt: now,
-            })
-            .where(eq(orders.id, updatedOrder.id))
-            .returning();
-          if (invoiceUpdatedOrder) {
-            finalizedOrder = invoiceUpdatedOrder;
-          }
-        }
+        const finalizedOrder = updatedOrder;
 
         const contactContext = await resolveOrderNotificationContext({
           businessId: ctx.businessId,
@@ -915,7 +884,6 @@ export const ordersRouter = router({
                 paidAmount: updatedPayment.paidAmount ?? finalizedOrder.paidAmount,
                 currency: String(finalizedOrder.currency || "LKR").trim() || "LKR",
                 notes: input.notes?.trim() || null,
-                invoiceUrl: refreshOrderInvoiceUrl(finalizedOrder),
               }),
             })
           : {
@@ -942,7 +910,6 @@ export const ordersRouter = router({
                   paidAmount: updatedPayment.paidAmount ?? finalizedOrder.paidAmount,
                   currency: String(finalizedOrder.currency || "LKR").trim() || "LKR",
                   notes: input.notes?.trim() || null,
-                  invoiceUrl: refreshOrderInvoiceUrl(finalizedOrder),
                 }),
               ],
             })
@@ -960,7 +927,6 @@ export const ordersRouter = router({
           emailNotification,
           deliveryChannel,
           windowState,
-          invoiceArtifact,
           customerPause: {
             row: resumedCustomer,
             previousBotPaused: previousCustomerBotPaused,
@@ -1552,31 +1518,8 @@ export const ordersRouter = router({
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to record manual payment." });
         }
 
-        const invoiceArtifact = await createOrderInvoiceArtifact({
-          businessId: ctx.businessId,
-          order: {
-            ...updatedOrder,
-            paidAmount,
-          },
-          issuedAt: now,
-        });
         const suppressCustomerNotifications = isStaffManualOrder(updatedOrder);
-        const [invoiceUpdatedOrder] = await tx
-          .update(orders)
-          .set({
-            invoiceNumber: invoiceArtifact.invoiceNumber,
-            invoiceUrl: invoiceArtifact.url,
-            invoiceStoragePath: invoiceArtifact.storagePath,
-            invoiceFileName: invoiceArtifact.fileName,
-            invoiceStatus: suppressCustomerNotifications ? "generated" : "sent",
-            invoiceDeliveryMethod: null,
-            invoiceGeneratedAt: invoiceArtifact.generatedAt,
-            invoiceSentAt: null,
-            updatedAt: now,
-          })
-          .where(eq(orders.id, updatedOrder.id))
-          .returning();
-        const currentOrder = invoiceUpdatedOrder ?? updatedOrder;
+        const currentOrder = updatedOrder;
 
         const contactContext = await resolveOrderNotificationContext({
           businessId: ctx.businessId,
@@ -1623,7 +1566,6 @@ export const ordersRouter = router({
                 orderId: currentOrder.id,
                 currency: String(currentOrder.currency || "LKR").trim() || "LKR",
                 paidAmount,
-                invoiceUrl: refreshOrderInvoiceUrl(currentOrder),
               }),
             })
           : {
@@ -1648,7 +1590,6 @@ export const ordersRouter = router({
                   orderId: currentOrder.id,
                   currency: String(currentOrder.currency || "LKR").trim() || "LKR",
                   paidAmount,
-                  invoiceUrl: refreshOrderInvoiceUrl(currentOrder),
                 }),
               ],
             })
@@ -1930,7 +1871,6 @@ export const ordersRouter = router({
                 paidAmount: updatedPayment?.paidAmount ?? updatedOrder.paidAmount,
                 currency: String(updatedOrder.currency || "LKR").trim() || "LKR",
                 notes: normalizedReason,
-                invoiceUrl: refreshOrderInvoiceUrl(updatedOrder),
               }),
             })
           : { ok: true as const, error: null, recipientSource: null, whatsappIdentitySource: null, idempotencyKeys: [] as string[] };
@@ -1951,7 +1891,6 @@ export const ordersRouter = router({
                   paidAmount: updatedPayment?.paidAmount ?? updatedOrder.paidAmount,
                   currency: String(updatedOrder.currency || "LKR").trim() || "LKR",
                   notes: normalizedReason,
-                  invoiceUrl: refreshOrderInvoiceUrl(updatedOrder),
                 }),
               ],
             })

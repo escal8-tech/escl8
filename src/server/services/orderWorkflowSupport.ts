@@ -746,7 +746,6 @@ export function buildPaymentReviewMessages(input: {
   paidAmount?: string | number | null;
   currency: string;
   notes?: string | null;
-  invoiceUrl?: string | null;
 }): BotSendMessage[] {
   const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
   if (input.action === "approve") {
@@ -755,16 +754,7 @@ export function buildPaymentReviewMessages(input: {
       input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
       "Your order is now marked as paid and our team will continue processing it.",
     ].filter(Boolean);
-    const messages: BotSendMessage[] = [{ type: "text", text: lines.join("\n") }];
-    if (String(input.invoiceUrl || "").trim()) {
-      messages.push({
-        type: "document",
-        documentUrl: String(input.invoiceUrl).trim(),
-        filename: `invoice-${ref}.pdf`,
-        caption: `Invoice for order ${ref}`,
-      });
-    }
-    return messages;
+    return [{ type: "text", text: lines.join("\n") }];
   }
   const lines = [
     `We could not confirm the payment for order number ${ref}, so this order has now been closed.`,
@@ -781,7 +771,6 @@ export function buildPaymentReviewEmail(input: {
   paidAmount?: string | number | null;
   currency: string;
   notes?: string | null;
-  invoiceUrl?: string | null;
 }): OrderEmailMessage {
   const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
   const approved = input.action === "approve";
@@ -791,7 +780,6 @@ export function buildPaymentReviewEmail(input: {
         `We have approved your payment for order number ${ref}.`,
         input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
         "Your order is now confirmed and queued for fulfilment.",
-        input.invoiceUrl ? `Invoice link: ${input.invoiceUrl}` : null,
       ]
     : [
         `We could not confirm the payment for order number ${ref}, so this order has now been closed.`,

@@ -4,6 +4,8 @@ import { normalizeOrderFlowSettings } from "@/lib/order-settings";
 import {
   buildOrderApprovalMessages,
   buildOrderDeliveryDetailsRequestMessages,
+  buildManualCollectionEmail,
+  buildManualCollectionMessages,
   extractOrderFulfillmentSeed,
 } from "@/server/services/orderFlow";
 import { canResendPaymentDetails } from "@/server/services/orderWorkflowSupport";
@@ -43,6 +45,28 @@ test("post-approval payment messages keep the expected approval and bank detail 
   assert.match(String(messages[1]?.text || ""), /Bank: Commercial Bank/i);
   assert.match(String(messages[1]?.text || ""), /Account name: TRANSASIA/i);
   assert.match(String(messages[1]?.text || ""), /Account number: 123456789/i);
+});
+
+test("manual payment collection messages no longer attach invoice documents", () => {
+  const messages = buildManualCollectionMessages({
+    customerName: "Namith",
+    orderId: "d1471747-aaaa-bbbb-cccc-1234567890ab",
+    currency: "LKR",
+    paidAmount: "1060.00",
+  });
+
+  assert.deepEqual(
+    messages.map((message) => message.type),
+    ["text"],
+  );
+
+  const email = buildManualCollectionEmail({
+    customerName: "Namith",
+    orderId: "d1471747-aaaa-bbbb-cccc-1234567890ab",
+    currency: "LKR",
+    paidAmount: "1060.00",
+  });
+  assert.doesNotMatch(email.text, /Invoice link/i);
 });
 
 test("post-approval delivery collection message asks only for the missing fields", () => {
