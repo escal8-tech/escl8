@@ -3,6 +3,7 @@
 
 import { fetchWithFirebaseAuth } from "@/lib/client-auth-ops";
 import { recordClientBusinessEvent } from "@/lib/client-business-monitoring";
+import { useToast, type ToastType } from "@/components/ToastProvider";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { usePathname } from "next/navigation";
@@ -92,12 +93,14 @@ export function WhatsAppEmbeddedSignupButton({
   style,
 }: WhatsAppEmbeddedSignupButtonProps = {}) {
   const pathname = usePathname();
+  const toast = useToast();
   const [sdkReady, setSdkReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
 
   // Store whichever arrives first and combine later
+  const toastIdRef = useRef<string | null>(null);
+  const toastResetTimerRef = useRef<number | null>(null);
   const codeRef = useRef<string | null>(null);
   const idsRef = useRef<{
     phoneNumberId: string;
@@ -116,6 +119,54 @@ export function WhatsAppEmbeddedSignupButton({
     return atIndex > 0 ? normalized.slice(atIndex + 1) : undefined;
   }, [email]);
 
+  const setStatus = useCallback((message: string) => {
+    const normalized = message.toLowerCase();
+    const type: ToastType =
+      normalized.includes("synced") || normalized.includes("setup complete")
+        ? "success"
+        : normalized.includes("canceled") || normalized.includes("pending")
+          ? "info"
+          : normalized.includes("failed") ||
+              normalized.includes("error") ||
+              normalized.includes("not authorized") ||
+              normalized.includes("unable") ||
+              normalized.includes("blocked")
+            ? "error"
+            : "progress";
+    const durationMs = type === "progress" ? undefined : type === "error" ? 6200 : 4200;
+
+    if (toastResetTimerRef.current) {
+      window.clearTimeout(toastResetTimerRef.current);
+      toastResetTimerRef.current = null;
+    }
+
+    if (toastIdRef.current) {
+      toast.update(toastIdRef.current, {
+        type,
+        title: "WhatsApp setup",
+        message,
+        durationMs,
+      });
+    } else {
+      toastIdRef.current = toast.show({
+        type,
+        title: "WhatsApp setup",
+        message,
+        durationMs,
+      });
+    }
+
+    if (durationMs && toastIdRef.current) {
+      const toastId = toastIdRef.current;
+      toastResetTimerRef.current = window.setTimeout(() => {
+        if (toastIdRef.current === toastId) {
+          toastIdRef.current = null;
+        }
+        toastResetTimerRef.current = null;
+      }, durationMs + 250);
+    }
+  }, [toast]);
+
   useEffect(() => {
     if (typeof connectedProp === "boolean") {
       setConnected(connectedProp);
@@ -123,10 +174,13 @@ export function WhatsAppEmbeddedSignupButton({
   }, [connectedProp]);
 
   useEffect(() => {
-    if (disabled && disabledReason) {
-      setStatus(disabledReason);
+    return () => {
+      if (toastResetTimerRef.current) {
+        window.clearTimeout(toastResetTimerRef.current);
+        toastResetTimerRef.current = null;
+      }
     }
-  }, [disabled, disabledReason]);
+  }, []);
 
   // Initialize FB SDK once loaded
   useEffect(() => {
@@ -247,7 +301,7 @@ export function WhatsAppEmbeddedSignupButton({
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emailDomain, route]);
+  }, [emailDomain, route, setStatus]);
 
   const fbLoginCallback = useCallback((response: any) => {
     if (response?.authResponse?.code) {
@@ -292,7 +346,7 @@ export function WhatsAppEmbeddedSignupButton({
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emailDomain, route]);
+  }, [emailDomain, route, setStatus]);
 
   const maybeSendToServer = useCallback(async () => {
     if (sentRef.current) return; // already sent
@@ -467,7 +521,7 @@ export function WhatsAppEmbeddedSignupButton({
     } finally {
       setBusy(false);
     }
-  }, [email, emailDomain, onConnected, route]);
+  }, [email, emailDomain, onConnected, route, setStatus]);
 
   const launchWhatsAppSignup = useCallback(() => {
     if (disabled) {
@@ -536,7 +590,7 @@ export function WhatsAppEmbeddedSignupButton({
         },
       });
     }
-  }, [disabled, disabledReason, emailDomain, fbLoginCallback, route]);
+  }, [disabled, disabledReason, emailDomain, fbLoginCallback, route, setStatus]);
 
   const baseStyle = {
     backgroundColor: "#1877f2",
@@ -583,11 +637,6 @@ export function WhatsAppEmbeddedSignupButton({
       >
         {buttonLabel}
       </button>
-      {status && (
-        <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>
-          {status}
-        </div>
-      )}
     </>
   );
 }

@@ -16,6 +16,7 @@ export function PortalLogin() {
   const auth = getFirebaseAuth();
   const router = useRouter();
   const upsertUser = trpc.user.upsert.useMutation();
+  const [authChecked, setAuthChecked] = useState(!auth);
   const [state, setState] = useState<LoginFormState>({
     busy: false,
     error: auth ? null : "Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.",
@@ -23,8 +24,13 @@ export function PortalLogin() {
 
   useEffect(() => {
     if (!auth) return;
+    setAuthChecked(false);
     const unsub = onAuthStateChanged(auth, (u) => {
-      if (u) router.replace(APP_DEFAULT_AUTH_REDIRECT);
+      setAuthChecked(true);
+      if (u) {
+        setState((s) => ({ ...s, busy: true, error: null }));
+        router.replace(APP_DEFAULT_AUTH_REDIRECT);
+      }
     });
     return () => unsub();
   }, [auth, router]);
@@ -189,6 +195,28 @@ export function PortalLogin() {
       setState((s) => ({ ...s, busy: false }));
     }
   };
+
+  if (!authChecked) {
+    return (
+      <AuthLayout>
+        <div className="frost-card" style={{ width: "100%", maxWidth: 520, padding: "36px 40px", textAlign: "center" }}>
+          <div
+            aria-hidden
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: "50%",
+              margin: "0 auto 16px",
+              background: "linear-gradient(135deg, var(--gold), var(--gold-light))",
+              animation: "pulse 1.2s ease-in-out infinite",
+            }}
+          />
+          <h1 style={{ fontSize: 22, marginBottom: 8, color: "var(--foreground)" }}>Loading...</h1>
+          <p style={{ fontSize: 14, color: "var(--muted)", margin: 0 }}>Checking your session</p>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout>

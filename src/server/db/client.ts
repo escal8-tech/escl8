@@ -7,8 +7,8 @@ const needsSSL = /azure\.com|neon\.tech|supabase\.co|render\.com/i.test(connecti
   || /sslmode=require/i.test(connectionString || "")
   || process.env.DATABASE_SSL === "true";
 
-const poolMax = Number(process.env.DB_POOL_MAX ?? "20");
-const poolMin = Number(process.env.DB_POOL_MIN ?? "2");
+const poolMax = Number(process.env.DB_POOL_MAX ?? "8");
+const poolMin = Number(process.env.DB_POOL_MIN ?? "0");
 const idleTimeoutMs = Number(process.env.DB_POOL_IDLE_TIMEOUT_MS ?? "30000");
 const connectionTimeoutMs = Number(process.env.DB_POOL_CONN_TIMEOUT_MS ?? "5000");
 const queryTimeoutMs = Number(process.env.DB_QUERY_TIMEOUT_MS ?? "15000");
