@@ -27,6 +27,20 @@ export type ToastController = Pick<ToastContextValue, "show" | "update" | "dismi
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+function getToastAccent(type: ToastType) {
+  switch (type) {
+    case "success":
+      return "#22c55e";
+    case "error":
+      return "#ef4444";
+    case "info":
+      return "#38bdf8";
+    case "progress":
+    default:
+      return "#facc15";
+  }
+}
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timers = useRef(new Map<string, number>());
@@ -64,7 +78,20 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const update = useCallback((id: string, patch: Partial<Omit<Toast, "id" | "createdAt">>) => {
     setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-  }, []);
+
+    if (Object.prototype.hasOwnProperty.call(patch, "durationMs")) {
+      const timer = timers.current.get(id);
+      if (timer) {
+        window.clearTimeout(timer);
+        timers.current.delete(id);
+      }
+
+      if (patch.durationMs && patch.durationMs > 0) {
+        const nextTimer = window.setTimeout(() => dismiss(id), patch.durationMs);
+        timers.current.set(id, nextTimer);
+      }
+    }
+  }, [dismiss]);
 
   const value = useMemo<ToastContextValue>(
     () => ({ toasts, show, update, dismiss, dismissAll }),
@@ -98,6 +125,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               display: "grid",
               gap: 6,
               border: "1px solid rgba(255, 255, 255, 0.14)",
+              borderLeft: `4px solid ${getToastAccent(t.type)}`,
               background: "rgba(10, 10, 10, 0.82)",
               backdropFilter: "blur(12px)",
               boxShadow: "0 12px 30px rgba(0, 0, 0, 0.35)",

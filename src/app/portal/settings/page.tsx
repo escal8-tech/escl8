@@ -603,6 +603,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
     gap: 20,
+    alignItems: "stretch",
   },
   integrationTile: {
     border: "1px solid var(--border)",
@@ -618,6 +619,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "flex-start",
     gap: 14,
     padding: 18,
+    flex: "1 1 auto",
   },
   integrationTileIcon: {
     width: 48,
@@ -656,10 +658,13 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
   },
   integrationTileFooter: {
-    padding: "14px 18px 18px",
+    marginTop: "auto",
+    minHeight: 64,
+    padding: "12px 18px",
     borderTop: "1px solid var(--border)",
     background: "var(--card-muted)",
     display: "flex",
+    alignItems: "center",
     justifyContent: "flex-end",
   },
   integrationBadge: {
