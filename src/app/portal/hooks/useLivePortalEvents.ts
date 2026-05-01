@@ -516,9 +516,16 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       if (currentOptions.requestPageInput) jobs.push(requestsPage.invalidate(currentOptions.requestPageInput));
       if (currentOptions.requestStatsInput !== undefined) jobs.push(requestsStats.invalidate(currentOptions.requestStatsInput));
       if (currentOptions.requestActivityInput) jobs.push(requestsActivity.invalidate(currentOptions.requestActivityInput));
-      if (currentOptions.customerListInput !== undefined) jobs.push(customersList.invalidate(currentOptions.customerListInput));
+      if (Object.prototype.hasOwnProperty.call(currentOptions, "customerListInput")) {
+        jobs.push(customersList.invalidate(currentOptions.customerListInput));
+      }
       if (currentOptions.customerPageInput) jobs.push(customersPage.invalidate(currentOptions.customerPageInput));
-      jobs.push(customersStats.invalidate(undefined));
+      if (
+        Object.prototype.hasOwnProperty.call(currentOptions, "customerListInput") ||
+        currentOptions.customerPageInput
+      ) {
+        jobs.push(customersStats.invalidate(undefined));
+      }
       if (currentOptions.messagesThreadListInput) jobs.push(threadsList.invalidate(currentOptions.messagesThreadListInput));
       if (currentOptions.bookingsListInput !== undefined) jobs.push(bookingsList.invalidate(currentOptions.bookingsListInput));
       if (currentOptions.ticketListInputs && currentOptions.ticketListInputs.length > 0) {
@@ -540,7 +547,15 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         jobs.push(ticketById.invalidate({ ticketId: currentOptions.activeTicketId }));
         jobs.push(ticketEvents.invalidate({ ticketId: currentOptions.activeTicketId }));
       }
-      jobs.push(ticketTypesList.invalidate({ includeDisabled: true }));
+      if (
+        currentOptions.refreshTicketTypeCounters ||
+        currentOptions.ticketListInputs?.some(Boolean) ||
+        currentOptions.ticketLedgerInput ||
+        currentOptions.ticketPerformanceInput ||
+        currentOptions.activeTicketId
+      ) {
+        jobs.push(ticketTypesList.invalidate({ includeDisabled: true }));
+      }
       if (currentOptions.activeThreadId) {
         jobs.push(
           messagesList.invalidate({
@@ -599,6 +614,9 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
         currentOptions.requestListInput?.whatsappIdentityId
         ?? currentOptions.requestPageInput?.whatsappIdentityId;
       const threadFilter = currentOptions.messagesThreadListInput?.whatsappIdentityId;
+      const wantsCustomerCache =
+        Object.prototype.hasOwnProperty.call(currentOptions, "customerListInput") ||
+        currentOptions.customerPageInput !== undefined;
 
       const customerMatchesFilter = !customerFilter || customerFilter === phoneIdentityId;
       const requestMatchesFilter = !requestFilter || requestFilter === phoneIdentityId;
@@ -606,24 +624,26 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
 
       const maybeCustomer = customer;
       if (maybeCustomer && customerMatchesFilter) {
-        let nextCustomers: Array<Record<string, unknown>> = [];
-        const customerInput = currentOptions.customerListInput;
-        customersList.setData(customerInput, (old: Array<Record<string, unknown>> | undefined) => {
-          if (event.op === "deleted") {
-            const targetId = String(maybeCustomer.id ?? event.entityId ?? "");
-            nextCustomers = (old ?? []).filter((row) => String(row.id ?? "") !== targetId);
+        if (wantsCustomerCache) {
+          let nextCustomers: Array<Record<string, unknown>> = [];
+          const customerInput = currentOptions.customerListInput;
+          customersList.setData(customerInput, (old: Array<Record<string, unknown>> | undefined) => {
+            if (event.op === "deleted") {
+              const targetId = String(maybeCustomer.id ?? event.entityId ?? "");
+              nextCustomers = (old ?? []).filter((row) => String(row.id ?? "") !== targetId);
+              return nextCustomers;
+            }
+            nextCustomers = upsertById(old, maybeCustomer);
             return nextCustomers;
+          });
+
+          if (!customerInput) {
+            customersStats.setData(undefined, computeCustomerStats(nextCustomers));
           }
-          nextCustomers = upsertById(old, maybeCustomer);
-          return nextCustomers;
-        });
 
-        if (!customerInput) {
-          customersStats.setData(undefined, computeCustomerStats(nextCustomers));
-        }
-
-        if (currentOptions.customerPageInput) {
-          void customersPage.invalidate(currentOptions.customerPageInput);
+          if (currentOptions.customerPageInput) {
+            void customersPage.invalidate(currentOptions.customerPageInput);
+          }
         }
 
         if (currentOptions.requestListInput) {

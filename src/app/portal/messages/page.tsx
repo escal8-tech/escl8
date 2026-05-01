@@ -63,6 +63,10 @@ function isWhatsAppThread(thread: { customerSource?: string | null; whatsappIden
   return source === "whatsapp" || Boolean(thread.whatsappIdentityId);
 }
 
+function isCustomerLastMessage(direction: string | null | undefined) {
+  return ["inbound", "incoming", "customer", "user"].includes(String(direction || "").trim().toLowerCase());
+}
+
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
 }
@@ -132,6 +136,7 @@ export default function MessagesPage() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "thread" | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showOnlyUnanswered, setShowOnlyUnanswered] = useState(false);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
@@ -165,6 +170,7 @@ export default function MessagesPage() {
     customerSource: string | null;
     status: string | null;
     lastMessageAt: Date | null;
+    lastMessageDirection: string | null;
     threadCreatedAt: Date;
     whatsappIdentityId: string | null;
     sortAt: Date;
@@ -175,13 +181,6 @@ export default function MessagesPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
 
-  const threadListInput = useMemo(
-    () => ({
-      limit: 50,
-      ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
-    }),
-    [selectedPhoneNumberId],
-  );
   const threadPageInput = useMemo(
     () => ({
       limit: 50,
@@ -212,6 +211,7 @@ export default function MessagesPage() {
       const incoming = data.items.map((item) => ({
         ...item,
         lastMessageAt: item.lastMessageAt ? new Date(item.lastMessageAt) : null,
+        lastMessageDirection: item.lastMessageDirection ? String(item.lastMessageDirection) : null,
         threadCreatedAt: new Date(item.threadCreatedAt),
         sortAt: new Date(item.sortAt),
       }));
@@ -229,7 +229,15 @@ export default function MessagesPage() {
     setIsLoadingMoreThreads(false);
   }, [threadPageQuery.data, threadCursor]);
 
-  const filteredThreads = threadItems;
+  const unansweredThreadCount = useMemo(
+    () => threadItems.reduce((count, thread) => count + (isCustomerLastMessage(thread.lastMessageDirection) ? 1 : 0), 0),
+    [threadItems],
+  );
+
+  const filteredThreads = useMemo(
+    () => (showOnlyUnanswered ? threadItems.filter((thread) => isCustomerLastMessage(thread.lastMessageDirection)) : threadItems),
+    [showOnlyUnanswered, threadItems],
+  );
 
   const deepLinkThreadId = useMemo(() => {
     if (!filteredThreads.length) return null;
@@ -318,7 +326,6 @@ export default function MessagesPage() {
   }, [activeThreadId, selectedThread]);
 
   useLivePortalEvents({
-    messagesThreadListInput: threadListInput,
     activeThreadId,
     activeThreadPageSize: 20,
     onThreadMessage: handleLiveThreadMessage,
@@ -656,31 +663,85 @@ export default function MessagesPage() {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              minHeight: 44,
-              padding: "10px 12px",
-              borderRadius: 8,
-              background: "rgba(255,255,255,0.03)",
+              gap: 8,
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={isMobile ? "Search conversations" : "Search or start new chat"}
+            <div
               style={{
                 flex: 1,
-                background: "transparent",
-                border: "none",
-                color: "var(--foreground)",
-                outline: "none",
-                boxShadow: "none",
-                fontSize: 14,
+                minWidth: 0,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                minHeight: 44,
+                padding: "10px 12px",
+                borderRadius: 8,
+                background: "rgba(255,255,255,0.03)",
               }}
-            />
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={isMobile ? "Search conversations" : "Search or start new chat"}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--foreground)",
+                  outline: "none",
+                  boxShadow: "none",
+                  fontSize: 14,
+                }}
+              />
+            </div>
+            <label
+              title="Show only chats where the customer sent the latest message and still needs a reply"
+              style={{
+                height: 44,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "0 10px",
+                borderRadius: 8,
+                border: showOnlyUnanswered ? "1px solid rgba(239, 68, 68, 0.42)" : "1px solid var(--border)",
+                background: showOnlyUnanswered ? "rgba(239, 68, 68, 0.12)" : "rgba(255,255,255,0.03)",
+                color: showOnlyUnanswered ? "#fecaca" : "var(--muted)",
+                fontSize: 12,
+                fontWeight: 700,
+                whiteSpace: "nowrap",
+                cursor: "pointer",
+                userSelect: "none",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={showOnlyUnanswered}
+                onChange={(event) => setShowOnlyUnanswered(event.target.checked)}
+                aria-label="Only show unanswered customer chats"
+                style={{ width: 13, height: 13, accentColor: "#ef4444", cursor: "pointer" }}
+              />
+              <span>{isMobile ? "Wait" : "Unanswered"}</span>
+              <span
+                style={{
+                  minWidth: 18,
+                  height: 18,
+                  borderRadius: 999,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: unansweredThreadCount > 0 ? "rgba(239, 68, 68, 0.2)" : "rgba(255,255,255,0.06)",
+                  color: unansweredThreadCount > 0 ? "#fecaca" : "var(--muted)",
+                  fontSize: 11,
+                }}
+              >
+                {unansweredThreadCount}
+              </span>
+            </label>
           </div>
         </div>
 
@@ -692,7 +753,7 @@ export default function MessagesPage() {
             </div>
           ) : !filteredThreads.length ? (
             <div style={{ color: "var(--muted)", padding: 20, fontSize: 13, textAlign: "center" }}>
-              {searchQuery.trim() ? "No conversations match your search" : "No conversations yet"}
+              {showOnlyUnanswered ? "No unanswered chats" : searchQuery.trim() ? "No conversations match your search" : "No conversations yet"}
             </div>
           ) : (
             <>
@@ -700,6 +761,7 @@ export default function MessagesPage() {
               const isSelected = t.threadId === activeThreadId;
               const displayName = t.customerName;
               const phone = t.customerPhone ? `+${t.customerPhone}` : t.customerExternalId;
+              const customerWaiting = isCustomerLastMessage(t.lastMessageDirection);
               return (
                 <div
                   key={t.threadId}
@@ -736,8 +798,31 @@ export default function MessagesPage() {
                       >
                         {displayName || phone}
                       </div>
-                      <div style={{ fontSize: 12, color: "var(--muted)", flexShrink: 0 }}>
-                        {formatThreadListTimestamp(t.lastMessageAt)}
+                      <div
+                        title={customerWaiting ? "Customer sent the latest message and is waiting for a reply" : undefined}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          fontSize: 12,
+                          color: customerWaiting ? "#fecaca" : "var(--muted)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {customerWaiting ? (
+                          <span
+                            aria-label="Customer waiting"
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: 999,
+                              background: "#ef4444",
+                              boxShadow: "0 0 0 3px rgba(239, 68, 68, 0.14)",
+                              flexShrink: 0,
+                            }}
+                          />
+                        ) : null}
+                        <span>{formatThreadListTimestamp(t.lastMessageAt)}</span>
                       </div>
                     </div>
                     {displayName && (
