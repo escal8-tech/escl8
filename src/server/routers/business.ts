@@ -367,6 +367,11 @@ export const businessRouter = router({
         paymentProofAiEnabled: z.boolean().optional(),
         paymentSlipRequired: z.boolean().optional(),
         currency: z.string().min(1).max(10),
+        deliveryCharge: z.object({
+          enabled: z.boolean(),
+          type: z.enum(["fixed", "percentage"]),
+          value: z.string().max(40),
+        }),
         bankQr: z.object({
           showQr: z.boolean(),
           showBankDetails: z.boolean(),
@@ -403,6 +408,7 @@ export const businessRouter = router({
           paymentProofAiEnabled: input.paymentProofAiEnabled ?? true,
           paymentSlipRequired: input.paymentSlipRequired ?? true,
           currency: input.currency,
+          deliveryCharge: input.deliveryCharge,
           bankQr: input.bankQr,
         },
       });

@@ -9,6 +9,11 @@ import {
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { drainBusinessOutbox, enqueueEmailOutboxMessages, enqueueWhatsAppOutboxMessages } from "@/server/services/messageOutbox";
+import {
+  buildOrderInvoiceEmailMessage,
+  createOrderInvoiceForOrder,
+  markOrderInvoiceDelivered,
+} from "@/server/services/orderInvoice";
 import { db } from "../db/client";
 import { businessProcedure, router } from "../trpc";
 import { customers, orderPayments, orders, supportTickets } from "../../../drizzle/schema";
@@ -94,6 +99,91 @@ function resolveFulfillmentPrefill(orderRow: {
     recipientPhone: cleanOptionalText(orderRow.recipientPhone ?? orderRow.customerPhone, 50),
     shippingAddress,
     deliveryArea: cleanOptionalText(orderRow.deliveryArea, 200) ?? shippingAddress,
+  };
+}
+
+async function emailManualOrderInvoice(input: {
+  businessId: string;
+  order: typeof orders.$inferSelect;
+}): Promise<{
+  ok: boolean;
+  error: string | null;
+  invoiceNumber: string | null;
+}> {
+  const recipientEmail = cleanOptionalText(input.order.customerEmail, 240)?.toLowerCase() ?? "";
+  if (!recipientEmail) {
+    return {
+      ok: false,
+      error: "Manual order invoice email skipped because the order has no customer email.",
+      invoiceNumber: null,
+    };
+  }
+
+  const artifact = await createOrderInvoiceForOrder({
+    businessId: input.businessId,
+    orderId: input.order.id,
+    deliveryMethod: "email",
+  });
+  if (!artifact) {
+    return {
+      ok: false,
+      error: "Manual order invoice could not be generated.",
+      invoiceNumber: null,
+    };
+  }
+
+  const queued = await db.transaction((tx) =>
+    enqueueEmailOutboxMessages(tx, {
+      businessId: input.businessId,
+      entityType: "order",
+      entityId: input.order.id,
+      customerId: input.order.customerId ?? null,
+      recipientEmail,
+      source: "order_manual_invoice_email",
+      idempotencyBaseKey: `order:${input.order.id}:manual_invoice:${artifact.invoiceNumber}`,
+      messages: [
+        buildOrderInvoiceEmailMessage({
+          artifact,
+          orderId: input.order.id,
+          customerName: input.order.customerName,
+        }),
+      ],
+    }),
+  );
+  if (!queued.ok) {
+    return {
+      ok: false,
+      error: queued.error,
+      invoiceNumber: artifact.invoiceNumber,
+    };
+  }
+
+  const drained = queued.idempotencyKeys.length
+    ? await drainBusinessOutbox({
+        businessId: input.businessId,
+        idempotencyKeys: queued.idempotencyKeys,
+        limit: queued.idempotencyKeys.length,
+      })
+    : { ok: true, error: null };
+  await flushBusinessOutbox(input.businessId);
+  if (!drained.ok) {
+    return {
+      ok: false,
+      error: drained.error || "Manual order invoice email delivery failed.",
+      invoiceNumber: artifact.invoiceNumber,
+    };
+  }
+
+  await markOrderInvoiceDelivered({
+    businessId: input.businessId,
+    orderId: input.order.id,
+    deliveryMethod: "email",
+    invoiceNumber: artifact.invoiceNumber,
+  });
+  return {
+    ok: true,
+    error: null,
+    invoiceNumber: artifact.invoiceNumber,
   };
 }
 
@@ -1672,16 +1762,54 @@ export const ordersRouter = router({
         }
       }
       await flushBusinessOutbox(ctx.businessId);
-      if (delivery.ok && delivery.channel !== "none") {
-        await db
-          .update(orders)
-          .set({
-            invoiceSentAt: now,
-            invoiceDeliveryMethod: delivery.channel,
-            updatedAt: now,
-          })
-          .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, result.updatedOrder.id)));
+      const shouldEmailManualInvoice = isStaffManualOrder(result.updatedOrder)
+        && Boolean(cleanOptionalText(result.updatedOrder.customerEmail, 240));
+      let manualInvoiceEmail: Awaited<ReturnType<typeof emailManualOrderInvoice>> | null = null;
+      if (shouldEmailManualInvoice) {
+        try {
+          manualInvoiceEmail = await emailManualOrderInvoice({
+            businessId: ctx.businessId,
+            order: result.updatedOrder,
+          });
+        } catch (error) {
+          manualInvoiceEmail = {
+            ok: false,
+            error: error instanceof Error ? error.message : "Manual order invoice email failed.",
+            invoiceNumber: result.updatedOrder.invoiceNumber ?? null,
+          };
+        }
+        if (!manualInvoiceEmail.ok) {
+          await logOrderEvent({
+            businessId: ctx.businessId,
+            orderId: result.updatedOrder.id,
+            eventType: "manual_invoice_email_failed",
+            actorType: "system",
+            actorLabel: "system",
+            payload: {
+              error: manualInvoiceEmail.error,
+            },
+          });
+        } else {
+          await logOrderEvent({
+            businessId: ctx.businessId,
+            orderId: result.updatedOrder.id,
+            eventType: "manual_invoice_emailed",
+            actorType: "system",
+            actorLabel: "system",
+            payload: {
+              invoiceNumber: manualInvoiceEmail.invoiceNumber,
+            },
+          });
+        }
       }
+      const latestOrderAfterInvoice = manualInvoiceEmail?.ok
+        ? await db
+            .select()
+            .from(orders)
+            .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, result.updatedOrder.id)))
+            .limit(1)
+            .then((rows) => rows[0] ?? result.updatedOrder)
+        : result.updatedOrder;
       if (!delivery.ok) {
         await logOrderEvent({
           businessId: ctx.businessId,
@@ -1700,8 +1828,8 @@ export const ordersRouter = router({
         entity: "order",
         op: "upsert",
         entityId: result.updatedOrder.id,
-        payload: { order: result.updatedOrder as any },
-        createdAt: result.updatedOrder.updatedAt ?? now,
+        payload: { order: latestOrderAfterInvoice as any },
+        createdAt: latestOrderAfterInvoice.updatedAt ?? now,
       });
 
       recordBusinessEvent({
@@ -1723,7 +1851,7 @@ export const ordersRouter = router({
         },
       });
 
-      return { order: result.updatedOrder, delivery };
+      return { order: latestOrderAfterInvoice, delivery };
     }),
 
   denyPendingPaymentOrder: businessProcedure
