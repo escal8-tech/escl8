@@ -394,6 +394,8 @@ export const messageThreads = pgTable(
     // one thread per (business, customer, whatsappIdentityId) - allows same customer to have threads with different phone numbers
     status: text("status").notNull().default("open"),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    // Denormalized from thread_messages.direction so the thread list can show waiting customers without per-row latest-message lookups.
+    lastMessageDirection: text("last_message_direction"),
 
     meta: jsonb("meta").$type<Record<string, unknown>>().default({}),
 
@@ -413,6 +415,12 @@ export const messageThreads = pgTable(
     messageThreadsCustomerIdx: index("message_threads_customer_id_idx").on(t.customerId),
     messageThreadsWhatsappIdentityIdx: index("message_threads_whatsapp_identity_id_idx").on(t.whatsappIdentityId),
     messageThreadsLastMessageIdx: index("message_threads_last_message_at_idx").on(t.lastMessageAt),
+    messageThreadsBusinessActiveLastMessageIdx: index("message_threads_business_active_last_message_idx")
+      .on(t.businessId, t.lastMessageAt, t.id)
+      .where(sql`${t.deletedAt} is null`),
+    messageThreadsBusinessIdentityActiveLastMessageIdx: index("message_threads_business_identity_active_last_message_idx")
+      .on(t.businessId, t.whatsappIdentityId, t.lastMessageAt, t.id)
+      .where(sql`${t.deletedAt} is null`),
     messageThreadsDeletedAtIdx: index("message_threads_deleted_at_idx").on(t.deletedAt),
     messageThreadsWhatsappIdentityFk: foreignKey({
       name: "message_threads_whatsapp_identity_fk",
@@ -454,6 +462,7 @@ export const threadMessages = pgTable(
     threadMessagesThreadIdx: index("thread_messages_thread_id_idx").on(t.threadId),
     threadMessagesCreatedIdx: index("thread_messages_created_at_idx").on(t.createdAt),
     threadMessagesThreadDirectionCreatedIdx: index("thread_messages_thread_direction_created_idx").on(t.threadId, t.direction, t.createdAt),
+    threadMessagesThreadCreatedLatestIdx: index("thread_messages_thread_created_latest_idx").on(t.threadId, t.createdAt, t.id),
     // Only enforce uniqueness when we actually have an external id.
     threadMessagesExternalUx: uniqueIndex("thread_messages_external_message_id_ux")
       .on(t.externalMessageId)

@@ -10,6 +10,15 @@ import { recordAiUsageEvent } from "../services/aiUsage";
 
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
 const digitsOnly = (value: string) => value.replace(/\D+/g, "");
+
+const lastMessageDirectionExpr = sql<string | null>`(
+  select tm.direction
+  from thread_messages tm
+  where tm.thread_id = ${messageThreads.id}
+  order by tm.created_at desc, tm.id desc
+  limit 1
+)`;
+const lastMessageDirectionSelection = sql<string | null>`coalesce(${messageThreads.lastMessageDirection}, ${lastMessageDirectionExpr})`;
 const mediaPartSchema = z.union([
   z.object({ type: z.literal("text"), text: z.string().min(1).max(4096) }),
   z.object({ type: z.literal("image"), imageUrl: z.string().url(), caption: z.string().max(1024).optional() }),
@@ -57,6 +66,7 @@ export const messagesRouter = router({
           customerSource: customers.source,
           status: messageThreads.status,
           lastMessageAt: messageThreads.lastMessageAt,
+          lastMessageDirection: lastMessageDirectionSelection,
           threadCreatedAt: messageThreads.createdAt,
           whatsappIdentityId: messageThreads.whatsappIdentityId,
         })
@@ -132,6 +142,7 @@ export const messagesRouter = router({
           customerSource: customers.source,
           status: messageThreads.status,
           lastMessageAt: messageThreads.lastMessageAt,
+          lastMessageDirection: lastMessageDirectionSelection,
           threadCreatedAt: messageThreads.createdAt,
           whatsappIdentityId: messageThreads.whatsappIdentityId,
           sortAt: sortAtExpr,
@@ -495,6 +506,7 @@ export const messagesRouter = router({
         .update(messageThreads)
         .set({
           lastMessageAt: now,
+          lastMessageDirection: "outbound",
           updatedAt: now,
         })
         .where(eq(messageThreads.id, input.threadId));
@@ -697,6 +709,7 @@ export const messagesRouter = router({
         .update(messageThreads)
         .set({
           lastMessageAt: now,
+          lastMessageDirection: "outbound",
           updatedAt: now,
         })
         .where(eq(messageThreads.id, input.threadId));

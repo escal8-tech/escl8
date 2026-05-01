@@ -654,6 +654,7 @@ export async function persistOutboundThreadMessage(params: {
     .update(messageThreads)
     .set({
       lastMessageAt: now,
+      lastMessageDirection: "outbound",
       updatedAt: now,
     })
     .where(eq(messageThreads.id, params.threadId));
