@@ -152,7 +152,7 @@ export function ManualOrderLauncher({
         <>
           <div className="drawer-backdrop open" onClick={() => !createManualOrder.isPending && setOpen(false)} />
           <div className="portal-modal-shell">
-            <div className="portal-modal-card" style={{ width: "min(760px, calc(100vw - 32px))" }}>
+            <div className="portal-modal-card portal-manual-order-modal">
               <div className="portal-modal-card__body">
                 <div style={{ display: "grid", gap: 4 }}>
                   <div style={{ fontSize: 18, fontWeight: 700 }}>New manual order</div>
@@ -182,19 +182,19 @@ export function ManualOrderLauncher({
                   </label>
                   <label className="portal-field">
                     <span className="portal-field-label">Customer Name</span>
-                    <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer name" />
+                    <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer name" />
                   </label>
                   <label className="portal-field">
                     <span className="portal-field-label">Phone</span>
-                    <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="+947..." />
+                    <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="+947..." />
                   </label>
                   <label className="portal-field">
                     <span className="portal-field-label">Email</span>
-                    <input value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="Optional" />
+                    <input type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="Optional" />
                   </label>
                   <label className="portal-field">
                     <span className="portal-field-label">Delivery Area</span>
-                    <input value={deliveryArea} onChange={(e) => setDeliveryArea(e.target.value)} placeholder="Optional" />
+                    <input type="text" value={deliveryArea} onChange={(e) => setDeliveryArea(e.target.value)} placeholder="Optional" />
                   </label>
                   <label className="portal-field portal-field--full">
                     <span className="portal-field-label">Shipping / Pickup Notes</span>
@@ -219,8 +219,9 @@ export function ManualOrderLauncher({
                     </button>
                   </div>
                   {lines.map((line, index) => (
-                    <div key={index} style={{ display: "grid", gridTemplateColumns: "1fr 90px 130px 42px", gap: 8 }}>
+                    <div key={index} className="portal-manual-order-line">
                       <input
+                        type="text"
                         value={line.item}
                         onChange={(e) => {
                           const value = e.target.value;
@@ -229,6 +230,8 @@ export function ManualOrderLauncher({
                         placeholder="Item"
                       />
                       <input
+                        type="number"
+                        min="1"
                         value={line.quantity}
                         onChange={(e) => {
                           const value = e.target.value;
@@ -237,6 +240,9 @@ export function ManualOrderLauncher({
                         placeholder="Qty"
                       />
                       <input
+                        type="number"
+                        min="0"
+                        step="0.01"
                         value={line.unitPrice}
                         onChange={(e) => {
                           const value = e.target.value;
@@ -261,15 +267,15 @@ export function ManualOrderLauncher({
                 <div className="portal-form-grid">
                   <label className="portal-field">
                     <span className="portal-field-label">Total</span>
-                    <input value={total} onChange={(e) => setTotal(e.target.value)} placeholder={computedTotal || "Optional"} />
+                    <input type="number" min="0" step="0.01" value={total} onChange={(e) => setTotal(e.target.value)} placeholder={computedTotal || "Optional"} />
                   </label>
                   <label className="portal-field">
                     <span className="portal-field-label">Internal Notes</span>
-                    <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
+                    <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
                   </label>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div className="portal-manual-order-footer">
                   <div className="text-muted" style={{ fontSize: 12 }}>
                     {computedTotal ? `Computed total: ${computedTotal}` : "Payment will be handled by staff in-house."}
                   </div>
