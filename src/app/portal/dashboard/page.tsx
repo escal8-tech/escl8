@@ -11,7 +11,13 @@ import { MiniDonutChart } from "./components/MiniDonutChart";
 import { RecentRequestsCard, type RequestSortKey, RECENT_REQUESTS_PAGE_SIZE } from "./components/RecentRequestsCard";
 import { RequestDrawer } from "./components/RequestDrawer";
 import { TicketCounterBarChart } from "./components/TicketCounterBarChart";
-import { getPortalTicketTypeChartLabel } from "@/app/portal/lib/ticketTypes";
+import { getPortalTicketTypeChartLabel, PORTAL_TICKET_TYPES } from "@/app/portal/lib/ticketTypes";
+
+const DASHBOARD_TICKET_COUNTER_KEYS = ["ordercreation", "complaint", "generalsupport"] as const;
+
+const TICKET_COUNTER_LABELS = new Map(
+  PORTAL_TICKET_TYPES.map((type) => [type.key, type.chartLabel ?? type.label]),
+);
 
 export default function DashboardPage() {
   const { selectedPhoneNumberId } = usePhoneFilter();
@@ -46,13 +52,14 @@ export default function DashboardPage() {
     requestActivityInput: activityInput,
     customerListInput: customersInput,
     refreshTicketTypeCounters: true,
+    refreshOrderStats: true,
   });
 
   const listQ = trpc.requests.listPage.useQuery(listInput);
   const statsQ = trpc.requests.stats.useQuery(statsInput);
   const activityQ = trpc.requests.activitySeries.useQuery(activityInput);
-  const ticketTypesQ = trpc.tickets.listTypes.useQuery({ includeDisabled: true });
   const ticketCountersQ = trpc.tickets.getTypeCounters.useQuery();
+  const orderStatsQ = trpc.orders.getStats.useQuery();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingIds, setPendingIds] = useState<Record<string, boolean>>({});
   const utils = trpc.useUtils();
@@ -190,19 +197,51 @@ export default function DashboardPage() {
         { openCount: row.openCount, inProgressCount: row.inProgressCount },
       ]),
     );
-    return (ticketTypesQ.data ?? []).map((type) => {
-      const counter = counts.get(type.key) ?? { openCount: 0, inProgressCount: 0 };
-      const label = getPortalTicketTypeChartLabel(type.key) || type.label;
+    return DASHBOARD_TICKET_COUNTER_KEYS.map((typeKey) => {
+      const counter = counts.get(typeKey) ?? { openCount: 0, inProgressCount: 0 };
+      const label = TICKET_COUNTER_LABELS.get(typeKey) ?? getPortalTicketTypeChartLabel(typeKey);
       return {
-        key: type.key,
+        key: typeKey,
         label,
-        enabled: type.enabled,
-        openCount: counter.openCount,
-        inProgressCount: counter.inProgressCount,
+        waitingCount: counter.openCount,
+        activeCount: counter.inProgressCount,
         totalActive: counter.openCount + counter.inProgressCount,
       };
     });
-  }, [ticketCountersQ.data, ticketTypesQ.data]);
+  }, [ticketCountersQ.data]);
+
+  const orderWorkflowCounters = useMemo(() => {
+    const paymentWaiting = Number(
+      orderStatsQ.data?.paymentStatusPendingCount ?? orderStatsQ.data?.pendingPaymentCount ?? 0,
+    );
+    const paymentReview = Number(
+      orderStatsQ.data?.paymentStatusReviewCount ?? orderStatsQ.data?.paymentSubmittedCount ?? 0,
+    );
+    const orderWaiting = Number(orderStatsQ.data?.orderStatusPendingCount ?? 0);
+    const orderActive = Number(orderStatsQ.data?.orderStatusInProgressCount ?? 0);
+
+    return [
+      {
+        key: "paymentstatus",
+        label: "Payment Status",
+        waitingCount: paymentWaiting,
+        activeCount: paymentReview,
+        totalActive: paymentWaiting + paymentReview,
+      },
+      {
+        key: "orderstatus",
+        label: "Order Status",
+        waitingCount: orderWaiting,
+        activeCount: orderActive,
+        totalActive: orderWaiting + orderActive,
+      },
+    ];
+  }, [orderStatsQ.data]);
+
+  const workflowCounters = useMemo(
+    () => [...ticketTypeCounters, ...orderWorkflowCounters],
+    [orderWorkflowCounters, ticketTypeCounters],
+  );
 
   return (
     <div className="fade-in portal-dashboard-shell">
@@ -275,18 +314,18 @@ export default function DashboardPage() {
         <div className="card portal-dashboard-card portal-dashboard-card--counters" style={{ height: 520, display: "flex", flexDirection: "column" }}>
           <div className="card-header">
             <h3 className="card-title">Ticket Counters</h3>
-            <p className="card-description">Open + in-progress tickets by type (resolved/closed excluded)</p>
+            <p className="card-description">Open and pending queues by ticket and order workflow</p>
           </div>
           <div className="card-body portal-dashboard-chart-panel" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-            {ticketTypeCounters.length === 0 ? (
-              <div className="text-muted">No ticket types available.</div>
+            {workflowCounters.length === 0 ? (
+              <div className="text-muted">No workflow counters available.</div>
             ) : (
               <div style={{ flex: 1, minHeight: 0 }}>
                 <TicketCounterBarChart
-                  data={ticketTypeCounters.map((counter) => ({
+                  data={workflowCounters.map((counter) => ({
                     label: counter.label,
-                    openCount: counter.openCount,
-                    inProgressCount: counter.inProgressCount,
+                    waitingCount: counter.waitingCount,
+                    activeCount: counter.activeCount,
                     totalActive: counter.totalActive,
                   }))}
                 />

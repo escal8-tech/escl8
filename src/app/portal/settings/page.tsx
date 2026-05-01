@@ -375,6 +375,9 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 2,
   },
   input: {
+    width: "100%",
+    height: 46,
+    boxSizing: "border-box",
     padding: "12px 16px",
     borderRadius: 10,
     border: "1px solid var(--border)",
@@ -385,7 +388,11 @@ const styles: Record<string, React.CSSProperties> = {
     transition: "all 0.2s ease",
   },
   select: {
-    padding: "12px 16px",
+    width: "100%",
+    height: 46,
+    minHeight: 46,
+    boxSizing: "border-box",
+    padding: "0 16px",
     borderRadius: 10,
     border: "1px solid var(--border)",
     background: "var(--background)",
@@ -395,6 +402,8 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
   textarea: {
+    width: "100%",
+    boxSizing: "border-box",
     padding: "12px 16px",
     borderRadius: 10,
     border: "1px solid var(--border)",
@@ -926,15 +935,6 @@ export default function SettingsPage() {
       businessQuery.refetch();
     },
   });
-  const updateMessageUsageTier = trpc.business.updateMessageUsageTier.useMutation({
-    onSuccess: () => {
-      showSuccessToast(toast, {
-        title: "Usage tier updated",
-        message: "Monthly AI response allowance saved successfully.",
-      });
-      businessQuery.refetch();
-    },
-  });
   const updateOrderSettings = trpc.business.updateOrderSettings.useMutation({
     onSuccess: () => {
       showSuccessToast(toast, {
@@ -1157,15 +1157,6 @@ export default function SettingsPage() {
       email,
       businessId: businessQuery.data.id,
       timezone,
-    });
-  };
-
-  const handleSaveMessageUsageTier = () => {
-    if (!email || !businessQuery.data?.id) return;
-    updateMessageUsageTier.mutate({
-      email,
-      businessId: businessQuery.data.id,
-      messageUsageTier,
     });
   };
 
@@ -1448,6 +1439,9 @@ export default function SettingsPage() {
   const websiteWidget = normalizeWebsiteWidgetSettings(businessQuery.data?.settings);
   const whatsappConnected = (phoneNumbersQuery.data?.length ?? 0) > 0;
   const fmtInt = (value: number) => value.toLocaleString("en-US");
+  const currentUsageTier = BUSINESS_MESSAGE_USAGE_TIERS.find((option) => option.value === messageUsageTier)
+    ?? BUSINESS_MESSAGE_USAGE_TIERS.find((option) => option.value === "standard")
+    ?? BUSINESS_MESSAGE_USAGE_TIERS[0];
 
   const renderProfileTab = () => (
     <div style={styles.section}>
@@ -1526,15 +1520,11 @@ export default function SettingsPage() {
                 Usage Tier
                 <p style={styles.labelHint}>Monthly AI response allowance shared across all connected numbers</p>
               </label>
-              <PortalSelect
-                value={messageUsageTier}
-                onValueChange={(value) => setMessageUsageTier(value as BusinessMessageUsageTier)}
-                options={BUSINESS_MESSAGE_USAGE_TIERS.map((option) => ({
-                  value: option.value,
-                  label: `${option.label} (${fmtInt(option.monthlyLimit)} / month)`,
-                }))}
-                style={styles.select}
-                ariaLabel="Business usage tier"
+              <input
+                type="text"
+                style={styles.input}
+                value={`${currentUsageTier.label} (${fmtInt(currentUsageTier.monthlyLimit)} / month)`}
+                readOnly
               />
             </div>
             <div style={styles.usageCard}>
@@ -1554,14 +1544,6 @@ export default function SettingsPage() {
           </div>
         </div>
         <div style={styles.actions}>
-          <button
-            style={styles.btnSecondary}
-            onClick={handleSaveMessageUsageTier}
-            disabled={updateMessageUsageTier.isPending}
-          >
-            {Icons.save}
-            {updateMessageUsageTier.isPending ? "Saving tier..." : "Save Usage Tier"}
-          </button>
           <button
             style={styles.btnPrimary}
             onClick={handleSaveTimezone}
@@ -1756,56 +1738,64 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div style={{ ...styles.toggleRow, marginTop: 14 }}>
-            <div style={styles.toggleInfo}>
-              <span style={styles.toggleLabel}>Delivery Charge</span>
-              <span style={styles.toggleDescription}>
-                Disabled means the checkout still asks delivery or pickup, but delivery is treated as free. Enable only when this business charges delivery.
-              </span>
-            </div>
-            <Toggle
-              checked={deliveryChargeEnabled}
-              onChange={(checked) => {
-                setDeliveryChargeEnabled(checked);
-                if (checked) {
-                  setDeliveryChargeType("fixed");
-                  setDeliveryChargeValue("0");
-                }
+          <div style={styles.helperCard}>
+            <div
+              style={{
+                ...styles.toggleRow,
+                padding: deliveryChargeEnabled ? "0 0 16px" : 0,
+                borderBottom: deliveryChargeEnabled ? "1px solid var(--border)" : "none",
               }}
-            />
-          </div>
-
-          {deliveryChargeEnabled ? (
-            <div style={{ ...styles.formGrid, marginTop: 14 }}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Delivery Cost Type</label>
-                <PortalSelect
-                  value={deliveryChargeType}
-                  onValueChange={(value) => setDeliveryChargeType(value as OrderDeliveryChargeType)}
-                  options={[
-                    { value: "fixed", label: "Fixed Amount" },
-                    { value: "percentage", label: "Percentage" },
-                  ]}
-                  style={styles.select}
-                  ariaLabel="Order delivery cost type"
-                />
+            >
+              <div style={styles.toggleInfo}>
+                <span style={styles.toggleLabel}>Delivery Charge</span>
+                <span style={styles.toggleDescription}>
+                  Disabled means the checkout still asks delivery or pickup, but delivery is treated as free. Enable only when this business charges delivery.
+                </span>
               </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>
-                  {deliveryChargeType === "percentage" ? "Delivery Percentage" : "Delivery Amount"}
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step={deliveryChargeType === "percentage" ? "0.1" : "1"}
-                  style={styles.input}
-                  value={deliveryChargeValue}
-                  onChange={(e) => setDeliveryChargeValue(e.target.value)}
-                  placeholder={deliveryChargeType === "percentage" ? "5" : "450"}
-                />
-              </div>
+              <Toggle
+                checked={deliveryChargeEnabled}
+                onChange={(checked) => {
+                  setDeliveryChargeEnabled(checked);
+                  if (checked) {
+                    setDeliveryChargeType("fixed");
+                    setDeliveryChargeValue("0");
+                  }
+                }}
+              />
             </div>
-          ) : null}
+
+            {deliveryChargeEnabled ? (
+              <div style={styles.formGrid}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Delivery Cost Type</label>
+                  <PortalSelect
+                    value={deliveryChargeType}
+                    onValueChange={(value) => setDeliveryChargeType(value as OrderDeliveryChargeType)}
+                    options={[
+                      { value: "fixed", label: "Fixed Amount" },
+                      { value: "percentage", label: "Percentage" },
+                    ]}
+                    style={styles.select}
+                    ariaLabel="Order delivery cost type"
+                  />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>
+                    {deliveryChargeType === "percentage" ? "Delivery Percentage" : "Delivery Amount"}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step={deliveryChargeType === "percentage" ? "0.1" : "1"}
+                    style={styles.input}
+                    value={deliveryChargeValue}
+                    onChange={(e) => setDeliveryChargeValue(e.target.value)}
+                    placeholder={deliveryChargeType === "percentage" ? "5" : "450"}
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
 
           {orderPaymentMethod === "manual" ? (
             <div style={styles.helperCard}>

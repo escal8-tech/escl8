@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import { orderEvents, orderPayments, orders, threadMessages, whatsappIdentities } from "@/../drizzle/schema";
+import { normalizeOrderFulfillmentStatus } from "@/lib/order-operations";
 import {
   ORDER_WORKSPACE_MODES,
   buildWorkspaceConditions,
@@ -202,10 +203,15 @@ export async function getOrderStatsForBusiness(businessId: string) {
   }
 
   let pendingPaymentCount = 0;
+  let paymentStatusPendingCount = 0;
+  let paymentStatusReviewCount = 0;
   let paymentSubmittedCount = 0;
   let paidCount = 0;
   let refundPendingCount = 0;
   let refundedCount = 0;
+  let orderStatusPendingCount = 0;
+  let orderStatusInProgressCount = 0;
+  let orderStatusCompletedCount = 0;
   let approvedAmount = 0;
   let grossCollectedAmount = 0;
   let refundPendingAmount = 0;
@@ -214,22 +220,39 @@ export async function getOrderStatsForBusiness(businessId: string) {
   for (const row of rows) {
     const latestPayment = latestPaymentByOrder.get(row.id);
     const amount = resolveOrderLedgerAmount(row, latestPayment);
+    const status = String(row.status ?? "").trim().toLowerCase();
     if (row.status === "awaiting_payment" || row.status === "edit_required") pendingPaymentCount += 1;
-    if (row.status === "payment_submitted") paymentSubmittedCount += 1;
-    if (row.status === "paid") {
+    if (status === "approved" || status === "awaiting_payment") {
+      paymentStatusPendingCount += 1;
+    }
+    if (status === "payment_submitted") {
+      paymentSubmittedCount += 1;
+      paymentStatusReviewCount += 1;
+    }
+    if (status === "paid") {
       paidCount += 1;
       approvedAmount += amount;
       grossCollectedAmount += amount;
     }
-    if (row.status === "refund_pending") {
+    if (status === "refund_pending") {
       refundPendingCount += 1;
       refundPendingAmount += amount;
       grossCollectedAmount += amount;
     }
-    if (row.status === "refunded") {
+    if (status === "refunded") {
       refundedCount += 1;
       refundedAmount += amount;
       grossCollectedAmount += amount;
+    }
+    if (status === "paid" || status === "refund_pending" || status === "refunded") {
+      const fulfillmentStatus = normalizeOrderFulfillmentStatus(row.fulfillmentStatus);
+      if (fulfillmentStatus === "delivered") {
+        orderStatusCompletedCount += 1;
+      } else if (fulfillmentStatus === "dispatched" || fulfillmentStatus === "out_for_delivery") {
+        orderStatusInProgressCount += 1;
+      } else {
+        orderStatusPendingCount += 1;
+      }
     }
   }
 
@@ -237,10 +260,15 @@ export async function getOrderStatsForBusiness(businessId: string) {
     settings,
     totalOrders: rows.length,
     pendingPaymentCount,
+    paymentStatusPendingCount,
+    paymentStatusReviewCount,
     paymentSubmittedCount,
     paidCount,
     refundPendingCount,
     refundedCount,
+    orderStatusPendingCount,
+    orderStatusInProgressCount,
+    orderStatusCompletedCount,
     approvedAmount: approvedAmount.toFixed(2),
     grossCollectedAmount: grossCollectedAmount.toFixed(2),
     refundPendingAmount: refundPendingAmount.toFixed(2),

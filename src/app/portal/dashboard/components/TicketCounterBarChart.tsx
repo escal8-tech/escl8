@@ -4,10 +4,21 @@ import { useIsMobileViewport } from "@/app/portal/hooks/useIsMobileViewport";
 import { Bar, BarChart as ReBarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { SharedChartTooltip } from "./ChartTooltip";
 
+export type TicketCounterDatum = {
+  label: string;
+  waitingCount: number;
+  activeCount: number;
+  totalActive: number;
+};
+
 export function TicketCounterBarChart({
   data,
+  waitingLabel = "Open / Pending",
+  activeLabel = "In Progress / Review",
 }: {
-  data: { label: string; openCount: number; inProgressCount: number; totalActive: number }[];
+  data: TicketCounterDatum[];
+  waitingLabel?: string;
+  activeLabel?: string;
 }) {
   const isMobile = useIsMobileViewport();
 
@@ -40,7 +51,7 @@ export function TicketCounterBarChart({
           dataKey="label"
           axisLine={false}
           tickLine={false}
-          width={isMobile ? 56 : 72}
+          width={isMobile ? 68 : 104}
           interval={0}
           tick={{ fill: "rgba(241,245,249,0.9)", fontSize: isMobile ? 10 : 11 }}
         />
@@ -55,8 +66,8 @@ export function TicketCounterBarChart({
             />
           )}
         />
-        <Bar dataKey="inProgressCount" name="In Progress" stackId="active" fill="#D4A84B" radius={[6, 0, 0, 6]} />
-        <Bar dataKey="openCount" name="Open" stackId="active" fill="#ef4444" radius={[0, 6, 6, 0]} />
+        <Bar dataKey="waitingCount" name={waitingLabel} stackId="active" fill="#ef4444" radius={[6, 0, 0, 6]} />
+        <Bar dataKey="activeCount" name={activeLabel} stackId="active" fill="#D4A84B" radius={[0, 6, 6, 0]} />
         </ReBarChart>
       </ResponsiveContainer>
     </div>

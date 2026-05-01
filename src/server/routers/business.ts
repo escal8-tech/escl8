@@ -202,41 +202,10 @@ export const businessRouter = router({
       if (input.businessId !== ctx.businessId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
       }
-
-      const [updated] = await db
-        .update(businesses)
-        .set({
-          messageUsageTier: input.messageUsageTier,
-          updatedAt: new Date(),
-        })
-        .where(eq(businesses.id, input.businessId))
-        .returning({
-          id: businesses.id,
-          messageUsageTier: businesses.messageUsageTier,
-        });
-
-      if (!updated) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
-      }
-
-      recordBusinessEvent({
-        event: "business.message_usage_tier_updated",
-        action: "updateMessageUsageTier",
-        area: "business",
-        businessId: ctx.businessId,
-        entity: "business",
-        entityId: updated.id,
-        userId: ctx.userId,
-        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-        actorType: "user",
-        outcome: "success",
-        attributes: {
-          message_usage_tier: updated.messageUsageTier,
-          monthly_limit: getBusinessMessageUsageLimit(updated.messageUsageTier),
-        },
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Usage tiers are managed administratively.",
       });
-
-      return updated;
     }),
 
   updateBookingConfig: businessProcedure
