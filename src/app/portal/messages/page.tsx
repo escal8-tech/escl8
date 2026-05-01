@@ -30,6 +30,25 @@ function formatTime(d: Date | null | undefined) {
   });
 }
 
+function formatThreadListTimestamp(d: Date | null | undefined) {
+  if (!d) return "";
+  const value = new Date(d);
+  if (Number.isNaN(value.getTime())) return "";
+
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const valueStart = new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const dayDiff = Math.round((todayStart - valueStart) / 86_400_000);
+
+  if (dayDiff === 0) return formatTime(value);
+  if (dayDiff === 1) return "Yesterday";
+
+  const day = String(value.getDate()).padStart(2, "0");
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const year = String(value.getFullYear()).slice(-2);
+  return `${day}/${month}/${year}`;
+}
+
 function formatWindowRemaining(totalSeconds: number) {
   const seconds = Math.max(0, totalSeconds);
   const hours = Math.floor(seconds / 3600);
@@ -718,7 +737,7 @@ export default function MessagesPage() {
                         {displayName || phone}
                       </div>
                       <div style={{ fontSize: 12, color: "var(--muted)", flexShrink: 0 }}>
-                        {formatTime(t.lastMessageAt)}
+                        {formatThreadListTimestamp(t.lastMessageAt)}
                       </div>
                     </div>
                     {displayName && (

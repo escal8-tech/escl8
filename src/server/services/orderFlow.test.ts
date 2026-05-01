@@ -8,6 +8,32 @@ test("normalizeOrderFlowSettings defaults payment slip requirement to true", () 
   assert.equal(settings.paymentSlipRequired, true);
 });
 
+test("normalizeOrderFlowSettings keeps delivery charge settings", () => {
+  const fixed = normalizeOrderFlowSettings({
+    orderFlow: {
+      deliveryCharge: { enabled: true, type: "fixed", value: "450" },
+    },
+  });
+  const percentage = normalizeOrderFlowSettings({
+    orderFlow: {
+      deliveryCharge: { enabled: true, type: "percentage", value: "5.5" },
+    },
+  });
+
+  assert.deepEqual(fixed.deliveryCharge, { enabled: true, type: "fixed", value: "450" });
+  assert.deepEqual(percentage.deliveryCharge, { enabled: true, type: "percentage", value: "5.5" });
+});
+
+test("normalizeOrderFlowSettings defaults delivery charge to disabled free delivery", () => {
+  const settings = normalizeOrderFlowSettings({
+    orderFlow: {
+      deliveryCharge: { type: "fixed", value: "450" },
+    },
+  });
+
+  assert.deepEqual(settings.deliveryCharge, { enabled: false, type: "fixed", value: "450" });
+});
+
 test("buildOrderApprovalMessages uses optional slip wording when payment slip is not required", () => {
   const settings = normalizeOrderFlowSettings({
     orderFlow: {

@@ -1,9 +1,67 @@
-import { storePrivateFileAtPath } from "@/lib/storage";
+import { and, eq, isNull } from "drizzle-orm";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
+
+import { buildPrivateBlobReadUrl, storePrivateFileAtPath } from "@/lib/storage";
+import { businesses, orders } from "../../../drizzle/schema";
+import { db } from "../db/client";
 import {
   normalizeOrderLineItems,
   parseMoneyValue,
   type NormalizedOrderLineItem,
-} from "@/server/services/orderFlow";
+} from "./orderFlow";
+
+const LONG_READ_TTL_HOURS = 24 * 365 * 2;
+const DEFAULT_PRIMARY = "#0E1B40";
+const DEFAULT_SECONDARY = "#D4A457";
+
+export type OrderInvoiceArtifact = {
+  invoiceNumber: string;
+  fileName: string;
+  url: string;
+  storagePath: string;
+  generatedAt: Date;
+};
+
+export type OrderInvoiceDocumentMessage = {
+  type: "document";
+  document: {
+    link: string;
+    filename: string;
+    caption: string;
+  };
+};
+
+export type OrderInvoiceEmailMessage = {
+  subject: string;
+  text: string;
+  html: string;
+};
+
+type OrderRow = typeof orders.$inferSelect;
+type BusinessInvoiceConfig = {
+  id: string;
+  name: string | null;
+  settings: Record<string, unknown> | null;
+};
+
+type InvoiceCustomization = {
+  businessName: string;
+  primaryColor: string;
+  secondaryColor: string;
+  address: string;
+  phone: string;
+  email: string;
+  website: string;
+  footerNote: string;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function cleanText(value: unknown, limit = 500): string {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
+}
 
 function escapeHtml(value: string): string {
   return String(value || "")
@@ -14,188 +72,386 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function formatMoney(currency: string, value: string | number | null | undefined): string {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return `${currency} ${String(value || "").trim() || "0.00"}`.trim();
-  }
-  return `${currency} ${numeric.toFixed(2)}`;
+function safeToken(value: unknown, fallback = "invoice"): string {
+  const token = String(value ?? "").replace(/[^A-Za-z0-9._-]/g, "_").replace(/^[_\-.]+|[_\-.]+$/g, "");
+  return token || fallback;
+}
+
+function normalizeHex(value: unknown, fallback: string): string {
+  const raw = String(value ?? "").trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(raw)) return raw.toUpperCase();
+  if (/^[0-9A-Fa-f]{6}$/.test(raw)) return `#${raw.toUpperCase()}`;
+  return fallback;
+}
+
+function colorFromHex(value: string, fallback = DEFAULT_PRIMARY): RGB {
+  const hex = normalizeHex(value, fallback).replace("#", "");
+  return rgb(
+    Number.parseInt(hex.slice(0, 2), 16) / 255,
+    Number.parseInt(hex.slice(2, 4), 16) / 255,
+    Number.parseInt(hex.slice(4, 6), 16) / 255,
+  );
+}
+
+function normalizeCustomization(settings: Record<string, unknown> | null, businessName: string | null): InvoiceCustomization {
+  const root = asRecord(settings);
+  const customization = Object.keys(asRecord(root.customization)).length
+    ? asRecord(root.customization)
+    : asRecord(root.branding);
+  return {
+    businessName: cleanText(customization.businessName ?? businessName ?? "Business", 120) || "Business",
+    primaryColor: normalizeHex(customization.primaryColor ?? customization.primary_color, DEFAULT_PRIMARY),
+    secondaryColor: normalizeHex(customization.secondaryColor ?? customization.secondary_color, DEFAULT_SECONDARY),
+    address: cleanText(customization.address, 300),
+    phone: cleanText(customization.phone, 120),
+    email: cleanText(customization.email, 160),
+    website: cleanText(customization.website, 200),
+    footerNote:
+      cleanText(customization.invoiceFooterNote ?? customization.footerNote, 240) ||
+      "Please keep this invoice for your records. Payment approval is completed by staff after validation.",
+  };
+}
+
+function formatMoney(currency: string, value: unknown): string {
+  const normalized = parseMoneyValue(value) ?? "0.00";
+  return `${currency} ${Number(normalized).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function moneyNumber(value: unknown): number {
+  const normalized = parseMoneyValue(value);
+  return normalized ? Number(normalized) : 0;
 }
 
 function makeInvoiceNumber(orderId: string, issuedAt: Date): string {
-  return `INV-${issuedAt.toISOString().slice(0, 10).replace(/-/g, "")}-${orderId.slice(0, 8).toUpperCase()}`;
+  const orderToken = safeToken(orderId.slice(0, 8).toUpperCase(), "ORDER");
+  return `INV-${issuedAt.toISOString().slice(0, 10).replace(/-/g, "")}-${orderToken}`;
 }
 
 function resolveLineItems(ticketSnapshot: Record<string, unknown>): NormalizedOrderLineItem[] {
-  const fields =
-    ticketSnapshot.fields && typeof ticketSnapshot.fields === "object" && !Array.isArray(ticketSnapshot.fields)
-      ? (ticketSnapshot.fields as Record<string, unknown>)
-      : {};
-  return normalizeOrderLineItems(fields);
+  const fields = asRecord(ticketSnapshot.fields);
+  const nested = normalizeOrderLineItems(fields);
+  if (nested.length) return nested;
+  return normalizeOrderLineItems(ticketSnapshot);
 }
 
-function renderInvoiceHtml(input: {
+function invoiceCaption(language: string, invoiceNumber: string): string {
+  const low = String(language || "en").toLowerCase();
+  if (low.startsWith("si") || low.includes("sinhala")) return `Invoice eka menna: ${invoiceNumber}`;
+  if (low.startsWith("ta") || low.includes("tamil")) return `Invoice inaikkappattullathu: ${invoiceNumber}`;
+  if (low === "ms" || low === "bm" || low === "ms-my" || low.includes("bahasa")) return `Invois dilampirkan: ${invoiceNumber}`;
+  return `Invoice attached: ${invoiceNumber}`;
+}
+
+function drawWrappedText(params: {
+  page: PDFPage;
+  text: string;
+  x: number;
+  y: number;
+  maxWidth: number;
+  font: PDFFont;
+  size: number;
+  color?: RGB;
+  lineHeight?: number;
+  maxLines?: number;
+}): number {
+  const words = cleanText(params.text, 2000).split(/\s+/).filter(Boolean);
+  const lineHeight = params.lineHeight ?? params.size + 4;
+  const lines: string[] = [];
+  let line = "";
+
+  for (const word of words.length ? words : [""]) {
+    const candidate = `${line} ${word}`.trim();
+    if (line && params.font.widthOfTextAtSize(candidate, params.size) > params.maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+
+  const finalLines = params.maxLines ? lines.slice(0, params.maxLines) : lines;
+  finalLines.forEach((value, index) => {
+    params.page.drawText(value, {
+      x: params.x,
+      y: params.y - index * lineHeight,
+      size: params.size,
+      font: params.font,
+      color: params.color ?? colorFromHex("#111827"),
+    });
+  });
+  return params.y - Math.max(1, finalLines.length) * lineHeight;
+}
+
+async function buildOrderInvoicePdf(input: {
+  order: OrderRow;
+  business: BusinessInvoiceConfig;
   invoiceNumber: string;
   issuedAt: Date;
-  orderId: string;
-  customerName: string | null;
-  customerEmail: string | null;
-  customerPhone: string | null;
-  paymentReference: string | null;
-  items: NormalizedOrderLineItem[];
-  currency: string;
-  expectedAmount: string | null;
-  paidAmount: string | null;
-}): string {
-  const itemRows = input.items.length
-    ? input.items.map((item) => {
-        const quantity = String(item.quantity || "1").trim() || "1";
-        const unitPrice = item.unitPrice ? formatMoney(input.currency, item.unitPrice) : "-";
-        const lineTotal = item.lineTotal ? formatMoney(input.currency, item.lineTotal) : "-";
-        return `
-          <tr>
-            <td>${escapeHtml(item.item)}</td>
-            <td>${escapeHtml(quantity)}</td>
-            <td>${escapeHtml(unitPrice)}</td>
-            <td>${escapeHtml(lineTotal)}</td>
-          </tr>
-        `;
-      }).join("")
-    : `
-      <tr>
-        <td colspan="4">Order items were captured in the chat and are available in the linked order record.</td>
-      </tr>
-    `;
+}): Promise<Buffer> {
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const pageSize: [number, number] = [595.28, 841.89];
+  const customization = normalizeCustomization(input.business.settings, input.business.name);
+  const primary = colorFromHex(customization.primaryColor);
+  const secondary = colorFromHex(customization.secondaryColor, DEFAULT_SECONDARY);
+  const text = colorFromHex("#111827");
+  const muted = colorFromHex("#64748B");
+  const border = colorFromHex("#E2E8F0");
+  const soft = colorFromHex("#F8FAFC");
+  const currency = cleanText(input.order.currency || "LKR", 12) || "LKR";
+  const ticketSnapshot = asRecord(input.order.ticketSnapshot);
+  const items = resolveLineItems(ticketSnapshot);
+  const expected = moneyNumber(input.order.expectedAmount ?? input.order.paidAmount);
+  const itemTotal = items.reduce((sum, item) => {
+    const quantity = Number(String(item.quantity || "1").replace(/[^\d.]/g, "")) || 1;
+    const lineTotal = moneyNumber(item.lineTotal);
+    const unitPrice = moneyNumber(item.unitPrice);
+    return sum + (lineTotal || unitPrice * quantity);
+  }, 0);
+  const total = expected || itemTotal;
+  const rows = items.length
+    ? items
+    : [{ item: "Order items captured in chat", quantity: "1", unitPrice: total.toFixed(2), lineTotal: total.toFixed(2) }];
 
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(input.invoiceNumber)}</title>
-    <style>
-      body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #f4f6fb; color: #101828; }
-      .page { max-width: 880px; margin: 0 auto; padding: 32px 20px; }
-      .card { background: #ffffff; border: 1px solid #d8dee9; border-radius: 20px; overflow: hidden; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08); }
-      .header { padding: 28px 32px; background: linear-gradient(135deg, #0f172a, #1d3557); color: #f8fafc; }
-      .header h1 { margin: 0; font-size: 28px; }
-      .header p { margin: 8px 0 0; color: #cbd5e1; font-size: 14px; }
-      .section { padding: 24px 32px; }
-      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
-      .label { font-size: 11px; color: #667085; text-transform: uppercase; letter-spacing: 0.08em; }
-      .value { margin-top: 4px; font-size: 15px; font-weight: 600; color: #111827; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
-      th { color: #475467; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
-      .totals { display: grid; gap: 10px; justify-items: end; margin-top: 18px; }
-      .total-row { display: flex; gap: 24px; font-size: 15px; }
-      .total-row strong { min-width: 120px; text-align: right; }
-      .footer { padding: 18px 32px 28px; color: #667085; font-size: 12px; }
-      @media (max-width: 640px) {
-        .section, .header, .footer { padding: 20px; }
-        .grid { grid-template-columns: 1fr; }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="page">
-      <div class="card">
-        <div class="header">
-          <h1>Order Invoice</h1>
-          <p>${escapeHtml(input.invoiceNumber)} · Issued ${escapeHtml(input.issuedAt.toLocaleString())}</p>
-        </div>
-        <div class="section">
-          <div class="grid">
-            <div>
-              <div class="label">Order Reference</div>
-              <div class="value">${escapeHtml(input.orderId.slice(0, 8).toUpperCase())}</div>
-            </div>
-            <div>
-              <div class="label">Payment Reference</div>
-              <div class="value">${escapeHtml(input.paymentReference || "Not set")}</div>
-            </div>
-            <div>
-              <div class="label">Customer</div>
-              <div class="value">${escapeHtml(input.customerName || "Unknown customer")}</div>
-            </div>
-            <div>
-              <div class="label">Contact</div>
-              <div class="value">${escapeHtml(input.customerEmail || input.customerPhone || "No contact saved")}</div>
-            </div>
-          </div>
-        </div>
-        <div class="section">
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Qty</th>
-                <th>Unit</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>${itemRows}</tbody>
-          </table>
-          <div class="totals">
-            <div class="total-row"><strong>Expected</strong><span>${escapeHtml(formatMoney(input.currency, input.expectedAmount || "0.00"))}</span></div>
-            <div class="total-row"><strong>Paid</strong><span>${escapeHtml(formatMoney(input.currency, input.paidAmount || input.expectedAmount || "0.00"))}</span></div>
-          </div>
-        </div>
-        <div class="footer">Generated by the Escl8 order workflow. Share this link with the customer when payment is approved.</div>
-      </div>
-    </div>
-  </body>
-</html>`;
+  let pageNo = 0;
+  let page = pdf.addPage(pageSize);
+  let y = 0;
+
+  function drawHeader() {
+    pageNo += 1;
+    const width = page.getWidth();
+    const height = page.getHeight();
+    page.drawRectangle({ x: 0, y: height - 12, width, height: 12, color: primary });
+    page.drawRectangle({ x: width * 0.68, y: height - 12, width: width * 0.32, height: 12, color: secondary });
+    page.drawText(customization.businessName, { x: 36, y: height - 70, size: 20, font: fontBold, color: text });
+    const contact = [customization.address, customization.phone, customization.email, customization.website].filter(Boolean).join(" | ");
+    if (contact) {
+      drawWrappedText({ page, text: contact, x: 36, y: height - 90, maxWidth: 300, font, size: 8.5, color: muted, maxLines: 2 });
+    }
+    page.drawText("INVOICE", { x: width - 144, y: height - 62, size: 19, font: fontBold, color: text });
+    page.drawText(input.invoiceNumber, { x: width - 190, y: height - 82, size: 10, font: fontBold, color: text });
+    page.drawText(input.issuedAt.toLocaleDateString("en-GB"), { x: width - 123, y: height - 98, size: 9, font, color: muted });
+    if (pageNo > 1) page.drawText(`Page ${pageNo}`, { x: width - 74, y: height - 114, size: 8, font, color: muted });
+    page.drawLine({ start: { x: 36, y: height - 130 }, end: { x: width - 36, y: height - 130 }, thickness: 1, color: border });
+    y = height - 158;
+  }
+
+  function drawFooter() {
+    const width = page.getWidth();
+    page.drawRectangle({ x: 0, y: 28, width, height: 52, color: primary });
+    page.drawRectangle({ x: width * 0.72, y: 28, width: width * 0.28, height: 52, color: secondary });
+    page.drawText(customization.businessName, { x: 36, y: 59, size: 9, font: fontBold, color: rgb(1, 1, 1) });
+    page.drawText(customization.footerNote.slice(0, 96), { x: 36, y: 43, size: 7.5, font, color: rgb(1, 1, 1) });
+  }
+
+  function ensureSpace(minY = 118) {
+    if (y >= minY) return;
+    drawFooter();
+    page = pdf.addPage(pageSize);
+    drawHeader();
+  }
+
+  drawHeader();
+  const width = page.getWidth();
+  const customer = cleanText(input.order.recipientName || input.order.customerName || "WhatsApp Customer", 120) || "WhatsApp Customer";
+  const customerContact = cleanText(input.order.recipientPhone || input.order.customerPhone || input.order.customerEmail, 160);
+  const deliveryArea = cleanText(input.order.deliveryArea, 180);
+  const shippingAddress = cleanText(input.order.shippingAddress, 500);
+  const deliveryNotes = cleanText(input.order.deliveryNotes, 500);
+  const fulfillmentLines = [
+    shippingAddress && shippingAddress.toLowerCase() !== "pickup" ? shippingAddress : "",
+    deliveryArea && deliveryArea.toLowerCase() !== "pickup" ? deliveryArea : "",
+    deliveryNotes && !deliveryNotes.toLowerCase().includes("[pickup]") ? deliveryNotes : "",
+  ].filter(Boolean);
+  const isPickup = shippingAddress.toLowerCase() === "pickup"
+    || deliveryArea.toLowerCase() === "pickup"
+    || deliveryNotes.toLowerCase().includes("[pickup]");
+  const orderRef = cleanText(input.order.id.slice(0, 8).toUpperCase(), 30);
+  const paymentRef = cleanText(input.order.paymentReference, 120) || "-";
+
+  page.drawText("Invoice To", { x: 36, y, size: 9, font: fontBold, color: muted });
+  page.drawText(customer, { x: 36, y: y - 20, size: 14, font: fontBold, color: text });
+  if (customerContact) page.drawText(customerContact, { x: 36, y: y - 38, size: 9, font, color: muted });
+  if (isPickup) {
+    page.drawText("Pickup order", { x: 36, y: y - 56, size: 9, font: fontBold, color: muted });
+  } else if (fulfillmentLines.length) {
+    drawWrappedText({
+      page,
+      text: fulfillmentLines.join(" | "),
+      x: 36,
+      y: y - 56,
+      maxWidth: 300,
+      font,
+      size: 8.5,
+      color: muted,
+      maxLines: 3,
+    });
+  }
+  page.drawText(`Order reference: ${orderRef}`, { x: width / 2 + 12, y, size: 9, font, color: text });
+  page.drawText(`Payment reference: ${paymentRef}`, { x: width / 2 + 12, y: y - 18, size: 9, font, color: text });
+  page.drawText(`Currency: ${currency}`, { x: width / 2 + 12, y: y - 36, size: 9, font, color: text });
+  y -= fulfillmentLines.length || isPickup ? 106 : 82;
+
+  page.drawRectangle({ x: 36, y: y - 20, width: width - 72, height: 26, color: primary });
+  page.drawText("ITEM", { x: 48, y: y - 11, size: 8, font: fontBold, color: rgb(1, 1, 1) });
+  page.drawText("QTY", { x: width - 210, y: y - 11, size: 8, font: fontBold, color: rgb(1, 1, 1) });
+  page.drawText("UNIT", { x: width - 146, y: y - 11, size: 8, font: fontBold, color: rgb(1, 1, 1) });
+  page.drawText("TOTAL", { x: width - 82, y: y - 11, size: 8, font: fontBold, color: rgb(1, 1, 1) });
+  y -= 38;
+
+  rows.forEach((item, index) => {
+    ensureSpace();
+    const quantity = Math.max(1, Number(String(item.quantity || "1").replace(/[^\d.]/g, "")) || 1);
+    const unitPrice = moneyNumber(item.unitPrice);
+    const lineTotal = moneyNumber(item.lineTotal) || unitPrice * quantity;
+    const freeDelivery = /delivery/i.test(String(item.item || "")) && lineTotal <= 0;
+    const itemY = y;
+    const label = `${index + 1}. ${cleanText(item.item, 220)}`;
+    const nextY = drawWrappedText({ page, text: label, x: 48, y: itemY, maxWidth: 290, font, size: 9.5, color: text, maxLines: 3 });
+    page.drawText(String(quantity), { x: width - 210, y: itemY, size: 9, font, color: text });
+    page.drawText(freeDelivery ? "Free" : formatMoney(currency, unitPrice), { x: width - 166, y: itemY, size: 9, font, color: text });
+    page.drawText(freeDelivery ? "Free" : formatMoney(currency, lineTotal), { x: width - 100, y: itemY, size: 9, font: fontBold, color: text });
+    y = Math.min(itemY - 28, nextY - 8);
+    page.drawLine({ start: { x: 42, y: y + 12 }, end: { x: width - 42, y: y + 12 }, thickness: 0.7, color: border });
+  });
+
+  ensureSpace(178);
+  page.drawRectangle({ x: width - 250, y: y - 68, width: 214, height: 58, color: soft });
+  page.drawText("Total due", { x: width - 230, y: y - 35, size: 10, font, color: muted });
+  page.drawText(formatMoney(currency, total), { x: width - 154, y: y - 36, size: 15, font: fontBold, color: text });
+  y -= 92;
+  drawWrappedText({ page, text: customization.footerNote, x: 36, y, maxWidth: width - 72, font, size: 9, color: muted, maxLines: 3 });
+  drawFooter();
+
+  return Buffer.from(await pdf.save());
+}
+
+function orderInvoiceContainer(): string {
+  return String(
+    process.env.ORDER2_INVOICE_BLOB_CONTAINER ||
+      process.env.ORDER_INVOICE_BLOB_CONTAINER ||
+      process.env.AGENT_INVOICE_BLOB_CONTAINER ||
+      "agent-invoices",
+  ).trim() || "agent-invoices";
+}
+
+async function markInvoiceFailed(input: { businessId: string; orderId: string; invoiceNumber: string; error?: string }) {
+  await db
+    .update(orders)
+    .set({
+      invoiceNumber: input.invoiceNumber,
+      invoiceStatus: "failed",
+      updatedAt: new Date(),
+    })
+    .where(and(eq(orders.businessId, input.businessId), eq(orders.id, input.orderId)));
+}
+
+async function markInvoiceGenerated(input: {
+  businessId: string;
+  orderId: string;
+  artifact: OrderInvoiceArtifact;
+  deliveryMethod?: "whatsapp" | "email" | null;
+  currentStatus?: string | null;
+}) {
+  const now = new Date();
+  const alreadySent = String(input.currentStatus || "").trim().toLowerCase() === "sent";
+  const update: Partial<typeof orders.$inferInsert> = {
+    invoiceNumber: input.artifact.invoiceNumber,
+    invoiceUrl: input.artifact.url,
+    invoiceStoragePath: input.artifact.storagePath,
+    invoiceFileName: input.artifact.fileName,
+    invoiceStatus: alreadySent ? "sent" : "generated",
+    invoiceGeneratedAt: input.artifact.generatedAt,
+    updatedAt: now,
+  };
+  if (!alreadySent) {
+    update.invoiceDeliveryMethod = null;
+    update.invoiceSentAt = null;
+  }
+  await db
+    .update(orders)
+    .set(update)
+    .where(and(eq(orders.businessId, input.businessId), eq(orders.id, input.orderId)));
+}
+
+export async function markOrderInvoiceDelivered(input: {
+  businessId: string;
+  orderId: string;
+  deliveryMethod: "whatsapp" | "email";
+  invoiceNumber?: string | null;
+}) {
+  const businessId = cleanText(input.businessId, 160);
+  const orderId = cleanText(input.orderId, 160);
+  if (!businessId || !orderId) return null;
+
+  const now = new Date();
+  const update: Partial<typeof orders.$inferInsert> = {
+    invoiceStatus: "sent",
+    invoiceDeliveryMethod: input.deliveryMethod,
+    invoiceSentAt: now,
+    updatedAt: now,
+  };
+  const invoiceNumber = cleanText(input.invoiceNumber, 100);
+  if (invoiceNumber) update.invoiceNumber = invoiceNumber;
+
+  const [updated] = await db
+    .update(orders)
+    .set(update)
+    .where(and(eq(orders.businessId, businessId), eq(orders.id, orderId)))
+    .returning();
+  return updated ?? null;
+}
+
+function existingArtifact(order: OrderRow, containerName: string): OrderInvoiceArtifact | null {
+  const invoiceNumber = cleanText(order.invoiceNumber, 100);
+  const fileName = cleanText(order.invoiceFileName, 180);
+  const storagePath = cleanText(order.invoiceStoragePath, 800);
+  if (!invoiceNumber || !fileName || !storagePath) return null;
+  const url = buildPrivateBlobReadUrl(storagePath, LONG_READ_TTL_HOURS, containerName) || cleanText(order.invoiceUrl, 2000);
+  if (!url) return null;
+  return {
+    invoiceNumber,
+    fileName,
+    url,
+    storagePath,
+    generatedAt: order.invoiceGeneratedAt ?? new Date(),
+  };
 }
 
 export async function createOrderInvoiceArtifact(input: {
   businessId: string;
-  order: {
-    id: string;
-    currency?: string | null;
-    customerName?: string | null;
-    customerEmail?: string | null;
-    customerPhone?: string | null;
-    paymentReference?: string | null;
-    expectedAmount?: string | number | null;
-    paidAmount?: string | number | null;
-    ticketSnapshot?: Record<string, unknown> | null;
-  };
+  order: OrderRow;
+  business?: BusinessInvoiceConfig | null;
   issuedAt?: Date;
-}) {
+}): Promise<OrderInvoiceArtifact> {
   const issuedAt = input.issuedAt ?? new Date();
-  const invoiceNumber = makeInvoiceNumber(input.order.id, issuedAt);
-  const fileName = `${invoiceNumber}.html`;
-  const ticketSnapshot =
-    input.order.ticketSnapshot && typeof input.order.ticketSnapshot === "object" && !Array.isArray(input.order.ticketSnapshot)
-      ? (input.order.ticketSnapshot as Record<string, unknown>)
-      : {};
-  const items = resolveLineItems(ticketSnapshot);
-  const currency = String(input.order.currency || "LKR").trim() || "LKR";
-  const expectedAmount = parseMoneyValue(input.order.expectedAmount) ?? parseMoneyValue(input.order.paidAmount) ?? "0.00";
-  const paidAmount = parseMoneyValue(input.order.paidAmount) ?? expectedAmount;
-  const html = renderInvoiceHtml({
+  const invoiceNumber = cleanText(input.order.invoiceNumber, 100) || makeInvoiceNumber(input.order.id, issuedAt);
+  const fileName = `${safeToken(invoiceNumber)}.pdf`;
+  const business = input.business ?? {
+    id: input.businessId,
+    name: null,
+    settings: null,
+  };
+  const pdfBuffer = await buildOrderInvoicePdf({
+    order: input.order,
+    business,
     invoiceNumber,
     issuedAt,
-    orderId: input.order.id,
-    customerName: String(input.order.customerName || "").trim() || null,
-    customerEmail: String(input.order.customerEmail || "").trim() || null,
-    customerPhone: String(input.order.customerPhone || "").trim() || null,
-    paymentReference: String(input.order.paymentReference || "").trim() || null,
-    items,
-    currency,
-    expectedAmount,
-    paidAmount,
   });
-
+  const containerName = orderInvoiceContainer();
   const stored = await storePrivateFileAtPath({
-    blobPath: `${input.businessId}/order-invoices/${input.order.id}/${fileName}`,
-    buffer: Buffer.from(html, "utf8"),
+    blobPath: `${safeToken(input.businessId)}/order2-invoices/${issuedAt.toISOString().slice(0, 10)}/${safeToken(input.order.id)}/${fileName}`,
+    buffer: pdfBuffer,
     fileName,
-    contentType: "text/html; charset=utf-8",
-    readTtlHours: 24 * 30,
+    contentType: "application/pdf",
+    readTtlHours: LONG_READ_TTL_HOURS,
+    containerName,
   });
-
   return {
     invoiceNumber,
     fileName,
@@ -203,4 +459,157 @@ export async function createOrderInvoiceArtifact(input: {
     storagePath: stored.blobPath,
     generatedAt: issuedAt,
   };
+}
+
+export async function createOrderInvoiceForOrder(input: {
+  businessId: string;
+  orderId: string;
+  forceRegenerate?: boolean;
+  deliveryMethod?: "whatsapp" | "email" | null;
+}): Promise<OrderInvoiceArtifact | null> {
+  const businessId = cleanText(input.businessId, 160);
+  const orderId = cleanText(input.orderId, 160);
+  if (!businessId || !orderId) return null;
+
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.businessId, businessId), eq(orders.id, orderId)))
+    .limit(1);
+  if (!order) return null;
+
+  const [business] = await db
+    .select({ id: businesses.id, name: businesses.name, settings: businesses.settings })
+    .from(businesses)
+    .where(eq(businesses.id, businessId))
+    .limit(1);
+
+  const containerName = orderInvoiceContainer();
+  if (!input.forceRegenerate) {
+    const existing = existingArtifact(order, containerName);
+    if (existing) {
+      if (String(order.invoiceStatus || "").trim().toLowerCase() !== "sent") {
+        await markInvoiceGenerated({
+          businessId,
+          orderId,
+          artifact: existing,
+          deliveryMethod: input.deliveryMethod ?? null,
+          currentStatus: order.invoiceStatus,
+        });
+      }
+      return existing;
+    }
+  }
+
+  const now = new Date();
+  const [claimed] = await db
+    .update(orders)
+    .set({
+      invoiceStatus: "generating",
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(orders.businessId, businessId),
+        eq(orders.id, orderId),
+        order.invoiceStatus === null ? isNull(orders.invoiceStatus) : eq(orders.invoiceStatus, order.invoiceStatus),
+      ),
+    )
+    .returning();
+
+  if (!claimed) {
+    const [latest] = await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.businessId, businessId), eq(orders.id, orderId)))
+      .limit(1);
+    const latestArtifact = latest ? existingArtifact(latest, containerName) : null;
+    if (latestArtifact) {
+      if (String(latest?.invoiceStatus || "").trim().toLowerCase() !== "sent") {
+        await markInvoiceGenerated({
+          businessId,
+          orderId,
+          artifact: latestArtifact,
+          deliveryMethod: input.deliveryMethod ?? null,
+          currentStatus: latest?.invoiceStatus ?? null,
+        });
+      }
+      return latestArtifact;
+    }
+    return null;
+  }
+
+  try {
+    const artifact = await createOrderInvoiceArtifact({
+      businessId,
+      order,
+      business: business ? { id: business.id, name: business.name, settings: business.settings ?? null } : null,
+      issuedAt: now,
+    });
+    await markInvoiceGenerated({
+      businessId,
+      orderId,
+      artifact,
+      deliveryMethod: input.deliveryMethod ?? null,
+      currentStatus: order.invoiceStatus,
+    });
+    return artifact;
+  } catch (error) {
+    await markInvoiceFailed({
+      businessId,
+      orderId,
+      invoiceNumber: cleanText(order.invoiceNumber, 100) || makeInvoiceNumber(order.id, now),
+      error: error instanceof Error ? error.message : "Invoice generation failed.",
+    });
+    throw error;
+  }
+}
+
+export function buildOrderInvoiceDocumentMessage(input: {
+  artifact: OrderInvoiceArtifact;
+  language?: string | null;
+}): OrderInvoiceDocumentMessage {
+  return {
+    type: "document",
+    document: {
+      link: input.artifact.url,
+      filename: input.artifact.fileName,
+      caption: invoiceCaption(input.language || "en", input.artifact.invoiceNumber),
+    },
+  };
+}
+
+export function buildOrderInvoiceEmailMessage(input: {
+  artifact: OrderInvoiceArtifact;
+  orderId: string;
+  customerName?: string | null;
+}): OrderInvoiceEmailMessage {
+  const customerName = cleanText(input.customerName, 120);
+  const greeting = customerName ? `Hi ${customerName},` : "Hi,";
+  const subject = `Invoice ${input.artifact.invoiceNumber}`;
+  const invoiceUrl = input.artifact.url;
+  const safeGreeting = escapeHtml(greeting);
+  const safeOrderRef = escapeHtml(input.orderId.slice(0, 8).toUpperCase());
+  const safeInvoiceNumber = escapeHtml(input.artifact.invoiceNumber);
+  const safeInvoiceUrl = escapeHtml(invoiceUrl);
+  const text = [
+    greeting,
+    "",
+    `Your invoice for order ${input.orderId.slice(0, 8).toUpperCase()} is ready.`,
+    "",
+    `Invoice: ${input.artifact.invoiceNumber}`,
+    `Download: ${invoiceUrl}`,
+    "",
+    "Thank you.",
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
+      <p>${safeGreeting}</p>
+      <p>Your invoice for order <strong>${safeOrderRef}</strong> is ready.</p>
+      <p><strong>Invoice:</strong> ${safeInvoiceNumber}</p>
+      <p><a href="${safeInvoiceUrl}" style="color:#0f766e">Download invoice PDF</a></p>
+      <p>Thank you.</p>
+    </div>
+  `.trim();
+  return { subject, text, html };
 }

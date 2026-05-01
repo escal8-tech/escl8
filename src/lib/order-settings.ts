@@ -1,4 +1,5 @@
 export type OrderPaymentMethod = "manual" | "cod" | "bank_qr";
+export type OrderDeliveryChargeType = "fixed" | "percentage";
 
 export type OrderFlowSettings = {
   ticketToOrderEnabled: boolean;
@@ -6,6 +7,11 @@ export type OrderFlowSettings = {
   paymentProofAiEnabled: boolean;
   paymentSlipRequired: boolean;
   currency: string;
+  deliveryCharge: {
+    enabled: boolean;
+    type: OrderDeliveryChargeType;
+    value: string;
+  };
   bankQr: {
     showQr: boolean;
     showBankDetails: boolean;
@@ -24,6 +30,11 @@ export const DEFAULT_ORDER_FLOW_SETTINGS: OrderFlowSettings = {
   paymentProofAiEnabled: true,
   paymentSlipRequired: true,
   currency: "LKR",
+  deliveryCharge: {
+    enabled: false,
+    type: "fixed",
+    value: "0",
+  },
   bankQr: {
     showQr: true,
     showBankDetails: true,
@@ -63,16 +74,35 @@ function asPaymentMethod(value: unknown): OrderPaymentMethod {
   return "manual";
 }
 
+function asDeliveryChargeType(value: unknown): OrderDeliveryChargeType {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "percentage" || normalized === "percent" || normalized === "%") return "percentage";
+  return "fixed";
+}
+
+function asAmountString(value: unknown, fallback = "0"): string {
+  const cleaned = String(value ?? "")
+    .replace(/,/g, "")
+    .replace(/[^\d.]/g, "")
+    .trim();
+  if (!cleaned) return fallback;
+  const amount = Number(cleaned);
+  if (!Number.isFinite(amount) || amount < 0) return fallback;
+  return String(amount);
+}
+
 export function normalizeOrderFlowSettings(raw: unknown): OrderFlowSettings {
   const root = asObject(raw);
   const nested =
     asObject(root.orderFlow).ticketToOrderEnabled != null ||
     asObject(root.orderFlow).paymentMethod != null ||
     asObject(root.orderFlow).paymentSlipRequired != null ||
-    asObject(root.orderFlow).currency != null
+    asObject(root.orderFlow).currency != null ||
+    asObject(root.orderFlow).deliveryCharge != null
       ? asObject(root.orderFlow)
       : asObject(root.orders);
   const bankQrRaw = asObject(nested.bankQr);
+  const deliveryChargeRaw = asObject(nested.deliveryCharge);
   const paymentMethod = asPaymentMethod(nested.paymentMethod);
 
   return {
@@ -81,6 +111,11 @@ export function normalizeOrderFlowSettings(raw: unknown): OrderFlowSettings {
     paymentProofAiEnabled: asBool(nested.paymentProofAiEnabled, DEFAULT_ORDER_FLOW_SETTINGS.paymentProofAiEnabled),
     paymentSlipRequired: asBool(nested.paymentSlipRequired, DEFAULT_ORDER_FLOW_SETTINGS.paymentSlipRequired),
     currency: asString(nested.currency, DEFAULT_ORDER_FLOW_SETTINGS.currency).toUpperCase().slice(0, 10),
+    deliveryCharge: {
+      enabled: asBool(deliveryChargeRaw.enabled, DEFAULT_ORDER_FLOW_SETTINGS.deliveryCharge.enabled),
+      type: asDeliveryChargeType(deliveryChargeRaw.type ?? deliveryChargeRaw.mode),
+      value: asAmountString(deliveryChargeRaw.value ?? deliveryChargeRaw.amount, DEFAULT_ORDER_FLOW_SETTINGS.deliveryCharge.value),
+    },
     bankQr: {
       showQr: asBool(bankQrRaw.showQr, DEFAULT_ORDER_FLOW_SETTINGS.bankQr.showQr),
       showBankDetails: asBool(bankQrRaw.showBankDetails, DEFAULT_ORDER_FLOW_SETTINGS.bankQr.showBankDetails),
@@ -106,6 +141,11 @@ export function mergeOrderFlowSettings(
       paymentProofAiEnabled: nextOrderFlow.paymentProofAiEnabled,
       paymentSlipRequired: nextOrderFlow.paymentSlipRequired,
       currency: nextOrderFlow.currency,
+      deliveryCharge: {
+        enabled: nextOrderFlow.deliveryCharge.enabled,
+        type: nextOrderFlow.deliveryCharge.type,
+        value: nextOrderFlow.deliveryCharge.value,
+      },
       bankQr: {
         showQr: nextOrderFlow.bankQr.showQr,
         showBankDetails: nextOrderFlow.bankQr.showBankDetails,

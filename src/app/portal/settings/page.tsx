@@ -17,7 +17,7 @@ import {
   getBusinessMessageUsageTierLabel,
   type BusinessMessageUsageTier,
 } from "@/lib/business-usage";
-import type { OrderPaymentMethod } from "@/lib/order-settings";
+import type { OrderDeliveryChargeType, OrderPaymentMethod } from "@/lib/order-settings";
 import { DEFAULT_CUSTOMIZATION_SETTINGS } from "@/lib/customization-settings";
 import { buildWebsiteWidgetSnippet, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
@@ -866,6 +866,9 @@ export default function SettingsPage() {
   const [paymentProofAiEnabled, setPaymentProofAiEnabled] = useState(true);
   const [paymentSlipRequired, setPaymentSlipRequired] = useState(true);
   const [orderCurrency, setOrderCurrency] = useState("LKR");
+  const [deliveryChargeEnabled, setDeliveryChargeEnabled] = useState(false);
+  const [deliveryChargeType, setDeliveryChargeType] = useState<OrderDeliveryChargeType>("fixed");
+  const [deliveryChargeValue, setDeliveryChargeValue] = useState("0");
   const [qrBlobPath, setQrBlobPath] = useState("");
   const [bankQrImageUrl, setBankQrImageUrl] = useState("");
   const [bankName, setBankName] = useState("");
@@ -1015,6 +1018,9 @@ export default function SettingsPage() {
       setPaymentProofAiEnabled(orderSettings?.paymentProofAiEnabled ?? true);
       setPaymentSlipRequired(orderSettings?.paymentSlipRequired ?? true);
       setOrderCurrency(orderSettings?.currency ?? "LKR");
+      setDeliveryChargeEnabled(orderSettings?.deliveryCharge?.enabled ?? false);
+      setDeliveryChargeType((orderSettings?.deliveryCharge?.type as OrderDeliveryChargeType | undefined) ?? "fixed");
+      setDeliveryChargeValue(orderSettings?.deliveryCharge?.value ?? "0");
       setQrBlobPath(orderSettings?.bankQr?.qrBlobPath ?? "");
       setBankQrImageUrl(orderSettings?.bankQr?.qrImageUrl ?? "");
       setBankName(orderSettings?.bankQr?.bankName ?? "");
@@ -1247,6 +1253,11 @@ export default function SettingsPage() {
       paymentProofAiEnabled,
       paymentSlipRequired,
       currency: orderCurrency.trim() || "LKR",
+      deliveryCharge: {
+        enabled: deliveryChargeEnabled,
+        type: deliveryChargeEnabled ? deliveryChargeType : "fixed",
+        value: deliveryChargeEnabled ? deliveryChargeValue.trim() || "0" : "0",
+      },
       bankQr: {
         showQr: orderPaymentMethod === "bank_qr" && hasQr,
         showBankDetails: orderPaymentMethod === "bank_qr" && hasBankDetails,
@@ -1744,6 +1755,57 @@ export default function SettingsPage() {
               />
             </div>
           </div>
+
+          <div style={{ ...styles.toggleRow, marginTop: 14 }}>
+            <div style={styles.toggleInfo}>
+              <span style={styles.toggleLabel}>Delivery Charge</span>
+              <span style={styles.toggleDescription}>
+                Disabled means the checkout still asks delivery or pickup, but delivery is treated as free. Enable only when this business charges delivery.
+              </span>
+            </div>
+            <Toggle
+              checked={deliveryChargeEnabled}
+              onChange={(checked) => {
+                setDeliveryChargeEnabled(checked);
+                if (checked) {
+                  setDeliveryChargeType("fixed");
+                  setDeliveryChargeValue("0");
+                }
+              }}
+            />
+          </div>
+
+          {deliveryChargeEnabled ? (
+            <div style={{ ...styles.formGrid, marginTop: 14 }}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Delivery Cost Type</label>
+                <PortalSelect
+                  value={deliveryChargeType}
+                  onValueChange={(value) => setDeliveryChargeType(value as OrderDeliveryChargeType)}
+                  options={[
+                    { value: "fixed", label: "Fixed Amount" },
+                    { value: "percentage", label: "Percentage" },
+                  ]}
+                  style={styles.select}
+                  ariaLabel="Order delivery cost type"
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>
+                  {deliveryChargeType === "percentage" ? "Delivery Percentage" : "Delivery Amount"}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step={deliveryChargeType === "percentage" ? "0.1" : "1"}
+                  style={styles.input}
+                  value={deliveryChargeValue}
+                  onChange={(e) => setDeliveryChargeValue(e.target.value)}
+                  placeholder={deliveryChargeType === "percentage" ? "5" : "450"}
+                />
+              </div>
+            </div>
+          ) : null}
 
           {orderPaymentMethod === "manual" ? (
             <div style={styles.helperCard}>
