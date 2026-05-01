@@ -12,11 +12,6 @@ import { PortalSelect } from "@/app/portal/components/PortalSelect";
 import { useToast } from "@/components/ToastProvider";
 import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
 import { recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
-import {
-  BUSINESS_MESSAGE_USAGE_TIERS,
-  getBusinessMessageUsageTierLabel,
-  type BusinessMessageUsageTier,
-} from "@/lib/business-usage";
 import type { OrderDeliveryChargeType, OrderPaymentMethod } from "@/lib/order-settings";
 import { DEFAULT_CUSTOMIZATION_SETTINGS } from "@/lib/customization-settings";
 import { buildWebsiteWidgetSnippet, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
@@ -867,7 +862,6 @@ export default function SettingsPage() {
   const [closeTime, setCloseTime] = useState<string>("");
   const [bookingsEnabled, setBookingsEnabled] = useState(false);
   const [timezone, setTimezone] = useState("UTC");
-  const [messageUsageTier, setMessageUsageTier] = useState<BusinessMessageUsageTier>("standard");
   const [ticketEnabledById, setTicketEnabledById] = useState<Record<string, boolean>>({});
   const [ticketRequiredFieldsById, setTicketRequiredFieldsById] = useState<Record<string, string>>({});
   const [savingAllTicketTypes, setSavingAllTicketTypes] = useState(false);
@@ -1012,7 +1006,6 @@ export default function SettingsPage() {
       setBookingsEnabled(businessQuery.data.bookingsEnabled ?? false);
       const tz = (businessQuery.data.settings as Record<string, unknown> | null | undefined)?.timezone;
       setTimezone(typeof tz === "string" && tz ? tz : "UTC");
-      setMessageUsageTier((businessQuery.data.messageUsageTier as BusinessMessageUsageTier | undefined) ?? "standard");
       const orderSettings = businessQuery.data.orderSettings;
       setOrderPaymentMethod((orderSettings?.paymentMethod as OrderPaymentMethod | undefined) ?? "manual");
       setPaymentProofAiEnabled(orderSettings?.paymentProofAiEnabled ?? true);
@@ -1439,9 +1432,6 @@ export default function SettingsPage() {
   const websiteWidget = normalizeWebsiteWidgetSettings(businessQuery.data?.settings);
   const whatsappConnected = (phoneNumbersQuery.data?.length ?? 0) > 0;
   const fmtInt = (value: number) => value.toLocaleString("en-US");
-  const currentUsageTier = BUSINESS_MESSAGE_USAGE_TIERS.find((option) => option.value === messageUsageTier)
-    ?? BUSINESS_MESSAGE_USAGE_TIERS.find((option) => option.value === "standard")
-    ?? BUSINESS_MESSAGE_USAGE_TIERS[0];
 
   const renderProfileTab = () => (
     <div style={styles.section}>
@@ -1515,18 +1505,6 @@ export default function SettingsPage() {
                 placeholder="e.g. Asia/Kuala_Lumpur"
               />
             </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>
-                Usage Tier
-                <p style={styles.labelHint}>Monthly AI response allowance shared across all connected numbers</p>
-              </label>
-              <input
-                type="text"
-                style={styles.input}
-                value={`${currentUsageTier.label} (${fmtInt(currentUsageTier.monthlyLimit)} / month)`}
-                readOnly
-              />
-            </div>
             <div style={styles.usageCard}>
               <div style={styles.usageRow}>
                 <span style={styles.usageTitle}>AI Responses Used This Month</span>
@@ -1537,9 +1515,6 @@ export default function SettingsPage() {
               <div style={styles.usageTrack}>
                 <div style={{ ...styles.usageFill, width: `${responsesPercent}%` }} />
               </div>
-              <p style={styles.usageHint}>
-                Current tier: {getBusinessMessageUsageTierLabel(messageUsageTier)}. Usage resets monthly and is shared across all WhatsApp numbers in this business.
-              </p>
             </div>
           </div>
         </div>
