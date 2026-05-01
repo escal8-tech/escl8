@@ -4671,9 +4671,29 @@ html.portal-theme-light {
 
 .portal-manual-order-line {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 90px 130px 42px;
+  grid-template-columns: minmax(0, 1fr) 90px 130px 44px;
   gap: 8px;
   align-items: end;
+}
+
+.portal-manual-order-items {
+  display: grid;
+  gap: 8px;
+}
+
+.portal-manual-order-items .portal-manual-order-line:first-of-type {
+  margin-top: 6px;
+}
+
+.portal-manual-order-remove {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+}
+
+.portal-manual-order-remove svg {
+  width: 19px;
+  height: 19px;
 }
 
 .portal-manual-order-footer {
@@ -5521,7 +5541,7 @@ html.portal-theme-light {
   }
 
   .portal-manual-order-line {
-    grid-template-columns: minmax(0, 1fr) minmax(72px, 0.35fr) minmax(108px, 0.55fr) 42px;
+    grid-template-columns: minmax(0, 1fr) minmax(72px, 0.35fr) minmax(108px, 0.55fr) 44px;
   }
 
   .portal-order-items-table {
