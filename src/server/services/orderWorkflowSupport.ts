@@ -749,12 +749,7 @@ export function buildPaymentReviewMessages(input: {
 }): BotSendMessage[] {
   const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
   if (input.action === "approve") {
-    const lines = [
-      `We have approved your payment for order number ${ref}.`,
-      input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
-      "Your order is now marked as paid and our team will continue processing it.",
-    ].filter(Boolean);
-    return [{ type: "text", text: lines.join("\n") }];
+    return [];
   }
   const lines = [
     `We could not confirm the payment for order number ${ref}, so this order has now been closed.`,
@@ -765,7 +760,7 @@ export function buildPaymentReviewMessages(input: {
 }
 
 export function buildPaymentReviewEmail(input: {
-  action: "approve" | "reject";
+  action: "reject";
   orderId: string;
   paymentReference?: string | null;
   paidAmount?: string | number | null;
@@ -773,19 +768,12 @@ export function buildPaymentReviewEmail(input: {
   notes?: string | null;
 }): OrderEmailMessage {
   const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
-  const approved = input.action === "approve";
-  const subject = approved ? `Order confirmed: ${ref}` : `Payment needs attention: ${ref}`;
-  const lines = approved
-    ? [
-        `We have approved your payment for order number ${ref}.`,
-        input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
-        "Your order is now confirmed and queued for fulfilment.",
-      ]
-    : [
-        `We could not confirm the payment for order number ${ref}, so this order has now been closed.`,
-        input.notes ? `Reason: ${String(input.notes).trim()}.` : null,
-        "If you still want this item, reply again and we can start a fresh order.",
-      ];
+  const subject = `Payment needs attention: ${ref}`;
+  const lines = [
+    `We could not confirm the payment for order number ${ref}, so this order has now been closed.`,
+    input.notes ? `Reason: ${String(input.notes).trim()}.` : null,
+    "If you still want this item, reply again and we can start a fresh order.",
+  ];
   const text = lines.filter(Boolean).join("\n");
   return {
     subject,

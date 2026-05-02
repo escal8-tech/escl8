@@ -4,7 +4,6 @@ import {
   assertOrderAllowsFulfillmentUpdates,
   assertPaymentReviewAllowed,
   assertPaymentSetupEditable,
-  buildPaymentReviewEmail,
   buildPaymentReviewMessages,
   canReopenPaidOrderForPaymentReview,
   canResendPaymentDetails,
@@ -81,7 +80,7 @@ test("nextFulfillmentTimestamps stamps delivered when status changes", () => {
   assert.equal(result.fulfillmentUpdatedAt?.toISOString(), now.toISOString());
 });
 
-test("payment approval customer messages no longer attach invoice documents", () => {
+test("payment approval customer messages are internal only", () => {
   const messages = buildPaymentReviewMessages({
     action: "approve",
     orderId: "d1471747-aaaa-bbbb-cccc-1234567890ab",
@@ -90,17 +89,5 @@ test("payment approval customer messages no longer attach invoice documents", ()
     currency: "LKR",
   });
 
-  assert.deepEqual(
-    messages.map((message) => message.type),
-    ["text"],
-  );
-
-  const email = buildPaymentReviewEmail({
-    action: "approve",
-    orderId: "d1471747-aaaa-bbbb-cccc-1234567890ab",
-    paymentReference: "ORD-D1471747",
-    paidAmount: "1060.00",
-    currency: "LKR",
-  });
-  assert.doesNotMatch(email.text, /Invoice link/i);
+  assert.deepEqual(messages, []);
 });
