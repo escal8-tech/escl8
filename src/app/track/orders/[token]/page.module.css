@@ -1,0 +1,414 @@
+.page {
+  min-height: 100vh;
+  background: #f7fafc;
+  color: #111827;
+  font-family: Inter, Montserrat, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.shell {
+  width: min(1040px, 100%);
+  margin: 0 auto;
+  padding: 18px 18px 40px;
+}
+
+.brandBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0 18px;
+}
+
+.brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+}
+
+.logoFallback {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  color: #ffffff;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.businessName {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.2;
+  font-weight: 800;
+}
+
+.businessMeta {
+  margin: 3px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.refreshLink {
+  flex: 0 0 auto;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #111827;
+  border-radius: 999px;
+  padding: 9px 13px;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.hero {
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+}
+
+.heroTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 22px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  color: #0f172a;
+  font-size: clamp(24px, 5vw, 36px);
+  line-height: 1.05;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.subtitle {
+  max-width: 620px;
+  margin: 9px 0 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.statusPill {
+  align-self: start;
+  border-radius: 999px;
+  padding: 9px 12px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: #e5e7eb;
+}
+
+.summaryItem {
+  background: #ffffff;
+  padding: 16px 18px;
+}
+
+.label {
+  margin: 0 0 6px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.value {
+  margin: 0;
+  color: #111827;
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 800;
+}
+
+.mutedValue {
+  margin: 0;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.card {
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
+}
+
+.cardHeader {
+  padding: 18px 18px 0;
+}
+
+.cardTitle {
+  margin: 0;
+  color: #0f172a;
+  font-size: 17px;
+  line-height: 1.3;
+  font-weight: 900;
+}
+
+.cardDescription {
+  margin: 5px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.items {
+  padding: 12px 18px 18px;
+}
+
+.itemRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px 110px;
+  gap: 10px;
+  align-items: start;
+  padding: 12px 0;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.itemRow:last-child {
+  border-bottom: 0;
+}
+
+.itemName {
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.itemMeta {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.amount {
+  color: #111827;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.totalRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.totalAmount {
+  color: #0f172a;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.detailsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 18px 18px;
+}
+
+.detailBox {
+  padding: 13px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fbfdff;
+}
+
+.timeline {
+  padding: 16px 18px 20px;
+}
+
+.timelineItem {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 11px;
+  padding: 0 0 18px;
+}
+
+.timelineItem:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 25px;
+  left: 12px;
+  width: 2px;
+  height: calc(100% - 20px);
+  background: #e2e8f0;
+}
+
+.dot {
+  position: relative;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 3px solid #ffffff;
+  box-shadow: 0 0 0 1px #d1d5db;
+}
+
+.dotDone {
+  background: #10b981;
+}
+
+.dotCurrent {
+  background: #d4a457;
+}
+
+.dotPending {
+  background: #cbd5e1;
+}
+
+.dotIssue {
+  background: #ef4444;
+}
+
+.timelineLabel {
+  margin: 1px 0 3px;
+  color: #0f172a;
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 900;
+}
+
+.timelineDescription {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.timelineAt {
+  margin: 6px 0 0;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.empty {
+  width: min(520px, 100%);
+  margin: 18vh auto 0;
+  padding: 26px;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  background: #ffffff;
+  text-align: center;
+}
+
+.empty h1 {
+  margin: 0 0 8px;
+  color: #0f172a;
+  font-size: 24px;
+}
+
+.empty p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+@media (max-width: 820px) {
+  .shell {
+    padding: 14px 12px 28px;
+  }
+
+  .brandBar {
+    align-items: flex-start;
+  }
+
+  .refreshLink {
+    padding: 8px 11px;
+  }
+
+  .heroTop {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+
+  .statusPill {
+    justify-self: start;
+  }
+
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .itemRow {
+    grid-template-columns: minmax(0, 1fr) 44px 92px;
+  }
+}
+
+@media (max-width: 520px) {
+  .businessMeta {
+    display: none;
+  }
+
+  .summaryGrid,
+  .detailsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .title {
+    font-size: 25px;
+  }
+
+  .itemRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .amount {
+    text-align: left;
+  }
+}

@@ -5,6 +5,7 @@ import {
   buildOrderInvoiceDocumentMessage,
   createOrderInvoiceForOrder,
 } from "@/server/services/orderInvoice";
+import { buildOrderTrackingUrl } from "@/server/services/orderTracking";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -42,11 +43,17 @@ export async function POST(request: Request) {
   }
 
   try {
+    const trackingUrl = buildOrderTrackingUrl({
+      businessId,
+      orderId,
+      fallbackOrigin: request instanceof Request ? new URL(request.url).origin : null,
+    });
     const artifact = await createOrderInvoiceForOrder({
       businessId,
       orderId,
       forceRegenerate,
       deliveryMethod: "whatsapp",
+      trackingUrl,
     });
     if (!artifact) {
       return NextResponse.json({ success: false, error: "Order not found or invoice generation is already in progress." }, { status: 404 });
@@ -55,7 +62,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       artifact,
-      documentMessage: buildOrderInvoiceDocumentMessage({ artifact, language }),
+      trackingUrl,
+      documentMessage: buildOrderInvoiceDocumentMessage({ artifact, language, trackingUrl }),
     });
   } catch (error) {
     return NextResponse.json(

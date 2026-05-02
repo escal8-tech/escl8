@@ -463,7 +463,7 @@ export function extractOrderFulfillmentSeed(input: {
   };
 }
 
-export function buildFulfillmentStatusMessages(input: {
+export function buildFulfillmentStatusMessages(_input: {
   customerName?: string | null;
   orderId: string;
   fulfillmentStatus: OrderFulfillmentStatus;
@@ -473,51 +473,8 @@ export function buildFulfillmentStatusMessages(input: {
   scheduledDeliveryAt?: Date | string | null;
   note?: string | null;
 }): OrderApprovalMessage[] {
-  const ref = String(input.orderId || "").slice(0, 8).toUpperCase();
-  const customerLine = input.customerName ? `Hi ${input.customerName},` : "Hello,";
-  const statusLabel = formatOrderFulfillmentStatus(input.fulfillmentStatus);
-  const lines = [customerLine];
-  if (input.fulfillmentStatus === "on_hold") {
-    lines.push(`Your order ${ref} is on hold while we complete the remaining checks.`);
-  } else if (input.fulfillmentStatus === "queued") {
-    lines.push(`Your order ${ref} is now queued for fulfilment.`);
-  } else if (input.fulfillmentStatus === "preparing") {
-    lines.push(`We have started preparing your order ${ref}.`);
-  } else if (input.fulfillmentStatus === "packed") {
-    lines.push(`Your order ${ref} has been packed and is waiting for courier handoff.`);
-  } else if (input.fulfillmentStatus === "dispatched") {
-    lines.push(`Your order ${ref} has been dispatched.`);
-  } else if (input.fulfillmentStatus === "out_for_delivery") {
-    lines.push(`Your order ${ref} is out for delivery.`);
-  } else if (input.fulfillmentStatus === "delivered") {
-    return [];
-  } else if (input.fulfillmentStatus === "failed_delivery") {
-    lines.push(`We could not complete the delivery for order ${ref} on this attempt.`);
-  } else if (input.fulfillmentStatus === "returned") {
-    lines.push(`Order ${ref} has been marked as returned to the sender.`);
-  } else {
-    lines.push(`Your order ${ref} is now ${statusLabel.toLowerCase()}.`);
-  }
-
-  if (input.courierName) {
-    lines.push(`Courier: ${input.courierName}`);
-  }
-  if (input.trackingNumber) {
-    lines.push(`Tracking number: ${input.trackingNumber}`);
-  }
-  if (input.trackingUrl) {
-    lines.push(`Tracking link: ${input.trackingUrl}`);
-  }
-  if (input.scheduledDeliveryAt) {
-    const dt = new Date(input.scheduledDeliveryAt);
-    if (!Number.isNaN(dt.getTime())) {
-      lines.push(`Scheduled delivery: ${dt.toLocaleString()}`);
-    }
-  }
-  if (input.note) {
-    lines.push(`Note: ${String(input.note).trim()}`);
-  }
-  return [{ type: "text", text: lines.join("\n") }];
+  void _input;
+  return [];
 }
 
 export function buildFulfillmentStatusEmail(input: {
@@ -567,7 +524,7 @@ export function buildManualCollectionMessages(input: {
   const lines = [
     input.customerName ? `Hi ${input.customerName}, we have recorded your payment for order ${ref}.` : `We have recorded your payment for order ${ref}.`,
     input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}.` : null,
-    "We will continue with fulfilment and keep you updated in this chat.",
+    "We will continue with fulfilment. Please use the order tracking link from your invoice for later status checks.",
   ].filter(Boolean);
   return [{ type: "text", text: lines.join("\n") }];
 }
@@ -585,7 +542,7 @@ export function buildManualCollectionEmail(input: {
   const lines = [
     input.paidAmount ? `Amount received: ${input.currency} ${String(input.paidAmount).trim()}` : "",
     "Your order is now confirmed and queued for fulfilment.",
-    "We will email you again when the order is dispatched.",
+    "Please use the order tracking link from your invoice for later status checks.",
   ].filter(Boolean);
   return {
     subject: `Order confirmed: ${ref}`,

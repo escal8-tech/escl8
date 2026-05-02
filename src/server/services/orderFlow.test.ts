@@ -64,11 +64,13 @@ test("buildOrderApprovalMessages uses optional slip wording when payment slip is
   assert.match(String(messages[1]?.text || ""), /also send the payment slip image or pdf/i);
 });
 
-test("buildFulfillmentStatusMessages skips customer notification for delivered updates", () => {
+test("buildFulfillmentStatusMessages keeps all fulfillment updates silent", () => {
   const messages = buildFulfillmentStatusMessages({
     customerName: "Namith",
     orderId: "12345678-aaaa-bbbb-cccc-1234567890ab",
-    fulfillmentStatus: "delivered",
+    fulfillmentStatus: "out_for_delivery",
+    courierName: "Courier",
+    trackingNumber: "TRACK123",
   });
 
   assert.deepEqual(messages, []);
