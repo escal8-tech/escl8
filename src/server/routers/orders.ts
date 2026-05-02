@@ -941,19 +941,21 @@ export const ordersRouter = router({
         const windowState = await getThreadWhatsappWindowState(tx, finalizedOrder.threadId);
         const hasWhatsappRoute = Boolean(contactContext.whatsappIdentityId && sanitizePhoneDigits(contactContext.approvalRecipient));
         const hasEmailRoute = Boolean(contactContext.customerEmail);
-        const deliveryChannel: "whatsapp" | "email" =
-          windowState.whatsappWindowOpen && hasWhatsappRoute
-            ? "whatsapp"
-            : hasEmailRoute
-              ? "email"
-              : hasWhatsappRoute
-                ? "whatsapp"
-                : (() => {
-                    throw new TRPCError({
-                      code: "BAD_REQUEST",
-                      message: "This order is missing both an active WhatsApp route and a customer email address.",
-                    });
-                  })();
+        const deliveryChannel: "whatsapp" | "email" | "none" =
+          input.action === "approve"
+            ? "none"
+            : windowState.whatsappWindowOpen && hasWhatsappRoute
+              ? "whatsapp"
+              : hasEmailRoute
+                ? "email"
+                : hasWhatsappRoute
+                  ? "whatsapp"
+                  : (() => {
+                      throw new TRPCError({
+                        code: "BAD_REQUEST",
+                        message: "This order is missing both an active WhatsApp route and a customer email address.",
+                      });
+                    })();
         const notification = deliveryChannel === "whatsapp"
           ? await enqueueWhatsAppOutboxMessages(tx, {
               businessId: ctx.businessId,
@@ -983,14 +985,14 @@ export const ordersRouter = router({
               whatsappIdentitySource: null,
               idempotencyKeys: [] as string[],
             };
-        const emailNotification = deliveryChannel === "email"
+        const emailNotification = deliveryChannel === "email" && input.action === "reject"
           ? await enqueueEmailOutboxMessages(tx, {
               businessId: ctx.businessId,
               entityType: "order",
               entityId: finalizedOrder.id,
               customerId: finalizedOrder.customerId ?? null,
               recipientEmail: contactContext.customerEmail,
-              source: input.action === "approve" ? "order_payment_approved_email" : "order_payment_rejected_email",
+              source: "order_payment_rejected_email",
               idempotencyBaseKey: `order:${finalizedOrder.id}:payment_review_email:${paymentRow.id}:${input.action}`,
               messages: [
                 buildPaymentReviewEmail({
@@ -1027,7 +1029,7 @@ export const ordersRouter = router({
       let delivery: {
         ok: boolean;
         error: string | null;
-        channel: "whatsapp" | "email";
+        channel: "whatsapp" | "email" | "none";
         recipientSource: string | null;
         whatsappIdentitySource: string | null;
       } = {
@@ -1037,7 +1039,15 @@ export const ordersRouter = router({
         recipientSource: result.notification.recipientSource,
         whatsappIdentitySource: result.notification.whatsappIdentitySource,
       };
-      if (result.deliveryChannel === "whatsapp" && !result.notification.ok) {
+      if (result.deliveryChannel === "none") {
+        delivery = {
+          ok: true,
+          error: null,
+          channel: "none",
+          recipientSource: null,
+          whatsappIdentitySource: null,
+        };
+      } else if (result.deliveryChannel === "whatsapp" && !result.notification.ok) {
         delivery = {
           ok: false,
           error: result.notification.error,
