@@ -20,7 +20,6 @@ import { customers, orderPayments, orders, supportTickets } from "../../../drizz
 import {
   buildOrderApprovalEmail,
   buildOrderApprovalMessages,
-  buildFulfillmentStatusMessages,
   buildManualCollectionMessages,
   buildManualCollectionEmail,
   formatOrderItemsSummary,
@@ -57,6 +56,7 @@ import {
   resolveRefundAmount,
   requiresDispatchData,
 } from "@/server/services/orderWorkflowSupport";
+import { buildOrderTrackingUrl } from "@/server/services/orderTracking";
 import {
   extractCustomerEmail,
   logTicketEvent,
@@ -119,10 +119,15 @@ async function emailManualOrderInvoice(input: {
     };
   }
 
+  const trackingUrl = buildOrderTrackingUrl({
+    businessId: input.businessId,
+    orderId: input.order.id,
+  });
   const artifact = await createOrderInvoiceForOrder({
     businessId: input.businessId,
     orderId: input.order.id,
     deliveryMethod: "email",
+    trackingUrl,
   });
   if (!artifact) {
     return {
@@ -146,6 +151,7 @@ async function emailManualOrderInvoice(input: {
           artifact,
           orderId: input.order.id,
           customerName: input.order.customerName,
+          trackingUrl,
         }),
       ],
     }),
@@ -1360,8 +1366,9 @@ export const ordersRouter = router({
           });
         }
 
-        const shouldNotifyCustomer = Boolean(input.notifyCustomer) && statusChanged && !isStaffManualOrder(updatedOrder);
-        let notification: {
+        // Customers now use the public order tracking link sent with the invoice; fulfillment updates stay internal.
+        const shouldNotifyCustomer = false;
+        const notification: {
           ok: boolean;
           error: string | null;
           recipientSource: string | null;
@@ -1383,45 +1390,6 @@ export const ordersRouter = router({
           error: null as string | null,
           idempotencyKeys: [] as string[],
         };
-        if (shouldNotifyCustomer) {
-          const contactContext = await resolveOrderNotificationContext({
-            businessId: ctx.businessId,
-            customerId: updatedOrder.customerId ?? null,
-            threadId: updatedOrder.threadId ?? null,
-            whatsappIdentityId: updatedOrder.whatsappIdentityId ?? null,
-            customerName: updatedOrder.customerName ?? null,
-            customerEmail: updatedOrder.customerEmail ?? null,
-            customerPhone: updatedOrder.customerPhone ?? null,
-          });
-          if (shouldNotifyCustomer) {
-            notification = await enqueueWhatsAppOutboxMessages(tx, {
-              businessId: ctx.businessId,
-              entityType: "order",
-              entityId: updatedOrder.id,
-              customerId: updatedOrder.customerId ?? null,
-              threadId: contactContext.threadId ?? null,
-              whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
-              recipient: contactContext.approvalRecipient,
-              recipientSource: contactContext.recipientSource,
-              whatsappIdentitySource: contactContext.whatsappIdentitySource,
-              source: "order_fulfillment_update",
-              idempotencyBaseKey: `order:${updatedOrder.id}:fulfillment:${nextFulfillmentStatus}:${String(updatedOrder.updatedAt ?? now.toISOString())}`,
-              messages: input.customerMessage?.trim()
-                ? [{ type: "text", text: input.customerMessage.trim() }]
-                : buildFulfillmentStatusMessages({
-                    customerName: updatedOrder.customerName,
-                    orderId: updatedOrder.id,
-                    fulfillmentStatus: nextFulfillmentStatus,
-                    courierName: nextCourierName,
-                    trackingNumber: nextTrackingNumber,
-                    trackingUrl: nextTrackingUrl,
-                    scheduledDeliveryAt: nextScheduledDeliveryAt,
-                    note: nextFulfillmentStatus === "failed_delivery" ? nextFulfillmentNotes : null,
-                  }),
-            });
-          }
-        }
-
         return {
           orderRow,
           updatedOrder,

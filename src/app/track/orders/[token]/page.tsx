@@ -1,0 +1,232 @@
+/* eslint-disable @next/next/no-img-element */
+import type { CSSProperties } from "react";
+
+import {
+  formatTrackingMoney,
+  getPublicOrderTrackingData,
+} from "@/server/services/orderTracking";
+
+import styles from "./page.module.css";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+function cleanText(value: unknown, fallback = "-"): string {
+  const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
+  return normalized || fallback;
+}
+
+function asNumber(value: unknown): number {
+  const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatDate(value: Date | string | null | undefined): string {
+  if (!value) return "-";
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function orderRef(orderId: string): string {
+  return cleanText(orderId, "ORDER").slice(0, 8).toUpperCase();
+}
+
+function toneClass(tone: "done" | "current" | "pending" | "issue"): string {
+  if (tone === "done") return styles.dotDone;
+  if (tone === "current") return styles.dotCurrent;
+  if (tone === "issue") return styles.dotIssue;
+  return styles.dotPending;
+}
+
+function statusLabel(status: string | null | undefined): string {
+  return cleanText(status, "Pending").replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function MissingTrackingPage() {
+  return (
+    <main className={styles.page}>
+      <section className={styles.empty}>
+        <h1>Order tracking unavailable</h1>
+        <p>This order link is invalid or has expired. Please contact the business if you need help with the order.</p>
+      </section>
+    </main>
+  );
+}
+
+export default async function PublicOrderTrackingPage({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = await params;
+  const data = await getPublicOrderTrackingData(token);
+  if (!data) return <MissingTrackingPage />;
+
+  const { order, business, items, timeline } = data;
+  const primary = business.primaryColor || "#0E1B40";
+  const secondary = business.secondaryColor || "#D4A457";
+  const total = asNumber(order.expectedAmount ?? order.paidAmount)
+    || items.reduce((sum, item) => {
+      const quantity = Math.max(1, asNumber(item.quantity || 1));
+      const lineTotal = asNumber(item.lineTotal);
+      const unitPrice = asNumber(item.unitPrice);
+      return sum + (lineTotal || unitPrice * quantity);
+    }, 0);
+  const statusStyle: CSSProperties = {
+    background: `linear-gradient(135deg, ${primary}, ${secondary})`,
+  };
+  const logoStyle: CSSProperties = { background: primary };
+  const contactLine = [business.address, business.phone, business.email, business.website].filter(Boolean).join(" | ");
+  const deliveryMode = cleanText(order.shippingAddress).toLowerCase() === "pickup"
+    || cleanText(order.deliveryArea).toLowerCase() === "pickup"
+    || cleanText(order.deliveryNotes).toLowerCase().includes("[pickup]")
+    ? "Pickup"
+    : "Delivery";
+
+  return (
+    <main className={styles.page}>
+      <div className={styles.shell}>
+        <header className={styles.brandBar}>
+          <div className={styles.brand}>
+            {business.logoUrl ? (
+              <img className={styles.logo} src={business.logoUrl} alt={`${business.name} logo`} />
+            ) : (
+              <div className={styles.logoFallback} style={logoStyle} aria-hidden="true">
+                {business.name.slice(0, 1).toUpperCase()}
+              </div>
+            )}
+            <div>
+              <h1 className={styles.businessName}>{business.name}</h1>
+              {contactLine ? <p className={styles.businessMeta}>{contactLine}</p> : null}
+            </div>
+          </div>
+          <a className={styles.refreshLink} href="">
+            Refresh
+          </a>
+        </header>
+
+        <section className={styles.hero}>
+          <div className={styles.heroTop}>
+            <div>
+              <p className={styles.eyebrow}>Order tracking</p>
+              <h2 className={styles.title}>Order #{orderRef(order.id)}</h2>
+              <p className={styles.subtitle}>
+                This page updates from the business order system. Check back here for payment approval and dispatch progress.
+              </p>
+            </div>
+            <div className={styles.statusPill} style={statusStyle}>
+              {statusLabel(order.status)}
+            </div>
+          </div>
+
+          <div className={styles.summaryGrid}>
+            <div className={styles.summaryItem}>
+              <p className={styles.label}>Total</p>
+              <p className={styles.value}>{formatTrackingMoney(order.currency, total)}</p>
+            </div>
+            <div className={styles.summaryItem}>
+              <p className={styles.label}>Payment ref</p>
+              <p className={styles.value}>{cleanText(order.paymentReference)}</p>
+            </div>
+            <div className={styles.summaryItem}>
+              <p className={styles.label}>Method</p>
+              <p className={styles.value}>{deliveryMode}</p>
+            </div>
+            <div className={styles.summaryItem}>
+              <p className={styles.label}>Last update</p>
+              <p className={styles.value}>{formatDate(order.updatedAt)}</p>
+            </div>
+          </div>
+        </section>
+
+        <div className={styles.contentGrid}>
+          <div>
+            <section className={styles.card}>
+              <div className={styles.cardHeader}>
+                <h3 className={styles.cardTitle}>Order items</h3>
+                <p className={styles.cardDescription}>Approved items and amounts captured for this order.</p>
+              </div>
+              <div className={styles.items}>
+                {items.length ? (
+                  items.map((item, index) => {
+                    const quantity = Math.max(1, asNumber(item.quantity || 1));
+                    const lineTotal = asNumber(item.lineTotal);
+                    const unitPrice = asNumber(item.unitPrice);
+                    const amount = lineTotal || unitPrice * quantity;
+                    return (
+                      <div className={styles.itemRow} key={`${item.item}-${index}`}>
+                        <div>
+                          <div className={styles.itemName}>{cleanText(item.item, "Order item")}</div>
+                          <div className={styles.itemMeta}>Unit: {unitPrice ? formatTrackingMoney(order.currency, unitPrice) : "-"}</div>
+                        </div>
+                        <div className={styles.itemMeta}>x{quantity}</div>
+                        <div className={styles.amount}>{formatTrackingMoney(order.currency, amount)}</div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className={styles.mutedValue}>No item breakdown is available for this order.</p>
+                )}
+                <div className={styles.totalRow}>
+                  <div>
+                    <p className={styles.label}>Order total</p>
+                    <p className={styles.mutedValue}>Includes any delivery fee captured at checkout.</p>
+                  </div>
+                  <div className={styles.totalAmount}>{formatTrackingMoney(order.currency, total)}</div>
+                </div>
+              </div>
+            </section>
+
+            <section className={styles.card} style={{ marginTop: 18 }}>
+              <div className={styles.cardHeader}>
+                <h3 className={styles.cardTitle}>Customer details</h3>
+                <p className={styles.cardDescription}>Details provided for pickup or delivery.</p>
+              </div>
+              <div className={styles.detailsGrid}>
+                <div className={styles.detailBox}>
+                  <p className={styles.label}>Name</p>
+                  <p className={styles.value}>{cleanText(order.recipientName || order.customerName)}</p>
+                </div>
+                <div className={styles.detailBox}>
+                  <p className={styles.label}>Phone</p>
+                  <p className={styles.value}>{cleanText(order.recipientPhone || order.customerPhone)}</p>
+                </div>
+                <div className={styles.detailBox}>
+                  <p className={styles.label}>Address</p>
+                  <p className={styles.mutedValue}>{cleanText(order.shippingAddress)}</p>
+                </div>
+                <div className={styles.detailBox}>
+                  <p className={styles.label}>Area / notes</p>
+                  <p className={styles.mutedValue}>{cleanText(order.deliveryArea || order.deliveryNotes)}</p>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <aside className={styles.card}>
+            <div className={styles.cardHeader}>
+              <h3 className={styles.cardTitle}>Timeline</h3>
+              <p className={styles.cardDescription}>Payment and fulfillment progress.</p>
+            </div>
+            <div className={styles.timeline}>
+              {timeline.map((item) => (
+                <div className={styles.timelineItem} key={item.key}>
+                  <div className={`${styles.dot} ${toneClass(item.tone)}`} aria-hidden="true" />
+                  <div>
+                    <p className={styles.timelineLabel}>{item.label}</p>
+                    <p className={styles.timelineDescription}>{item.description}</p>
+                    <p className={styles.timelineAt}>{formatDate(item.at)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </aside>
+        </div>
+      </div>
+    </main>
+  );
+}

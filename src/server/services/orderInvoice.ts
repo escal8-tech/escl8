@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
+import { PDFDocument, PDFName, PDFString, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
 
 import { buildPrivateBlobReadUrl, storePrivateFileAtPath } from "@/lib/storage";
 import { businesses, orders } from "../../../drizzle/schema";
@@ -27,7 +27,7 @@ export type OrderInvoiceDocumentMessage = {
   document: {
     link: string;
     filename: string;
-    caption: string;
+    caption?: string;
   };
 };
 
@@ -137,14 +137,6 @@ function resolveLineItems(ticketSnapshot: Record<string, unknown>): NormalizedOr
   return normalizeOrderLineItems(ticketSnapshot);
 }
 
-function invoiceCaption(language: string, invoiceNumber: string): string {
-  const low = String(language || "en").toLowerCase();
-  if (low.startsWith("si") || low.includes("sinhala")) return `Invoice eka menna: ${invoiceNumber}`;
-  if (low.startsWith("ta") || low.includes("tamil")) return `Invoice inaikkappattullathu: ${invoiceNumber}`;
-  if (low === "ms" || low === "bm" || low === "ms-my" || low.includes("bahasa")) return `Invois dilampirkan: ${invoiceNumber}`;
-  return `Invoice attached: ${invoiceNumber}`;
-}
-
 function drawWrappedText(params: {
   page: PDFPage;
   text: string;
@@ -186,11 +178,31 @@ function drawWrappedText(params: {
   return params.y - Math.max(1, finalLines.length) * lineHeight;
 }
 
+function addUrlAnnotation(page: PDFPage, input: { url: string; x: number; y: number; width: number; height: number }) {
+  const url = cleanText(input.url, 2000);
+  if (!url) return;
+  const annotation = page.doc.context.register(
+    page.doc.context.obj({
+      Type: PDFName.of("Annot"),
+      Subtype: PDFName.of("Link"),
+      Rect: [input.x, input.y, input.x + input.width, input.y + input.height],
+      Border: [0, 0, 0],
+      A: {
+        Type: PDFName.of("Action"),
+        S: PDFName.of("URI"),
+        URI: PDFString.of(url),
+      },
+    }),
+  );
+  page.node.addAnnot(annotation);
+}
+
 async function buildOrderInvoicePdf(input: {
   order: OrderRow;
   business: BusinessInvoiceConfig;
   invoiceNumber: string;
   issuedAt: Date;
+  trackingUrl?: string | null;
 }): Promise<Buffer> {
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -273,6 +285,7 @@ async function buildOrderInvoicePdf(input: {
     || deliveryNotes.toLowerCase().includes("[pickup]");
   const orderRef = cleanText(input.order.id.slice(0, 8).toUpperCase(), 30);
   const paymentRef = cleanText(input.order.paymentReference, 120) || "-";
+  const trackingUrl = cleanText(input.trackingUrl, 2000);
 
   page.drawText("Invoice To", { x: 36, y, size: 9, font: fontBold, color: muted });
   page.drawText(customer, { x: 36, y: y - 20, size: 14, font: fontBold, color: text });
@@ -325,6 +338,17 @@ async function buildOrderInvoicePdf(input: {
   page.drawText("Total due", { x: width - 230, y: y - 35, size: 10, font, color: muted });
   page.drawText(formatMoney(currency, total), { x: width - 154, y: y - 36, size: 15, font: fontBold, color: text });
   y -= 92;
+  if (trackingUrl) {
+    ensureSpace(160);
+    page.drawText("Order tracking", { x: 36, y, size: 9, font: fontBold, color: text });
+    const label = trackingUrl.length > 92 ? `${trackingUrl.slice(0, 89)}...` : trackingUrl;
+    const linkY = y - 17;
+    const linkWidth = Math.min(font.widthOfTextAtSize(label, 8.5), width - 72);
+    page.drawText(label, { x: 36, y: linkY, size: 8.5, font, color: secondary });
+    page.drawLine({ start: { x: 36, y: linkY - 2 }, end: { x: 36 + linkWidth, y: linkY - 2 }, thickness: 0.5, color: secondary });
+    addUrlAnnotation(page, { url: trackingUrl, x: 36, y: linkY - 3, width: linkWidth, height: 12 });
+    y -= 38;
+  }
   drawWrappedText({ page, text: customization.footerNote, x: 36, y, maxWidth: width - 72, font, size: 9, color: muted, maxLines: 3 });
   drawFooter();
 
@@ -428,6 +452,7 @@ export async function createOrderInvoiceArtifact(input: {
   order: OrderRow;
   business?: BusinessInvoiceConfig | null;
   issuedAt?: Date;
+  trackingUrl?: string | null;
 }): Promise<OrderInvoiceArtifact> {
   const issuedAt = input.issuedAt ?? new Date();
   const invoiceNumber = cleanText(input.order.invoiceNumber, 100) || makeInvoiceNumber(input.order.id, issuedAt);
@@ -442,6 +467,7 @@ export async function createOrderInvoiceArtifact(input: {
     business,
     invoiceNumber,
     issuedAt,
+    trackingUrl: input.trackingUrl ?? null,
   });
   const containerName = orderInvoiceContainer();
   const stored = await storePrivateFileAtPath({
@@ -466,6 +492,7 @@ export async function createOrderInvoiceForOrder(input: {
   orderId: string;
   forceRegenerate?: boolean;
   deliveryMethod?: "whatsapp" | "email" | null;
+  trackingUrl?: string | null;
 }): Promise<OrderInvoiceArtifact | null> {
   const businessId = cleanText(input.businessId, 160);
   const orderId = cleanText(input.orderId, 160);
@@ -545,6 +572,7 @@ export async function createOrderInvoiceForOrder(input: {
       order,
       business: business ? { id: business.id, name: business.name, settings: business.settings ?? null } : null,
       issuedAt: now,
+      trackingUrl: input.trackingUrl ?? null,
     });
     await markInvoiceGenerated({
       businessId,
@@ -568,13 +596,13 @@ export async function createOrderInvoiceForOrder(input: {
 export function buildOrderInvoiceDocumentMessage(input: {
   artifact: OrderInvoiceArtifact;
   language?: string | null;
+  trackingUrl?: string | null;
 }): OrderInvoiceDocumentMessage {
   return {
     type: "document",
     document: {
       link: input.artifact.url,
       filename: input.artifact.fileName,
-      caption: invoiceCaption(input.language || "en", input.artifact.invoiceNumber),
     },
   };
 }
@@ -583,15 +611,18 @@ export function buildOrderInvoiceEmailMessage(input: {
   artifact: OrderInvoiceArtifact;
   orderId: string;
   customerName?: string | null;
+  trackingUrl?: string | null;
 }): OrderInvoiceEmailMessage {
   const customerName = cleanText(input.customerName, 120);
   const greeting = customerName ? `Hi ${customerName},` : "Hi,";
   const subject = `Invoice ${input.artifact.invoiceNumber}`;
   const invoiceUrl = input.artifact.url;
+  const trackingUrl = cleanText(input.trackingUrl, 2000);
   const safeGreeting = escapeHtml(greeting);
   const safeOrderRef = escapeHtml(input.orderId.slice(0, 8).toUpperCase());
   const safeInvoiceNumber = escapeHtml(input.artifact.invoiceNumber);
   const safeInvoiceUrl = escapeHtml(invoiceUrl);
+  const safeTrackingUrl = escapeHtml(trackingUrl);
   const text = [
     greeting,
     "",
@@ -599,15 +630,17 @@ export function buildOrderInvoiceEmailMessage(input: {
     "",
     `Invoice: ${input.artifact.invoiceNumber}`,
     `Download: ${invoiceUrl}`,
+    trackingUrl ? `Track order: ${trackingUrl}` : "",
     "",
     "Thank you.",
-  ].join("\n");
+  ].filter((line) => line !== "").join("\n");
   const html = `
     <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
       <p>${safeGreeting}</p>
       <p>Your invoice for order <strong>${safeOrderRef}</strong> is ready.</p>
       <p><strong>Invoice:</strong> ${safeInvoiceNumber}</p>
       <p><a href="${safeInvoiceUrl}" style="color:#0f766e">Download invoice PDF</a></p>
+      ${trackingUrl ? `<p><a href="${safeTrackingUrl}" style="color:#0f766e">Track your order</a></p>` : ""}
       <p>Thank you.</p>
     </div>
   `.trim();
