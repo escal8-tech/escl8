@@ -42,6 +42,13 @@ function toneClass(tone: "done" | "current" | "pending" | "issue"): string {
   return styles.dotPending;
 }
 
+function stepClass(tone: "done" | "current" | "pending" | "issue"): string {
+  if (tone === "done") return styles.stepDone;
+  if (tone === "current") return styles.stepCurrent;
+  if (tone === "issue") return styles.stepIssue;
+  return styles.stepPending;
+}
+
 function statusLabel(status: string | null | undefined): string {
   return cleanText(status, "Pending").replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
@@ -69,6 +76,10 @@ export default async function PublicOrderTrackingPage({
   const { order, business, items, timeline } = data;
   const primary = business.primaryColor || "#0E1B40";
   const secondary = business.secondaryColor || "#D4A457";
+  const pageStyle = {
+    "--brand-primary": primary,
+    "--brand-secondary": secondary,
+  } as CSSProperties & Record<string, string>;
   const total = asNumber(order.expectedAmount ?? order.paidAmount)
     || items.reduce((sum, item) => {
       const quantity = Math.max(1, asNumber(item.quantity || 1));
@@ -76,9 +87,6 @@ export default async function PublicOrderTrackingPage({
       const unitPrice = asNumber(item.unitPrice);
       return sum + (lineTotal || unitPrice * quantity);
     }, 0);
-  const statusStyle: CSSProperties = {
-    background: `linear-gradient(135deg, ${primary}, ${secondary})`,
-  };
   const logoStyle: CSSProperties = { background: primary };
   const contactLine = [business.address, business.phone, business.email, business.website].filter(Boolean).join(" | ");
   const deliveryMode = cleanText(order.shippingAddress).toLowerCase() === "pickup"
@@ -86,9 +94,12 @@ export default async function PublicOrderTrackingPage({
     || cleanText(order.deliveryNotes).toLowerCase().includes("[pickup]")
     ? "Pickup"
     : "Delivery";
+  const currentStep = timeline.find((item) => item.tone === "current") ?? timeline.find((item) => item.tone === "issue") ?? timeline[timeline.length - 1];
+  const completedSteps = timeline.filter((item) => item.tone === "done").length;
+  const progress = Math.max(12, Math.min(100, Math.round((completedSteps / Math.max(1, timeline.length)) * 100)));
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} style={pageStyle}>
       <div className={styles.shell}>
         <header className={styles.brandBar}>
           <div className={styles.brand}>
@@ -104,7 +115,7 @@ export default async function PublicOrderTrackingPage({
               {contactLine ? <p className={styles.businessMeta}>{contactLine}</p> : null}
             </div>
           </div>
-          <a className={styles.refreshLink} href="">
+          <a className={styles.refreshLink} href={`/track/orders/${encodeURIComponent(token)}`}>
             Refresh
           </a>
         </header>
@@ -115,11 +126,20 @@ export default async function PublicOrderTrackingPage({
               <p className={styles.eyebrow}>Order tracking</p>
               <h2 className={styles.title}>Order #{orderRef(order.id)}</h2>
               <p className={styles.subtitle}>
-                This page updates from the business order system. Check back here for payment approval and dispatch progress.
+                {currentStep?.label ? `${currentStep.label}. ` : ""}Your live order status appears here as the team processes it.
               </p>
             </div>
-            <div className={styles.statusPill} style={statusStyle}>
+            <div className={styles.statusPill}>
               {statusLabel(order.status)}
+            </div>
+          </div>
+          <div className={styles.progressWrap} aria-label={`Order progress ${progress}%`}>
+            <div className={styles.progressMeta}>
+              <span>Progress</span>
+              <strong>{completedSteps}/{timeline.length}</strong>
+            </div>
+            <div className={styles.progressTrack}>
+              <div className={styles.progressFill} style={{ width: `${progress}%` }} />
             </div>
           </div>
 
@@ -211,6 +231,13 @@ export default async function PublicOrderTrackingPage({
             <div className={styles.cardHeader}>
               <h3 className={styles.cardTitle}>Timeline</h3>
               <p className={styles.cardDescription}>Payment and fulfillment progress.</p>
+            </div>
+            <div className={styles.stepStrip}>
+              {timeline.map((item, index) => (
+                <div className={`${styles.stepChip} ${stepClass(item.tone)}`} key={`chip-${item.key}`} title={item.label}>
+                  {index + 1}
+                </div>
+              ))}
             </div>
             <div className={styles.timeline}>
               {timeline.map((item) => (

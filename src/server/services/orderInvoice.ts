@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { PDFDocument, PDFName, PDFString, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
+import { PDFDocument, PDFName, PDFString, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
 
 import { buildPrivateBlobReadUrl, storePrivateFileAtPath } from "@/lib/storage";
 import { businesses, orders } from "../../../drizzle/schema";
@@ -46,6 +46,9 @@ type BusinessInvoiceConfig = {
 
 type InvoiceCustomization = {
   businessName: string;
+  logoBlobPath: string;
+  logoContainer: string;
+  logoUrl: string;
   primaryColor: string;
   secondaryColor: string;
   address: string;
@@ -100,6 +103,9 @@ function normalizeCustomization(settings: Record<string, unknown> | null, busine
     : asRecord(root.branding);
   return {
     businessName: cleanText(customization.businessName ?? businessName ?? "Business", 120) || "Business",
+    logoBlobPath: cleanText(customization.logoBlobPath ?? customization.logo_blob_path, 1024),
+    logoContainer: cleanText(customization.logoContainer ?? customization.logo_container, 80),
+    logoUrl: cleanText(customization.logoUrl ?? customization.logo_url, 1200),
     primaryColor: normalizeHex(customization.primaryColor ?? customization.primary_color, DEFAULT_PRIMARY),
     secondaryColor: normalizeHex(customization.secondaryColor ?? customization.secondary_color, DEFAULT_SECONDARY),
     address: cleanText(customization.address, 300),
@@ -197,6 +203,27 @@ function addUrlAnnotation(page: PDFPage, input: { url: string; x: number; y: num
   page.node.addAnnot(annotation);
 }
 
+async function loadInvoiceLogo(pdf: PDFDocument, customization: InvoiceCustomization): Promise<{ image: PDFImage; width: number; height: number } | null> {
+  const logoUrl = customization.logoBlobPath
+    ? buildPrivateBlobReadUrl(customization.logoBlobPath, LONG_READ_TTL_HOURS, customization.logoContainer || undefined)
+    : customization.logoUrl;
+  const url = cleanText(logoUrl, 2000);
+  if (!url) return null;
+
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) return null;
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const image = contentType.includes("png") || url.toLowerCase().includes(".png")
+      ? await pdf.embedPng(bytes)
+      : await pdf.embedJpg(bytes);
+    return { image, width: image.width, height: image.height };
+  } catch {
+    return null;
+  }
+}
+
 async function buildOrderInvoicePdf(input: {
   order: OrderRow;
   business: BusinessInvoiceConfig;
@@ -209,6 +236,7 @@ async function buildOrderInvoicePdf(input: {
   const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const pageSize: [number, number] = [595.28, 841.89];
   const customization = normalizeCustomization(input.business.settings, input.business.name);
+  const logo = await loadInvoiceLogo(pdf, customization);
   const primary = colorFromHex(customization.primaryColor);
   const secondary = colorFromHex(customization.secondaryColor, DEFAULT_SECONDARY);
   const text = colorFromHex("#111827");
@@ -240,10 +268,24 @@ async function buildOrderInvoicePdf(input: {
     const height = page.getHeight();
     page.drawRectangle({ x: 0, y: height - 12, width, height: 12, color: primary });
     page.drawRectangle({ x: width * 0.68, y: height - 12, width: width * 0.32, height: 12, color: secondary });
-    page.drawText(customization.businessName, { x: 36, y: height - 70, size: 20, font: fontBold, color: text });
+    const brandTextX = logo ? 120 : 36;
+    if (logo) {
+      const maxLogoWidth = 70;
+      const maxLogoHeight = 54;
+      const scale = Math.min(maxLogoWidth / logo.width, maxLogoHeight / logo.height, 1);
+      const logoWidth = logo.width * scale;
+      const logoHeight = logo.height * scale;
+      page.drawImage(logo.image, {
+        x: 36,
+        y: height - 100,
+        width: logoWidth,
+        height: logoHeight,
+      });
+    }
+    page.drawText(customization.businessName, { x: brandTextX, y: height - 70, size: logo ? 22 : 20, font: fontBold, color: text });
     const contact = [customization.address, customization.phone, customization.email, customization.website].filter(Boolean).join(" | ");
     if (contact) {
-      drawWrappedText({ page, text: contact, x: 36, y: height - 90, maxWidth: 300, font, size: 8.5, color: muted, maxLines: 2 });
+      drawWrappedText({ page, text: contact, x: brandTextX, y: height - 91, maxWidth: logo ? 270 : 300, font, size: 8.5, color: muted, maxLines: 2 });
     }
     page.drawText("INVOICE", { x: width - 144, y: height - 62, size: 19, font: fontBold, color: text });
     page.drawText(input.invoiceNumber, { x: width - 190, y: height - 82, size: 10, font: fontBold, color: text });
