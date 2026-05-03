@@ -53,6 +53,11 @@ function statusLabel(status: string | null | undefined): string {
   return cleanText(status, "Pending").replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function isDeliveryFeeItem(value: unknown): boolean {
+  const label = cleanText(value, "").toLowerCase();
+  return /^(delivery|delivery fee|shipping|shipping fee|courier|courier fee)$/.test(label);
+}
+
 function MissingTrackingPage() {
   return (
     <main className={styles.page}>
@@ -98,6 +103,14 @@ export default async function PublicOrderTrackingPage({
   const currentStep = timeline.find((item) => item.tone === "current") ?? timeline.find((item) => item.tone === "issue") ?? timeline[timeline.length - 1];
   const completedSteps = timeline.filter((item) => item.tone === "done").length;
   const progress = Math.max(12, Math.min(100, Math.round((completedSteps / Math.max(1, timeline.length)) * 100)));
+  const deliveryFeeItems = items.filter((item) => isDeliveryFeeItem(item.item));
+  const productItems = items.filter((item) => !isDeliveryFeeItem(item.item));
+  const deliveryFee = deliveryFeeItems.reduce((sum, item) => {
+    const quantity = Math.max(1, asNumber(item.quantity || 1));
+    const lineTotal = asNumber(item.lineTotal);
+    const unitPrice = asNumber(item.unitPrice);
+    return sum + (lineTotal || unitPrice * quantity);
+  }, 0);
 
   return (
     <main className={styles.page} style={pageStyle}>
@@ -116,9 +129,6 @@ export default async function PublicOrderTrackingPage({
               {contactLine ? <p className={styles.businessMeta}>{contactLine}</p> : null}
             </div>
           </div>
-          <a className={styles.refreshLink} href={`/track/orders/${encodeURIComponent(token)}`}>
-            Refresh
-          </a>
         </header>
 
         <section className={styles.hero}>
@@ -172,8 +182,8 @@ export default async function PublicOrderTrackingPage({
                 <p className={styles.cardDescription}>Approved items and amounts captured for this order.</p>
               </div>
               <div className={styles.items}>
-                {items.length ? (
-                  items.map((item, index) => {
+                {productItems.length ? (
+                  productItems.map((item, index) => {
                     const quantity = Math.max(1, asNumber(item.quantity || 1));
                     const lineTotal = asNumber(item.lineTotal);
                     const unitPrice = asNumber(item.unitPrice);
@@ -192,6 +202,19 @@ export default async function PublicOrderTrackingPage({
                 ) : (
                   <p className={styles.mutedValue}>No item breakdown is available for this order.</p>
                 )}
+                {deliveryFeeItems.length ? (
+                  <div className={styles.feeRow}>
+                    <div>
+                      <p className={styles.feeLabel}>Delivery fee</p>
+                      <p className={styles.feeMeta}>
+                        {deliveryFee > 0 ? "Added to this order at checkout." : "Free delivery was applied to this order."}
+                      </p>
+                    </div>
+                    <div className={styles.feeAmount}>
+                      {deliveryFee > 0 ? formatTrackingMoney(order.currency, deliveryFee) : "Free"}
+                    </div>
+                  </div>
+                ) : null}
                 <div className={styles.totalRow}>
                   <div>
                     <p className={styles.label}>Order total</p>
@@ -242,6 +265,13 @@ export default async function PublicOrderTrackingPage({
             </div>
           </aside>
         </div>
+
+        <footer className={styles.poweredFooter}>
+          <a className={styles.poweredLink} href="https://www.escal8.tech" target="_blank" rel="noreferrer">
+            <img className={styles.poweredLogo} src="/landing/nav-infinity-crop.png" alt="" aria-hidden="true" />
+            <span>by Escalate</span>
+          </a>
+        </footer>
       </div>
     </main>
   );

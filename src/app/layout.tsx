@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Montserrat, Catamaran } from "next/font/google";
+import { Montserrat, Catamaran, Inter } from "next/font/google";
 import TopNavSwitcher from "../components/TopNavSwitcher";
 import FooterSwitcher from "@/components/FooterSwitcher";
 import SentryTestButton from "@/components/SentryTestButton";
@@ -17,6 +17,11 @@ const catamaran = Catamaran({
   variable: "--font-catamaran",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+});
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
 });
 
 
@@ -41,7 +46,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${montserrat.variable} ${catamaran.variable}`}>
+      <body className={`${montserrat.variable} ${catamaran.variable} ${inter.variable}`}>
         <TRPCProvider>
           <ToastProvider>
             <TopNavSwitcher />
