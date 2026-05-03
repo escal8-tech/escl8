@@ -74,6 +74,7 @@ export default async function PublicOrderTrackingPage({
   if (!data) return <MissingTrackingPage />;
 
   const { order, business, items, timeline } = data;
+  const publicRef = cleanText(order.paymentReference).replace(/^ORD[-_\s]*/i, "") || orderRef(order.id);
   const primary = business.primaryColor || "#0E1B40";
   const secondary = business.secondaryColor || "#D4A457";
   const pageStyle = {
@@ -124,7 +125,7 @@ export default async function PublicOrderTrackingPage({
           <div className={styles.heroTop}>
             <div>
               <p className={styles.eyebrow}>Order tracking</p>
-              <h2 className={styles.title}>Order #{orderRef(order.id)}</h2>
+              <h2 className={styles.title}>Order #{publicRef}</h2>
               <p className={styles.subtitle}>
                 {currentStep?.label ? `${currentStep.label}. ` : ""}Your live order status appears here as the team processes it.
               </p>
@@ -203,25 +204,13 @@ export default async function PublicOrderTrackingPage({
 
             <section className={styles.card} style={{ marginTop: 18 }}>
               <div className={styles.cardHeader}>
-                <h3 className={styles.cardTitle}>Customer details</h3>
-                <p className={styles.cardDescription}>Details provided for pickup or delivery.</p>
+                <h3 className={styles.cardTitle}>Customer</h3>
+                <p className={styles.cardDescription}>Only non-sensitive order identity is shown on this public page.</p>
               </div>
               <div className={styles.detailsGrid}>
                 <div className={styles.detailBox}>
                   <p className={styles.label}>Name</p>
                   <p className={styles.value}>{cleanText(order.recipientName || order.customerName)}</p>
-                </div>
-                <div className={styles.detailBox}>
-                  <p className={styles.label}>Phone</p>
-                  <p className={styles.value}>{cleanText(order.recipientPhone || order.customerPhone)}</p>
-                </div>
-                <div className={styles.detailBox}>
-                  <p className={styles.label}>Address</p>
-                  <p className={styles.mutedValue}>{cleanText(order.shippingAddress)}</p>
-                </div>
-                <div className={styles.detailBox}>
-                  <p className={styles.label}>Area / notes</p>
-                  <p className={styles.mutedValue}>{cleanText(order.deliveryArea || order.deliveryNotes)}</p>
                 </div>
               </div>
             </section>
