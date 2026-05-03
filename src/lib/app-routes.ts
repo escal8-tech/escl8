@@ -20,6 +20,10 @@ export const APP_PROTECTED_ROUTE_PREFIXES = [
   "/tickets",
 ] as const;
 
+export const STANDALONE_PUBLIC_ROUTE_PREFIXES = [
+  "/track/orders",
+] as const;
+
 export function normalizeAppPath(pathname?: string | null): string {
   const raw = String(pathname || "").trim();
   if (!raw || raw === "/") return APP_LOGIN_ROUTE;
@@ -40,6 +44,13 @@ export function isAppPath(pathname?: string | null): boolean {
   const normalized = normalizeAppPath(pathname);
   if (isAppAuthPath(normalized)) return true;
   return APP_PROTECTED_ROUTE_PREFIXES.some(
+    (prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`),
+  );
+}
+
+export function isStandalonePublicPath(pathname?: string | null): boolean {
+  const normalized = normalizeAppPath(pathname);
+  return STANDALONE_PUBLIC_ROUTE_PREFIXES.some(
     (prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`),
   );
 }

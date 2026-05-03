@@ -1,24 +1,30 @@
 .page {
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--brand-secondary, #d4a457) 18%, transparent), transparent 34rem),
     linear-gradient(180deg, #ffffff 0%, #f7fafc 46%, #eef4f8 100%);
   color: #101827;
-  font-family: Inter, Montserrat, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-inter), Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .shell {
   width: min(1120px, 100%);
+  max-width: 100%;
   margin: 0 auto;
   padding: 18px 18px 44px;
+  box-sizing: border-box;
 }
 
 .brandBar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 16px;
-  padding: 4px 0 18px;
+  min-width: 0;
+  padding: 2px 0 18px;
 }
 
 .brand {
@@ -29,11 +35,11 @@
 }
 
 .logo {
-  width: 64px;
-  height: 64px;
+  width: 88px;
+  height: 88px;
   flex: 0 0 auto;
   object-fit: contain;
-  border-radius: 18px;
+  border-radius: 22px;
   background: #ffffff;
   border: 1px solid rgba(15, 23, 42, 0.1);
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
@@ -42,12 +48,12 @@
 .logoFallback {
   display: grid;
   place-items: center;
-  width: 64px;
-  height: 64px;
+  width: 88px;
+  height: 88px;
   flex: 0 0 auto;
-  border-radius: 18px;
+  border-radius: 22px;
   color: #ffffff;
-  font-size: 24px;
+  font-size: 32px;
   font-weight: 900;
   letter-spacing: 0;
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
@@ -59,6 +65,7 @@
   line-height: 1.15;
   font-weight: 900;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 
 .businessMeta {
@@ -67,28 +74,12 @@
   color: #64748b;
   font-size: 12px;
   line-height: 1.45;
-}
-
-.refreshLink {
-  flex: 0 0 auto;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: rgba(255, 255, 255, 0.88);
-  color: #0f172a;
-  border-radius: 999px;
-  padding: 10px 14px;
-  font-size: 13px;
-  font-weight: 800;
-  text-decoration: none;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-}
-
-.refreshLink:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--brand-secondary, #d4a457) 42%, transparent);
-  outline-offset: 3px;
+  overflow-wrap: anywhere;
 }
 
 .hero {
   overflow: hidden;
+  max-width: 100%;
   border: 1px solid rgba(15, 23, 42, 0.09);
   border-radius: 26px;
   background: rgba(255, 255, 255, 0.94);
@@ -119,6 +110,7 @@
   line-height: 1.02;
   font-weight: 950;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 
 .subtitle {
@@ -224,11 +216,49 @@
   align-items: start;
 }
 
+.contentGrid > * {
+  min-width: 0;
+}
+
 .card {
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid rgba(15, 23, 42, 0.09);
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 18px 44px rgba(15, 23, 42, 0.07);
+}
+
+.poweredFooter {
+  display: flex;
+  justify-content: center;
+  padding: 22px 0 0;
+}
+
+.poweredLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #64748b;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 850;
+  text-decoration: none;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.poweredLink:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand-secondary, #d4a457) 42%, transparent);
+  outline-offset: 3px;
+}
+
+.poweredLogo {
+  width: 28px;
+  height: 16px;
+  object-fit: contain;
 }
 
 .cardHeader {
@@ -267,6 +297,10 @@
   border-bottom: 0;
 }
 
+.itemRow:has(+ .feeRow) {
+  border-bottom: 0;
+}
+
 .itemName {
   color: #111827;
   font-size: 14px;
@@ -285,6 +319,40 @@
   text-align: right;
   font-size: 14px;
   font-weight: 900;
+}
+
+.feeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 14px 0;
+  border-top: 1px solid #edf2f7;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.feeLabel {
+  margin: 0;
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 900;
+}
+
+.feeMeta {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.feeAmount {
+  color: #111827;
+  text-align: right;
+  font-size: 15px;
+  font-weight: 950;
+  white-space: nowrap;
 }
 
 .totalRow {
@@ -462,9 +530,9 @@
 
   .logo,
   .logoFallback {
-    width: 56px;
-    height: 56px;
-    border-radius: 16px;
+    width: 78px;
+    height: 78px;
+    border-radius: 20px;
   }
 
   .businessMeta {
@@ -494,16 +562,26 @@
 }
 
 @media (max-width: 540px) {
+  .page {
+    min-width: 0;
+  }
+
+  .shell {
+    padding: 12px 10px 28px;
+  }
+
   .brandBar {
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .brand {
     gap: 10px;
   }
 
   .businessMeta {
     display: none;
-  }
-
-  .refreshLink {
-    padding: 9px 12px;
   }
 
   .summaryGrid,
@@ -513,6 +591,7 @@
 
   .title {
     font-size: 28px;
+    line-height: 1.06;
   }
 
   .itemRow {
@@ -520,6 +599,15 @@
   }
 
   .amount {
+    text-align: left;
+  }
+
+  .feeRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .feeAmount {
     text-align: left;
   }
 

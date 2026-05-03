@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import Footer from "@/components/Footer";
-import { isAppPath } from "@/lib/app-routes";
+import { isAppPath, isStandalonePublicPath } from "@/lib/app-routes";
 import { usePathname } from "next/navigation";
 
 export default function FooterSwitcher() {
@@ -9,6 +9,7 @@ export default function FooterSwitcher() {
   if (
     !pathname ||
     isAppPath(pathname) ||
+    isStandalonePublicPath(pathname) ||
     pathname === "/pricing" ||
     pathname === "/faq" ||
     pathname === "/privacy" ||
