@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 
 import { buildPrivateBlobReadUrl } from "@/lib/storage";
 import { normalizeCustomizationSettings } from "@/lib/customization-settings";
@@ -49,6 +49,12 @@ export type PublicOrderTrackingData = {
   }>;
 };
 
+type ParsedTrackingToken = {
+  businessId: string;
+  orderId: string;
+  publicReference?: string;
+};
+
 function cleanText(value: unknown, limit = 500): string {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
 }
@@ -57,12 +63,23 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function base64UrlJson(value: unknown): string {
-  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
-}
-
 function signPayload(payload: string, secret: string): string {
   return crypto.createHmac("sha256", secret).update(payload).digest("base64url");
+}
+
+function shortSignature(payload: string, secret: string): string {
+  return signPayload(payload, secret).slice(0, 22);
+}
+
+function safeTimingEqual(actual: string, expected: string): boolean {
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function publicOrderReference(value: unknown): string {
+  const raw = cleanText(value, 80).replace(/^ORD[-_\s]+/i, "");
+  return raw.replace(/[^A-Za-z0-9-]/g, "").slice(0, 24).toUpperCase();
 }
 
 function trackingSecret(): string {
@@ -82,36 +99,74 @@ function trackingSecret(): string {
   return secret;
 }
 
+function normalizePublicBaseUrl(value: unknown): string {
+  const raw = cleanText(value, 300).replace(/\/+$/, "");
+  if (!raw) return "";
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return "";
+  }
+  const host = url.hostname.toLowerCase();
+  if (
+    host === "0.0.0.0" ||
+    host === "127.0.0.1" ||
+    host === "localhost" ||
+    host === "::" ||
+    host === "[::]" ||
+    host.endsWith(".local")
+  ) {
+    return "";
+  }
+  if (!["https:", "http:"].includes(url.protocol)) return "";
+  return `${url.protocol}//${url.host}`;
+}
+
 function trackingBaseUrl(fallbackOrigin?: string | null): string {
-  const raw = String(
-    process.env.ORDER_TRACKING_BASE_URL ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.ESCL8_APP_BASE_URL ||
-      process.env.APP_BASE_URL ||
-      process.env.NEXTAUTH_URL ||
-      process.env.PUBLIC_APP_URL ||
-      fallbackOrigin ||
-      "",
-  ).trim();
-  return raw.replace(/\/+$/, "");
+  const candidates = [
+    process.env.ORDER_TRACKING_BASE_URL,
+    process.env.CONCIERGE_PUBLIC_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.ESCL8_PUBLIC_APP_URL,
+    process.env.ESCL8_APP_BASE_URL,
+    process.env.APP_BASE_URL,
+    process.env.NEXTAUTH_URL,
+    process.env.PUBLIC_APP_URL,
+    fallbackOrigin,
+    "https://concierge.escal8.tech",
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizePublicBaseUrl(candidate);
+    if (normalized) return normalized;
+  }
+  return "";
 }
 
 export function createOrderTrackingToken(input: { businessId: string; orderId: string }): string {
-  const payload = base64UrlJson({
-    v: 1,
-    b: cleanText(input.businessId, 160),
-    o: cleanText(input.orderId, 160),
-  } satisfies TrackingPayload);
-  return `${payload}.${signPayload(payload, trackingSecret())}`;
+  return publicOrderReference(input.orderId.slice(0, 8)) || cleanText(input.orderId, 160);
 }
 
-export function parseOrderTrackingToken(token: string): { businessId: string; orderId: string } | null {
-  const [payload, signature, extra] = String(token || "").trim().split(".");
+export function parseOrderTrackingToken(token: string): ParsedTrackingToken | null {
+  const rawToken = String(token || "").trim();
+  const compactMatch = /^o2_([A-Za-z0-9_-]{4,220})_([A-Za-z0-9_-]{22})$/.exec(rawToken);
+  if (compactMatch) {
+    const payload = `o2_${compactMatch[1]}`;
+    const expected = shortSignature(payload, trackingSecret());
+    if (!safeTimingEqual(compactMatch[2], expected)) return null;
+    const orderId = cleanText(Buffer.from(compactMatch[1], "base64url").toString("utf8"), 160);
+    return orderId ? { businessId: "", orderId } : null;
+  }
+
+  if (!rawToken.includes(".")) {
+    const reference = publicOrderReference(rawToken);
+    return reference ? { businessId: "", orderId: "", publicReference: reference } : null;
+  }
+
+  const [payload, signature, extra] = rawToken.split(".");
   if (!payload || !signature || extra) return null;
   const expected = signPayload(payload, trackingSecret());
-  const actualBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(expected);
-  if (actualBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(actualBuffer, expectedBuffer)) {
+  if (!safeTimingEqual(signature, expected)) {
     return null;
   }
 
@@ -224,13 +279,24 @@ function buildTimeline(
 export async function getPublicOrderTrackingData(token: string): Promise<PublicOrderTrackingData | null> {
   const parsed = parseOrderTrackingToken(token);
   if (!parsed) return null;
+  const reference = publicOrderReference(parsed.publicReference);
+  const orderPredicate = reference
+    ? or(
+        eq(orders.paymentReference, reference),
+        eq(orders.paymentReference, `ORD-${reference}`),
+        sql`upper(left(${orders.id}, 8)) = ${reference}`,
+      )
+    : parsed.businessId
+      ? and(eq(orders.businessId, parsed.businessId), eq(orders.id, parsed.orderId))
+      : eq(orders.id, parsed.orderId);
 
   const [order] = await db
     .select()
     .from(orders)
-    .where(and(eq(orders.businessId, parsed.businessId), eq(orders.id, parsed.orderId)))
+    .where(orderPredicate)
     .limit(1);
   if (!order) return null;
+  const businessId = cleanText(order.businessId, 160);
 
   const [business] = await db
     .select({
@@ -239,7 +305,7 @@ export async function getPublicOrderTrackingData(token: string): Promise<PublicO
       settings: businesses.settings,
     })
     .from(businesses)
-    .where(eq(businesses.id, parsed.businessId))
+    .where(eq(businesses.id, businessId))
     .limit(1);
   if (!business) return null;
 
@@ -247,13 +313,13 @@ export async function getPublicOrderTrackingData(token: string): Promise<PublicO
     db
       .select()
       .from(orderPayments)
-      .where(and(eq(orderPayments.businessId, parsed.businessId), eq(orderPayments.orderId, parsed.orderId)))
+      .where(and(eq(orderPayments.businessId, businessId), eq(orderPayments.orderId, parsed.orderId)))
       .orderBy(desc(orderPayments.createdAt))
       .limit(1),
     db
       .select()
       .from(orderEvents)
-      .where(and(eq(orderEvents.businessId, parsed.businessId), eq(orderEvents.orderId, parsed.orderId)))
+      .where(and(eq(orderEvents.businessId, businessId), eq(orderEvents.orderId, parsed.orderId)))
       .orderBy(desc(orderEvents.createdAt))
       .limit(12),
   ]);
