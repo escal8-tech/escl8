@@ -184,6 +184,26 @@ function drawWrappedText(params: {
   return params.y - Math.max(1, finalLines.length) * lineHeight;
 }
 
+function drawRightAlignedText(params: {
+  page: PDFPage;
+  text: string;
+  rightX: number;
+  y: number;
+  size: number;
+  font: PDFFont;
+  color: RGB;
+}) {
+  const value = cleanText(params.text, 500);
+  const width = params.font.widthOfTextAtSize(value, params.size);
+  params.page.drawText(value, {
+    x: params.rightX - width,
+    y: params.y,
+    size: params.size,
+    font: params.font,
+    color: params.color,
+  });
+}
+
 function addUrlAnnotation(page: PDFPage, input: { url: string; x: number; y: number; width: number; height: number }) {
   const url = cleanText(input.url, 2000);
   if (!url) return;
@@ -287,10 +307,13 @@ async function buildOrderInvoicePdf(input: {
     if (contact) {
       drawWrappedText({ page, text: contact, x: brandTextX, y: height - 91, maxWidth: logo ? 270 : 300, font, size: 8.5, color: muted, maxLines: 2 });
     }
-    page.drawText("INVOICE", { x: width - 144, y: height - 62, size: 19, font: fontBold, color: text });
-    page.drawText(input.invoiceNumber, { x: width - 190, y: height - 82, size: 10, font: fontBold, color: text });
-    page.drawText(input.issuedAt.toLocaleDateString("en-GB"), { x: width - 123, y: height - 98, size: 9, font, color: muted });
-    if (pageNo > 1) page.drawText(`Page ${pageNo}`, { x: width - 74, y: height - 114, size: 8, font, color: muted });
+    const rightMargin = width - 36;
+    drawRightAlignedText({ page, text: "INVOICE", rightX: rightMargin, y: height - 62, size: 19, font: fontBold, color: text });
+    drawRightAlignedText({ page, text: input.invoiceNumber, rightX: rightMargin, y: height - 82, size: 10, font: fontBold, color: text });
+    drawRightAlignedText({ page, text: input.issuedAt.toLocaleDateString("en-GB"), rightX: rightMargin, y: height - 98, size: 9, font, color: muted });
+    if (pageNo > 1) {
+      drawRightAlignedText({ page, text: `Page ${pageNo}`, rightX: rightMargin, y: height - 114, size: 8, font, color: muted });
+    }
     page.drawLine({ start: { x: 36, y: height - 130 }, end: { x: width - 36, y: height - 130 }, thickness: 1, color: border });
     y = height - 158;
   }
@@ -347,10 +370,26 @@ async function buildOrderInvoicePdf(input: {
       maxLines: 3,
     });
   }
-  page.drawText(`Order reference: ${orderRef}`, { x: width / 2 + 12, y, size: 9, font, color: text });
-  page.drawText(`Payment reference: ${paymentRef}`, { x: width / 2 + 12, y: y - 18, size: 9, font, color: text });
-  page.drawText(`Currency: ${currency}`, { x: width / 2 + 12, y: y - 36, size: 9, font, color: text });
+  const referenceX = width - 276;
+  page.drawText(`Order reference: ${orderRef}`, { x: referenceX, y: y - 20, size: 9, font, color: text });
+  page.drawText(`Payment reference: ${paymentRef}`, { x: referenceX, y: y - 38, size: 9, font, color: text });
+  page.drawText(`Currency: ${currency}`, { x: referenceX, y: y - 56, size: 9, font, color: text });
   y -= fulfillmentLines.length || isPickup ? 106 : 82;
+
+  if (trackingUrl) {
+    ensureSpace(160);
+    const label = "Order tracking:";
+    const labelWidth = fontBold.widthOfTextAtSize(label, 9);
+    const linkX = 36 + labelWidth + 6;
+    const availableWidth = width - 36 - linkX;
+    const linkText = trackingUrl.length > 100 ? `${trackingUrl.slice(0, 97)}...` : trackingUrl;
+    const linkWidth = Math.min(font.widthOfTextAtSize(linkText, 8.5), availableWidth);
+    page.drawText(label, { x: 36, y, size: 9, font: fontBold, color: text });
+    page.drawText(linkText, { x: linkX, y, size: 8.5, font, color: secondary });
+    page.drawLine({ start: { x: linkX, y: y - 2 }, end: { x: linkX + linkWidth, y: y - 2 }, thickness: 0.5, color: secondary });
+    addUrlAnnotation(page, { url: trackingUrl, x: linkX, y: y - 3, width: linkWidth, height: 12 });
+    y -= 28;
+  }
 
   page.drawRectangle({ x: 36, y: y - 20, width: width - 72, height: 26, color: primary });
   page.drawText("ITEM", { x: 48, y: y - 11, size: 8, font: fontBold, color: rgb(1, 1, 1) });
@@ -380,18 +419,6 @@ async function buildOrderInvoicePdf(input: {
   page.drawText("Total due", { x: width - 230, y: y - 35, size: 10, font, color: muted });
   page.drawText(formatMoney(currency, total), { x: width - 154, y: y - 36, size: 15, font: fontBold, color: text });
   y -= 92;
-  if (trackingUrl) {
-    ensureSpace(160);
-    page.drawText("Order tracking", { x: 36, y, size: 9, font: fontBold, color: text });
-    const label = trackingUrl.length > 92 ? `${trackingUrl.slice(0, 89)}...` : trackingUrl;
-    const linkY = y - 17;
-    const linkWidth = Math.min(font.widthOfTextAtSize(label, 8.5), width - 72);
-    page.drawText(label, { x: 36, y: linkY, size: 8.5, font, color: secondary });
-    page.drawLine({ start: { x: 36, y: linkY - 2 }, end: { x: 36 + linkWidth, y: linkY - 2 }, thickness: 0.5, color: secondary });
-    addUrlAnnotation(page, { url: trackingUrl, x: 36, y: linkY - 3, width: linkWidth, height: 12 });
-    y -= 38;
-  }
-  drawWrappedText({ page, text: customization.footerNote, x: 36, y, maxWidth: width - 72, font, size: 9, color: muted, maxLines: 3 });
   drawFooter();
 
   return Buffer.from(await pdf.save());
