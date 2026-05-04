@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { Inter, Inter_Tight } from "next/font/google";
 import styles from "./faq.module.css";
 import LandingFooterLegal from "@/components/LandingFooterLegal";
+import JsonLd from "@/components/JsonLd";
+import { absoluteUrl, breadcrumbJsonLd, buildMetadata } from "@/lib/seo";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -21,8 +24,8 @@ const faqGroups = [
     title: "Getting Started",
     items: [
       {
-        q: "How quickly can I deploy my first AI sales agent?",
-        a: "Most teams launch in minutes. Upload your docs, set brand voice, and connect your channels.",
+        q: "How quickly can I deploy my first AI concierge?",
+        a: "Most teams can launch once source content, brand voice, channel setup, and escalation rules are configured.",
       },
       {
         q: "What documents can I use to train the AI?",
@@ -70,9 +73,39 @@ const faqGroups = [
   },
 ];
 
+const faqItems = faqGroups.flatMap((group) => group.items);
+
+export const metadata: Metadata = buildMetadata({
+  title: "Escalate Tech Concierge FAQ | AI WhatsApp Agent Answers",
+  description:
+    "Answers about Escalate Tech Concierge, AI WhatsApp agents, customer operations automation, support handoff, billing, accuracy, and setup.",
+  path: "/faq",
+});
+
 export default function FAQPage() {
   return (
     <div className={`${styles.page} ${inter.variable} ${interTight.variable}`}>
+      <JsonLd
+        data={[
+          {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "@id": absoluteUrl("/faq#faq"),
+            mainEntity: faqItems.map((item) => ({
+              "@type": "Question",
+              name: item.q,
+              acceptedAnswer: {
+                "@type": "Answer",
+                text: item.a,
+              },
+            })),
+          },
+          breadcrumbJsonLd([
+            { name: "Escalate Tech Concierge", path: "/" },
+            { name: "FAQ", path: "/faq" },
+          ]),
+        ]}
+      />
       <section className={styles.heroSection}>
         <div className={styles.heroCard}>
           <Image src="/landing/hero-bg.jpg" alt="" fill className={styles.heroBackground} />
@@ -82,8 +115,8 @@ export default function FAQPage() {
             <p className={styles.eyebrow}>Support</p>
             <h1>Frequently Asked Questions</h1>
             <p>
-              Everything you need to know about deploying AI agents that feel
-              human and drive real revenue.
+              Everything you need to know about deploying AI concierge workflows
+              that support customers and keep staff in control.
             </p>
           </div>
         </div>

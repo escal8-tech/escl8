@@ -112,7 +112,7 @@ export default function SignupPage() {
         <Link className="auth-brand" href="/">
           <img
             src="/8.png"
-            alt="Escl8"
+            alt="Escalate Tech"
             width={120}
             height={36}
             style={{ objectFit: "contain" }}

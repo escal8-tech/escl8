@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import LandingFooterLegal from "@/components/LandingFooterLegal";
+import { buildMetadata, conciergeSeo } from "@/lib/seo";
 import styles from "../legal/legal.module.css";
 
-export const metadata: Metadata = {
-  title: "User Data Deletion",
-};
+export const metadata: Metadata = buildMetadata({
+  title: "Escalate Tech Concierge User Data Deletion",
+  description:
+    "How to request deletion of account, uploaded, or end-user conversation data processed by Escalate Tech Concierge.",
+  path: "/data-deletion",
+});
 
 export default function DataDeletionPage() {
   return (
@@ -20,7 +24,7 @@ export default function DataDeletionPage() {
             <h1>User Data Deletion</h1>
             <p>
               You can request deletion of your personal data or end-user
-              conversation data processed by Escl8.
+              conversation data processed by Escalate Tech.
             </p>
           </div>
         </div>
@@ -33,7 +37,7 @@ export default function DataDeletionPage() {
               <h2>Request Methods</h2>
               <ul>
                 <li>
-                  Email: <a href="mailto:privacy@escl8.com">privacy@escl8.com</a>
+                  Email: <a href={`mailto:${conciergeSeo.privacyEmail}`}>{conciergeSeo.privacyEmail}</a>
                 </li>
                 <li>Subject line: <em>Data Deletion Request</em></li>
                 <li>
@@ -83,7 +87,7 @@ export default function DataDeletionPage() {
               <h2>Contact</h2>
               <p>
                 For deletion support, email{" "}
-                <a href="mailto:privacy@escl8.com">privacy@escl8.com</a>.
+                <a href={`mailto:${conciergeSeo.privacyEmail}`}>{conciergeSeo.privacyEmail}</a>.
               </p>
             </section>
           </article>

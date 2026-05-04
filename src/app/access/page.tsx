@@ -40,7 +40,7 @@ export default function AccessBlockedPage() {
         </div>
 
         <p className="muted" style={{ lineHeight: 1.7, marginBottom: 24 }}>
-          This tenant can sign in, but Escal8 operations stay blocked until a valid paid plan, partner grant, or demo grant is attached in the control system.
+          This tenant can sign in, but Escalate Tech operations stay blocked until a valid paid plan, partner grant, or demo grant is attached in the control system.
         </p>
 
         <div
@@ -57,14 +57,14 @@ export default function AccessBlockedPage() {
           </div>
           <div className="panel" style={{ padding: 18 }}>
             <p style={{ fontWeight: 600, marginBottom: 8 }}>What to do next</p>
-            <p className="muted" style={{ margin: 0 }}>Ask your Escal8 admin team to activate billing for this tenant before connecting channels.</p>
+            <p className="muted" style={{ margin: 0 }}>Ask your Escalate Tech admin team to activate billing for this tenant before connecting channels.</p>
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <a
             className="btn btn-primary"
-            href="mailto:admin@escal8.tech?subject=Escal8%20Demo%20Request&body=Please%20contact%20me%20to%20activate%20a%20paid%20plan%20or%20demo%20grant%20for%20my%20tenant."
+            href="mailto:admin@escal8.tech?subject=Escalate%20Tech%20Demo%20Request&body=Please%20contact%20me%20to%20activate%20a%20paid%20plan%20or%20demo%20grant%20for%20my%20tenant."
           >
             <span aria-hidden="true">$</span>
             Book a demo

@@ -1898,7 +1898,7 @@ export default function SettingsPage() {
                       style={styles.input}
                       value={accountName}
                       onChange={(e) => setAccountName(e.target.value)}
-                      placeholder="Escl8 Pvt Ltd"
+                      placeholder="Escalate Tech Pvt Ltd"
                     />
                   </div>
                   <div style={styles.formGroup}>

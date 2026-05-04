@@ -41,7 +41,7 @@ export default function Footer() {
             <Link href="/" style={{ display: "inline-block", marginBottom: 24 }}>
               <Image
                 src="/8.png"
-                alt="Escl8 Logo"
+                alt="Escalate Tech Concierge logo"
                 width={420}
                 height={126}
                 style={{ objectFit: "contain" }}
@@ -55,8 +55,8 @@ export default function Footer() {
                 maxWidth: 320,
               }}
             >
-              Human-grade AI sales and support agents for teams that live in
-              WhatsApp.
+              AI customer operations for WhatsApp, web chat, lead capture, support
+              handoff, and ticket workflows.
             </p>
           </div>
 
@@ -86,11 +86,17 @@ export default function Footer() {
               <Link href="/" className="footer-link">
                 Home
               </Link>
-              <Link href="/upload" className="footer-link">
-                Upload
+              <Link href="/about" className="footer-link">
+                About
               </Link>
-              <Link href="/" className="footer-link">
-                Portal
+              <Link href="/answers" className="footer-link">
+                Answers
+              </Link>
+              <Link href="/profiles" className="footer-link">
+                Profiles
+              </Link>
+              <Link href="https://www.escal8.tech/concierge" className="footer-link">
+                Main Site
               </Link>
             </nav>
           </div>
@@ -156,31 +162,31 @@ export default function Footer() {
               <span>
                 Phone:{" "}
                 <a
-                  href="tel:+18005551234"
+                  href="tel:+94768424026"
                   className="footer-link"
                   style={{
                     textDecoration: "underline",
                     textUnderlineOffset: "2px",
                   }}
                 >
-                  +1 (800) 555‑1234
+                  +94 76 842 4026
                 </a>
               </span>
               <span>
                 Email:{" "}
                 <a
-                  href="mailto:support@escl8.com"
+                  href="mailto:hello@escal8.tech"
                   className="footer-link"
                   style={{
                     textDecoration: "underline",
                     textUnderlineOffset: "2px",
                   }}
                 >
-                  support@escl8.com
+                  hello@escal8.tech
                 </a>
               </span>
               <span style={{ fontSize: 13, opacity: 0.7 }}>
-                Mon–Fri 9am–5pm (PT)
+                Sri Lanka, Malaysia, and Southeast Asia
               </span>
             </div>
           </div>
@@ -200,7 +206,7 @@ export default function Footer() {
           <div
             style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}
           >
-            © {year} Escl8 — All rights reserved.
+            © {year} Escalate Tech — All rights reserved.
           </div>
           <div
             style={{

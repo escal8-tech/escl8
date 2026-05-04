@@ -12,6 +12,9 @@ export default function FooterSwitcher() {
     isStandalonePublicPath(pathname) ||
     pathname === "/pricing" ||
     pathname === "/faq" ||
+    pathname === "/about" ||
+    pathname === "/answers" ||
+    pathname === "/profiles" ||
     pathname === "/privacy" ||
     pathname === "/terms" ||
     pathname === "/data-deletion"

@@ -16,7 +16,7 @@ export function LoginForm({ state, onSubmit, onGoogle }: {
     <div className="frost-card" style={{ width: "100%", maxWidth: 720, padding: "40px 44px 48px" }}>
       <div style={{ marginBottom: 24, textAlign: "center" }}>
         <h1 style={{ fontSize: 28, letterSpacing: "-0.5px", marginBottom: 8, color: "var(--foreground)" }}>Welcome Back</h1>
-        <p style={{ fontSize: 14, color: "var(--muted)" }}>Sign in to your Escl8 account</p>
+        <p style={{ fontSize: 14, color: "var(--muted)" }}>Sign in to your Escalate Tech account</p>
       </div>
       <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div>

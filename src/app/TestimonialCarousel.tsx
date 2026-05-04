@@ -7,13 +7,13 @@ import styles from "./page.module.css";
 const testimonials = [
   {
     quote:
-      "Before Escal8, our team was constantly switching between WhatsApp, Instagram, and live chat just to keep up. Now everything runs through one inbox, and the AI handles most incoming questions automatically. We're responding faster and closing more deals without hiring more agents.",
+      "Before Escalate Tech, our team was constantly switching between WhatsApp, Instagram, and live chat just to keep up. Now everything runs through one inbox, and the AI handles most incoming questions automatically. We're responding faster and closing more deals without hiring more agents.",
     name: "Adams Smith",
     role: "Head of Growth, Nova Digital",
   },
   {
     quote:
-      "Escal8 gave us one place to manage every channel. We cut repetitive support work, responded faster to new leads, and kept service quality consistent even during peak hours.",
+      "Escalate Tech gave us one place to manage every channel. We cut repetitive support work, responded faster to new leads, and kept service quality consistent even during peak hours.",
     name: "Lila Azar",
     role: "Operations Lead, Scale Commerce",
   },
@@ -25,7 +25,7 @@ const testimonials = [
   },
   {
     quote:
-      "We used to lose inquiries outside office hours. With Escal8 running 24/7, every conversation is captured, answered, and tracked so we can follow up with full context.",
+      "We used to lose inquiries outside office hours. With Escalate Tech running 24/7, every conversation is captured, answered, and tracked so we can follow up with full context.",
     name: "Elena John",
     role: "Customer Success Manager, Orbit Labs",
   },

@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import LandingFooterLegal from "@/components/LandingFooterLegal";
+import { buildMetadata, conciergeSeo } from "@/lib/seo";
 import styles from "../legal/legal.module.css";
 
-export const metadata: Metadata = {
-  title: "Terms of Service",
-};
+export const metadata: Metadata = buildMetadata({
+  title: "Escalate Tech Concierge Terms of Service",
+  description:
+    "Terms of service for Escalate Tech Concierge, the AI customer operations app for WhatsApp, web chat, social inboxes, and support workflows.",
+  path: "/terms",
+});
 
 export default function TermsPage() {
   return (
@@ -19,7 +23,7 @@ export default function TermsPage() {
             <p className={styles.eyebrow}>Legal</p>
             <h1>Terms of Service</h1>
             <p>
-              The terms that govern your use of Escl8 when deploying AI-powered
+              The terms that govern your use of Escalate Tech when deploying AI-powered
               customer conversations.
             </p>
           </div>
@@ -34,7 +38,7 @@ export default function TermsPage() {
             <section className={styles.section}>
               <p>
                 These Terms of Service (&quot;Terms&quot;) govern your access to and use of
-                <strong> Escl8</strong> (the &quot;Service&quot;). By using the Service, you
+                <strong> Escalate Tech</strong> (the &quot;Service&quot;). By using the Service, you
                 agree to these Terms.
               </p>
             </section>
@@ -42,7 +46,7 @@ export default function TermsPage() {
             <section className={styles.section}>
               <h2>1. The Service</h2>
               <p>
-                Escl8 enables you to create and operate customized AI agents that
+                Escalate Tech enables you to create and operate customized AI agents that
                 can be connected to WhatsApp and web channels. You can upload
                 materials (&quot;Content&quot;) to tailor responses and define your brand tone.
               </p>
@@ -98,7 +102,7 @@ export default function TermsPage() {
             <section className={styles.section}>
               <h2>7. Limitation of Liability</h2>
               <p>
-                To the maximum extent permitted by law, Escl8 will not be liable
+                To the maximum extent permitted by law, Escalate Tech will not be liable
                 for indirect, incidental, special, consequential, or punitive
                 damages, or loss of profits, data, or goodwill.
               </p>
@@ -126,7 +130,7 @@ export default function TermsPage() {
               <p>
                 These Terms are governed by applicable laws of your place of
                 establishment or, if none, the laws of the jurisdiction where
-                Escl8 is organized, without regard to conflict of law principles.
+                Escalate Tech is organized, without regard to conflict of law principles.
               </p>
             </section>
 
@@ -134,7 +138,7 @@ export default function TermsPage() {
               <h2>Contact</h2>
               <p>
                 Questions about these terms can be sent to{" "}
-                <a href="mailto:legal@escl8.com">legal@escl8.com</a>.
+                <a href={`mailto:${conciergeSeo.legalEmail}`}>{conciergeSeo.legalEmail}</a>.
               </p>
             </section>
           </article>
