@@ -11,7 +11,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         <Link className="auth-brand" href="/">
           <Image
             src="/8.png"
-            alt="Escl8"
+            alt="Escalate Tech"
             width={120}
             height={36}
             style={{ objectFit: "contain" }}

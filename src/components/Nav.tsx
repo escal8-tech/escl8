@@ -9,8 +9,10 @@ import styles from "./Nav.module.css";
 
 const links = [
   { href: "/", label: "Home" },
+  { href: "/about", label: "About" },
   { href: "/pricing", label: "Pricing" },
   { href: "/faq", label: "FAQ" },
+  { href: "/answers", label: "Answers" },
 ];
 
 export default function Nav() {
@@ -39,7 +41,7 @@ export default function Nav() {
           <Link href="/" className={styles.navLogoLink}>
             <Image 
               src="/landing/logo-main-wordmark.png" 
-              alt="Escalate" 
+              alt="Escalate Tech Concierge" 
               width={92} 
               height={23} 
               className={styles.logoWordmark}
@@ -113,6 +115,9 @@ export default function Nav() {
           ))}
           <Link href="/signup" className={styles.mobileCta}>
             Sign Up
+          </Link>
+          <Link href="https://www.escal8.tech/concierge" className={styles.mobileLink}>
+            Main Site
           </Link>
         </div>
       </div>

@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { Inter, Inter_Tight } from "next/font/google";
 import styles from "./pricing.module.css";
 import LandingFooterLegal from "@/components/LandingFooterLegal";
+import JsonLd from "@/components/JsonLd";
+import { breadcrumbJsonLd, buildMetadata, conciergeSoftwareJsonLd } from "@/lib/seo";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -21,7 +24,7 @@ const plans = [
     name: "Starter",
     subtitle: "Launch Fast",
     description:
-      "Perfect for businesses ready to deploy AI-powered automation and start converting conversations into customers.",
+      "Perfect for businesses ready to automate first responses, capture leads, and keep support handoff controlled.",
     price: "RM250",
     cadence: "/month",
     cta: "Get Started Free",
@@ -39,7 +42,7 @@ const plans = [
     name: "Growth",
     subtitle: "Scale Revenue",
     description:
-      "For ambitious teams scaling multi-channel sales with advanced analytics, booking systems, and CRM workflows.",
+      "For teams scaling multi-channel customer operations with analytics, inbox visibility, and workflow controls.",
     price: "RM500",
     cadence: "/month",
     cta: "Start Growth Plan",
@@ -87,9 +90,25 @@ const comparisonRows = [
   ["Support", "Email", "Priority", "24/7 Dedicated"],
 ];
 
+export const metadata: Metadata = buildMetadata({
+  title: "Escalate Tech Concierge Pricing | AI Customer Operations Plans",
+  description:
+    "Escalate Tech Concierge pricing for AI WhatsApp agents, customer operations automation, lead capture, support handoff, and multi-channel inbox workflows.",
+  path: "/pricing",
+});
+
 export default function PricingPage() {
   return (
     <div className={`${styles.page} ${inter.variable} ${interTight.variable}`}>
+      <JsonLd
+        data={[
+          conciergeSoftwareJsonLd(),
+          breadcrumbJsonLd([
+            { name: "Escalate Tech Concierge", path: "/" },
+            { name: "Pricing", path: "/pricing" },
+          ]),
+        ]}
+      />
       <section className={styles.heroSection}>
         <div className={styles.heroCard}>
           <Image src="/landing/hero-bg.jpg" alt="" fill className={styles.heroBackground} />
@@ -99,8 +118,8 @@ export default function PricingPage() {
             <p className={styles.eyebrow}>Transparent Pricing</p>
             <h1>Simple, Scalable Pricing for Every Stage of Growth</h1>
             <p>
-              Start with powerful automation. Scale with enterprise capabilities.
-              Pay only for what drives real revenue.
+              Start with controlled AI customer operations. Scale with deeper
+              handoff, analytics, and workflow capabilities.
             </p>
           </div>
         </div>

@@ -233,7 +233,7 @@ export default function Sidebar({
       >
         <Image
           src="/favikon.png"
-          alt="Escl8"
+          alt="Escalate Tech"
           width={collapsed ? 40 : 140}
           height={collapsed ? 40 : 48}
           style={{ 

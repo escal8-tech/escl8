@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import LandingFooterLegal from "@/components/LandingFooterLegal";
+import { buildMetadata, conciergeSeo } from "@/lib/seo";
 import styles from "../legal/legal.module.css";
 
-export const metadata: Metadata = {
-  title: "Privacy Policy",
-};
+export const metadata: Metadata = buildMetadata({
+  title: "Escalate Tech Concierge Privacy Policy",
+  description:
+    "Privacy policy for Escalate Tech Concierge, the AI customer operations app for WhatsApp, web chat, social inboxes, and support workflows.",
+  path: "/privacy",
+});
 
 export default function PrivacyPage() {
   return (
@@ -19,7 +23,7 @@ export default function PrivacyPage() {
             <p className={styles.eyebrow}>Legal</p>
             <h1>Privacy Policy</h1>
             <p>
-              How Escl8 collects, uses, and safeguards data when you operate AI
+              How Escalate Tech collects, uses, and safeguards data when you operate AI
               conversations across WhatsApp and web channels.
             </p>
           </div>
@@ -33,7 +37,7 @@ export default function PrivacyPage() {
 
             <section className={styles.section}>
               <p>
-                This Privacy Policy explains how <strong>Escl8</strong> (&quot;we&quot;,
+                This Privacy Policy explains how <strong>Escalate Tech</strong> (&quot;we&quot;,
                 &quot;us&quot;, or &quot;our&quot;) collects, uses, and protects information when you use our
                 services to create and operate customized AI agents for WhatsApp and
                 web channels.
@@ -142,7 +146,7 @@ export default function PrivacyPage() {
               <h2>Contact</h2>
               <p>
                 For privacy inquiries, email{" "}
-                <a href="mailto:privacy@escl8.com">privacy@escl8.com</a>.
+                <a href={`mailto:${conciergeSeo.privacyEmail}`}>{conciergeSeo.privacyEmail}</a>.
               </p>
             </section>
           </article>

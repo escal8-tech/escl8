@@ -5,6 +5,7 @@ import FooterSwitcher from "@/components/FooterSwitcher";
 import SentryTestButton from "@/components/SentryTestButton";
 import { TRPCProvider } from "@/utils/trpc";
 import { ToastProvider } from "@/components/ToastProvider";
+import { absoluteUrl, conciergeSeo } from "@/lib/seo";
 import "./globals.css";
 
 const montserrat = Montserrat({
@@ -26,13 +27,51 @@ const inter = Inter({
 
 
 export const metadata: Metadata = {
+  metadataBase: new URL(conciergeSeo.url),
+  applicationName: conciergeSeo.name,
+  creator: conciergeSeo.legalName,
+  publisher: conciergeSeo.legalName,
   title: {
-    default: "Escal8 | Human-like AI Agents",
-    template: "%s | Escal8",
+    default: "Escalate Tech Concierge | AI WhatsApp Agent & Customer Operations App",
+    template: "%s | Escalate Tech",
   },
-  description:
-    "Escal8 builds fully customized, human-like AI sales and support agents for SMBs and enterprises. Upload your docs, connect WhatsApp, and go live fast.",
-  metadataBase: new URL("http://localhost:5000"),
+  description: conciergeSeo.description,
+  keywords: conciergeSeo.keywords,
+  alternates: {
+    canonical: absoluteUrl("/"),
+  },
+  openGraph: {
+    type: "website",
+    siteName: conciergeSeo.name,
+    title: "Escalate Tech Concierge | AI WhatsApp Agent & Customer Operations App",
+    description: conciergeSeo.description,
+    url: conciergeSeo.url,
+    images: [
+      {
+        url: absoluteUrl(conciergeSeo.ogImagePath),
+        width: 1200,
+        height: 630,
+        alt: "Escalate Tech Concierge AI customer operations dashboard",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Escalate Tech Concierge | AI WhatsApp Agent & Customer Operations App",
+    description: conciergeSeo.description,
+    images: [absoluteUrl(conciergeSeo.ogImagePath)],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-snippet": -1,
+      "max-image-preview": "large",
+      "max-video-preview": -1,
+    },
+  },
   icons: [
     { rel: "icon", url: "/favikon.png", type: "image/png" },
     { rel: "apple-touch-icon", url: "/favikon.png" },
