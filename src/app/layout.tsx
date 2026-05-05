@@ -32,8 +32,8 @@ export const metadata: Metadata = {
   creator: conciergeSeo.legalName,
   publisher: conciergeSeo.legalName,
   title: {
-    default: "Escalate Tech Concierge | AI WhatsApp Agent & Customer Operations App",
-    template: "%s | Escalate Tech",
+    default: "Escal8 Concierge | AI WhatsApp Agent & Customer Operations App",
+    template: "%s | Escal8",
   },
   description: conciergeSeo.description,
   keywords: conciergeSeo.keywords,
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: conciergeSeo.name,
-    title: "Escalate Tech Concierge | AI WhatsApp Agent & Customer Operations App",
+    title: "Escal8 Concierge | AI WhatsApp Agent & Customer Operations App",
     description: conciergeSeo.description,
     url: conciergeSeo.url,
     images: [
@@ -51,13 +51,13 @@ export const metadata: Metadata = {
         url: absoluteUrl(conciergeSeo.ogImagePath),
         width: 1200,
         height: 630,
-        alt: "Escalate Tech Concierge AI customer operations dashboard",
+        alt: "Escal8 Concierge AI customer operations dashboard",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Escalate Tech Concierge | AI WhatsApp Agent & Customer Operations App",
+    title: "Escal8 Concierge | AI WhatsApp Agent & Customer Operations App",
     description: conciergeSeo.description,
     images: [absoluteUrl(conciergeSeo.ogImagePath)],
   },

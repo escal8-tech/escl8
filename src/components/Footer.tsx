@@ -41,7 +41,7 @@ export default function Footer() {
             <Link href="/" style={{ display: "inline-block", marginBottom: 24 }}>
               <Image
                 src="/8.png"
-                alt="Escalate Tech Concierge logo"
+                alt="Escal8 Concierge logo"
                 width={420}
                 height={126}
                 style={{ objectFit: "contain" }}
@@ -86,13 +86,13 @@ export default function Footer() {
               <Link href="/" className="footer-link">
                 Home
               </Link>
-              <Link href="/about" className="footer-link">
+              <Link href="https://www.escal8.tech/concierge/about" className="footer-link">
                 About
               </Link>
-              <Link href="/answers" className="footer-link">
+              <Link href="https://www.escal8.tech/concierge/answers" className="footer-link">
                 Answers
               </Link>
-              <Link href="/profiles" className="footer-link">
+              <Link href="https://www.escal8.tech/concierge/profiles" className="footer-link">
                 Profiles
               </Link>
               <Link href="https://www.escal8.tech/concierge" className="footer-link">
@@ -206,7 +206,7 @@ export default function Footer() {
           <div
             style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}
           >
-            © {year} Escalate Tech — All rights reserved.
+            © {year} Escal8 — All rights reserved.
           </div>
           <div
             style={{

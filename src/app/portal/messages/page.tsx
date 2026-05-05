@@ -937,7 +937,7 @@ export default function MessagesPage() {
                 letterSpacing: "-0.5px",
               }}
             >
-              Escalate Tech Messages
+              Escal8 Messages
             </h2>
             <p style={{ fontSize: 14, color: "var(--muted)", maxWidth: 400, lineHeight: 1.6 }}>
               View and monitor your WhatsApp conversations with customers.

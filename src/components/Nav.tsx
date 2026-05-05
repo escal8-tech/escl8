@@ -8,11 +8,10 @@ import { useState, useEffect } from "react";
 import styles from "./Nav.module.css";
 
 const links = [
-  { href: "/", label: "Home" },
-  { href: "/about", label: "About" },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/faq", label: "FAQ" },
-  { href: "/answers", label: "Answers" },
+  { href: "/", label: "App" },
+  { href: "https://www.escal8.tech/concierge", label: "Website" },
+  { href: "https://www.escal8.tech/concierge/pricing", label: "Pricing" },
+  { href: "https://www.escal8.tech/concierge/faq", label: "FAQ" },
 ];
 
 export default function Nav() {
@@ -41,7 +40,7 @@ export default function Nav() {
           <Link href="/" className={styles.navLogoLink}>
             <Image 
               src="/landing/logo-main-wordmark.png" 
-              alt="Escalate Tech Concierge" 
+              alt="Escal8 Concierge"
               width={92} 
               height={23} 
               className={styles.logoWordmark}

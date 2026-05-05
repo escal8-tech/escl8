@@ -3,7 +3,7 @@ import { conciergeSeo } from "@/lib/seo";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Escalate Tech Concierge - AI Customer Operations",
+    name: "Escal8 Concierge - AI Customer Operations",
     short_name: "Concierge",
     description: conciergeSeo.description,
     start_url: "/",
@@ -24,15 +24,8 @@ export default function manifest(): MetadataRoute.Manifest {
       {
         name: "Concierge Login",
         short_name: "Login",
-        description: "Open the Escalate Tech Concierge app login.",
+        description: "Open the Escal8 Concierge app login.",
         url: "/",
-        icons: [{ src: "/favikon.png", sizes: "512x512", type: "image/png" }],
-      },
-      {
-        name: "Concierge Pricing",
-        short_name: "Pricing",
-        description: "View Escalate Tech Concierge pricing.",
-        url: "/pricing",
         icons: [{ src: "/favikon.png", sizes: "512x512", type: "image/png" }],
       },
     ],

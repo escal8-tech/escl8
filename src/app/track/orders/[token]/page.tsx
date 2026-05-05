@@ -269,7 +269,7 @@ export default async function PublicOrderTrackingPage({
         <footer className={styles.poweredFooter}>
           <a className={styles.poweredLink} href="https://www.escal8.tech" target="_blank" rel="noreferrer">
             <img className={styles.poweredLogo} src="/landing/nav-infinity-crop.png" alt="" aria-hidden="true" />
-            <span>by Escalate</span>
+            <span>by Escal8</span>
           </a>
         </footer>
       </div>
