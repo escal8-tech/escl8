@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
 
 export const conciergeSeo = {
-  name: "Escalate Tech Concierge",
-  brandName: "Escalate Tech",
-  legacyName: "Escal8 Concierge",
-  legacyBrandName: "Escal8",
+  name: "Escal8 Concierge",
+  brandName: "Escal8",
   legalName: "Escalate Tech Services Sdn Bhd",
   url: "https://concierge.escal8.tech",
   mainSiteUrl: "https://www.escal8.tech",
@@ -16,19 +14,19 @@ export const conciergeSeo = {
   legalEmail: "legal@escal8.tech",
   sameAs: [
     "https://www.escal8.tech/concierge",
-    "https://www.escal8.tech/about",
+    "https://www.escal8.tech/concierge/about",
+    "https://www.escal8.tech/concierge/answers",
+    "https://www.escal8.tech/concierge/profiles",
+    "https://www.escal8.tech/profiles",
     "https://www.linkedin.com/company/escal8concierge/",
     "https://www.crunchbase.com/organization/escal8",
     "https://www.instagram.com/escal8.tech/",
   ],
   description:
-    "Escalate Tech Concierge is an AI customer operations app for WhatsApp, web chat, social inboxes, lead capture, support handoff, ticket workflows, and manager visibility.",
+    "Escal8 Concierge is an AI customer operations app for WhatsApp, web chat, social inboxes, lead capture, support handoff, ticket workflows, and manager visibility.",
   standardDescription:
-    "Escalate Tech Concierge is an AI customer operations app from Escalate Tech for WhatsApp, web chat, social inboxes, lead capture, support handoff, ticket workflows, and manager visibility. It is also discoverable by the legacy alias Escal8 Concierge.",
+    "Escal8 Concierge is an AI customer operations app from Escal8 for WhatsApp, web chat, social inboxes, lead capture, support handoff, ticket workflows, and manager visibility.",
   keywords: [
-    "Escalate Tech Concierge",
-    "Escalate Tech",
-    "Escalate",
     "Escal8 Concierge",
     "Escal8",
     "Escal8 Tech",
@@ -130,16 +128,14 @@ export function organizationJsonLd(): JsonLdObject {
     name: conciergeSeo.brandName,
     legalName: conciergeSeo.legalName,
     alternateName: [
-      "Escalate",
       "Escal8",
       "Escal8 Tech",
-      "Escalate Tech Concierge",
       "Escal8 Concierge",
     ],
     url: conciergeSeo.mainSiteUrl,
     logo: "https://www.escal8.tech/favicon-512x512.png",
     description:
-      "Escalate Tech is an AI automation company specializing in AI concierge agents, WhatsApp reservation systems, and customer operations software for hospitality and customer-facing businesses. Escal8 is its legacy short brand and search alias.",
+      "Escal8 is an AI automation company specializing in AI concierge agents, WhatsApp reservation systems, and customer operations software for hospitality and customer-facing businesses.",
     sameAs: conciergeSeo.sameAs.filter((url) => !url.includes("concierge.escal8.tech")),
   };
 }
@@ -150,7 +146,7 @@ export function conciergeSoftwareJsonLd(): JsonLdObject {
     "@type": "SoftwareApplication",
     "@id": absoluteUrl("/#software"),
     name: conciergeSeo.name,
-    alternateName: ["Escal8 Concierge"],
+    alternateName: ["Escal8 AI Concierge"],
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     url: conciergeSeo.url,
@@ -184,7 +180,7 @@ export function websiteJsonLd(): JsonLdObject {
     "@type": "WebSite",
     "@id": absoluteUrl("/#website"),
     name: conciergeSeo.name,
-    alternateName: ["Escalate Tech Concierge", "Escal8 Concierge"],
+    alternateName: ["Escal8", "Escal8 Tech", "Escal8 Concierge"],
     url: conciergeSeo.url,
     description: conciergeSeo.description,
     publisher: {

@@ -5,9 +5,9 @@ import { buildMetadata, conciergeSeo } from "@/lib/seo";
 import styles from "../legal/legal.module.css";
 
 export const metadata: Metadata = buildMetadata({
-  title: "Escalate Tech Concierge Privacy Policy",
+  title: "Escal8 Concierge Privacy Policy",
   description:
-    "Privacy policy for Escalate Tech Concierge, the AI customer operations app for WhatsApp, web chat, social inboxes, and support workflows.",
+    "Privacy policy for Escal8 Concierge, the AI customer operations app for WhatsApp, web chat, social inboxes, and support workflows.",
   path: "/privacy",
 });
 
@@ -23,7 +23,7 @@ export default function PrivacyPage() {
             <p className={styles.eyebrow}>Legal</p>
             <h1>Privacy Policy</h1>
             <p>
-              How Escalate Tech collects, uses, and safeguards data when you operate AI
+              How Escal8 collects, uses, and safeguards data when you operate AI
               conversations across WhatsApp and web channels.
             </p>
           </div>
@@ -37,7 +37,7 @@ export default function PrivacyPage() {
 
             <section className={styles.section}>
               <p>
-                This Privacy Policy explains how <strong>Escalate Tech</strong> (&quot;we&quot;,
+                This Privacy Policy explains how <strong>Escal8</strong> (&quot;we&quot;,
                 &quot;us&quot;, or &quot;our&quot;) collects, uses, and protects information when you use our
                 services to create and operate customized AI agents for WhatsApp and
                 web channels.

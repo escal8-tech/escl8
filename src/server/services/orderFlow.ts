@@ -57,7 +57,7 @@ function renderOrderEmailHtml(params: {
     imageUrl
       ? `<div style="margin-top:20px"><img src="${escapeHtml(imageUrl)}" alt="Payment QR" style="max-width:240px;border-radius:14px;border:1px solid #2d4361" /></div>`
       : "",
-    '<div style="margin-top:22px;font-size:12px;color:#90a4be">Sent by your Escalate Tech order operations workflow.</div>',
+    '<div style="margin-top:22px;font-size:12px;color:#90a4be">Sent by your Escal8 order operations workflow.</div>',
     "</div>",
     "</div>",
   ].join("");

@@ -17,10 +17,10 @@ export default function HomeHeroNav() {
 
   return (
     <header className={`${styles.heroNav} ${isScrolled ? styles.heroNavScrolled : ""}`}>
-      <Link href="/" className={styles.brand} aria-label="Escalate home">
+      <Link href="/" className={styles.brand} aria-label="Escal8 home">
         <Image
           src="/landing/logo-main-wordmark.png"
-          alt="Escalate"
+          alt="Escal8"
           width={92}
           height={23}
           priority
@@ -40,10 +40,10 @@ export default function HomeHeroNav() {
         <Link href="/" className={styles.navLinkActive}>
           Home
         </Link>
-        <Link href="/pricing" className={styles.navLink}>
+        <Link href="https://www.escal8.tech/concierge/pricing" className={styles.navLink}>
           Pricing
         </Link>
-        <Link href="/faq" className={styles.navLink}>
+        <Link href="https://www.escal8.tech/concierge/faq" className={styles.navLink}>
           FAQ
         </Link>
       </nav>

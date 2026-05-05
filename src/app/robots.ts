@@ -8,16 +8,9 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: "*",
         allow: [
           "/",
-          "/about",
-          "/answers",
-          "/profiles",
-          "/pricing",
-          "/faq",
           "/privacy",
           "/terms",
           "/data-deletion",
-          "/llms.txt",
-          "/llms-full.txt",
         ],
         disallow: [
           "/api/",
@@ -62,16 +55,9 @@ export default function robots(): MetadataRoute.Robots {
         ],
         allow: [
           "/",
-          "/about",
-          "/answers",
-          "/profiles",
-          "/pricing",
-          "/faq",
           "/privacy",
           "/terms",
           "/data-deletion",
-          "/llms.txt",
-          "/llms-full.txt",
         ],
         disallow: [
           "/api/",

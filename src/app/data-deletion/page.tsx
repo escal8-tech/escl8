@@ -5,9 +5,9 @@ import { buildMetadata, conciergeSeo } from "@/lib/seo";
 import styles from "../legal/legal.module.css";
 
 export const metadata: Metadata = buildMetadata({
-  title: "Escalate Tech Concierge User Data Deletion",
+  title: "Escal8 Concierge User Data Deletion",
   description:
-    "How to request deletion of account, uploaded, or end-user conversation data processed by Escalate Tech Concierge.",
+    "How to request deletion of account, uploaded, or end-user conversation data processed by Escal8 Concierge.",
   path: "/data-deletion",
 });
 
@@ -24,7 +24,7 @@ export default function DataDeletionPage() {
             <h1>User Data Deletion</h1>
             <p>
               You can request deletion of your personal data or end-user
-              conversation data processed by Escalate Tech.
+              conversation data processed by Escal8.
             </p>
           </div>
         </div>
