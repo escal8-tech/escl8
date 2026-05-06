@@ -21,6 +21,7 @@ import {
   normalizeHeaderKey,
   summarizeInventoryFields,
 } from "@/server/rag/inventoryFields";
+import { acquireInventoryBusinessLock } from "@/server/inventory/locks";
 
 export type DerivedPriceField = {
   sourceKey: string;
@@ -299,6 +300,7 @@ export async function applyStockColumnMappingForBusiness(params: {
 
   let applied = 0;
   await db.transaction(async (tx) => {
+    await acquireInventoryBusinessLock(tx, params.businessId);
     for (const row of rows) {
       const rawFields = row.rawFields && typeof row.rawFields === "object" ? row.rawFields : {};
       const mapped = deriveInventoryProductFromFields(rawFields as Record<string, string>, settings);
