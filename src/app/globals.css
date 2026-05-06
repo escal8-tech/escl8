@@ -5303,6 +5303,484 @@ html.portal-theme-light {
   font-size: 13px;
 }
 
+.portal-items-page,
+.portal-offers-page {
+  min-width: 0;
+}
+
+.portal-setup-warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(217, 119, 6, 0.28);
+  border-radius: 8px;
+  background: rgba(217, 119, 6, 0.08);
+}
+
+.portal-setup-warning__title {
+  color: var(--portal-text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.portal-setup-warning p {
+  margin: 3px 0 0;
+  color: var(--portal-text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.portal-setup-warning__action {
+  flex: 0 0 auto;
+}
+
+.portal-items-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--portal-border);
+}
+
+.portal-items-toolbar__search {
+  flex: 1 1 420px;
+  min-width: 220px;
+  max-width: 560px;
+}
+
+.portal-items-toolbar__end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.portal-view-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 38px);
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--portal-border);
+  border-radius: 8px;
+  background: var(--portal-surface-muted);
+}
+
+.portal-view-toggle button {
+  width: 38px;
+  height: 34px;
+  border: 0;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--portal-text-muted);
+}
+
+.portal-view-toggle button.is-active {
+  background: var(--portal-card-plain);
+  color: var(--portal-text);
+  box-shadow: var(--portal-shadow-soft);
+}
+
+.portal-items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+
+.portal-items-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--portal-border);
+  border-radius: 8px;
+  background: var(--portal-card-plain);
+  overflow: hidden;
+}
+
+.portal-items-card__body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.portal-items-image {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-bottom: 1px solid var(--portal-border-soft);
+  background: var(--portal-surface-muted);
+  overflow: hidden;
+}
+
+.portal-items-list-item .portal-items-image {
+  width: 64px;
+  height: 64px;
+  aspect-ratio: auto;
+  border: 1px solid var(--portal-border-soft);
+  border-radius: 6px;
+  flex: 0 0 auto;
+}
+
+.portal-items-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.portal-items-image--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--portal-text-soft);
+  font-size: 13px;
+}
+
+.portal-items-name {
+  color: var(--portal-text);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.portal-items-meta {
+  color: var(--portal-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.portal-items-description {
+  margin: 0;
+  color: var(--portal-text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.portal-items-price-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.portal-items-price-chip,
+.portal-items-offer-chip,
+.portal-items-muted-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.portal-items-price-chip {
+  background: color-mix(in srgb, var(--portal-surface-subtle) 76%, transparent);
+  border: 1px solid var(--portal-border-soft);
+  color: var(--portal-text);
+}
+
+.portal-items-offer-chip {
+  background: rgba(16, 185, 129, 0.13);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  color: #059669;
+  font-weight: 650;
+}
+
+.portal-items-muted-chip {
+  background: var(--portal-surface-muted);
+  color: var(--portal-text-muted);
+}
+
+.portal-items-old-price {
+  color: var(--portal-text-soft);
+  font-size: 12px;
+  text-decoration: line-through;
+}
+
+.portal-items-quantity {
+  display: grid;
+  grid-template-columns: minmax(58px, 82px) max-content max-content;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.portal-items-quantity-block {
+  display: grid;
+  gap: 5px;
+  margin-top: auto;
+}
+
+.portal-items-quantity-block .portal-items-quantity {
+  margin-top: 0;
+}
+
+.portal-items-quantity-note {
+  color: var(--portal-text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.portal-items-quantity input {
+  width: 100%;
+  height: 34px;
+  border: 1px solid var(--portal-border);
+  border-radius: 6px;
+  background: var(--portal-surface);
+  color: var(--portal-text);
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+.portal-items-quantity span {
+  color: var(--portal-text-muted);
+  font-size: 12px;
+}
+
+.portal-items-quantity__save {
+  min-height: 34px;
+  height: 34px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.portal-items-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.portal-items-table .portal-items-price-row {
+  max-width: 360px;
+}
+
+.portal-items-empty {
+  grid-column: 1 / -1;
+  padding: 28px;
+  border: 1px dashed var(--portal-border);
+  border-radius: 8px;
+  color: var(--portal-text-muted);
+  text-align: center;
+}
+
+.portal-offers-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.portal-offers-form,
+.portal-offers-list,
+.portal-stock-settings {
+  border: 1px solid var(--portal-border);
+  border-radius: 8px;
+  background: var(--portal-card-plain);
+  min-width: 0;
+}
+
+.portal-offers-form {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.portal-offers-form__head,
+.portal-offers-form__actions,
+.portal-stock-settings__summary,
+.portal-stock-settings__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.portal-offers-form__head h2 {
+  margin: 0;
+  color: var(--portal-text);
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.portal-offers-form__head p {
+  margin: 4px 0 0;
+  color: var(--portal-text-muted);
+  font-size: 13px;
+}
+
+.portal-form-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.portal-form-field span,
+.portal-checkbox-row span {
+  color: var(--portal-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.portal-form-field input,
+.portal-form-field textarea {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--portal-border);
+  border-radius: 6px;
+  background: var(--portal-surface);
+  color: var(--portal-text);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.portal-form-field textarea {
+  resize: vertical;
+}
+
+.portal-checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.portal-offers-form__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.portal-offers-current-prices {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.portal-offers-current-prices button {
+  border: 1px solid var(--portal-border);
+  border-radius: 999px;
+  min-height: 28px;
+  padding: 0 10px;
+  background: var(--portal-surface-muted);
+  color: var(--portal-text-muted);
+  font-size: 12px;
+}
+
+.portal-offers-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.portal-stock-settings {
+  padding: 16px;
+}
+
+.portal-stock-settings__title {
+  color: var(--portal-text);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.portal-stock-settings__meta {
+  margin-top: 4px;
+  color: var(--portal-text-muted);
+  font-size: 13px;
+}
+
+.portal-stock-settings__badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.portal-stock-settings__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--portal-border);
+  color: var(--portal-text-muted);
+  font-size: 12px;
+}
+
+.portal-stock-settings__badge.is-good {
+  border-color: rgba(16, 185, 129, 0.28);
+  background: rgba(16, 185, 129, 0.1);
+  color: #059669;
+}
+
+.portal-stock-settings__table-wrap {
+  margin-top: 14px;
+  overflow-x: auto;
+}
+
+.portal-stock-settings__table {
+  min-width: 760px;
+}
+
+.portal-stock-settings__column-name {
+  color: var(--portal-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.portal-stock-settings__column-key,
+.portal-stock-settings__samples {
+  color: var(--portal-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.portal-stock-settings__input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--portal-border);
+  border-radius: 6px;
+  background: var(--portal-surface);
+  color: var(--portal-text);
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.portal-stock-settings__input:disabled {
+  opacity: 0.55;
+}
+
+.portal-stock-settings__actions {
+  margin-top: 14px;
+  justify-content: flex-end;
+}
+
 .portal-ledger-status-note {
   font-size: 12px;
   color: var(--portal-text-muted);
@@ -5635,6 +6113,30 @@ html.portal-theme-light {
 
   .portal-pagination__button-label {
     display: none;
+  }
+
+  .portal-offers-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-items-toolbar,
+  .portal-stock-settings__summary,
+  .portal-stock-settings__actions {
+    align-items: stretch;
+  }
+
+  .portal-items-toolbar__search,
+  .portal-items-toolbar__end {
+    width: 100%;
+    max-width: none;
+  }
+
+  .portal-items-toolbar__end {
+    justify-content: space-between;
+  }
+
+  .portal-offers-form__grid {
+    grid-template-columns: 1fr;
   }
 
   .portal-drawer-metrics,
@@ -6978,6 +7480,16 @@ html.portal-theme-light {
 }
 
 @media (max-width: 700px) {
+  .portal-setup-warning {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portal-setup-warning__action {
+    width: 100%;
+    justify-content: center;
+  }
+
   .portal-workbench-body {
     padding: 2px;
   }

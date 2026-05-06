@@ -21,6 +21,7 @@ import {
   normalizeStatusLabel,
   numericAmount,
   resolveOrderAmount,
+  resolveOrderSnapshotFields,
   shortId,
   toDateTimeLocalValue,
   toIsoFromDateTimeLocal,
@@ -34,6 +35,7 @@ import {
   computeOrderEditorTotal,
   type OrderEditorLine,
 } from "@/app/portal/tickets/lib/ticketPageUtils";
+import { parseMoneyNumber } from "@/lib/money";
 import { type OrderFulfillmentStatus } from "@/lib/order-operations";
 
 type OperationsWorkspaceMode = "payments" | "status" | "revenue";
@@ -453,7 +455,7 @@ export function OrderWorkspaceDrawer({
     { enabled: Boolean(order?.id) },
   );
 
-  const initialSnapshotFields = asRecord(asRecord(order?.ticketSnapshot).fields);
+  const initialSnapshotFields = resolveOrderSnapshotFields(asRecord(order?.ticketSnapshot));
   const initialDraftOrderLines = buildOrderEditorLines(initialSnapshotFields);
   const initialComputedDraftOrderTotal = computeOrderEditorTotal(initialDraftOrderLines);
   const initialExpectedAmount = String(order?.expectedAmount || "").trim();
@@ -496,7 +498,7 @@ export function OrderWorkspaceDrawer({
   const payments = (paymentsQuery.data ?? []) as OrderPaymentRow[];
   const latestPayment = payments[0] ?? order.latestPayment ?? null;
   const snapshot = asRecord(order.ticketSnapshot);
-  const snapshotFields = asRecord(snapshot.fields);
+  const snapshotFields = resolveOrderSnapshotFields(snapshot);
   const paymentSetupEditable = canEditPaymentSetup(order);
   const showDeliveryDetails = mode === "status";
   const showInvoicePanel = mode !== "status" && !isDraftOrder;
@@ -1293,8 +1295,8 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 function formatOrderLineTotal(quantity: string, unitPrice: string): string {
   const qty = Number.parseFloat(quantity || "0");
-  const price = Number.parseFloat(unitPrice || "0");
-  if (!Number.isFinite(qty) || !Number.isFinite(price) || qty <= 0 || price < 0) return "-";
+  const price = parseMoneyNumber(unitPrice);
+  if (!Number.isFinite(qty) || price == null || qty <= 0 || price < 0) return "-";
   return (qty * price).toFixed(2);
 }
 

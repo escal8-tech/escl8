@@ -45,7 +45,7 @@ export const DOC_SLOTS: readonly DocSlot[] = [
     key: "inventory",
     title: "Live Stock List / Prices",
     hint: "Inventory list, SKUs, and pricing details.",
-    accept: ".pdf,.csv,.txt",
+    accept: ".pdf,.csv,.xlsx,.txt",
   },
   {
     key: "bank",

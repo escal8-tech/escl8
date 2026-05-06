@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useToast } from "@/components/ToastProvider";
 import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
 import { PortalSelect } from "@/app/portal/components/PortalSelect";
+import { parseMoneyNumber } from "@/lib/money";
 import { trpc } from "@/utils/trpc";
 
 type ManualOrderLine = {
@@ -27,10 +28,7 @@ const PRIORITY_OPTIONS = [
 ] as const;
 
 function cleanMoney(value: string): number | null {
-  const cleaned = String(value || "").replace(/[^0-9.-]/g, "");
-  if (!cleaned) return null;
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseMoneyNumber(value);
 }
 
 function lineTotal(line: ManualOrderLine): number | null {

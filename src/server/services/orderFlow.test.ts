@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { normalizeOrderFlowSettings } from "@/lib/order-settings";
-import { buildOrderApprovalMessages, buildFulfillmentStatusMessages } from "@/server/services/orderFlow";
+import {
+  buildOrderApprovalMessages,
+  buildFulfillmentStatusMessages,
+  formatOrderItemsSummary,
+  parseMoneyValue,
+} from "@/server/services/orderFlow";
 
 test("normalizeOrderFlowSettings defaults payment slip requirement to true", () => {
   const settings = normalizeOrderFlowSettings({});
@@ -32,6 +37,23 @@ test("normalizeOrderFlowSettings defaults delivery charge to disabled free deliv
   });
 
   assert.deepEqual(settings.deliveryCharge, { enabled: false, type: "fixed", value: "450" });
+});
+
+test("parseMoneyValue keeps thousands separators as thousands", () => {
+  assert.equal(parseMoneyValue("1,990"), "1990.00");
+  assert.equal(parseMoneyValue("LKR 5,970.00"), "5970.00");
+  assert.equal(parseMoneyValue("1,99"), "1.99");
+});
+
+test("formatOrderItemsSummary reads top-level bot priced line items", () => {
+  const summary = formatOrderItemsSummary({
+    sourceBotType: "ORDER2",
+    priced_line_items: [
+      { item: "Bulb Camara", quantity: 3, unit_price: "1,990", line_total: "5,970" },
+    ],
+  });
+
+  assert.equal(summary, "Bulb Camara (qty 3 x 1990.00)");
 });
 
 test("buildOrderApprovalMessages uses optional slip wording when payment slip is not required", () => {

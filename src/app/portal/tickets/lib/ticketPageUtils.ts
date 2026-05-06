@@ -1,4 +1,5 @@
 import { getPortalTicketTypeLabel } from "@/app/portal/lib/ticketTypes";
+import { parseMoneyNumber } from "@/lib/money";
 
 export type TicketStatus = "open" | "in_progress" | "resolved";
 export type TicketOutcome = "pending" | "won" | "lost";
@@ -292,13 +293,7 @@ function normalizeOrderItemKey(value: unknown): string {
 }
 
 function parseMoneyInput(value: unknown): number | null {
-  const cleaned = String(value ?? "").trim().replace(/[^0-9.,-]/g, "");
-  if (!cleaned) return null;
-  const normalized = cleaned.includes(",") && !cleaned.includes(".")
-    ? cleaned.replace(/,/g, ".")
-    : cleaned.replace(/,/g, "");
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseMoneyNumber(value);
 }
 
 function formatMoneyInput(value: number): string {

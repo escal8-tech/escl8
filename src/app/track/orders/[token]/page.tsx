@@ -5,6 +5,7 @@ import {
   formatTrackingMoney,
   getPublicOrderTrackingData,
 } from "@/server/services/orderTracking";
+import { parseMoneyNumber } from "@/lib/money";
 
 import styles from "./page.module.css";
 
@@ -17,8 +18,7 @@ function cleanText(value: unknown, fallback = "-"): string {
 }
 
 function asNumber(value: unknown): number {
-  const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
-  return Number.isFinite(parsed) ? parsed : 0;
+  return parseMoneyNumber(value) ?? 0;
 }
 
 function formatDate(value: Date | string | null | undefined): string {

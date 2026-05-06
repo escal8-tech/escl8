@@ -5,7 +5,7 @@ import { downloadBlobToBuffer, uploadTextToBlob } from "./blob";
 import { extractTextFromBuffer, PAGE_BOUNDARY, SpreadsheetRow } from "./extractText";
 import { smartChunkText, classifyChunksWithLLM, SmartChunk } from "./smartChunk";
 import { embedTexts } from "./embed";
-import { summarizeInventoryRow } from "./inventoryFields";
+import { deriveInventoryProductFromFields, getBusinessStockSettings } from "@/server/inventory/stockMapping";
 import { getPineconeIndex } from "./pinecone";
 import {
   replaceInventoryProductsForRows,
@@ -255,7 +255,7 @@ function buildInventoryRowChunks(rows: string[]): SmartChunk[] {
 
 function buildInventoryStructuredRowChunks(
   rows: SpreadsheetRow[],
-  opts: { source: string; productRefs?: Map<string, IndexedProductRef> },
+  opts: { source: string; productRefs?: Map<string, IndexedProductRef>; stockSettings?: Awaited<ReturnType<typeof getBusinessStockSettings>> },
 ): SmartChunk[] {
   const chunks: SmartChunk[] = [];
   const rowTexts = rows.map((r) => r.text);
@@ -263,8 +263,16 @@ function buildInventoryStructuredRowChunks(
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const summary = summarizeInventoryRow(row);
-    const rowText = (summary.displayText || row.text || "").trim();
+    const derived = deriveInventoryProductFromFields(row.fields || {}, opts.stockSettings);
+    const priceFields = derived.priceFields.map((field) => ({ key: field.sourceKey, label: field.label, value: field.valueText }));
+    const displayParts = [
+      derived.name ? `product: ${derived.name}` : "",
+      derived.itemCode ? `item_code: ${derived.itemCode}` : "",
+      derived.specification ? `specification: ${derived.specification}` : "",
+      derived.quantityOnHand !== null && derived.quantityOnHand !== undefined ? `quantity: ${derived.quantityOnHand}` : "",
+      ...priceFields.map((field) => `${field.label || field.key}: ${field.value}`),
+    ].filter(Boolean);
+    const rowText = (displayParts.join(" | ") || row.text || "").trim();
     if (!rowText) continue;
     const sourceRowKey = sourceRowKeyForSpreadsheetRow({ source: opts.source, row });
     const productRef = opts.productRefs?.get(sourceRowKey);
@@ -281,9 +289,9 @@ function buildInventoryStructuredRowChunks(
       charStart,
       charEnd,
       tokenEstimate: estimateTokens(rowText),
-      products: summary.products,
-      keywords: summary.keywords,
-      prices: summary.priceFields.map((field) => field.value).filter(Boolean),
+      products: [derived.name, derived.model, derived.brand, derived.category].filter(Boolean) as string[],
+      keywords: extractKeywordsLite([derived.name, derived.searchText, Object.keys(row.fields || {}).join(" ")].join(" ")),
+      prices: priceFields.map((field) => field.value).filter(Boolean),
       question: null,
       contextBefore: i > 0 ? getShortContext(rowTexts, i - 1) : "",
       contextAfter: i < rows.length - 1 ? getShortContext(rowTexts, i + 1) : "",
@@ -291,11 +299,11 @@ function buildInventoryStructuredRowChunks(
         fields: row.fields,
         productId: productRef?.productId,
         sourceRowKey,
-        itemCode: summary.itemCode,
-        product: summary.product,
-        specification: summary.specification,
-        priceFields: summary.priceFields,
-        displayText: summary.displayText,
+        itemCode: derived.itemCode || "",
+        product: derived.name,
+        specification: derived.specification || derived.description || "",
+        priceFields,
+        displayText: rowText,
       },
     });
   }
@@ -414,8 +422,10 @@ export async function indexSingleDocType(params: {
   }
 
   let productRefs: Map<string, IndexedProductRef> | undefined;
+  let stockSettings: Awaited<ReturnType<typeof getBusinessStockSettings>> | undefined;
   if (docType === "inventory" && extracted.structuredRows && extracted.structuredRows.length > 0) {
     try {
+      stockSettings = await getBusinessStockSettings(businessId);
       productRefs = await replaceInventoryProductsForRows({
         businessId,
         trainingDocumentId: params.trainingDocumentId ?? null,
@@ -445,7 +455,7 @@ export async function indexSingleDocType(params: {
       ? buildConversationHierarchicalChunks(text, extracted.pages)
       : docType === "inventory"
         ? (extracted.structuredRows && extracted.structuredRows.length > 0
-            ? buildInventoryStructuredRowChunks(extracted.structuredRows, { source: blobPath, productRefs })
+            ? buildInventoryStructuredRowChunks(extracted.structuredRows, { source: blobPath, productRefs, stockSettings })
             : extracted.rows && extracted.rows.length > 0
               ? buildInventoryRowChunks(extracted.rows)
             : buildInventoryHierarchicalChunks(text, extracted.pages))

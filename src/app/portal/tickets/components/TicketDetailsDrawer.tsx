@@ -33,6 +33,7 @@ import {
   type TicketEventRow,
   type TicketRow,
 } from "@/app/portal/tickets/lib/ticketPageUtils";
+import { parseMoneyNumber } from "@/lib/money";
 import { trpc } from "@/utils/trpc";
 
 function toMutationDate(value: unknown): Date | undefined {
@@ -43,8 +44,8 @@ function toMutationDate(value: unknown): Date | undefined {
 
 function formatOrderLineTotal(quantity: string, unitPrice: string): string {
   const qty = Number.parseFloat(quantity || "0");
-  const price = Number.parseFloat(unitPrice || "0");
-  if (!Number.isFinite(qty) || !Number.isFinite(price) || qty <= 0 || price < 0) return "-";
+  const price = parseMoneyNumber(unitPrice);
+  if (!Number.isFinite(qty) || price == null || qty <= 0 || price < 0) return "-";
   return (qty * price).toFixed(2);
 }
 
