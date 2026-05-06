@@ -2,6 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { PDFDocument, PDFName, PDFString, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
 
 import { buildPrivateBlobReadUrl, storePrivateFileAtPath } from "@/lib/storage";
+import { isDeliveryLineItemName } from "@/lib/order-line-items";
 import { businesses, orders } from "../../../drizzle/schema";
 import { db } from "../db/client";
 import {
@@ -129,6 +130,17 @@ function formatMoney(currency: string, value: unknown): string {
 function moneyNumber(value: unknown): number {
   const normalized = parseMoneyValue(value);
   return normalized ? Number(normalized) : 0;
+}
+
+function lineItemQuantity(item: NormalizedOrderLineItem): number {
+  return Math.max(1, Number(String(item.quantity || "1").replace(/[^\d.]/g, "")) || 1);
+}
+
+function lineItemAmount(item: NormalizedOrderLineItem): number {
+  const quantity = lineItemQuantity(item);
+  const lineTotal = moneyNumber(item.lineTotal);
+  const unitPrice = moneyNumber(item.unitPrice);
+  return lineTotal || unitPrice * quantity;
 }
 
 function makeInvoiceNumber(orderId: string, issuedAt: Date): string {
@@ -265,14 +277,13 @@ async function buildOrderInvoicePdf(input: {
   const soft = colorFromHex("#F8FAFC");
   const currency = cleanText(input.order.currency || "LKR", 12) || "LKR";
   const ticketSnapshot = asRecord(input.order.ticketSnapshot);
-  const items = resolveLineItems(ticketSnapshot);
+  const lineItems = resolveLineItems(ticketSnapshot);
+  const deliveryFeeItems = lineItems.filter((item) => isDeliveryLineItemName(item.item));
+  const items = lineItems.filter((item) => !isDeliveryLineItemName(item.item));
   const expected = moneyNumber(input.order.expectedAmount ?? input.order.paidAmount);
-  const itemTotal = items.reduce((sum, item) => {
-    const quantity = Number(String(item.quantity || "1").replace(/[^\d.]/g, "")) || 1;
-    const lineTotal = moneyNumber(item.lineTotal);
-    const unitPrice = moneyNumber(item.unitPrice);
-    return sum + (lineTotal || unitPrice * quantity);
-  }, 0);
+  const productTotal = items.reduce((sum, item) => sum + lineItemAmount(item), 0);
+  const deliveryFee = deliveryFeeItems.reduce((sum, item) => sum + lineItemAmount(item), 0);
+  const itemTotal = productTotal + deliveryFee;
   const total = expected || itemTotal;
   const rows = items.length
     ? items
@@ -400,25 +411,50 @@ async function buildOrderInvoicePdf(input: {
 
   rows.forEach((item, index) => {
     ensureSpace();
-    const quantity = Math.max(1, Number(String(item.quantity || "1").replace(/[^\d.]/g, "")) || 1);
+    const quantity = lineItemQuantity(item);
     const unitPrice = moneyNumber(item.unitPrice);
-    const lineTotal = moneyNumber(item.lineTotal) || unitPrice * quantity;
-    const freeDelivery = /delivery/i.test(String(item.item || "")) && lineTotal <= 0;
+    const lineTotal = lineItemAmount(item);
     const itemY = y;
     const label = `${index + 1}. ${cleanText(item.item, 220)}`;
     const nextY = drawWrappedText({ page, text: label, x: 48, y: itemY, maxWidth: 290, font, size: 9.5, color: text, maxLines: 3 });
     page.drawText(String(quantity), { x: width - 210, y: itemY, size: 9, font, color: text });
-    page.drawText(freeDelivery ? "Free" : formatMoney(currency, unitPrice), { x: width - 166, y: itemY, size: 9, font, color: text });
-    page.drawText(freeDelivery ? "Free" : formatMoney(currency, lineTotal), { x: width - 100, y: itemY, size: 9, font: fontBold, color: text });
+    page.drawText(formatMoney(currency, unitPrice), { x: width - 166, y: itemY, size: 9, font, color: text });
+    page.drawText(formatMoney(currency, lineTotal), { x: width - 100, y: itemY, size: 9, font: fontBold, color: text });
     y = Math.min(itemY - 28, nextY - 8);
     page.drawLine({ start: { x: 42, y: y + 12 }, end: { x: width - 42, y: y + 12 }, thickness: 0.7, color: border });
   });
 
-  ensureSpace(178);
-  page.drawRectangle({ x: width - 250, y: y - 68, width: 214, height: 58, color: soft });
-  page.drawText("Total due", { x: width - 230, y: y - 35, size: 10, font, color: muted });
-  page.drawText(formatMoney(currency, total), { x: width - 154, y: y - 36, size: 15, font: fontBold, color: text });
-  y -= 92;
+  const hasDeliveryFeeLine = deliveryFeeItems.length > 0;
+  ensureSpace(hasDeliveryFeeLine ? 210 : 178);
+  const summaryX = width - 250;
+  const summaryWidth = 214;
+  const summaryRightX = summaryX + summaryWidth - 20;
+  const summaryTop = y - 10;
+  const summaryHeight = hasDeliveryFeeLine ? 92 : 58;
+  const summaryY = summaryTop - summaryHeight;
+  page.drawRectangle({ x: summaryX, y: summaryY, width: summaryWidth, height: summaryHeight, color: soft });
+  if (hasDeliveryFeeLine) {
+    const subtotal = productTotal || Math.max(0, total - deliveryFee);
+    page.drawText("Items subtotal", { x: summaryX + 20, y: summaryTop - 24, size: 9, font, color: muted });
+    drawRightAlignedText({ page, text: formatMoney(currency, subtotal), rightX: summaryRightX, y: summaryTop - 24, size: 9, font, color: text });
+    page.drawText(isPickup ? "Pickup" : "Delivery fee", { x: summaryX + 20, y: summaryTop - 44, size: 9, font, color: muted });
+    drawRightAlignedText({
+      page,
+      text: deliveryFee > 0 ? formatMoney(currency, deliveryFee) : "Free",
+      rightX: summaryRightX,
+      y: summaryTop - 44,
+      size: 9,
+      font,
+      color: text,
+    });
+    page.drawLine({ start: { x: summaryX + 18, y: summaryTop - 60 }, end: { x: summaryRightX, y: summaryTop - 60 }, thickness: 0.7, color: border });
+    page.drawText("Total due", { x: summaryX + 20, y: summaryTop - 78, size: 10, font, color: muted });
+    drawRightAlignedText({ page, text: formatMoney(currency, total), rightX: summaryRightX, y: summaryTop - 79, size: 15, font: fontBold, color: text });
+  } else {
+    page.drawText("Total due", { x: width - 230, y: y - 35, size: 10, font, color: muted });
+    page.drawText(formatMoney(currency, total), { x: width - 154, y: y - 36, size: 15, font: fontBold, color: text });
+  }
+  y -= summaryHeight + 34;
   drawFooter();
 
   return Buffer.from(await pdf.save());

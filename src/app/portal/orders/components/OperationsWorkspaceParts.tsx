@@ -36,6 +36,7 @@ import {
   type OrderEditorLine,
 } from "@/app/portal/tickets/lib/ticketPageUtils";
 import { parseMoneyNumber } from "@/lib/money";
+import { isDeliveryLineItemName } from "@/lib/order-line-items";
 import { type OrderFulfillmentStatus } from "@/lib/order-operations";
 
 type OperationsWorkspaceMode = "payments" | "status" | "revenue";
@@ -502,6 +503,10 @@ export function OrderWorkspaceDrawer({
   const paymentSetupEditable = canEditPaymentSetup(order);
   const showDeliveryDetails = mode === "status";
   const showInvoicePanel = mode !== "status" && !isDraftOrder;
+  const statusOrderLines = showDeliveryDetails
+    ? draftOrderLines.filter((line) => !isDeliveryLineItemName(line.item))
+    : draftOrderLines;
+  const statusOrderTotal = formatPlainOrderAmount(order.expectedAmount ?? order.paidAmount) || computedDraftOrderTotal;
   const canApproveLatestPayment = canStaffApprovePayment(order, latestPayment);
   const isPage = variant === "page";
   const showBottomRefundActions =
@@ -976,7 +981,7 @@ export function OrderWorkspaceDrawer({
                       </div>
                     </div>
                   </div>
-                  {draftOrderLines.length ? (
+                  {statusOrderLines.length ? (
                     <div className="portal-order-items-table portal-order-items-table--readonly">
                       <div className="portal-order-items-table__head">
                         <div>Item</div>
@@ -985,7 +990,7 @@ export function OrderWorkspaceDrawer({
                         <div>Line Total</div>
                       </div>
                       <div className="portal-order-items-table__body">
-                        {draftOrderLines.map((line, index) => (
+                        {statusOrderLines.map((line, index) => (
                           <div key={`status-order-line-${index}`} className="portal-order-items-row portal-order-items-row--readonly">
                             <div className="portal-order-items-read-cell">{line.item || "-"}</div>
                             <div className="portal-order-items-read-cell">{line.quantity || "-"}</div>
@@ -1003,10 +1008,10 @@ export function OrderWorkspaceDrawer({
                       <div className="portal-order-items-empty__copy">This order has no item breakdown saved yet.</div>
                     </div>
                   )}
-                  <div className="portal-order-items-footer">
-                    <div className="portal-order-editor-total">
+                  <div className="portal-order-items-footer portal-order-items-footer--status">
+                    <div className="portal-order-editor-total portal-order-editor-total--right">
                       <div className="portal-field-label">Order Total</div>
-                      <div className="portal-order-editor-total__value">{computedDraftOrderTotal || "-"}</div>
+                      <div className="portal-order-editor-total__value">{statusOrderTotal || "-"}</div>
                     </div>
                   </div>
                 </div>
@@ -1028,12 +1033,6 @@ export function OrderWorkspaceDrawer({
                     ) : (
                       <>
                         <Field label="Delivery Area" value={deliveryArea} onChange={setDeliveryArea} placeholder="Area" />
-                      </>
-                    )}
-                  </div>
-                  {!pickupOrder ? (
-                    <>
-                      <div className="portal-status-scheduled-row">
                         <Field
                           label="Scheduled Delivery"
                           value={scheduledDeliveryAt}
@@ -1042,7 +1041,11 @@ export function OrderWorkspaceDrawer({
                           type="datetime-local"
                           className="portal-status-datetime-field"
                         />
-                      </div>
+                      </>
+                    )}
+                  </div>
+                  {!pickupOrder ? (
+                    <>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                         <Field label="Courier Name" value={courierName} onChange={setCourierName} placeholder="Courier" />
                         <Field label="Tracking Number" value={trackingNumber} onChange={setTrackingNumber} placeholder="Tracking number" />
@@ -1298,6 +1301,13 @@ function formatOrderLineTotal(quantity: string, unitPrice: string): string {
   const price = parseMoneyNumber(unitPrice);
   if (!Number.isFinite(qty) || price == null || qty <= 0 || price < 0) return "-";
   return (qty * price).toFixed(2);
+}
+
+function formatPlainOrderAmount(value: unknown): string {
+  if (value == null || value === "") return "";
+  const amount = parseMoneyNumber(value);
+  if (amount == null) return String(value).trim();
+  return amount.toFixed(2);
 }
 
 function cleanPaymentCustomerEmail(paymentEmail: string, draftEmail: string): string | null {

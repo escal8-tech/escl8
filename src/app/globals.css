@@ -3019,6 +3019,12 @@ html.portal-theme-dark {
   --portal-surface-muted: rgba(255, 255, 255, 0.035);
   --portal-card-bg: #0c1627;
   --portal-card-plain: #0c1627;
+  --portal-field-bg: #152236;
+  --portal-field-bg-strong: #1a2a40;
+  --portal-table-head-bg: #172338;
+  --portal-table-row-bg: #101b2d;
+  --portal-table-row-alt-bg: #132033;
+  --portal-table-row-hover-bg: #18263b;
   --portal-border: rgba(148, 163, 184, 0.28);
   --portal-border-soft: rgba(255, 255, 255, 0.16);
   --portal-border-strong: rgba(181, 154, 90, 0.32);
@@ -3044,6 +3050,12 @@ html.portal-theme-light {
   --portal-surface-muted: rgba(15, 23, 42, 0.035);
   --portal-card-bg: #ffffff;
   --portal-card-plain: #ffffff;
+  --portal-field-bg: #f8fafc;
+  --portal-field-bg-strong: #f1f5f9;
+  --portal-table-head-bg: #f1f5f9;
+  --portal-table-row-bg: #ffffff;
+  --portal-table-row-alt-bg: #f8fafc;
+  --portal-table-row-hover-bg: #eef4fb;
   --portal-border: rgba(148, 163, 184, 0.24);
   --portal-border-soft: rgba(15, 23, 42, 0.08);
   --portal-border-strong: rgba(181, 154, 90, 0.3);
@@ -3319,9 +3331,9 @@ html.portal-theme-light {
   max-width: 100%;
   border-radius: 10px;
   border: 1px solid var(--portal-border);
-  background: var(--portal-surface);
+  background: var(--portal-field-bg);
   color: var(--portal-text);
-  box-shadow: none;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--portal-card-plain) 40%, transparent);
 }
 
 .portal-control::placeholder {
@@ -3332,6 +3344,7 @@ html.portal-theme-light {
 .portal-select-trigger:focus-visible,
 .portal-select-trigger[data-state="open"] {
   border-color: var(--portal-primary);
+  background: var(--portal-field-bg-strong);
   box-shadow: 0 0 0 3px rgba(8, 55, 116, 0.14);
 }
 
@@ -3354,7 +3367,7 @@ html.portal-theme-light {
   min-height: 40px;
   padding: 0 13px;
   border-radius: 8px;
-  background: var(--portal-surface);
+  background: var(--portal-field-bg);
 }
 
 .topbar-right {
@@ -3471,7 +3484,7 @@ html.portal-theme-light {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--portal-card-plain);
+  background: var(--portal-table-head-bg);
   color: var(--portal-text-soft);
   font-size: 11px !important;
   letter-spacing: 0.08em;
@@ -3481,10 +3494,15 @@ html.portal-theme-light {
 .portal-modern-table tbody td {
   padding-top: 14px !important;
   padding-bottom: 14px !important;
+  background: var(--portal-table-row-bg);
+}
+
+.portal-modern-table tbody tr:nth-child(even) td {
+  background: var(--portal-table-row-alt-bg);
 }
 
 .portal-modern-table tbody tr:hover td {
-  background: var(--portal-hover) !important;
+  background: var(--portal-table-row-hover-bg) !important;
 }
 
 .portal-layout .btn {
@@ -3553,10 +3571,11 @@ html.portal-theme-light {
 .portal-layout input[type="datetime-local"],
 .portal-layout textarea,
 .portal-layout select {
-  background: var(--portal-surface);
+  background: var(--portal-field-bg);
   border: 1px solid var(--portal-border);
   border-radius: 10px;
   color: var(--portal-text);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--portal-card-plain) 40%, transparent);
 }
 
 .portal-layout input::placeholder,
@@ -3579,6 +3598,7 @@ html.portal-theme-light {
 .portal-layout textarea:focus,
 .portal-layout select:focus {
   border-color: var(--portal-primary);
+  background: var(--portal-field-bg-strong);
   box-shadow: 0 0 0 3px rgba(8, 55, 116, 0.14);
 }
 
@@ -3708,12 +3728,12 @@ html.portal-theme-light {
   flex: 0 1 auto;
   border-radius: 10px;
   padding: 0 14px;
-  background: var(--portal-surface-muted);
+  background: var(--portal-field-bg);
   border: 1px solid var(--portal-border);
 }
 
 .portal-search-clean:focus-within {
-  background: var(--portal-card-plain);
+  background: var(--portal-field-bg-strong);
   border-color: var(--portal-primary);
   box-shadow: 0 0 0 3px rgba(8, 55, 116, 0.14);
 }
@@ -3797,7 +3817,7 @@ html.portal-theme-light {
   padding-right: 36px;
   border-radius: 10px;
   border: 1px solid var(--portal-border);
-  background: var(--portal-surface);
+  background: var(--portal-field-bg);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-position: right 12px center;
   background-repeat: no-repeat;
@@ -3811,6 +3831,7 @@ html.portal-theme-light {
 .portal-res-select:focus,
 .portal-res-select:focus-visible {
   border-color: var(--portal-primary);
+  background-color: var(--portal-field-bg-strong);
   box-shadow: 0 0 0 3px rgba(8, 55, 116, 0.14);
 }
 
@@ -3830,7 +3851,7 @@ html.portal-theme-light {
   min-height: 42px;
   padding: 0 14px;
   border-radius: 10px;
-  background: var(--portal-surface-muted);
+  background: var(--portal-field-bg);
   font-size: 13px;
   font-weight: 500;
 }
@@ -4215,7 +4236,7 @@ html.portal-theme-light {
   padding: 0 14px;
   border-radius: 10px;
   border: 1px solid var(--portal-border);
-  background: var(--portal-card-plain);
+  background: var(--portal-field-bg);
   color: var(--portal-text);
 }
 
@@ -4223,7 +4244,7 @@ html.portal-theme-light {
   padding: 14px 16px;
   border-radius: 16px;
   border: 1px solid var(--portal-border);
-  background: var(--portal-surface);
+  background: var(--portal-field-bg);
   color: var(--portal-text);
   font-size: 13px;
   font-weight: 500;
@@ -4290,7 +4311,7 @@ html.portal-theme-light {
   border: 1px solid var(--portal-border);
   border-radius: 14px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--portal-surface-subtle) 70%, transparent);
+  background: var(--portal-table-row-bg);
 }
 
 .portal-order-items-table__head,
@@ -4303,7 +4324,7 @@ html.portal-theme-light {
 
 .portal-order-items-table__head {
   border-bottom: 1px solid var(--portal-border);
-  background: color-mix(in srgb, var(--portal-surface) 78%, transparent);
+  background: var(--portal-table-head-bg);
 }
 
 .portal-order-items-table__head > div {
@@ -4326,6 +4347,11 @@ html.portal-theme-light {
 
 .portal-order-items-row {
   border-bottom: 1px solid var(--portal-border-soft);
+  background: var(--portal-table-row-bg);
+}
+
+.portal-order-items-row:nth-child(even) {
+  background: var(--portal-table-row-alt-bg);
 }
 
 .portal-order-items-row:last-child {
@@ -4345,7 +4371,7 @@ html.portal-theme-light {
   padding: 12px 14px;
   color: var(--portal-text);
   font-size: 14px;
-  background: transparent;
+  background: inherit;
 }
 
 .portal-order-items-read-cell + .portal-order-items-read-cell {
@@ -4469,11 +4495,15 @@ html.portal-theme-light {
   flex-wrap: wrap;
 }
 
+.portal-order-items-footer--status {
+  justify-content: flex-end;
+}
+
 .portal-order-items-editor-wrap {
   border: 1px solid var(--portal-border);
   border-radius: 12px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--portal-surface-subtle) 62%, transparent);
+  background: var(--portal-table-row-bg);
 }
 
 .portal-order-items-editor-table {
@@ -4491,13 +4521,18 @@ html.portal-theme-light {
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  background: color-mix(in srgb, var(--portal-surface) 84%, transparent);
+  background: var(--portal-table-head-bg);
 }
 
 .portal-order-items-editor-table tbody td {
   padding: 8px 10px;
   border-bottom: 1px solid var(--portal-border-soft);
+  background: var(--portal-table-row-bg);
   vertical-align: middle;
+}
+
+.portal-order-items-editor-table tbody tr:nth-child(even) td {
+  background: var(--portal-table-row-alt-bg);
 }
 
 .portal-order-items-editor-table tbody tr:last-child td {
@@ -4517,12 +4552,13 @@ html.portal-theme-light {
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 8px;
   color: var(--portal-text);
-  background: rgba(15, 23, 42, 0.26);
+  background: var(--portal-field-bg);
   box-shadow: none;
 }
 
 .portal-order-items-editor-input:focus {
   border-color: rgba(250, 204, 21, 0.45);
+  background: var(--portal-field-bg-strong);
   outline: none;
 }
 
@@ -4547,6 +4583,11 @@ html.portal-theme-light {
 .portal-order-editor-total {
   display: grid;
   gap: 6px;
+}
+
+.portal-order-editor-total--right {
+  min-width: 180px;
+  text-align: right;
 }
 
 .portal-order-editor-total__value {
@@ -5113,7 +5154,7 @@ html.portal-theme-light {
 .portal-ledger-table thead th {
   position: static;
   top: auto;
-  background: transparent !important;
+  background: var(--portal-table-head-bg) !important;
   padding: 14px 0 !important;
   border-bottom: 1px solid var(--portal-border-soft);
   color: var(--portal-text-muted) !important;
@@ -5128,14 +5169,19 @@ html.portal-theme-light {
   padding: 16px 0 !important;
   vertical-align: top;
   border-bottom: 0 !important;
+  background: var(--portal-table-row-bg);
 }
 
 .portal-ledger-table tbody tr:not(:last-child) td {
   box-shadow: inset 0 -1px 0 0 var(--portal-border-soft);
 }
 
+.portal-ledger-table tbody tr:nth-child(even) td {
+  background: var(--portal-table-row-alt-bg);
+}
+
 .portal-ledger-table tbody tr:hover td {
-  background: transparent !important;
+  background: var(--portal-table-row-hover-bg) !important;
 }
 
 .portal-ledger-table__ref {
@@ -6816,7 +6862,7 @@ html.portal-theme-light {
 .portal-workbench-grid {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(400px, 460px);
+  grid-template-columns: minmax(0, 1fr) clamp(500px, 30vw, 620px);
   gap: 16px;
 }
 
@@ -7001,7 +7047,7 @@ html.portal-theme-light {
 }
 
 .portal-inline-thread__bubble {
-  max-width: min(86%, 340px);
+  max-width: min(88%, 440px);
   display: grid;
   gap: 6px;
   padding: 8px 12px;
@@ -7120,7 +7166,7 @@ html.portal-theme-light {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 440px;
+  grid-template-columns: minmax(0, 1fr) clamp(500px, 30vw, 620px);
   gap: 0;
 }
 
@@ -7470,7 +7516,7 @@ html.portal-theme-light {
 }
 
 .portal-inline-thread__bubble {
-  max-width: min(86%, 340px);
+  max-width: min(88%, 440px);
   padding: 10px 13px;
   border-radius: 0 8px 8px 8px;
   font-size: 13px;
@@ -7580,7 +7626,7 @@ html.portal-theme-light {
 
 .portal-status-delivery-top-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -7651,7 +7697,7 @@ html.portal-theme-light {
   }
 
   .portal-status-delivery-top-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .portal-status-scheduled-row {
@@ -7700,6 +7746,10 @@ html.portal-theme-light {
   }
 
   .portal-sla-inline-control {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-status-delivery-top-grid {
     grid-template-columns: 1fr;
   }
 
