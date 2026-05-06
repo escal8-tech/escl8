@@ -93,9 +93,9 @@ export function StockSettingsPanel() {
     const hasQuantity = columns.some((column) => column.role === "quantity");
     const newCount = columns.filter((column) => column.isNew).length;
     const reusedCount = columns.filter((column) => column.hasSavedMapping && !column.isMissing).length;
-    const missingCount = columns.filter((column) => column.isMissing).length;
-    return { priceCount, hasName, hasQuantity, newCount, reusedCount, missingCount };
-  }, [columns]);
+    const removedCount = mappingQuery.data?.missingColumnCount ?? 0;
+    return { priceCount, hasName, hasQuantity, newCount, reusedCount, removedCount };
+  }, [columns, mappingQuery.data?.missingColumnCount]);
 
   const updateColumn = (key: string, patch: Partial<ColumnDraft>) => {
     setDraftByKey((prev) => ({ ...prev, [key]: { ...(prev[key] ?? {}), ...patch } }));
@@ -141,8 +141,8 @@ export function StockSettingsPanel() {
           <span className={`portal-stock-settings__badge${mappedCounts.hasQuantity ? " is-good" : ""}`}>Quantity</span>
           <span className={`portal-stock-settings__badge${mappedCounts.reusedCount > 0 ? " is-good" : ""}`}>{mappedCounts.reusedCount} Reused</span>
           <span className={`portal-stock-settings__badge${mappedCounts.newCount > 0 ? " is-warning" : ""}`}>{mappedCounts.newCount} New</span>
-          {mappedCounts.missingCount > 0 ? (
-            <span className="portal-stock-settings__badge is-muted">{mappedCounts.missingCount} Missing</span>
+          {mappedCounts.removedCount > 0 ? (
+            <span className="portal-stock-settings__badge is-muted">{mappedCounts.removedCount} Removed</span>
           ) : null}
         </div>
       </div>

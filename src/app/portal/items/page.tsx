@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { TablePagination } from "@/app/portal/components/TablePagination";
 import { TableSearchControl } from "@/app/portal/components/TableToolbarControls";
@@ -8,7 +8,7 @@ import { StockMappingWarning } from "@/app/portal/components/StockMappingWarning
 import { useToast } from "@/components/ToastProvider";
 import type { StockMappingStatus } from "@/lib/stock-settings";
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 20;
 
 type InventoryItem = {
   id: string;
@@ -99,14 +99,22 @@ function QuantityEditor({ item }: { item: InventoryItem }) {
 }
 
 function ItemImage({ item }: { item: InventoryItem }) {
-  if (!item.mediaUrl || item.mediaType !== "image") {
-    return <div className="portal-items-image portal-items-image--empty">No image</div>;
+  const [failedUrl, setFailedUrl] = useState("");
+  const imageUrl = item.mediaUrl && item.mediaType === "image" ? item.mediaUrl : "";
+  const canRenderImage = Boolean(imageUrl && failedUrl !== imageUrl);
+
+  if (!canRenderImage) {
+    return (
+      <div className="portal-items-image portal-items-image--empty" aria-label="Image unavailable">
+        <span className="portal-items-image-template" aria-hidden="true" />
+      </div>
+    );
   }
   return (
     <div className="portal-items-image">
       {/* Business stock sheets can contain arbitrary image hosts, so this stays as a plain image. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={item.mediaUrl} alt={item.name} loading="lazy" />
+      <img src={imageUrl} alt={item.name} loading="lazy" onError={() => setFailedUrl(imageUrl)} />
     </div>
   );
 }
@@ -189,18 +197,16 @@ export default function ItemsPage() {
     sortDir: "asc" as const,
   }), [deferredSearch, page]);
 
-  const itemsQuery = trpc.inventory.listItems.useQuery(input);
+  const itemsQuery = trpc.inventory.listItems.useQuery(input, {
+    placeholderData: (previousData) => previousData,
+  });
   const items = (itemsQuery.data?.items ?? []) as InventoryItem[];
   const mappingStatus = itemsQuery.data?.mappingStatus as StockMappingStatus | undefined;
   const totalCount = itemsQuery.data?.totalCount ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages - 1);
-
-  useEffect(() => {
-    if (safePage !== page) {
-      queueMicrotask(() => setPage(safePage));
-    }
-  }, [page, safePage]);
+  const displayPage = itemsQuery.isSuccess && !itemsQuery.isFetching
+    ? Math.min(page, totalPages - 1)
+    : page;
 
   return (
     <main className="portal-page-shell portal-items-page">
@@ -252,15 +258,15 @@ export default function ItemsPage() {
           )}
 
           <TablePagination
-            page={safePage}
+            page={displayPage}
             totalPages={totalPages}
             shownCount={items.length}
             totalCount={totalCount}
-            canPrev={safePage > 0}
-            canNext={safePage < totalPages - 1}
-            onPrev={() => setPage(Math.max(0, safePage - 1))}
-            onNext={() => setPage(Math.min(totalPages - 1, safePage + 1))}
-            onPageChange={setPage}
+            canPrev={displayPage > 0}
+            canNext={displayPage < totalPages - 1}
+            onPrev={() => setPage(Math.max(0, displayPage - 1))}
+            onNext={() => setPage(Math.min(totalPages - 1, displayPage + 1))}
+            onPageChange={(nextPage) => setPage(Math.max(0, Math.min(totalPages - 1, nextPage)))}
             pageLabelSuffix="items"
           />
         </div>
