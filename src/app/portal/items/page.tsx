@@ -82,7 +82,7 @@ function QuantityEditor({ item }: { item: InventoryItem }) {
         <span>{item.quantityUnit || "qty"}</span>
         <button
           type="button"
-          className="btn btn-secondary portal-items-quantity__save"
+          className="btn btn-primary portal-items-quantity__save"
           disabled={!canSave || updateQuantity.isPending}
           onClick={() => updateQuantity.mutate({ productId: item.id, quantity })}
         >
@@ -146,7 +146,6 @@ function ListRow({ item }: { item: InventoryItem }) {
       </td>
       <td data-label="Prices"><PriceChips item={item} /></td>
       <td data-label="Stock"><QuantityEditor key={`${item.id}-${item.quantityOnHand ?? "none"}`} item={item} /></td>
-      <td data-label="Media">{item.mediaUrl ? item.mediaType || "link" : "-"}</td>
     </tr>
   );
 }
@@ -207,7 +206,7 @@ export default function ItemsPage() {
     <main className="portal-page-shell portal-items-page">
       <div className="portal-page-stack">
         <StockMappingWarning status={mappingStatus} surface="items" />
-        <div className="portal-table-surface">
+        <div className="portal-table-surface portal-items-surface">
           <div className="portal-items-toolbar">
             <div className="portal-items-toolbar__search">
               <TableSearchControl
@@ -240,13 +239,12 @@ export default function ItemsPage() {
                     <th>Item</th>
                     <th>Prices</th>
                     <th>Stock</th>
-                    <th>Media</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item) => <ListRow key={item.id} item={item} />)}
                   {!itemsQuery.isLoading && items.length === 0 ? (
-                    <tr><td colSpan={4}>No items found.</td></tr>
+                    <tr><td colSpan={3}>No items found.</td></tr>
                   ) : null}
                 </tbody>
               </table>

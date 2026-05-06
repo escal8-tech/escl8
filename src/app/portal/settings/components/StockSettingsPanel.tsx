@@ -17,6 +17,10 @@ type ColumnDraft = {
   priceLabel?: string;
   count: number;
   samples: string[];
+  hasSavedMapping?: boolean;
+  isNew?: boolean;
+  isMissing?: boolean;
+  mappingSource?: "saved" | "suggested";
 };
 
 const roleOptions = STOCK_COLUMN_ROLES.map((role) => ({
@@ -71,6 +75,10 @@ export function StockSettingsPanel() {
       priceLabel: column.priceLabel || "",
       count: column.count,
       samples: column.samples ?? [],
+      hasSavedMapping: Boolean(column.hasSavedMapping),
+      isNew: Boolean(column.isNew),
+      isMissing: Boolean(column.isMissing),
+      mappingSource: column.mappingSource === "saved" ? "saved" : "suggested",
     }));
   }, [mappingQuery.data?.columns]);
   const [draftByKey, setDraftByKey] = useState<Record<string, Partial<ColumnDraft>>>({});
@@ -83,7 +91,10 @@ export function StockSettingsPanel() {
     const priceCount = columns.filter((column) => column.role === "price").length;
     const hasName = columns.some((column) => column.role === "name");
     const hasQuantity = columns.some((column) => column.role === "quantity");
-    return { priceCount, hasName, hasQuantity };
+    const newCount = columns.filter((column) => column.isNew).length;
+    const reusedCount = columns.filter((column) => column.hasSavedMapping && !column.isMissing).length;
+    const missingCount = columns.filter((column) => column.isMissing).length;
+    return { priceCount, hasName, hasQuantity, newCount, reusedCount, missingCount };
   }, [columns]);
 
   const updateColumn = (key: string, patch: Partial<ColumnDraft>) => {
@@ -118,11 +129,21 @@ export function StockSettingsPanel() {
               ? "Loading detected columns"
               : `${columns.length} column${columns.length === 1 ? "" : "s"} detected across ${mappingQuery.data?.productCount ?? 0} sampled item${mappingQuery.data?.productCount === 1 ? "" : "s"}`}
           </div>
+          {!mappingQuery.isLoading && columns.length > 0 ? (
+            <div className="portal-stock-settings__hint">
+              Saved mappings are reused automatically after reupload. Review only new columns, then save.
+            </div>
+          ) : null}
         </div>
         <div className="portal-stock-settings__badges">
           <span className={`portal-stock-settings__badge${mappedCounts.hasName ? " is-good" : ""}`}>Name</span>
           <span className={`portal-stock-settings__badge${mappedCounts.priceCount > 0 ? " is-good" : ""}`}>{mappedCounts.priceCount} Prices</span>
           <span className={`portal-stock-settings__badge${mappedCounts.hasQuantity ? " is-good" : ""}`}>Quantity</span>
+          <span className={`portal-stock-settings__badge${mappedCounts.reusedCount > 0 ? " is-good" : ""}`}>{mappedCounts.reusedCount} Reused</span>
+          <span className={`portal-stock-settings__badge${mappedCounts.newCount > 0 ? " is-warning" : ""}`}>{mappedCounts.newCount} New</span>
+          {mappedCounts.missingCount > 0 ? (
+            <span className="portal-stock-settings__badge is-muted">{mappedCounts.missingCount} Missing</span>
+          ) : null}
         </div>
       </div>
 
@@ -148,6 +169,19 @@ export function StockSettingsPanel() {
                 <td data-label="Column">
                   <div className="portal-stock-settings__column-name">{column.label}</div>
                   <div className="portal-stock-settings__column-key">{column.key}</div>
+                  <div className="portal-stock-settings__row-badges">
+                    {column.hasSavedMapping ? (
+                      <span className="portal-stock-settings__row-badge is-saved">Saved mapping</span>
+                    ) : (
+                      <span className="portal-stock-settings__row-badge is-new">New column</span>
+                    )}
+                    {column.isMissing ? (
+                      <span className="portal-stock-settings__row-badge is-muted">Not in current upload</span>
+                    ) : null}
+                    {!column.hasSavedMapping && column.role !== "ignore" ? (
+                      <span className="portal-stock-settings__row-badge is-suggested">Suggested</span>
+                    ) : null}
+                  </div>
                 </td>
                 <td data-label="Map to">
                   <PortalSelect

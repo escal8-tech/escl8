@@ -316,15 +316,24 @@ export const inventoryRouter = router({
       }
     }
 
+    const detectedKeys = new Set(columnStats.keys());
     for (const entry of stockSettings.columnMapping) {
       if (!columnStats.has(entry.key)) {
         columnStats.set(entry.key, { count: 0, samples: [] });
       }
     }
 
+    let savedMappingCount = 0;
+    let newColumnCount = 0;
+    let missingColumnCount = 0;
     const columns = Array.from(columnStats.entries())
       .map(([key, stat]) => {
         const current = mapped.get(key);
+        const hasSavedMapping = Boolean(current);
+        const isDetected = detectedKeys.has(key);
+        if (hasSavedMapping) savedMappingCount += 1;
+        if (!hasSavedMapping && isDetected) newColumnCount += 1;
+        if (hasSavedMapping && !isDetected) missingColumnCount += 1;
         const role = current?.role ?? inferStockColumnRole(key);
         return {
           key,
@@ -334,15 +343,22 @@ export const inventoryRouter = router({
           priceLabel: current?.priceLabel || (role === "price" ? friendlyStockColumnLabel(key) : ""),
           count: stat.count,
           samples: stat.samples,
+          hasSavedMapping,
+          isNew: !hasSavedMapping && isDetected,
+          isMissing: hasSavedMapping && !isDetected,
+          mappingSource: hasSavedMapping ? "saved" : "suggested",
         };
       })
-      .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+      .sort((a, b) => Number(a.isMissing) - Number(b.isMissing) || b.count - a.count || a.key.localeCompare(b.key));
 
     return {
       columns,
       mappingStatus: getStockMappingStatus(stockSettings),
       mappedAt: stockSettings.updatedAt ?? null,
       productCount: rows.length,
+      savedMappingCount,
+      newColumnCount,
+      missingColumnCount,
     };
   }),
 
@@ -387,6 +403,7 @@ export const inventoryRouter = router({
   listOffers: businessProcedure
     .input(z.object({
       includeInactive: z.boolean().optional(),
+      search: z.string().max(200).optional(),
       limit: z.number().int().min(1).max(100).default(50),
       offset: z.number().int().min(0).default(0),
     }).optional())
@@ -394,6 +411,32 @@ export const inventoryRouter = router({
       const conditions: any[] = [eq(inventoryProductOffers.businessId, ctx.businessId)];
       if (!input?.includeInactive) {
         conditions.push(eq(inventoryProductOffers.isActive, true));
+      }
+      const search = cleanSearch(input?.search);
+      if (search) {
+        const pattern = `%${search}%`;
+        const matchingProducts = await db
+          .select({ id: inventoryProducts.id })
+          .from(inventoryProducts)
+          .where(and(
+            eq(inventoryProducts.businessId, ctx.businessId),
+            or(
+              ilike(inventoryProducts.name, pattern),
+              ilike(inventoryProducts.itemCode, pattern),
+              ilike(inventoryProducts.searchText, pattern),
+            )!,
+          ));
+        const productIds = matchingProducts.map((row) => row.id);
+        const searchConditions = [
+          ilike(inventoryProductOffers.title, pattern),
+          ilike(inventoryProductOffers.offerPriceText, pattern),
+          ilike(inventoryProductOffers.originalPriceText, pattern),
+          ilike(inventoryProductOffers.notes, pattern),
+        ];
+        if (productIds.length > 0) {
+          searchConditions.push(inArray(inventoryProductOffers.productId, productIds));
+        }
+        conditions.push(or(...searchConditions)!);
       }
 
       const [countRow] = await db
