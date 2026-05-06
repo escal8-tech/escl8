@@ -387,6 +387,7 @@ export const inventoryRouter = router({
   listOffers: businessProcedure
     .input(z.object({
       includeInactive: z.boolean().optional(),
+      search: z.string().max(200).optional(),
       limit: z.number().int().min(1).max(100).default(50),
       offset: z.number().int().min(0).default(0),
     }).optional())
@@ -394,6 +395,32 @@ export const inventoryRouter = router({
       const conditions: any[] = [eq(inventoryProductOffers.businessId, ctx.businessId)];
       if (!input?.includeInactive) {
         conditions.push(eq(inventoryProductOffers.isActive, true));
+      }
+      const search = cleanSearch(input?.search);
+      if (search) {
+        const pattern = `%${search}%`;
+        const matchingProducts = await db
+          .select({ id: inventoryProducts.id })
+          .from(inventoryProducts)
+          .where(and(
+            eq(inventoryProducts.businessId, ctx.businessId),
+            or(
+              ilike(inventoryProducts.name, pattern),
+              ilike(inventoryProducts.itemCode, pattern),
+              ilike(inventoryProducts.searchText, pattern),
+            )!,
+          ));
+        const productIds = matchingProducts.map((row) => row.id);
+        const searchConditions = [
+          ilike(inventoryProductOffers.title, pattern),
+          ilike(inventoryProductOffers.offerPriceText, pattern),
+          ilike(inventoryProductOffers.originalPriceText, pattern),
+          ilike(inventoryProductOffers.notes, pattern),
+        ];
+        if (productIds.length > 0) {
+          searchConditions.push(inArray(inventoryProductOffers.productId, productIds));
+        }
+        conditions.push(or(...searchConditions)!);
       }
 
       const [countRow] = await db

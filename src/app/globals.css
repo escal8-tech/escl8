@@ -5396,6 +5396,24 @@ html.portal-theme-light {
   padding: 16px;
 }
 
+.portal-items-surface,
+.portal-offers-list--full {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.portal-items-surface > .portal-items-grid,
+.portal-items-surface > .portal-table-scroll,
+.portal-offers-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.portal-items-surface > .portal-items-grid {
+  align-content: start;
+}
+
 .portal-items-card {
   display: flex;
   flex-direction: column;
@@ -5564,6 +5582,17 @@ html.portal-theme-light {
   font-size: 12px;
 }
 
+.portal-layout .portal-items-quantity__save {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.portal-layout .portal-items-quantity__save:hover:not(:disabled) {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
 .portal-items-list-item {
   display: flex;
   align-items: center;
@@ -5695,6 +5724,36 @@ html.portal-theme-light {
   justify-content: flex-end;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.portal-offers-create-button {
+  white-space: nowrap;
+}
+
+.portal-offers-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.portal-offer-modal {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(860px, calc(100vh - 40px));
+  overflow: hidden;
+}
+
+.portal-offer-modal .portal-modal-card__body {
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+}
+
+.portal-offer-modal .portal-offers-form {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
 }
 
 .portal-stock-settings {
