@@ -1,5 +1,6 @@
 import { getPortalTicketTypeLabel } from "@/app/portal/lib/ticketTypes";
 import { parseMoneyNumber } from "@/lib/money";
+import { isDeliveryLineItemName } from "@/lib/order-line-items";
 
 export type TicketStatus = "open" | "in_progress" | "resolved";
 export type TicketOutcome = "pending" | "won" | "lost";
@@ -345,7 +346,7 @@ function buildOrderPairs(fields: Record<string, unknown>): OrderPair[] {
         if (!entry || typeof entry !== "object") return null;
         const item = String((entry as Record<string, unknown>).item ?? "").trim();
         const quantity = parseQty((entry as Record<string, unknown>).quantity);
-        if (!item) return null;
+        if (!item || isDeliveryLineItemName(item)) return null;
         return { item, quantity };
       })
       .filter((entry): entry is OrderPair => Boolean(entry));
@@ -354,10 +355,12 @@ function buildOrderPairs(fields: Record<string, unknown>): OrderPair[] {
   const items = toLooseStringList(fields["items"] ?? fields["product"]);
   if (!items.length) return [];
   const quantities = toLooseStringList(fields["quantity"]).map((q) => parseQty(q));
-  const pairs = items.map((item, idx) => ({
-    item,
-    quantity: quantities[idx] ?? quantities[quantities.length - 1] ?? "1",
-  }));
+  const pairs = items
+    .map((item, idx) => ({
+      item,
+      quantity: quantities[idx] ?? quantities[quantities.length - 1] ?? "1",
+    }))
+    .filter((pair) => !isDeliveryLineItemName(pair.item));
   return dedupeOrderPairs(pairs);
 }
 
@@ -583,6 +586,7 @@ function formatOrderLineItemsFromFields(fields: Record<string, unknown>): string
         const qty = String((entry as Record<string, unknown>).quantity ?? "").trim();
         const unitPrice = String((entry as Record<string, unknown>).unit_price ?? "").trim();
         const lineTotal = String((entry as Record<string, unknown>).line_total ?? "").trim();
+        if (item && isDeliveryLineItemName(item)) return "";
         if (!item && !qty && !unitPrice) return "";
         if (!item) return `qty ${qty}`;
         if (!qty && !unitPrice) return item;
@@ -596,16 +600,18 @@ function formatOrderLineItemsFromFields(fields: Record<string, unknown>): string
   }
   const items = toStringList(fields["items"]);
   const quantities = toStringList(fields["quantity"]);
-  if (!items.length) return null;
-  if (!quantities.length) return items.join("; ");
-  const max = Math.min(items.length, quantities.length);
-  if (max <= 0) return items.join("; ");
+  const productItems = items
+    .map((item, index) => ({ item, quantity: quantities[index] }))
+    .filter((entry) => !isDeliveryLineItemName(entry.item));
+  if (!productItems.length) return null;
+  if (!quantities.length) return productItems.map((entry) => entry.item).join("; ");
   const pairs: string[] = [];
-  for (let i = 0; i < max; i++) {
-    pairs.push(`${items[i]} (qty ${quantities[i]})`);
-  }
-  if (items.length > max) {
-    for (let i = max; i < items.length; i++) pairs.push(items[i]);
+  for (const entry of productItems) {
+    if (entry.quantity) {
+      pairs.push(`${entry.item} (qty ${entry.quantity})`);
+    } else {
+      pairs.push(entry.item);
+    }
   }
   return pairs.join("; ");
 }

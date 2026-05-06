@@ -54,6 +54,17 @@ test("order item summaries read top-level bot snapshots", () => {
   assert.deepEqual(resolveOrderSnapshotFields(snapshot).priced_line_items, snapshot.priced_line_items);
 });
 
+test("order item summaries exclude delivery fee rows", () => {
+  const snapshot = {
+    priced_line_items: [
+      { item: "Bulb Camara", quantity: 3, unit_price: "1,990", line_total: "5,970" },
+      { item: "Delivery (free)", quantity: 1, unit_price: "0", line_total: "0" },
+    ],
+  };
+
+  assert.equal(formatOrderItems(snapshot), "Bulb Camara x 3");
+});
+
 test("order money helpers parse comma thousands", () => {
   assert.equal(numericAmount("5,970"), 5970);
   assert.equal(formatMoney("LKR", "5,970"), "LKR 5970.00");

@@ -8,6 +8,7 @@ import {
   type OrderFulfillmentStatus,
 } from "@/lib/order-operations";
 import { formatMoneyDecimal } from "@/lib/money";
+import { isDeliveryLineItemName } from "@/lib/order-line-items";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 
 export type OrderApprovalMessage =
@@ -209,7 +210,7 @@ export function computeOrderExpectedAmount(fields: Record<string, unknown>): str
 }
 
 export function formatOrderItemsSummary(fields: Record<string, unknown>): string {
-  const items = normalizeOrderLineItems(fields);
+  const items = normalizeOrderLineItems(fields).filter((item) => !isDeliveryLineItemName(item.item));
   if (!items.length) return "No items listed";
   return items
     .map((item) => {

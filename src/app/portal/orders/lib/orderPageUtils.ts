@@ -4,6 +4,7 @@ import {
   type OrderFulfillmentStatus,
 } from "@/lib/order-operations";
 import { parseMoneyNumber } from "@/lib/money";
+import { isDeliveryLineItemName } from "@/lib/order-line-items";
 
 export type OrderPaymentRow = {
   id: string;
@@ -221,7 +222,7 @@ export function formatOrderItems(snapshot: Record<string, unknown>): string {
       const row = asRecord(entry);
       const item = String(row.item ?? "").trim();
       const quantity = String(row.quantity ?? "").trim();
-      if (!item) return "";
+      if (!item || isDeliveryLineItemName(item)) return "";
       return quantity ? `${item} x ${quantity}` : item;
     })
     .filter(Boolean);
@@ -229,10 +230,14 @@ export function formatOrderItems(snapshot: Record<string, unknown>): string {
 
   const items = Array.isArray(fields.items) ? fields.items : [];
   const quantities = Array.isArray(fields.quantity) ? fields.quantity : [];
-  if (!items.length) return "No items listed";
-  return items
-    .map((item, index) => `${String(item ?? "").trim()} x ${String(quantities[index] ?? quantities[0] ?? 1).trim()}`)
-    .join(", ");
+  const fallbackRows = items
+    .map((item, index) => {
+      const itemName = String(item ?? "").trim();
+      if (!itemName || isDeliveryLineItemName(itemName)) return "";
+      return `${itemName} x ${String(quantities[index] ?? quantities[0] ?? 1).trim()}`;
+    })
+    .filter(Boolean);
+  return fallbackRows.length ? fallbackRows.join(", ") : "No items listed";
 }
 
 export function normalizeStatusLabel(value: string | null | undefined): string {

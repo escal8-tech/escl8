@@ -56,6 +56,17 @@ test("formatOrderItemsSummary reads top-level bot priced line items", () => {
   assert.equal(summary, "Bulb Camara (qty 3 x 1990.00)");
 });
 
+test("formatOrderItemsSummary excludes delivery fee lines", () => {
+  const summary = formatOrderItemsSummary({
+    priced_line_items: [
+      { item: "Bulb Camara", quantity: 3, unit_price: "1,990", line_total: "5,970" },
+      { item: "Delivery (free)", quantity: 1, unit_price: "0", line_total: "0" },
+    ],
+  });
+
+  assert.equal(summary, "Bulb Camara (qty 3 x 1990.00)");
+});
+
 test("buildOrderApprovalMessages uses optional slip wording when payment slip is not required", () => {
   const settings = normalizeOrderFlowSettings({
     orderFlow: {

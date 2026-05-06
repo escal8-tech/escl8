@@ -6,6 +6,7 @@ import {
   getPublicOrderTrackingData,
 } from "@/server/services/orderTracking";
 import { parseMoneyNumber } from "@/lib/money";
+import { isDeliveryLineItemName } from "@/lib/order-line-items";
 
 import styles from "./page.module.css";
 
@@ -53,11 +54,6 @@ function statusLabel(status: string | null | undefined): string {
   return cleanText(status, "Pending").replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function isDeliveryFeeItem(value: unknown): boolean {
-  const label = cleanText(value, "").toLowerCase();
-  return /^(delivery|delivery fee|shipping|shipping fee|courier|courier fee)$/.test(label);
-}
-
 function MissingTrackingPage() {
   return (
     <main className={styles.page}>
@@ -103,8 +99,8 @@ export default async function PublicOrderTrackingPage({
   const currentStep = timeline.find((item) => item.tone === "current") ?? timeline.find((item) => item.tone === "issue") ?? timeline[timeline.length - 1];
   const completedSteps = timeline.filter((item) => item.tone === "done").length;
   const progress = Math.max(12, Math.min(100, Math.round((completedSteps / Math.max(1, timeline.length)) * 100)));
-  const deliveryFeeItems = items.filter((item) => isDeliveryFeeItem(item.item));
-  const productItems = items.filter((item) => !isDeliveryFeeItem(item.item));
+  const deliveryFeeItems = items.filter((item) => isDeliveryLineItemName(item.item));
+  const productItems = items.filter((item) => !isDeliveryLineItemName(item.item));
   const deliveryFee = deliveryFeeItems.reduce((sum, item) => {
     const quantity = Math.max(1, asNumber(item.quantity || 1));
     const lineTotal = asNumber(item.lineTotal);
