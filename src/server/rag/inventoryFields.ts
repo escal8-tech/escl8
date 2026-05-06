@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { SpreadsheetRow } from "./extractText";
 
 const PLACEHOLDER_VALUES = new Set([
@@ -16,7 +15,14 @@ const PLACEHOLDER_VALUES = new Set([
 
 const PRODUCT_KEYS = new Set([
   "product_name",
+  "product_name_item_name",
+  "product_item_name",
+  "item_name_product_name",
+  "product_title",
   "item_name",
+  "item_title",
+  "service_name",
+  "menu_item",
   "name",
   "product",
   "item",
@@ -34,6 +40,7 @@ const CODE_KEYS = new Set([
   "model_no",
   "model_number",
   "stock_code",
+  "barcode",
 ]);
 
 const DETAIL_KEYS = new Set([
