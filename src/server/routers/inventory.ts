@@ -27,6 +27,7 @@ import {
   parseInventoryAmount,
   saveBusinessStockSettings,
 } from "@/server/inventory/stockMapping";
+import { acquireInventoryBusinessLock } from "@/server/inventory/locks";
 
 const sortDirectionSchema = z.enum(["asc", "desc"]);
 const itemSortKeySchema = z.enum(["name", "updatedAt", "quantity"]);
@@ -389,11 +390,15 @@ export const inventoryRouter = router({
       quantity: z.number().int().min(0),
     }))
     .mutation(async ({ ctx, input }) => {
-      const [row] = await db
-        .update(inventoryProducts)
-        .set({ quantityOnHand: input.quantity, updatedAt: new Date() })
-        .where(and(eq(inventoryProducts.businessId, ctx.businessId), eq(inventoryProducts.id, input.productId)))
-        .returning();
+      const row = await db.transaction(async (tx) => {
+        await acquireInventoryBusinessLock(tx, ctx.businessId);
+        const [updated] = await tx
+          .update(inventoryProducts)
+          .set({ quantityOnHand: input.quantity, updatedAt: new Date() })
+          .where(and(eq(inventoryProducts.businessId, ctx.businessId), eq(inventoryProducts.id, input.productId)))
+          .returning();
+        return updated;
+      });
       if (!row) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Item not found" });
       }

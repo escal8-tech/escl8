@@ -260,6 +260,7 @@ function buildInventoryStructuredRowChunks(
   const chunks: SmartChunk[] = [];
   const rowTexts = rows.map((r) => r.text);
   let charOffset = 0;
+  const sourceRowKeyCounts = new Map<string, number>();
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -274,7 +275,15 @@ function buildInventoryStructuredRowChunks(
     ].filter(Boolean);
     const rowText = (displayParts.join(" | ") || row.text || "").trim();
     if (!rowText) continue;
-    const sourceRowKey = sourceRowKeyForSpreadsheetRow({ source: opts.source, row });
+    const sourceRowKeyBase = sourceRowKeyForSpreadsheetRow({ source: opts.source, row, stockSettings: opts.stockSettings });
+    const duplicateIndex = (sourceRowKeyCounts.get(sourceRowKeyBase) ?? 0) + 1;
+    sourceRowKeyCounts.set(sourceRowKeyBase, duplicateIndex);
+    const sourceRowKey = sourceRowKeyForSpreadsheetRow({
+      source: opts.source,
+      row,
+      stockSettings: opts.stockSettings,
+      duplicateIndex,
+    });
     const productRef = opts.productRefs?.get(sourceRowKey);
 
     const charStart = charOffset;
