@@ -316,15 +316,24 @@ export const inventoryRouter = router({
       }
     }
 
+    const detectedKeys = new Set(columnStats.keys());
     for (const entry of stockSettings.columnMapping) {
       if (!columnStats.has(entry.key)) {
         columnStats.set(entry.key, { count: 0, samples: [] });
       }
     }
 
+    let savedMappingCount = 0;
+    let newColumnCount = 0;
+    let missingColumnCount = 0;
     const columns = Array.from(columnStats.entries())
       .map(([key, stat]) => {
         const current = mapped.get(key);
+        const hasSavedMapping = Boolean(current);
+        const isDetected = detectedKeys.has(key);
+        if (hasSavedMapping) savedMappingCount += 1;
+        if (!hasSavedMapping && isDetected) newColumnCount += 1;
+        if (hasSavedMapping && !isDetected) missingColumnCount += 1;
         const role = current?.role ?? inferStockColumnRole(key);
         return {
           key,
@@ -334,15 +343,22 @@ export const inventoryRouter = router({
           priceLabel: current?.priceLabel || (role === "price" ? friendlyStockColumnLabel(key) : ""),
           count: stat.count,
           samples: stat.samples,
+          hasSavedMapping,
+          isNew: !hasSavedMapping && isDetected,
+          isMissing: hasSavedMapping && !isDetected,
+          mappingSource: hasSavedMapping ? "saved" : "suggested",
         };
       })
-      .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+      .sort((a, b) => Number(a.isMissing) - Number(b.isMissing) || b.count - a.count || a.key.localeCompare(b.key));
 
     return {
       columns,
       mappingStatus: getStockMappingStatus(stockSettings),
       mappedAt: stockSettings.updatedAt ?? null,
       productCount: rows.length,
+      savedMappingCount,
+      newColumnCount,
+      missingColumnCount,
     };
   }),
 
