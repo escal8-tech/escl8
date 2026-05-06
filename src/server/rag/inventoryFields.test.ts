@@ -9,6 +9,16 @@ test("normalizeHeaderKey handles mixed spreadsheet headers", () => {
   assert.equal(normalizeHeaderKey("Member Price"), "member_price");
 });
 
+test("summarizeInventoryFields recognizes combined product name headers", () => {
+  const out = summarizeInventoryFields({
+    PRODUCT_NAME_ITEM_NAME: "Bulb Camera",
+    RETAIL_PRICE: "1990/=",
+  } as Record<string, string>);
+
+  assert.equal(out.product, "Bulb Camera");
+  assert.deepEqual(out.priceFields, [{ key: "retail_price", value: "1990/=" }]);
+});
+
 test("summarizeInventoryFields prefers descriptive product name and keeps code", () => {
   const out = summarizeInventoryFields({
     PRODUCT_NAME: "1026B",

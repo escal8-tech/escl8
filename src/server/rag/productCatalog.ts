@@ -275,10 +275,16 @@ export async function replaceInventoryProductsForRows(params: {
     }
 
     const activeIds = Array.from(activeProductIds);
+    if (activeIds.length === 0) {
+      console.warn(
+        `[rag:inventory] skipped archive for businessId=${params.businessId} source=${params.source} because no valid inventory products were derived from ${rows.length} structured rows`,
+      );
+      return;
+    }
     await tx
       .update(inventoryProducts)
       .set({ status: "archived", updatedAt: new Date() })
-      .where(activeIds.length > 0 ? and(scopeWhere, notInArray(inventoryProducts.id, activeIds)) : scopeWhere);
+      .where(and(scopeWhere, notInArray(inventoryProducts.id, activeIds)));
   });
 
   return refs;

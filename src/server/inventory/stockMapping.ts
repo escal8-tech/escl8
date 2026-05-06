@@ -7,7 +7,6 @@ import {
 } from "../../../drizzle/schema";
 import {
   friendlyStockColumnLabel,
-  getStockMappingStatus,
   inferStockColumnRole,
   mergeStockSettings,
   normalizeStockColumnKey,
@@ -68,7 +67,7 @@ export function parseInventoryAmount(value: unknown): string | null {
   const match = text.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
   if (!match) return null;
   const amount = Number(match[0]);
-  if (!Number.isFinite(amount) || amount < 0) return null;
+  if (!Number.isFinite(amount) || amount <= 0) return null;
   return amount.toFixed(2);
 }
 
@@ -128,10 +127,6 @@ function mappingByKey(settings?: BusinessStockSettings): Map<string, StockColumn
   return out;
 }
 
-function isStrictMappedMode(settings?: BusinessStockSettings): boolean {
-  return settings ? getStockMappingStatus(settings).isMapped : false;
-}
-
 function normalizedFields(fields: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(fields || {})) {
@@ -145,10 +140,9 @@ function normalizedFields(fields: Record<string, string>): Record<string, string
 
 function entriesForFields(fields: Record<string, string>, settings?: BusinessStockSettings): FieldEntry[] {
   const map = mappingByKey(settings);
-  const strictMappedMode = isStrictMappedMode(settings);
   return Object.entries(fields).map(([key, value], index) => {
     const mapped = map.get(normalizeStockColumnKey(key));
-    const role = mapped?.role ?? (strictMappedMode ? "ignore" : inferStockColumnRole(key));
+    const role = mapped?.role ?? inferStockColumnRole(key);
     const label = mapped?.label || friendlyStockColumnLabel(key);
     return {
       key,
@@ -205,10 +199,7 @@ export function deriveInventoryProductFromFields(
 ): DerivedInventoryProductFields {
   const fields = normalizedFields(rawFields);
   const entries = entriesForFields(fields, settings);
-  const strictMappedMode = isStrictMappedMode(settings);
-  const summary = strictMappedMode
-    ? { product: "", specification: "", itemCode: "" }
-    : summarizeInventoryFields(fields);
+  const summary = summarizeInventoryFields(fields);
 
   const name = normalizeText(firstValue(entries, "name") || summary.product);
   const description = normalizeText(firstValue(entries, "description") || summary.specification);
@@ -225,11 +216,13 @@ export function deriveInventoryProductFromFields(
 
   const priceFields = entries
     .filter((entry) => entry.role === "price" && entry.value && /\d/.test(entry.value))
-    .map((entry) => ({
+    .map((entry) => ({ entry, amount: parseInventoryAmount(entry.value) }))
+    .filter((row): row is { entry: FieldEntry; amount: string } => Boolean(row.amount))
+    .map(({ entry, amount }) => ({
       sourceKey: normalizeStockColumnKey(entry.key) || `price_${entry.sortOrder + 1}`,
       label: entry.priceLabel || entry.label || friendlyStockColumnLabel(entry.key),
       valueText: normalizeText(entry.value),
-      amount: parseInventoryAmount(entry.value),
+      amount,
       sortOrder: entry.sortOrder,
     }));
 
