@@ -18,6 +18,7 @@ import { buildWebsiteWidgetSnippet, normalizeWebsiteWidgetSettings } from "@/lib
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
 import { UploadContent } from "@/app/portal/upload/components/UploadContent";
 import { FlowBuilderContent } from "@/app/portal/flowbuilder/FlowBuilderContent";
+import { StockSettingsPanel } from "@/app/portal/settings/components/StockSettingsPanel";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ICONS (inline SVGs for clean dependency-free icons)
@@ -135,6 +136,13 @@ const Icons = {
       <line x1="12" y1="3" x2="12" y2="15" />
     </svg>
   ),
+  stock: (
+    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <path d="M3.27 6.96 12 12l8.73-5.04" />
+      <path d="M12 22V12" />
+    </svg>
+  ),
   flow: (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="4" width="6" height="6" rx="2" />
@@ -181,11 +189,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   tabs: {
     display: "flex",
+    flexWrap: "wrap",
     gap: 6,
     padding: "4px",
     background: "var(--card-muted)",
     borderRadius: 12,
     width: "fit-content",
+    maxWidth: "100%",
   },
   tab: {
     display: "flex",
@@ -809,7 +819,7 @@ function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onC
 /* ─────────────────────────────────────────────────────────────────────────────
    SETTINGS PAGE TABS
 ───────────────────────────────────────────────────────────────────────────── */
-type SettingsTab = "profile" | "booking" | "tickets" | "customization" | "integrations" | "documents" | "flowbuilder";
+type SettingsTab = "profile" | "booking" | "tickets" | "customization" | "integrations" | "documents" | "stock" | "flowbuilder";
 
 const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "profile", label: "Profile", icon: Icons.user },
@@ -818,6 +828,7 @@ const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "customization", label: "Customization", icon: Icons.building },
   { id: "integrations", label: "Integrations", icon: Icons.whatsapp },
   { id: "documents", label: "Documents", icon: Icons.upload },
+  { id: "stock", label: "Stock", icon: Icons.stock },
   { id: "flowbuilder", label: "Flow Builder", icon: Icons.flow },
 ];
 
@@ -828,6 +839,7 @@ const settingsTabFeatureMap: Partial<Record<SettingsTab, string>> = {
   customization: "agent.settings.basic",
   integrations: "agent.whatsapp.connect",
   documents: "agent.settings.basic",
+  stock: "agent.settings.basic",
   flowbuilder: "agent.messages.view",
 };
 
@@ -2298,6 +2310,7 @@ export default function SettingsPage() {
   };
 
   const renderDocumentsTab = () => <UploadContent />;
+  const renderStockTab = () => <StockSettingsPanel />;
 
   const renderCustomizationTab = () => (
     <div style={styles.section}>
@@ -2513,6 +2526,8 @@ export default function SettingsPage() {
         return renderIntegrationsTab();
       case "documents":
         return renderDocumentsTab();
+      case "stock":
+        return renderStockTab();
       case "flowbuilder":
         return renderFlowBuilderTab();
       default:

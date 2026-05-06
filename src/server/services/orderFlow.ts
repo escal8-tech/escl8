@@ -7,6 +7,7 @@ import {
   formatOrderFulfillmentStatus,
   type OrderFulfillmentStatus,
 } from "@/lib/order-operations";
+import { formatMoneyDecimal } from "@/lib/money";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 
 export type OrderApprovalMessage =
@@ -74,28 +75,7 @@ export function sanitizePhoneDigits(value: string | null | undefined): string {
 }
 
 export function parseMoneyValue(value: unknown): string | null {
-  if (value == null) return null;
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value.toFixed(2);
-  }
-  const normalized = String(value).trim();
-  if (!normalized) return null;
-  const cleaned = normalized.replace(/[^0-9.,-]/g, "");
-  if (!cleaned) return null;
-  const lastDot = cleaned.lastIndexOf(".");
-  const lastComma = cleaned.lastIndexOf(",");
-  const decimalIdx = Math.max(lastDot, lastComma);
-  let numeric = cleaned;
-  if (decimalIdx >= 0) {
-    const integerPart = cleaned.slice(0, decimalIdx).replace(/[.,]/g, "");
-    const decimalPart = cleaned.slice(decimalIdx + 1).replace(/[.,]/g, "");
-    numeric = `${integerPart}.${decimalPart}`;
-  } else {
-    numeric = cleaned.replace(/[.,]/g, "");
-  }
-  const parsed = Number(numeric);
-  if (!Number.isFinite(parsed)) return null;
-  return parsed.toFixed(2);
+  return formatMoneyDecimal(value);
 }
 
 export type NormalizedOrderLineItem = {

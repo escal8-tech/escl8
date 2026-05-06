@@ -9,6 +9,7 @@ import { messagesRouter } from "./messages";
 import { ticketsRouter } from "./tickets";
 import { ordersRouter } from "./orders";
 import { flowBuilderRouter } from "./flowBuilder";
+import { inventoryRouter } from "./inventory";
 
 export const appRouter = router({
   user: userRouter,
@@ -21,6 +22,7 @@ export const appRouter = router({
   tickets: ticketsRouter,
   orders: ordersRouter,
   flowBuilder: flowBuilderRouter,
+  inventory: inventoryRouter,
 });
 
 export type AppRouter = typeof appRouter;

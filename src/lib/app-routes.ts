@@ -6,6 +6,8 @@ export const APP_PROTECTED_ROUTE_PREFIXES = [
   "/dashboard",
   "/requests",
   "/customers",
+  "/items",
+  "/offers",
   "/messages",
   "/upload",
   "/bookings",
@@ -57,7 +59,7 @@ export function isStandalonePublicPath(pathname?: string | null): boolean {
 
 export function isAppFlushPath(pathname?: string | null): boolean {
   const normalized = normalizeAppPath(pathname);
-  return ["/customers", "/messages", "/ticket", "/tickets", "/orders", "/payments", "/status", "/requests"].some(
+  return ["/customers", "/items", "/offers", "/messages", "/ticket", "/tickets", "/orders", "/payments", "/status", "/requests"].some(
     (prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`),
   );
 }

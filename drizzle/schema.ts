@@ -216,6 +216,7 @@ export const businessesRelations = relations(businesses, ({ many }) => ({
   orderEvents: many(orderEvents),
   inventoryProducts: many(inventoryProducts),
   inventoryProductPriceOptions: many(inventoryProductPriceOptions),
+  inventoryProductOffers: many(inventoryProductOffers),
 }));
 
 export const whatsappIdentitiesRelations = relations(whatsappIdentities, ({ one }) => ({
@@ -1184,10 +1185,7 @@ export const inventoryProducts = pgTable(
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
 
-    trainingDocumentId: text("training_document_id").references(() => trainingDocuments.id, {
-      onDelete: "set null",
-      onUpdate: "cascade",
-    }),
+    trainingDocumentId: text("training_document_id"),
 
     source: text("source").notNull(),
     sourceFilename: text("source_filename"),
@@ -1205,6 +1203,9 @@ export const inventoryProducts = pgTable(
     mediaUrl: text("media_url"),
     mediaType: text("media_type"),
     mediaFilename: text("media_filename"),
+    quantityOnHand: integer("quantity_on_hand"),
+    quantityInitial: integer("quantity_initial"),
+    quantityUnit: text("quantity_unit"),
 
     searchText: text("search_text").notNull().default(""),
     rawFields: jsonb("raw_fields").$type<Record<string, string>>().notNull().default({}),
@@ -1217,6 +1218,11 @@ export const inventoryProducts = pgTable(
   (t) => ({
     inventoryProductsBusinessIdx: index("inventory_products_business_id_idx").on(t.businessId),
     inventoryProductsTrainingDocIdx: index("inventory_products_training_document_id_idx").on(t.trainingDocumentId),
+    inventoryProductsTrainingDocFk: foreignKey({
+      name: "inventory_products_training_doc_fk",
+      columns: [t.trainingDocumentId],
+      foreignColumns: [trainingDocuments.id],
+    }).onDelete("set null").onUpdate("cascade"),
     inventoryProductsNameIdx: index("inventory_products_name_idx").on(t.name),
     inventoryProductsItemCodeIdx: index("inventory_products_item_code_idx").on(t.itemCode),
     inventoryProductsSourceRowUx: uniqueIndex("inventory_products_business_source_row_ux").on(
@@ -1247,9 +1253,7 @@ export const inventoryProductPriceOptions = pgTable(
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
 
-    productId: text("product_id")
-      .notNull()
-      .references(() => inventoryProducts.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    productId: text("product_id").notNull(),
 
     sourceKey: text("source_key").notNull(),
     label: text("label").notNull(),
@@ -1264,6 +1268,11 @@ export const inventoryProductPriceOptions = pgTable(
   (t) => ({
     inventoryProductPriceOptionsBusinessIdx: index("inventory_product_price_options_business_id_idx").on(t.businessId),
     inventoryProductPriceOptionsProductIdx: index("inventory_product_price_options_product_id_idx").on(t.productId),
+    inventoryProductPriceOptionsProductFk: foreignKey({
+      name: "inventory_price_options_product_fk",
+      columns: [t.productId],
+      foreignColumns: [inventoryProducts.id],
+    }).onDelete("cascade").onUpdate("cascade"),
     inventoryProductPriceOptionsProductSourceUx: uniqueIndex("inventory_product_price_options_product_source_ux").on(
       t.productId,
       t.sourceKey,
@@ -1271,6 +1280,94 @@ export const inventoryProductPriceOptions = pgTable(
     inventoryProductPriceOptionsLabelNonEmpty: check(
       "inventory_product_price_options_label_nonempty",
       sql`length(btrim(${t.label})) > 0`,
+    ),
+  }),
+);
+
+export const inventoryProductOffers = pgTable(
+  "inventory_product_offers",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+
+    productId: text("product_id")
+      .notNull()
+      .references(() => inventoryProducts.id, { onDelete: "cascade", onUpdate: "cascade" }),
+
+    title: text("title").notNull().default("Offer"),
+    originalPriceText: text("original_price_text"),
+    originalPriceAmount: numeric("original_price_amount", { precision: 14, scale: 2 }),
+    offerPriceText: text("offer_price_text").notNull(),
+    offerPriceAmount: numeric("offer_price_amount", { precision: 14, scale: 2 }),
+    currency: text("currency").notNull().default("LKR"),
+    notes: text("notes"),
+    isActive: boolean("is_active").notNull().default(true),
+    startsAt: timestamp("starts_at", { withTimezone: true }),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    inventoryProductOffersBusinessIdx: index("inventory_product_offers_business_id_idx").on(t.businessId),
+    inventoryProductOffersProductIdx: index("inventory_product_offers_product_id_idx").on(t.productId),
+    inventoryProductOffersActiveIdx: index("inventory_product_offers_active_idx").on(t.isActive),
+    inventoryProductOffersTitleNonEmpty: check(
+      "inventory_product_offers_title_nonempty",
+      sql`length(btrim(${t.title})) > 0`,
+    ),
+    inventoryProductOffersPriceNonEmpty: check(
+      "inventory_product_offers_price_nonempty",
+      sql`length(btrim(${t.offerPriceText})) > 0`,
+    ),
+  }),
+);
+
+export const inventoryReservations = pgTable(
+  "inventory_reservations",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+
+    productId: text("product_id")
+      .notNull()
+      .references(() => inventoryProducts.id, { onDelete: "cascade", onUpdate: "cascade" }),
+
+    orderId: text("order_id").notNull(),
+    customerId: text("customer_id"),
+    threadId: text("thread_id"),
+    quantity: integer("quantity").notNull(),
+    status: text("status").notNull().default("held"),
+    reason: text("reason"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    inventoryReservationsBusinessIdx: index("inventory_reservations_business_id_idx").on(t.businessId),
+    inventoryReservationsProductIdx: index("inventory_reservations_product_id_idx").on(t.productId),
+    inventoryReservationsOrderIdx: index("inventory_reservations_order_id_idx").on(t.orderId),
+    inventoryReservationsActiveIdx: index("inventory_reservations_active_idx").on(t.status, t.expiresAt),
+    inventoryReservationsStatusValid: check(
+      "inventory_reservations_status_valid",
+      sql`${t.status} in ('held', 'consumed', 'released', 'expired')`,
+    ),
+    inventoryReservationsQuantityPositive: check(
+      "inventory_reservations_quantity_positive",
+      sql`${t.quantity} > 0`,
     ),
   }),
 );
@@ -1285,6 +1382,8 @@ export const inventoryProductsRelations = relations(inventoryProducts, ({ one, m
     references: [trainingDocuments.id],
   }),
   priceOptions: many(inventoryProductPriceOptions),
+  offers: many(inventoryProductOffers),
+  reservations: many(inventoryReservations),
 }));
 
 export const inventoryProductPriceOptionsRelations = relations(inventoryProductPriceOptions, ({ one }) => ({
@@ -1298,10 +1397,36 @@ export const inventoryProductPriceOptionsRelations = relations(inventoryProductP
   }),
 }));
 
+export const inventoryProductOffersRelations = relations(inventoryProductOffers, ({ one }) => ({
+  business: one(businesses, {
+    fields: [inventoryProductOffers.businessId],
+    references: [businesses.id],
+  }),
+  product: one(inventoryProducts, {
+    fields: [inventoryProductOffers.productId],
+    references: [inventoryProducts.id],
+  }),
+}));
+
+export const inventoryReservationsRelations = relations(inventoryReservations, ({ one }) => ({
+  business: one(businesses, {
+    fields: [inventoryReservations.businessId],
+    references: [businesses.id],
+  }),
+  product: one(inventoryProducts, {
+    fields: [inventoryReservations.productId],
+    references: [inventoryProducts.id],
+  }),
+}));
+
 export type InventoryProductRow = typeof inventoryProducts.$inferSelect;
 export type NewInventoryProduct = typeof inventoryProducts.$inferInsert;
 export type InventoryProductPriceOptionRow = typeof inventoryProductPriceOptions.$inferSelect;
 export type NewInventoryProductPriceOption = typeof inventoryProductPriceOptions.$inferInsert;
+export type InventoryProductOfferRow = typeof inventoryProductOffers.$inferSelect;
+export type NewInventoryProductOffer = typeof inventoryProductOffers.$inferInsert;
+export type InventoryReservationRow = typeof inventoryReservations.$inferSelect;
+export type NewInventoryReservation = typeof inventoryReservations.$inferInsert;
 
 // ==========================
 // RAG / Training Documents

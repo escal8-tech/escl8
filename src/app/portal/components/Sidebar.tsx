@@ -59,6 +59,19 @@ const Icons = {
       <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
     </svg>
   ),
+  items: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <path d="M3.27 6.96 12 12l8.73-5.04" />
+      <path d="M12 22V12" />
+    </svg>
+  ),
+  offers: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20.59 13.41 11 3.83A2.83 2.83 0 0 0 9 3H4a1 1 0 0 0-1 1v5c0 .75.3 1.47.83 2l9.58 9.59a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.83z" />
+      <path d="M7 7h.01" />
+    </svg>
+  ),
   settings: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
@@ -106,6 +119,8 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
   { href: "/requests", label: "Requests", icon: "requests" },
   { href: "/customers", label: "Customers", icon: "customers" },
+  { href: "/items", label: "Items", icon: "items" },
+  { href: "/offers", label: "Offers", icon: "offers" },
   { href: "/messages", label: "Messages", icon: "messages" },
   { href: "/bookings", label: "Bookings", icon: "calendar" },
 ];

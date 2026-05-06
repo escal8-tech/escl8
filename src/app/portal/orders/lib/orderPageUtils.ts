@@ -3,6 +3,7 @@ import {
   normalizeOrderFulfillmentStatus,
   type OrderFulfillmentStatus,
 } from "@/lib/order-operations";
+import { parseMoneyNumber } from "@/lib/money";
 
 export type OrderPaymentRow = {
   id: string;
@@ -142,6 +143,27 @@ export function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+function hasOrderItemData(fields: Record<string, unknown>): boolean {
+  return (Array.isArray(fields.priced_line_items) && fields.priced_line_items.length > 0)
+    || (Array.isArray(fields.line_items) && fields.line_items.length > 0)
+    || (Array.isArray(fields.items) && fields.items.length > 0)
+    || Boolean(String(fields.product ?? "").trim());
+}
+
+export function resolveOrderSnapshotFields(snapshot: Record<string, unknown>): Record<string, unknown> {
+  const fields = asRecord(snapshot.fields);
+  if (hasOrderItemData(fields)) return fields;
+
+  const topLevelFields: Record<string, unknown> = {};
+  for (const key of ["items", "product", "quantity", "line_items", "priced_line_items", "total", "total_cost", "totalcost", "amount"]) {
+    if (snapshot[key] !== undefined) topLevelFields[key] = snapshot[key];
+  }
+  if (topLevelFields.total === undefined && snapshot.expected_amount !== undefined) {
+    topLevelFields.total = snapshot.expected_amount;
+  }
+  return Object.keys(topLevelFields).length ? { ...fields, ...topLevelFields } : fields;
+}
+
 export function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
 }
@@ -180,18 +202,17 @@ export function toIsoFromDateTimeLocal(value: string): string | undefined {
 
 export function formatMoney(currency: string | null | undefined, value: string | number | null | undefined): string {
   if (value == null || value === "") return "-";
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return `${currency || ""} ${value}`.trim();
+  const amount = parseMoneyNumber(value);
+  if (amount == null) return `${currency || ""} ${value}`.trim();
   return `${currency || "LKR"} ${amount.toFixed(2)}`;
 }
 
 export function numericAmount(value: string | number | null | undefined): number {
-  const amount = Number(value);
-  return Number.isFinite(amount) ? amount : 0;
+  return parseMoneyNumber(value) ?? 0;
 }
 
 export function formatOrderItems(snapshot: Record<string, unknown>): string {
-  const fields = asRecord(snapshot.fields);
+  const fields = resolveOrderSnapshotFields(snapshot);
   const pricedLineItems = Array.isArray(fields.priced_line_items) ? fields.priced_line_items : [];
   const lineItems = Array.isArray(fields.line_items) ? fields.line_items : [];
   const source = pricedLineItems.length ? pricedLineItems : lineItems;
