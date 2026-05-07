@@ -38,8 +38,9 @@ export function ActivityAreaChart({ data }: { data: { date: string; count: numbe
             tickMargin={8}
             minTickGap={32}
             tickFormatter={formatDateShort}
+            tick={{ fill: "var(--portal-text-muted)", fontSize: 12 }}
           />
-          <YAxis tickLine={false} axisLine={false} width={28} allowDecimals={false} />
+          <YAxis tickLine={false} axisLine={false} width={28} allowDecimals={false} tick={{ fill: "var(--portal-text-muted)", fontSize: 12 }} />
           <Tooltip
             cursor={{ stroke: "var(--border)", strokeOpacity: 0.6 }}
             content={({ active, label, payload }) => (

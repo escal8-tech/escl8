@@ -96,27 +96,22 @@ function ProfileIcon({ name, size = 40 }: { name?: string | null; size?: number 
     : "";
   return (
     <div
+      className="portal-message-profile-icon"
       style={{
         width: size,
         height: size,
-        borderRadius: "50%",
-        background: "linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%)",
-        border: "1px solid var(--border)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
         flexShrink: 0,
       }}
     >
       {initials ? (
-        <span style={{ fontSize: size * 0.35, fontWeight: 600, color: "var(--muted)" }}>{initials}</span>
+        <span style={{ fontSize: size * 0.35, fontWeight: 600 }}>{initials}</span>
       ) : (
         <svg
           width={size * 0.5}
           height={size * 0.5}
           viewBox="0 0 24 24"
           fill="none"
-          stroke="var(--muted)"
+          stroke="currentColor"
           strokeWidth="1.5"
         >
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -228,11 +223,6 @@ export default function MessagesPage() {
     setThreadHasMore(Boolean(data.hasMore));
     setIsLoadingMoreThreads(false);
   }, [threadPageQuery.data, threadCursor]);
-
-  const unansweredThreadCount = useMemo(
-    () => threadItems.reduce((count, thread) => count + (isCustomerLastMessage(thread.lastMessageDirection) ? 1 : 0), 0),
-    [threadItems],
-  );
 
   const filteredThreads = useMemo(
     () => (showOnlyUnanswered ? threadItems.filter((thread) => isCustomerLastMessage(thread.lastMessageDirection)) : threadItems),
@@ -699,8 +689,11 @@ export default function MessagesPage() {
                 }}
               />
             </div>
-            <label
+            <button
+              type="button"
               title="Show only chats where the customer sent the latest message and still needs a reply"
+              aria-pressed={showOnlyUnanswered}
+              onClick={() => setShowOnlyUnanswered((value) => !value)}
               style={{
                 height: 44,
                 display: "inline-flex",
@@ -708,9 +701,9 @@ export default function MessagesPage() {
                 gap: 6,
                 padding: "0 10px",
                 borderRadius: 8,
-                border: showOnlyUnanswered ? "1px solid rgba(239, 68, 68, 0.42)" : "1px solid var(--border)",
-                background: showOnlyUnanswered ? "rgba(239, 68, 68, 0.12)" : "rgba(255,255,255,0.03)",
-                color: showOnlyUnanswered ? "#fecaca" : "var(--muted)",
+                border: showOnlyUnanswered ? "1px solid rgba(239, 68, 68, 0.42)" : "1px solid var(--portal-border)",
+                background: showOnlyUnanswered ? "rgba(239, 68, 68, 0.12)" : "var(--portal-field-bg)",
+                color: showOnlyUnanswered ? "var(--danger)" : "var(--portal-text-muted)",
                 fontSize: 12,
                 fontWeight: 700,
                 whiteSpace: "nowrap",
@@ -718,30 +711,8 @@ export default function MessagesPage() {
                 userSelect: "none",
               }}
             >
-              <input
-                type="checkbox"
-                checked={showOnlyUnanswered}
-                onChange={(event) => setShowOnlyUnanswered(event.target.checked)}
-                aria-label="Only show unanswered customer chats"
-                style={{ width: 13, height: 13, accentColor: "#ef4444", cursor: "pointer" }}
-              />
               <span>{isMobile ? "Wait" : "Unanswered"}</span>
-              <span
-                style={{
-                  minWidth: 18,
-                  height: 18,
-                  borderRadius: 999,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  background: unansweredThreadCount > 0 ? "rgba(239, 68, 68, 0.2)" : "rgba(255,255,255,0.06)",
-                  color: unansweredThreadCount > 0 ? "#fecaca" : "var(--muted)",
-                  fontSize: 11,
-                }}
-              >
-                {unansweredThreadCount}
-              </span>
-            </label>
+            </button>
           </div>
         </div>
 
