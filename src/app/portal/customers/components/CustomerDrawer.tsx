@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { CSSProperties } from "react";
 import type { CustomerRow, Source } from "../types";
 import { SOURCE_CONFIG } from "../types";
 import { trpc } from "@/utils/trpc";
@@ -84,7 +85,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
       case "negative":
         return "#ef4444";
       default:
-        return "var(--muted)";
+        return "var(--portal-text-muted)";
     }
   };
 
@@ -100,7 +101,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
       case "failed":
         return "#ef4444";
       default:
-        return "var(--muted)";
+        return "var(--portal-text-muted)";
     }
   };
 
@@ -109,17 +110,8 @@ export function CustomerDrawer({ customer, onClose }: Props) {
     if (!config) return null;
     return (
       <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 4,
-          padding: "2px 8px",
-          borderRadius: 999,
-          fontSize: 11,
-          fontWeight: 500,
-          background: `${config.color}20`,
-          color: config.color,
-        }}
+        className="portal-source-badge portal-source-badge--compact"
+        style={{ "--source-color": config.color } as CSSProperties}
       >
         {config.icon} {config.label}
       </span>
@@ -184,7 +176,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
     fontSize: 11,
     textTransform: "uppercase",
     letterSpacing: "0.05em",
-    color: "var(--muted)",
+    color: "var(--portal-text-soft)",
     display: "block",
     marginBottom: 8,
   };
@@ -193,59 +185,35 @@ export function CustomerDrawer({ customer, onClose }: Props) {
     width: "100%",
     padding: "10px 12px",
     borderRadius: 8,
-    border: "1px solid var(--border)",
-    background: "rgba(0, 0, 0, 0.2)",
-    color: "var(--foreground)",
+    border: "1px solid var(--portal-border)",
+    background: "var(--portal-field-bg)",
+    color: "var(--portal-text)",
     fontSize: 14,
   };
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: "8px 16px",
-    border: "none",
-    background: active ? "rgba(184, 134, 11, 0.2)" : "transparent",
-    color: active ? "var(--gold-light)" : "var(--muted)",
+    border: active ? "1px solid rgba(184, 134, 11, 0.28)" : "1px solid transparent",
+    background: active ? "rgba(184, 134, 11, 0.16)" : "transparent",
+    color: active ? "var(--portal-text)" : "var(--portal-text-muted)",
     cursor: "pointer",
     borderRadius: 6,
     fontSize: 13,
-    fontWeight: 500,
+    fontWeight: active ? 700 : 600,
   });
 
   return (
     <>
-      {/* Overlay */}
-      <div
-        onClick={onClose}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0, 0, 0, 0.5)",
-          zIndex: 999,
-        }}
-      />
+      <div className="drawer-backdrop open" onClick={onClose} />
 
       {/* Drawer */}
       <aside
-        style={{
-          position: "fixed",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: 500,
-          maxWidth: "90vw",
-          background: "var(--glass-bg)",
-          backdropFilter: "blur(20px)",
-          borderLeft: "1px solid var(--border)",
-          zIndex: 1000,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
+        className="drawer open portal-customer-drawer"
       >
         {/* Header */}
         <header
+          className="drawer-header portal-customer-drawer__header"
           style={{
-            padding: "20px 24px",
-            borderBottom: "1px solid var(--border)",
             display: "flex",
             alignItems: "center",
             gap: 16,
@@ -256,14 +224,14 @@ export function CustomerDrawer({ customer, onClose }: Props) {
               width: 48,
               height: 48,
               borderRadius: "50%",
-              background:
-                "linear-gradient(135deg, var(--gold), var(--gold-light))",
+              background: "linear-gradient(135deg, var(--portal-primary), var(--gold))",
+              border: "1px solid var(--portal-border-soft)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontSize: 18,
               fontWeight: 600,
-              color: "#000",
+              color: "var(--portal-primary-contrast)",
               flexShrink: 0,
             }}
           >
@@ -279,7 +247,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                     fontSize: 10,
                     padding: "2px 6px",
                     background: "rgba(184, 134, 11, 0.2)",
-                    color: "var(--gold-light)",
+                    color: "var(--gold)",
                     borderRadius: 4,
                     verticalAlign: "middle",
                   }}
@@ -288,7 +256,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                 </span>
               )}
             </h2>
-            <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 6 }}>
+            <div style={{ fontSize: 13, color: "var(--portal-text-muted)", marginBottom: 6 }}>
               {displayPhone ? `+${displayPhone}` : customer.externalId}
               {displayEmail && (
                 <span style={{ marginLeft: 8 }}>• {displayEmail}</span>
@@ -296,17 +264,8 @@ export function CustomerDrawer({ customer, onClose }: Props) {
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 3,
-                  padding: "2px 6px",
-                  borderRadius: 4,
-                  fontSize: 10,
-                  fontWeight: 500,
-                  background: `${sourceConfig?.color ?? "#94A3B8"}20`,
-                  color: sourceConfig?.color ?? "#94A3B8",
-                }}
+                className="portal-source-badge portal-source-badge--compact"
+                style={{ "--source-color": sourceConfig?.color ?? "#94A3B8" } as CSSProperties}
               >
                 {sourceConfig?.icon ?? "📱"} {sourceConfig?.label ?? customer.source}
               </span>
@@ -324,7 +283,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
             style={{
               background: "transparent",
               border: "none",
-              color: "var(--muted)",
+              color: "var(--portal-text-muted)",
               cursor: "pointer",
               fontSize: 24,
               padding: 4,
@@ -338,7 +297,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
         <div
           style={{
             padding: "12px 24px",
-            borderBottom: "1px solid var(--border)",
+            borderBottom: "1px solid var(--portal-border)",
             display: "flex",
             gap: 8,
           }}
@@ -364,14 +323,14 @@ export function CustomerDrawer({ customer, onClose }: Props) {
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflow: "auto", padding: 24 }}>
+        <div className="drawer-body portal-customer-drawer__body" style={{ flex: 1, overflow: "auto", padding: 24 }}>
           {activeTab === "overview" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               <div>
                 <label style={sectionLabelStyle}>Customer Details</label>
                 <div
                   style={{
-                    background: "rgba(0, 0, 0, 0.2)",
+                    background: "var(--portal-surface)",
                     borderRadius: 12,
                     padding: 14,
                     display: "grid",
@@ -436,7 +395,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 8,
-                        color: "var(--foreground)",
+                        color: "var(--portal-text)",
                         fontSize: 13,
                         fontWeight: 500,
                         paddingBottom: 10,
@@ -458,8 +417,8 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                         padding: "10px 18px",
                         borderRadius: 8,
                         border: "none",
-                        background: "var(--gold)",
-                        color: "#000",
+                        background: "var(--portal-primary)",
+                        color: "var(--portal-primary-contrast)",
                         cursor: !isProfileDirty || updateMutation.isPending ? "not-allowed" : "pointer",
                         fontSize: 14,
                         fontWeight: 600,
@@ -502,7 +461,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                       ? "#22c55e"
                       : customer.leadScore > 40
                       ? "var(--gold)"
-                      : "var(--muted)"
+                      : "var(--portal-text-muted)"
                   }
                 />
               </div>
@@ -512,7 +471,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                 <label style={sectionLabelStyle}>Activity</label>
                 <div
                   style={{
-                    background: "rgba(0, 0, 0, 0.2)",
+                    background: "var(--portal-surface)",
                     borderRadius: 8,
                     padding: 12,
                     fontSize: 13,
@@ -525,11 +484,11 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                       marginBottom: 8,
                     }}
                   >
-                    <span style={{ color: "var(--muted)" }}>First message</span>
+                    <span style={{ color: "var(--portal-text-muted)" }}>First message</span>
                     <span>{formatDate(customer.firstMessageAt)}</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--muted)" }}>Last message</span>
+                    <span style={{ color: "var(--portal-text-muted)" }}>Last message</span>
                     <span>{formatDate(customer.lastMessageAt)}</span>
                   </div>
                 </div>
@@ -558,7 +517,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                   style={{
                     textAlign: "center",
                     padding: 40,
-                    color: "var(--muted)",
+                    color: "var(--portal-text-muted)",
                   }}
                 >
                   No requests found
@@ -578,7 +537,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                   <div
                     key={req.id}
                     style={{
-                      background: "rgba(0, 0, 0, 0.2)",
+                      background: "var(--portal-surface)",
                       borderRadius: 8,
                       padding: 14,
                     }}
@@ -605,7 +564,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                           {(req.status ?? "ongoing").replace("_", " ")}
                         </span>
                       </div>
-                      <span style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 12, color: "var(--portal-text-muted)", whiteSpace: "nowrap" }}>
                         {formatDate(req.createdAt)}
                       </span>
                     </div>
@@ -613,7 +572,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                       <p
                         style={{
                           fontSize: 13,
-                          color: "var(--foreground)",
+                          color: "var(--portal-text)",
                           lineHeight: 1.5,
                           marginBottom: 8,
                         }}
@@ -678,7 +637,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                         background: "rgba(184, 134, 11, 0.2)",
                         borderRadius: 999,
                         fontSize: 12,
-                        color: "var(--gold-light)",
+                        color: "var(--gold)",
                         display: "flex",
                         alignItems: "center",
                         gap: 6,
@@ -690,7 +649,7 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                         style={{
                           background: "transparent",
                           border: "none",
-                          color: "var(--gold-light)",
+                          color: "var(--gold)",
                           cursor: "pointer",
                           padding: 0,
                           fontSize: 14,
@@ -713,9 +672,9 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                       flex: 1,
                       padding: "8px 12px",
                       borderRadius: 6,
-                      border: "1px solid var(--border)",
-                      background: "var(--glass-bg)",
-                      color: "var(--foreground)",
+                      border: "1px solid var(--portal-border)",
+                      background: "var(--portal-field-bg)",
+                      color: "var(--portal-text)",
                       fontSize: 13,
                     }}
                   />
@@ -725,8 +684,8 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                       padding: "8px 16px",
                       borderRadius: 6,
                       border: "none",
-                      background: "var(--gold)",
-                      color: "#000",
+                      background: "var(--portal-primary)",
+                      color: "var(--portal-primary-contrast)",
                       cursor: "pointer",
                       fontSize: 13,
                       fontWeight: 500,
@@ -749,9 +708,9 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                     width: "100%",
                     padding: 12,
                     borderRadius: 8,
-                    border: "1px solid var(--border)",
-                    background: "rgba(0, 0, 0, 0.2)",
-                    color: "var(--foreground)",
+                    border: "1px solid var(--portal-border)",
+                    background: "var(--portal-field-bg)",
+                    color: "var(--portal-text)",
                     fontSize: 14,
                     resize: "vertical",
                     lineHeight: 1.6,
@@ -765,8 +724,8 @@ export function CustomerDrawer({ customer, onClose }: Props) {
                     padding: "10px 20px",
                     borderRadius: 6,
                     border: "none",
-                    background: "var(--gold)",
-                    color: "#000",
+                    background: "var(--portal-primary)",
+                    color: "var(--portal-primary-contrast)",
                     cursor: updateMutation.isPending ? "not-allowed" : "pointer",
                     fontSize: 14,
                     fontWeight: 500,
@@ -796,7 +755,7 @@ function StatCard({
   return (
     <div
       style={{
-        background: "rgba(0, 0, 0, 0.2)",
+        background: "var(--portal-surface)",
         borderRadius: 8,
         padding: 14,
       }}
@@ -806,7 +765,7 @@ function StatCard({
           fontSize: 11,
           textTransform: "uppercase",
           letterSpacing: "0.05em",
-          color: "var(--muted)",
+          color: "var(--portal-text-muted)",
           marginBottom: 6,
         }}
       >

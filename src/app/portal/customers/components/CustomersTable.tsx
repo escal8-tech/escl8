@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { CSSProperties } from "react";
 import { CustomerRow, Source, SOURCE_CONFIG } from "../types";
 import { SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { trpc } from "@/utils/trpc";
@@ -41,18 +42,10 @@ function SourceBadge({ source }: { source: Source }) {
   const config = SOURCE_CONFIG[source];
   return (
     <span
-      className="inline-block"
+      className="portal-source-badge"
       style={{
-        padding: "6px 12px",
-        borderRadius: 999,
-        background: `${config.color}24`,
-        color: "#e2e8f0",
-        fontSize: 12,
-        fontWeight: 600,
-        lineHeight: 1,
-        whiteSpace: "nowrap",
-        letterSpacing: "0.01em",
-      }}
+        "--source-color": config.color,
+      } as CSSProperties}
     >
       {config.label}
     </span>

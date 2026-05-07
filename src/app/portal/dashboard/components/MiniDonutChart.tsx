@@ -58,7 +58,7 @@ export function MiniDonutChart({
               return (
                 <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
                   {centerTop ? (
-                    <tspan x={viewBox.cx} y={viewBox.cy} style={{ fill: "#fff", fontSize: 28, fontWeight: 700 }}>
+                    <tspan x={viewBox.cx} y={viewBox.cy} style={{ fill: "var(--portal-text)", fontSize: 28, fontWeight: 700 }}>
                       {centerTop}
                     </tspan>
                   ) : null}
@@ -66,7 +66,7 @@ export function MiniDonutChart({
                     <tspan
                       x={viewBox.cx}
                       y={(viewBox.cy || 0) + 24}
-                      style={{ fill: "rgba(255,255,255,0.7)", fontSize: 12, letterSpacing: "0.14em", fontWeight: 600 }}
+                      style={{ fill: "var(--portal-text-muted)", fontSize: 12, letterSpacing: "0.14em", fontWeight: 600 }}
                     >
                       {centerBottom}
                     </tspan>

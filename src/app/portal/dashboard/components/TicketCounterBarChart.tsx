@@ -44,7 +44,7 @@ export function TicketCounterBarChart({
           axisLine={false}
           tickLine={false}
           allowDecimals={false}
-          tick={{ fill: "rgba(148,163,184,0.8)", fontSize: 11 }}
+          tick={{ fill: "var(--portal-text-muted)", fontSize: 11 }}
         />
         <YAxis
           type="category"
@@ -53,7 +53,7 @@ export function TicketCounterBarChart({
           tickLine={false}
           width={isMobile ? 68 : 104}
           interval={0}
-          tick={{ fill: "rgba(241,245,249,0.9)", fontSize: isMobile ? 10 : 11 }}
+          tick={{ fill: "var(--portal-text-muted)", fontSize: isMobile ? 10 : 11 }}
         />
         <Tooltip
           cursor={{ fill: "rgba(148,163,184,0.08)" }}

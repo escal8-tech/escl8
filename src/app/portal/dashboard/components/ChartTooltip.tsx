@@ -4,9 +4,9 @@ import type { CSSProperties } from "react";
 
 const chartTooltipStyle: CSSProperties = {
   borderRadius: 10,
-  border: "1px solid rgba(148,163,184,0.25)",
-  background: "rgba(15,23,42,0.95)",
-  color: "#f8fafc",
+  border: "1px solid var(--portal-border)",
+  background: "var(--portal-card-plain)",
+  color: "var(--portal-text)",
   padding: "8px 10px",
   minWidth: 150,
 };
@@ -29,7 +29,7 @@ export function SharedChartTooltip({
   return (
     <div style={chartTooltipStyle}>
       {label !== undefined ? (
-        <div style={{ color: "#cbd5e1", fontSize: 12, marginBottom: 6 }}>
+        <div style={{ color: "var(--portal-text-muted)", fontSize: 12, marginBottom: 6 }}>
           {labelFormatter ? labelFormatter(label) : String(label)}
         </div>
       ) : null}
@@ -52,9 +52,9 @@ export function SharedChartTooltip({
                     flexShrink: 0,
                   }}
                 />
-                <span style={{ color: "#e2e8f0", fontSize: 12 }}>{name}</span>
+                <span style={{ color: "var(--portal-text-muted)", fontSize: 12 }}>{name}</span>
               </div>
-              <span style={{ color: "#fff", fontSize: 12, fontWeight: 600 }}>
+              <span style={{ color: "var(--portal-text)", fontSize: 12, fontWeight: 600 }}>
                 {valueFormatter ? valueFormatter(value, name) : String(value)}
               </span>
             </div>
