@@ -1,4 +1,4 @@
-export const DOC_TYPES = ["considerations", "conversations", "inventory", "bank", "address"] as const;
+export const DOC_TYPES = ["considerations", "conversations", "inventory"] as const;
 export type DocType = (typeof DOC_TYPES)[number];
 
 export const KEY_DOC_TYPES = ["considerations", "conversations", "inventory"] as const;
@@ -47,18 +47,6 @@ export const DOC_SLOTS: readonly DocSlot[] = [
     hint: "Inventory list, SKUs, and pricing details.",
     accept: ".pdf,.csv,.xlsx,.txt",
   },
-  {
-    key: "bank",
-    title: "Bank Account Details",
-    hint: "Payment account information for customer instructions.",
-    accept: ".pdf,.txt,.doc,.docx",
-  },
-  {
-    key: "address",
-    title: "Shop Address & Location",
-    hint: "Store address, location, and directions.",
-    accept: ".pdf,.txt,.doc,.docx",
-  },
 ];
 
 export function isDocType(value: unknown): value is DocType {
@@ -95,7 +83,5 @@ export function buildDocTypeRecord<T>(factory: () => T): Record<DocType, T> {
     considerations: factory(),
     conversations: factory(),
     inventory: factory(),
-    bank: factory(),
-    address: factory(),
   };
 }

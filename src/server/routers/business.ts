@@ -212,6 +212,7 @@ export const businessRouter = router({
     .input(z.object({
       email: z.string().email(),
       businessId: z.string().min(1),
+      bookingsEnabled: z.boolean(),
       unitCapacity: z.number().int().min(1),
       timeslotMinutes: z.number().int().min(5).max(600),
       openTime: z.string().regex(/^\d{2}:\d{2}$/),
@@ -236,6 +237,7 @@ export const businessRouter = router({
       const [updated] = await db
         .update(businesses)
         .set({
+          bookingsEnabled: input.bookingsEnabled,
           bookingUnitCapacity: input.unitCapacity,
           bookingTimeslotMinutes: input.timeslotMinutes,
           bookingOpenTime: input.openTime,

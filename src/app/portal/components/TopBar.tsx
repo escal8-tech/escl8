@@ -6,7 +6,6 @@ import { useIsMobileViewport } from "@/app/portal/hooks/useIsMobileViewport";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { trpc } from "@/utils/trpc";
 import { PortalSelect } from "./PortalSelect";
-import { usePortalTheme } from "./PortalThemeProvider";
 
 interface TopBarProps {
   sidebarWidth: number;
@@ -33,52 +32,7 @@ const Icons = {
       <path d="M12 7v5l3 3" />
     </svg>
   ),
-  sun: (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2.5" />
-      <path d="M12 19.5V22" />
-      <path d="m4.93 4.93 1.77 1.77" />
-      <path d="m17.3 17.3 1.77 1.77" />
-      <path d="M2 12h2.5" />
-      <path d="M19.5 12H22" />
-      <path d="m4.93 19.07 1.77-1.77" />
-      <path d="m17.3 6.7 1.77-1.77" />
-    </svg>
-  ),
-  moon: (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3a7 7 0 1 0 9 9 9 9 0 1 1-9-9z" />
-    </svg>
-  ),
 };
-
-function ThemeToggle() {
-  const { theme, setTheme } = usePortalTheme();
-
-  return (
-    <div className="portal-theme-switch" role="group" aria-label="Portal theme">
-      <button
-        type="button"
-        className={`portal-theme-switch__option${theme === "light" ? " is-active" : ""}`}
-        onClick={() => setTheme("light")}
-        aria-pressed={theme === "light"}
-      >
-        {Icons.sun}
-        <span>Light</span>
-      </button>
-      <button
-        type="button"
-        className={`portal-theme-switch__option${theme === "dark" ? " is-active" : ""}`}
-        onClick={() => setTheme("dark")}
-        aria-pressed={theme === "dark"}
-      >
-        {Icons.moon}
-        <span>Dark</span>
-      </button>
-    </div>
-  );
-}
 
 function TimeChip() {
   const [now, setNow] = useState(() => new Date());
@@ -169,7 +123,6 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: TopBarProps) 
         <Breadcrumbs />
 
         <div className="topbar-mobile-inline">
-          <ThemeToggle />
           <TimeChip />
         </div>
       </div>
@@ -179,7 +132,6 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: TopBarProps) 
         <div className={`topbar-right${hasPhoneFilter ? " has-filter" : ""}`}>
           {phoneFilterControl}
           <div className="topbar-secondary">
-            <ThemeToggle />
             <TimeChip />
           </div>
         </div>
