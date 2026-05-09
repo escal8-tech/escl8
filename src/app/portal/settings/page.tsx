@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, signOut, updatePassword } from "firebase/auth";
 import { fetchWithFirebaseAuth, getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
 import { describeCompanyGmailError } from "@/lib/company-gmail";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
@@ -19,6 +19,7 @@ import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignu
 import { UploadContent } from "@/app/portal/upload/components/UploadContent";
 import { FlowBuilderContent } from "@/app/portal/flowbuilder/FlowBuilderContent";
 import { StockSettingsPanel } from "@/app/portal/settings/components/StockSettingsPanel";
+import { usePortalTheme } from "@/app/portal/components/PortalThemeProvider";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ICONS (inline SVGs for clean dependency-free icons)
@@ -67,6 +68,30 @@ const Icons = {
     <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="10" />
       <polyline points="12 6 12 12 16 14" />
+    </svg>
+  ),
+  sun: (
+    <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2" />
+      <path d="M12 20v2" />
+      <path d="m4.93 4.93 1.41 1.41" />
+      <path d="m17.66 17.66 1.41 1.41" />
+      <path d="M2 12h2" />
+      <path d="M20 12h2" />
+      <path d="m6.34 17.66-1.41 1.41" />
+      <path d="m19.07 4.93-1.41 1.41" />
+    </svg>
+  ),
+  moon: (
+    <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+      <path d="M12 3a7 7 0 1 0 9 9 9 9 0 0 1-9-9Z" />
+    </svg>
+  ),
+  lock: (
+    <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+      <rect x="3" y="11" width="18" height="10" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
     </svg>
   ),
   check: (
@@ -153,6 +178,11 @@ const Icons = {
       <path d="M18 10v2a3 3 0 0 1-3 3" />
     </svg>
   ),
+  chevronRight: (
+    <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  ),
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -215,6 +245,59 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--card)",
     color: "var(--foreground)",
     boxShadow: "var(--shadow-sm)",
+  },
+  overview: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+    gap: 22,
+    alignItems: "stretch",
+  },
+  overviewCard: {
+    minHeight: 230,
+    padding: 28,
+    border: "1px solid var(--border)",
+    borderRadius: 16,
+    background: "var(--card)",
+    boxShadow: "var(--shadow-sm)",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    textAlign: "left",
+    color: "var(--foreground)",
+    cursor: "pointer",
+  },
+  overviewIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 14,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "var(--card-muted)",
+    color: "var(--primary)",
+    marginBottom: 24,
+  },
+  overviewTitle: {
+    margin: 0,
+    fontSize: 28,
+    fontWeight: 700,
+    color: "var(--foreground)",
+    letterSpacing: 0,
+  },
+  overviewDescription: {
+    marginTop: 12,
+    color: "var(--muted)",
+    fontSize: 15,
+    lineHeight: 1.55,
+  },
+  overviewAction: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 28,
+    color: "var(--primary)",
+    fontSize: 14,
+    fontWeight: 700,
   },
   section: {
     display: "flex",
@@ -819,12 +902,13 @@ function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onC
 /* ─────────────────────────────────────────────────────────────────────────────
    SETTINGS PAGE TABS
 ───────────────────────────────────────────────────────────────────────────── */
-type SettingsTab = "profile" | "booking" | "tickets" | "customization" | "integrations" | "documents" | "stock" | "flowbuilder";
+type SettingsTab = "profile" | "booking" | "payments" | "customization" | "integrations" | "documents" | "stock" | "flowbuilder";
+type ActiveSettingsView = SettingsTab | "overview";
 
 const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "profile", label: "Profile", icon: Icons.user },
   { id: "booking", label: "Booking", icon: Icons.calendar },
-  { id: "tickets", label: "Tickets", icon: Icons.ticket },
+  { id: "payments", label: "Payments", icon: Icons.ticket },
   { id: "customization", label: "Customization", icon: Icons.building },
   { id: "integrations", label: "Integrations", icon: Icons.whatsapp },
   { id: "documents", label: "Documents", icon: Icons.upload },
@@ -835,12 +919,23 @@ const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
 const settingsTabFeatureMap: Partial<Record<SettingsTab, string>> = {
   profile: "agent.settings.basic",
   booking: "agent.settings.basic",
-  tickets: "agent.settings.basic",
+  payments: "agent.settings.basic",
   customization: "agent.settings.basic",
   integrations: "agent.whatsapp.connect",
   documents: "agent.settings.basic",
   stock: "agent.settings.basic",
   flowbuilder: "agent.messages.view",
+};
+
+const settingsTabDescriptions: Record<SettingsTab, string> = {
+  profile: "Business identity, account access, password, theme, and sign-out controls.",
+  booking: "Customer booking availability, operating hours, slot capacity, and appointment timing.",
+  payments: "Order payment collection, bank QR, payment slips, delivery charge, and currency settings.",
+  customization: "Invoice branding, business logo, colors, address, and customer-facing footer notes.",
+  integrations: "WhatsApp numbers, Gmail connection, embedded signup, and automation controls.",
+  documents: "AI training documents for policies, product knowledge, conversations, and stock lists.",
+  stock: "Column mapping for uploaded item sheets so inventory, prices, and product fields stay structured.",
+  flowbuilder: "Conversation routing, automation rules, message flows, and AI handoff logic.",
 };
 
 function isSettingsTab(value: string): value is SettingsTab {
@@ -861,11 +956,12 @@ function readAccessFeatures(value: unknown): Record<string, boolean> | undefined
 export default function SettingsPage() {
   const auth = getFirebaseAuth();
   const toast = useToast();
+  const { theme, setTheme } = usePortalTheme();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  const [activeTab, setActiveTab] = useState<ActiveSettingsView>("overview");
 
   // Booking settings state
   const [unitCapacity, setUnitCapacity] = useState<number>(1);
@@ -874,9 +970,6 @@ export default function SettingsPage() {
   const [closeTime, setCloseTime] = useState<string>("");
   const [bookingsEnabled, setBookingsEnabled] = useState(false);
   const [timezone, setTimezone] = useState("UTC");
-  const [ticketEnabledById, setTicketEnabledById] = useState<Record<string, boolean>>({});
-  const [ticketRequiredFieldsById, setTicketRequiredFieldsById] = useState<Record<string, string>>({});
-  const [savingAllTicketTypes, setSavingAllTicketTypes] = useState(false);
   const [orderPaymentMethod, setOrderPaymentMethod] = useState<OrderPaymentMethod>("manual");
   const [paymentProofAiEnabled, setPaymentProofAiEnabled] = useState(true);
   const [paymentSlipRequired, setPaymentSlipRequired] = useState(true);
@@ -906,6 +999,12 @@ export default function SettingsPage() {
   const [logoUploadPending, setLogoUploadPending] = useState(false);
   const [widgetModalOpen, setWidgetModalOpen] = useState(false);
   const [widgetSnippet, setWidgetSnippet] = useState("");
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordPending, setPasswordPending] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!auth) return;
@@ -920,7 +1019,6 @@ export default function SettingsPage() {
   const accessStatusQuery = trpc.user.getAccessStatus.useQuery({ email: email ?? "" }, { enabled: !!email });
   const accessFeatures = readAccessFeatures(accessStatusQuery.data);
   const visibleTabs = tabConfig.filter((tab) => (accessFeatures ? accessFeatures[settingsTabFeatureMap[tab.id] ?? "agent.settings.basic"] !== false : true));
-  const ticketTypesQuery = trpc.tickets.listTypes.useQuery({ includeDisabled: true }, { enabled: !!email });
   const ensureWebsiteWidget = trpc.business.ensureWebsiteWidget.useMutation();
   const updateBooking = trpc.business.updateBookingConfig.useMutation({
     onSuccess: () => {
@@ -931,7 +1029,6 @@ export default function SettingsPage() {
       businessQuery.refetch();
     },
   });
-  const upsertTicketType = trpc.tickets.upsertType.useMutation();
   const updateTimezone = trpc.business.updateTimezone.useMutation({
     onSuccess: () => {
       showSuccessToast(toast, {
@@ -1016,8 +1113,10 @@ export default function SettingsPage() {
       setOpenTime(businessQuery.data.bookingOpenTime ?? "");
       setCloseTime(businessQuery.data.bookingCloseTime ?? "");
       setBookingsEnabled(businessQuery.data.bookingsEnabled ?? false);
-      const tz = (businessQuery.data.settings as Record<string, unknown> | null | undefined)?.timezone;
-      setTimezone(typeof tz === "string" && tz ? tz : "UTC");
+      const settingsTz = (businessQuery.data.settings as Record<string, unknown> | null | undefined)?.timezone;
+      const businessTz = String((businessQuery.data as { timezone?: unknown }).timezone ?? "").trim();
+      const tz = businessTz || (typeof settingsTz === "string" ? settingsTz : "");
+      setTimezone(tz || "UTC");
       const orderSettings = businessQuery.data.orderSettings;
       setOrderPaymentMethod((orderSettings?.paymentMethod as OrderPaymentMethod | undefined) ?? "manual");
       setPaymentProofAiEnabled(orderSettings?.paymentProofAiEnabled ?? true);
@@ -1048,13 +1147,19 @@ export default function SettingsPage() {
   }, [businessQuery.data]);
 
   useEffect(() => {
-    const requestedTab = String(searchParams?.get("tab") || "").trim().toLowerCase();
+    const rawRequestedTab = String(searchParams?.get("tab") || "").trim().toLowerCase();
+    const requestedTab = rawRequestedTab === "tickets" ? "payments" : rawRequestedTab;
+    if (!requestedTab) {
+      setActiveTab("overview");
+      return;
+    }
     if (isSettingsTab(requestedTab) && visibleTabs.some((tab) => tab.id === requestedTab)) {
       setActiveTab(requestedTab);
     }
   }, [searchParams, visibleTabs]);
 
   useEffect(() => {
+    if (activeTab === "overview") return;
     if (visibleTabs.some((tab) => tab.id === activeTab)) return;
     setActiveTab(visibleTabs[0]?.id ?? "profile");
   }, [activeTab, visibleTabs]);
@@ -1137,9 +1242,63 @@ export default function SettingsPage() {
     }
   };
 
+  const openPasswordModal = () => {
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordError(null);
+    setPasswordModalOpen(true);
+  };
+
+  const handleChangePassword = async () => {
+    const user = auth?.currentUser;
+    const userEmail = user?.email || email;
+    if (!user || !userEmail) {
+      setPasswordError("Sign in again before changing the password.");
+      return;
+    }
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError("Enter your current password and the new password twice.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError("The new password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("The new passwords do not match.");
+      return;
+    }
+
+    setPasswordPending(true);
+    setPasswordError(null);
+    try {
+      const credential = EmailAuthProvider.credential(userEmail, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+      showSuccessToast(toast, {
+        title: "Password changed",
+        message: "Use the new password the next time you sign in.",
+      });
+      setPasswordModalOpen(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Password could not be changed.";
+      setPasswordError(message.includes("auth/invalid-credential") ? "The current password is incorrect." : message);
+      showErrorToast(toast, {
+        title: "Password update failed",
+        message: "Check the current password and try again.",
+      });
+    } finally {
+      setPasswordPending(false);
+    }
+  };
+
   const handleSaveBookingSettings = () => {
     if (!email || !businessQuery.data?.id) return;
-    if (!openTime || !closeTime) {
+    if (bookingsEnabled && (!openTime || !closeTime)) {
       showErrorToast(toast, {
         title: "Booking hours missing",
         message: "Set both opening and closing times before saving booking settings.",
@@ -1149,10 +1308,11 @@ export default function SettingsPage() {
     updateBooking.mutate({
       email,
       businessId: businessQuery.data.id,
+      bookingsEnabled,
       unitCapacity,
       timeslotMinutes,
-      openTime,
-      closeTime,
+      openTime: openTime || "09:00",
+      closeTime: closeTime || "17:00",
     });
   };
 
@@ -1163,72 +1323,6 @@ export default function SettingsPage() {
       businessId: businessQuery.data.id,
       timezone,
     });
-  };
-
-  const normalizeTicketKey = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
-
-  const getRequiredFieldsForTicket = (ticketType: {
-    id: string;
-    requiredFields?: string[] | null;
-  }) => {
-    const rawValue = ticketRequiredFieldsById[ticketType.id] ?? ((ticketType.requiredFields as string[]) ?? []).join(",");
-    return String(rawValue)
-      .split(",")
-      .map((x) => normalizeTicketKey(x))
-      .filter(Boolean);
-  };
-
-  const handleToggleTicketEnabled = async (
-    ticketType: { id: string; enabled?: boolean; requiredFields?: string[] | null },
-    nextEnabled: boolean,
-  ) => {
-    const previousEnabled = ticketEnabledById[ticketType.id] ?? (ticketType.enabled ?? true);
-    setTicketEnabledById((prev) => ({ ...prev, [ticketType.id]: nextEnabled }));
-    try {
-      await upsertTicketType.mutateAsync({
-        id: ticketType.id,
-        enabled: nextEnabled,
-        requiredFields: getRequiredFieldsForTicket(ticketType),
-      });
-      showSuccessToast(toast, {
-        title: "Ticket type updated",
-        message: "Ticket settings saved successfully.",
-      });
-      await ticketTypesQuery.refetch();
-    } catch {
-      setTicketEnabledById((prev) => ({ ...prev, [ticketType.id]: previousEnabled }));
-      showErrorToast(toast, {
-        title: "Update failed",
-        message: "Ticket settings could not be saved.",
-      });
-    }
-  };
-
-  const handleSaveAllTicketTypes = async () => {
-    if (!ticketTypesQuery.data?.length) return;
-    setSavingAllTicketTypes(true);
-    try {
-      for (const ticketType of ticketTypesQuery.data) {
-        const enabled = ticketEnabledById[ticketType.id] ?? (ticketType.enabled ?? true);
-        await upsertTicketType.mutateAsync({
-          id: ticketType.id,
-          enabled,
-          requiredFields: getRequiredFieldsForTicket(ticketType),
-        });
-      }
-      showSuccessToast(toast, {
-        title: "Ticket settings updated",
-        message: "All ticket field rules were saved successfully.",
-      });
-      await ticketTypesQuery.refetch();
-    } catch {
-      showErrorToast(toast, {
-        title: "Save failed",
-        message: "Ticket field rules could not be saved.",
-      });
-    } finally {
-      setSavingAllTicketTypes(false);
-    }
   };
 
   const handleSaveOrderSettings = () => {
@@ -1441,43 +1535,125 @@ export default function SettingsPage() {
   const responsesUsed = Number(businessQuery.data?.responseUsage?.used ?? 0);
   const responsesMax = Number(businessQuery.data?.responseUsage?.max ?? 50_000);
   const responsesPercent = Math.min(100, Math.max(0, (responsesUsed / Math.max(1, responsesMax)) * 100));
-  const websiteWidget = normalizeWebsiteWidgetSettings(businessQuery.data?.settings);
+  const websiteWidget = (businessQuery.data as { websiteWidgetSettings?: ReturnType<typeof normalizeWebsiteWidgetSettings> } | undefined)
+    ?.websiteWidgetSettings ?? normalizeWebsiteWidgetSettings(businessQuery.data?.settings);
   const whatsappConnected = (phoneNumbersQuery.data?.length ?? 0) > 0;
   const fmtInt = (value: number) => value.toLocaleString("en-US");
 
   const renderProfileTab = () => (
     <div style={styles.section}>
-      {/* Profile Card */}
       <div style={styles.card}>
         <div style={styles.cardHeader}>
           <div style={styles.cardIcon}>{Icons.user}</div>
           <div>
-            <h3 style={styles.cardTitle}>Profile Information</h3>
-            <p style={styles.cardDescription}>Your personal account details</p>
+            <h3 style={styles.cardTitle}>Account Details</h3>
+            <p style={styles.cardDescription}>Profile access, password, and sign-out controls</p>
           </div>
         </div>
         <div style={styles.cardBody}>
-          <div style={styles.profileInfo}>
-            <div style={styles.avatar}>{getInitials(email)}</div>
-            <div style={styles.profileDetails}>
-              <div style={styles.profileName}>{email?.split("@")[0] || "User"}</div>
-              <div style={styles.profileEmail}>{email || "No email"}</div>
-              <div style={styles.profileBadge}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }} />
-                Active Account
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
+            <div style={styles.profileInfo}>
+              <div style={styles.avatar}>{getInitials(email)}</div>
+              <div style={styles.profileDetails}>
+                <div style={styles.profileName}>{email?.split("@")[0] || "User"}</div>
+                <div style={styles.profileEmail}>{email || "No email"}</div>
+                <div style={styles.profileBadge}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }} />
+                  Active Account
+                </div>
               </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button type="button" style={styles.btnSecondary} onClick={openPasswordModal}>
+                {Icons.lock}
+                Change Password
+              </button>
+              <button type="button" style={styles.btnDanger} onClick={handleLogout}>
+                {Icons.logout}
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <div style={{ ...styles.cardIcon, ...styles.cardIconSecondary }}>{Icons.sun}</div>
+          <div>
+            <h3 style={styles.cardTitle}>Preferences</h3>
+            <p style={styles.cardDescription}>Theme and business timezone used across this dashboard</p>
+          </div>
+        </div>
+        <div style={styles.cardBody}>
+          <div style={styles.formGrid}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Theme</label>
+              <div
+                role="group"
+                aria-label="Portal theme"
+                style={{
+                  display: "inline-flex",
+                  width: "fit-content",
+                  padding: 4,
+                  borderRadius: 12,
+                  background: "var(--card-muted)",
+                  border: "1px solid var(--border)",
+                  gap: 4,
+                }}
+              >
+                {(["light", "dark"] as const).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setTheme(option)}
+                    aria-pressed={theme === option}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 7,
+                      minHeight: 34,
+                      padding: "0 13px",
+                      borderRadius: 9,
+                      border: "none",
+                      background: theme === option ? "var(--card)" : "transparent",
+                      color: theme === option ? "var(--foreground)" : "var(--muted)",
+                      boxShadow: theme === option ? "var(--shadow-sm)" : "none",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {option === "light" ? Icons.sun : Icons.moon}
+                    {option === "light" ? "Light" : "Dark"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Business Timezone (IANA)</label>
+              <input
+                type="text"
+                style={{ ...styles.input, maxWidth: 360 }}
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                placeholder="e.g. Asia/Colombo"
+              />
             </div>
           </div>
         </div>
         <div style={styles.actions}>
-          <button style={styles.btnDanger} onClick={handleLogout}>
-            {Icons.logout}
-            Sign Out
+          <button
+            style={styles.btnPrimary}
+            onClick={handleSaveTimezone}
+            disabled={updateTimezone.isPending}
+          >
+            {Icons.save}
+            {updateTimezone.isPending ? "Saving..." : "Save Timezone"}
           </button>
         </div>
       </div>
 
-      {/* Business Card */}
       <div style={styles.card}>
         <div style={styles.cardHeader}>
           <div style={{ ...styles.cardIcon, ...styles.cardIconSecondary }}>{Icons.building}</div>
@@ -1507,16 +1683,6 @@ export default function SettingsPage() {
                 readOnly
               />
             </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Business Timezone (IANA)</label>
-              <input
-                type="text"
-                style={styles.input}
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                placeholder="e.g. Asia/Kuala_Lumpur"
-              />
-            </div>
             <div style={styles.usageCard}>
               <div style={styles.usageRow}>
                 <span style={styles.usageTitle}>AI Responses Used This Month</span>
@@ -1530,19 +1696,8 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-        <div style={styles.actions}>
-          <button
-            style={styles.btnPrimary}
-            onClick={handleSaveTimezone}
-            disabled={updateTimezone.isPending}
-          >
-            {Icons.save}
-            {updateTimezone.isPending ? "Saving..." : "Save Timezone"}
-          </button>
-        </div>
       </div>
 
-      {/* AI Bot Instructions */}
       <div style={styles.card}>
         <div style={styles.cardHeader}>
           <div style={styles.cardIcon}>{Icons.bot}</div>
@@ -1589,78 +1744,87 @@ export default function SettingsPage() {
             <Toggle checked={bookingsEnabled} onChange={setBookingsEnabled} />
           </div>
 
-          {/* Capacity and Timeslot */}
-          <div style={styles.formGrid}>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>
-                Slot Capacity
-                <p style={styles.labelHint}>Max bookings per time slot</p>
-              </label>
-              <input
-                type="number"
-                style={styles.input}
-                min={1}
-                value={unitCapacity}
-                onChange={(e) => setUnitCapacity(parseInt(e.target.value) || 1)}
-              />
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>
-                Timeslot Duration
-                <p style={styles.labelHint}>Length of each booking slot</p>
-              </label>
-              <PortalSelect
-                value={String(timeslotMinutes)}
-                onValueChange={(value) => setTimeslotMinutes(parseInt(value, 10))}
-                options={[
-                  { value: "15", label: "15 minutes" },
-                  { value: "30", label: "30 minutes" },
-                  { value: "45", label: "45 minutes" },
-                  { value: "60", label: "1 hour" },
-                  { value: "90", label: "1.5 hours" },
-                  { value: "120", label: "2 hours" },
-                ]}
-                style={styles.select}
-                ariaLabel="Timeslot duration"
-              />
-            </div>
-          </div>
+          {bookingsEnabled ? (
+            <>
+              <div style={styles.formGrid}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>
+                    Slot Capacity
+                    <p style={styles.labelHint}>Max bookings per time slot</p>
+                  </label>
+                  <input
+                    type="number"
+                    style={styles.input}
+                    min={1}
+                    value={unitCapacity}
+                    onChange={(e) => setUnitCapacity(parseInt(e.target.value) || 1)}
+                  />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>
+                    Timeslot Duration
+                    <p style={styles.labelHint}>Length of each booking slot</p>
+                  </label>
+                  <PortalSelect
+                    value={String(timeslotMinutes)}
+                    onValueChange={(value) => setTimeslotMinutes(parseInt(value, 10))}
+                    options={[
+                      { value: "15", label: "15 minutes" },
+                      { value: "30", label: "30 minutes" },
+                      { value: "45", label: "45 minutes" },
+                      { value: "60", label: "1 hour" },
+                      { value: "90", label: "1.5 hours" },
+                      { value: "120", label: "2 hours" },
+                    ]}
+                    style={styles.select}
+                    ariaLabel="Timeslot duration"
+                  />
+                </div>
+              </div>
 
-          {/* Business Hours */}
-          <div style={styles.formGroup}>
-            <label style={styles.label}>
-              Business Hours
-              <p style={styles.labelHint}>When customers can book appointments</p>
-            </label>
-            <div style={styles.timeInputs}>
               <div style={styles.formGroup}>
-                <label style={{ ...styles.label, fontSize: 12, color: "var(--muted)" }}>Opening Time</label>
-                <input
-                  type="time"
-                  style={styles.input}
-                  value={openTime}
-                  onChange={(e) => setOpenTime(e.target.value)}
-                  placeholder="Not configured"
-                />
+                <label style={styles.label}>
+                  Business Hours
+                  <p style={styles.labelHint}>When customers can book appointments</p>
+                </label>
+                <div style={styles.timeInputs}>
+                  <div style={styles.formGroup}>
+                    <label style={{ ...styles.label, fontSize: 12, color: "var(--muted)" }}>Opening Time</label>
+                    <input
+                      type="time"
+                      style={styles.input}
+                      value={openTime}
+                      onChange={(e) => setOpenTime(e.target.value)}
+                      placeholder="Not configured"
+                    />
+                  </div>
+                  <span style={styles.timeSeparator}>to</span>
+                  <div style={styles.formGroup}>
+                    <label style={{ ...styles.label, fontSize: 12, color: "var(--muted)" }}>Closing Time</label>
+                    <input
+                      type="time"
+                      style={styles.input}
+                      value={closeTime}
+                      onChange={(e) => setCloseTime(e.target.value)}
+                      placeholder="Not configured"
+                    />
+                  </div>
+                </div>
+                {(!openTime || !closeTime) && (
+                  <p style={{ ...styles.labelHint, color: "#b45309", marginTop: 12 }}>
+                    Booking hours are not configured yet. Set both times so staff and customers are not misled.
+                  </p>
+                )}
               </div>
-              <span style={styles.timeSeparator}>to</span>
-              <div style={styles.formGroup}>
-                <label style={{ ...styles.label, fontSize: 12, color: "var(--muted)" }}>Closing Time</label>
-                <input
-                  type="time"
-                  style={styles.input}
-                  value={closeTime}
-                  onChange={(e) => setCloseTime(e.target.value)}
-                  placeholder="Not configured"
-                />
+            </>
+          ) : (
+            <div style={styles.helperCard}>
+              <div style={styles.helperTitle}>Bookings are disabled</div>
+              <div style={styles.helperText}>
+                Turn bookings on to configure appointment capacity, time slot duration, and operating hours.
               </div>
             </div>
-            {(!openTime || !closeTime) && (
-              <p style={{ ...styles.labelHint, color: "#b45309", marginTop: 12 }}>
-                Booking hours are not configured yet. Set both times so staff and customers are not misled.
-              </p>
-            )}
-          </div>
+          )}
         </div>
         <div style={styles.actions}>
           <button style={styles.btnSecondary} onClick={() => businessQuery.refetch()}>
@@ -1679,25 +1843,17 @@ export default function SettingsPage() {
     </div>
   );
 
-  const renderTicketsTab = () => (
+  const renderPaymentsTab = () => (
     <div style={styles.section}>
       <div style={styles.card}>
         <div style={styles.cardHeader}>
           <div style={styles.cardIcon}>{Icons.ticket}</div>
           <div>
-            <h3 style={styles.cardTitle}>Order Flow</h3>
-            <p style={styles.cardDescription}>Keep order creation tickets on one predictable path for staff.</p>
+            <h3 style={styles.cardTitle}>Payment Settings</h3>
+            <p style={styles.cardDescription}>Configure order payment collection, bank QR instructions, currency, and delivery charges.</p>
           </div>
         </div>
         <div style={styles.cardBody}>
-          <div style={styles.helperCard}>
-            <span style={styles.badgePositive}>{Icons.check} Always On</span>
-            <div style={styles.helperTitle}>Ticket to order is always enabled</div>
-            <div style={styles.helperText}>
-              Order creation tickets always open the approval, payment, fulfilment, and revenue workflow. Staff no longer need a separate toggle here.
-            </div>
-          </div>
-
           <div style={styles.formGrid}>
             <div style={styles.formGroup}>
               <label style={styles.label}>Payment Method</label>
@@ -1944,82 +2100,9 @@ export default function SettingsPage() {
             disabled={updateOrderSettings.isPending || qrUploadPending}
           >
             {Icons.save}
-            {updateOrderSettings.isPending ? "Saving..." : "Save Order Flow"}
+            {updateOrderSettings.isPending ? "Saving..." : "Save Payments"}
           </button>
         </div>
-      </div>
-
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <div style={{ ...styles.cardIcon, ...styles.cardIconSecondary }}>{Icons.ticket}</div>
-          <div>
-            <h3 style={styles.cardTitle}>Ticket Fields</h3>
-            <p style={styles.cardDescription}>Fixed ticket types. Only required fields and enable toggle are editable.</p>
-          </div>
-        </div>
-        <div style={{ ...styles.cardBody, padding: 12 }}>
-          {!ticketTypesQuery.data?.length ? (
-            <p style={{ margin: 0, color: "var(--muted)" }}>No ticket types configured yet.</p>
-          ) : (
-            <div style={{ display: "grid", gap: 8 }}>
-              {ticketTypesQuery.data.map((ticketType) => {
-                const initialFields = ticketRequiredFieldsById[ticketType.id] ?? ((ticketType.requiredFields as string[]) ?? []).join(",");
-                const isEnabled = ticketEnabledById[ticketType.id] ?? (ticketType.enabled ?? true);
-                return (
-                <div
-                  key={ticketType.id}
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 10,
-                    padding: "10px 12px",
-                    display: "grid",
-                    gridTemplateColumns: "180px minmax(260px, 1fr) auto",
-                    gap: 10,
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{ticketType.label}</div>
-                    <div style={{ color: "var(--muted)", fontSize: 11, fontFamily: "monospace" }}>{ticketType.key}</div>
-                  </div>
-                  <div>
-                    <input
-                      type="text"
-                      style={{ ...styles.input, height: 36, fontSize: 13 }}
-                      value={initialFields}
-                      onChange={(e) =>
-                        setTicketRequiredFieldsById((prev) => ({
-                          ...prev,
-                          [ticketType.id]: e.target.value,
-                        }))
-                      }
-                      placeholder="orderid,details"
-                    />
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                    <Toggle
-                      checked={isEnabled}
-                      onChange={(next) => void handleToggleTicketEnabled(ticketType, next)}
-                    />
-                  </div>
-                </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        {!!ticketTypesQuery.data?.length && (
-          <div style={styles.actions}>
-            <button
-              style={styles.btnPrimary}
-              onClick={() => void handleSaveAllTicketTypes()}
-              disabled={savingAllTicketTypes}
-            >
-              {Icons.save}
-              {savingAllTicketTypes ? "Saving..." : "Save All"}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -2512,14 +2595,38 @@ export default function SettingsPage() {
 
   const renderFlowBuilderTab = () => <FlowBuilderContent />;
 
+  const renderOverview = () => (
+    <div style={styles.overview}>
+      {visibleTabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          style={styles.overviewCard}
+          onClick={() => handleTabSelect(tab.id)}
+        >
+          <div>
+            <div style={styles.overviewIcon}>{tab.icon}</div>
+            <h3 style={styles.overviewTitle}>{tab.label}</h3>
+            <p style={styles.overviewDescription}>{settingsTabDescriptions[tab.id]}</p>
+          </div>
+          <span style={styles.overviewAction}>
+            Open section
+            {Icons.chevronRight}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+
   const renderTabContent = () => {
+    if (activeTab === "overview") return renderOverview();
     switch (activeTab) {
       case "profile":
         return renderProfileTab();
       case "booking":
         return renderBookingTab();
-      case "tickets":
-        return renderTicketsTab();
+      case "payments":
+        return renderPaymentsTab();
       case "customization":
         return renderCustomizationTab();
       case "integrations":
@@ -2549,6 +2656,93 @@ export default function SettingsPage() {
 
   return (
     <div style={styles.page}>
+      {passwordModalOpen ? (
+        <div
+          style={styles.modalBackdrop}
+          onClick={() => {
+            if (!passwordPending) setPasswordModalOpen(false);
+          }}
+        >
+          <div
+            style={{ ...styles.modalCard, width: "min(520px, 100%)" }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={styles.modalHeader}>
+              <div style={styles.modalTitleWrap}>
+                <h2 style={styles.modalTitle}>Change Password</h2>
+                <p style={styles.modalDesc}>Confirm your current password, then set a new one for this account.</p>
+              </div>
+              <button
+                type="button"
+                style={styles.closeIconButton}
+                onClick={() => setPasswordModalOpen(false)}
+                aria-label="Close password modal"
+                disabled={passwordPending}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Current Password</label>
+                <input
+                  type="password"
+                  style={styles.input}
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  autoComplete="current-password"
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>New Password</label>
+                <input
+                  type="password"
+                  style={styles.input}
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Confirm New Password</label>
+                <input
+                  type="password"
+                  style={styles.input}
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+              {passwordError ? (
+                <div style={{ ...styles.helperCard, borderColor: "rgba(239, 68, 68, 0.28)", color: "var(--danger)" }}>
+                  <div style={{ ...styles.helperText, color: "var(--danger)" }}>{passwordError}</div>
+                </div>
+              ) : null}
+            </div>
+
+            <div style={styles.modalActions}>
+              <button
+                type="button"
+                style={styles.btnSecondary}
+                onClick={() => setPasswordModalOpen(false)}
+                disabled={passwordPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                style={styles.btnPrimary}
+                onClick={() => void handleChangePassword()}
+                disabled={passwordPending}
+              >
+                {passwordPending ? "Updating..." : "Update Password"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {widgetModalOpen ? (
         <div
           style={styles.modalBackdrop}

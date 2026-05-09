@@ -60,18 +60,6 @@ export const UploadIcons = {
       <line x1="3" y1="18" x2="3.01" y2="18" />
     </svg>
   ),
-  credit: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-      <line x1="1" y1="10" x2="23" y2="10" />
-    </svg>
-  ),
-  mapPin: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-      <circle cx="12" cy="10" r="3" />
-    </svg>
-  ),
   refresh: (
     <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
       <polyline points="23 4 23 10 17 10" />
@@ -98,8 +86,6 @@ export const DOC_SLOT_ICONS: Record<DocType, ReactNode> = {
   considerations: UploadIcons.bot,
   conversations: UploadIcons.chat,
   inventory: UploadIcons.list,
-  bank: UploadIcons.credit,
-  address: UploadIcons.mapPin,
 };
 
 export function getEmailDomain(email?: string | null): string | undefined {
@@ -228,8 +214,8 @@ export const uploadStyles: Record<string, CSSProperties> = {
     gap: 16,
     padding: "18px 20px",
     borderRadius: 16,
-    background: "linear-gradient(135deg, rgba(14, 26, 61, 0.95), rgba(12, 20, 48, 0.92))",
-    border: "1px solid rgba(212, 164, 87, 0.18)",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
     boxShadow: "var(--shadow-sm)",
   },
   tipIcon: {

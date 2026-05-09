@@ -15,7 +15,6 @@ import {
   supportTickets,
 } from "../../../drizzle/schema";
 import { TRPCError } from "@trpc/server";
-import { normalizeOrderFlowSettings } from "@/lib/order-settings";
 import { resolveInitialFulfillmentStatus } from "@/lib/order-operations";
 import { DEFAULT_TICKET_TYPE_KEYS, ensureDefaultTicketTypes } from "../services/ticketDefaults";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
@@ -60,6 +59,7 @@ import {
   listTicketTypesForBusiness,
   listTicketsForBusiness,
 } from "@/server/services/ticketReadSupport";
+import { getBusinessOrderSettingsRecord } from "@/server/services/businessSettingsStore";
 
 const ticketStatusSchema = z.enum(["open", "in_progress", "resolved"]);
 const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
@@ -1203,7 +1203,7 @@ export const ticketsRouter = router({
         .from(businesses)
         .where(eq(businesses.id, ctx.businessId))
         .limit(1);
-      const orderSettings = normalizeOrderFlowSettings(biz?.settings);
+      const orderSettings = await getBusinessOrderSettingsRecord(ctx.businessId, biz?.settings);
 
       const [ticket] = await db
         .select({
@@ -1744,7 +1744,7 @@ export const ticketsRouter = router({
         .from(businesses)
         .where(eq(businesses.id, ctx.businessId))
         .limit(1);
-      const orderSettings = normalizeOrderFlowSettings(biz?.settings);
+      const orderSettings = await getBusinessOrderSettingsRecord(ctx.businessId, biz?.settings);
 
       const [ticket] = await db
         .select({

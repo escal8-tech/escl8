@@ -58,6 +58,124 @@ export const businesses = pgTable(
 );
 
 /**
+ * Normalized settings tables.
+ *
+ * businesses.settings remains as a compatibility cache for existing code paths
+ * and rollback safety. These tables hold operational settings in typed columns.
+ */
+export const businessOrderSettings = pgTable(
+  "business_order_settings",
+  {
+    businessId: text("business_id")
+      .primaryKey()
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    ticketToOrderEnabled: boolean("ticket_to_order_enabled").notNull().default(true),
+    paymentMethod: text("payment_method").notNull().default("manual"),
+    paymentProofAiEnabled: boolean("payment_proof_ai_enabled").notNull().default(true),
+    paymentSlipRequired: boolean("payment_slip_required").notNull().default(true),
+    currency: text("currency").notNull().default("LKR"),
+    deliveryChargeEnabled: boolean("delivery_charge_enabled").notNull().default(false),
+    deliveryChargeType: text("delivery_charge_type").notNull().default("fixed"),
+    deliveryChargeValue: text("delivery_charge_value").notNull().default("0"),
+    bankQrShowQr: boolean("bank_qr_show_qr").notNull().default(true),
+    bankQrShowBankDetails: boolean("bank_qr_show_bank_details").notNull().default(true),
+    bankQrBlobPath: text("bank_qr_blob_path").notNull().default(""),
+    bankQrImageUrl: text("bank_qr_image_url").notNull().default(""),
+    bankName: text("bank_name").notNull().default(""),
+    accountName: text("account_name").notNull().default(""),
+    accountNumber: text("account_number").notNull().default(""),
+    accountInstructions: text("account_instructions").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    businessOrderSettingsPaymentMethodValid: check(
+      "business_order_settings_payment_method_valid",
+      sql`${t.paymentMethod} in ('manual', 'cod', 'bank_qr')`,
+    ),
+    businessOrderSettingsDeliveryTypeValid: check(
+      "business_order_settings_delivery_type_valid",
+      sql`${t.deliveryChargeType} in ('fixed', 'percentage')`,
+    ),
+    businessOrderSettingsCurrencyNonEmpty: check(
+      "business_order_settings_currency_nonempty",
+      sql`length(btrim(${t.currency})) > 0`,
+    ),
+  }),
+);
+
+export const businessCustomizationSettings = pgTable(
+  "business_customization_settings",
+  {
+    businessId: text("business_id")
+      .primaryKey()
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    businessName: text("business_name").notNull().default(""),
+    logoBlobPath: text("logo_blob_path").notNull().default(""),
+    logoContainer: text("logo_container").notNull().default(""),
+    logoUrl: text("logo_url").notNull().default(""),
+    primaryColor: text("primary_color").notNull().default("#0E1B40"),
+    secondaryColor: text("secondary_color").notNull().default("#D4A457"),
+    address: text("address").notNull().default(""),
+    phone: text("phone").notNull().default(""),
+    email: text("email").notNull().default(""),
+    website: text("website").notNull().default(""),
+    invoiceFooterNote: text("invoice_footer_note").notNull().default("Please keep this invoice for your records."),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export const businessPreferences = pgTable(
+  "business_preferences",
+  {
+    businessId: text("business_id")
+      .primaryKey()
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    timezone: text("timezone").notNull().default("UTC"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    businessPreferencesTimezoneNonEmpty: check(
+      "business_preferences_timezone_nonempty",
+      sql`length(btrim(${t.timezone})) > 0`,
+    ),
+  }),
+);
+
+export const businessWebsiteWidgetSettings = pgTable(
+  "business_website_widget_settings",
+  {
+    businessId: text("business_id")
+      .primaryKey()
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    enabled: boolean("enabled").notNull().default(false),
+    widgetKey: text("widget_key"),
+    title: text("title").notNull().default("Chat with us"),
+    accentColor: text("accent_color").notNull().default("#2563eb"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    businessWebsiteWidgetKeyIdx: index("business_website_widget_key_idx").on(t.widgetKey),
+  }),
+);
+
+export type BusinessOrderSettingsRow = typeof businessOrderSettings.$inferSelect;
+export type NewBusinessOrderSettings = typeof businessOrderSettings.$inferInsert;
+export type BusinessCustomizationSettingsRow = typeof businessCustomizationSettings.$inferSelect;
+export type NewBusinessCustomizationSettings = typeof businessCustomizationSettings.$inferInsert;
+export type BusinessPreferencesRow = typeof businessPreferences.$inferSelect;
+export type NewBusinessPreferences = typeof businessPreferences.$inferInsert;
+export type BusinessWebsiteWidgetSettingsRow = typeof businessWebsiteWidgetSettings.$inferSelect;
+export type NewBusinessWebsiteWidgetSettings = typeof businessWebsiteWidgetSettings.$inferInsert;
+
+/**
  * USERS = dashboard users (your SaaS users).
  *
  * Invariant (your stated requirement):

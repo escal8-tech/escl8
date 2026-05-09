@@ -2,11 +2,11 @@ import crypto from "crypto";
 import { and, desc, eq, or, sql } from "drizzle-orm";
 
 import { buildPrivateBlobReadUrl } from "@/lib/storage";
-import { normalizeCustomizationSettings } from "@/lib/customization-settings";
 import {
   formatOrderFulfillmentStatus,
   normalizeOrderFulfillmentStatus,
 } from "@/lib/order-operations";
+import { getBusinessCustomizationSettingsRecord } from "@/server/services/businessSettingsStore";
 import { businesses, orderEvents, orderPayments, orders } from "../../../drizzle/schema";
 import { db } from "../db/client";
 import { normalizeOrderLineItems, parseMoneyValue } from "./orderFlow";
@@ -324,7 +324,7 @@ export async function getPublicOrderTrackingData(token: string): Promise<PublicO
       .limit(12),
   ]);
 
-  const customization = normalizeCustomizationSettings(business.settings);
+  const customization = await getBusinessCustomizationSettingsRecord(businessId, business.settings);
   const logoUrl = customization.logoBlobPath
     ? buildPrivateBlobReadUrl(customization.logoBlobPath, 24 * 30, customization.logoContainer || undefined)
     : "";

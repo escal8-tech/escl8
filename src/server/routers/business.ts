@@ -17,6 +17,16 @@ import { mergeWebsiteWidgetSettings, normalizeWebsiteWidgetSettings } from "@/li
 import { getBusinessAiCreditsUsedThisMonth } from "@/server/services/aiUsage";
 import { getTenantModuleAccess, tenantHasFeature } from "@/server/control/access";
 import { SUITE_FEATURES } from "@/server/control/subscription-features";
+import {
+  getBusinessCustomizationSettingsRecord,
+  getBusinessOrderSettingsRecord,
+  getBusinessPreferencesRecord,
+  getBusinessWebsiteWidgetSettingsRecord,
+  upsertBusinessCustomizationSettings,
+  upsertBusinessOrderSettings,
+  upsertBusinessTimezone,
+  upsertBusinessWebsiteWidgetSettings,
+} from "@/server/services/businessSettingsStore";
 
 const businessMessageUsageTierSchema = z.enum(["minimum", "standard", "enterprise"]);
 
@@ -147,8 +157,12 @@ export const businessRouter = router({
       const creditsUsed = await getBusinessAiCreditsUsedThisMonth(ctx.businessId);
       const access = biz.suiteTenantId ? await getTenantModuleAccess(biz.suiteTenantId, "agent") : null;
 
-      const orderSettings = normalizeOrderFlowSettings(biz.settings);
-      const customizationSettings = normalizeCustomizationSettings(biz.settings);
+      const [orderSettings, customizationSettings, preferences, websiteWidgetSettings] = await Promise.all([
+        getBusinessOrderSettingsRecord(ctx.businessId, biz.settings),
+        getBusinessCustomizationSettingsRecord(ctx.businessId, biz.settings),
+        getBusinessPreferencesRecord(ctx.businessId, biz.settings),
+        getBusinessWebsiteWidgetSettingsRecord(ctx.businessId, biz.settings),
+      ]);
       const qrPreviewUrl = orderSettings.bankQr.qrBlobPath
         ? buildPrivateBlobReadUrl(orderSettings.bankQr.qrBlobPath, 24 * 30)
         : null;
@@ -162,6 +176,8 @@ export const businessRouter = router({
 
       return {
         ...biz,
+        timezone: preferences.timezone,
+        websiteWidgetSettings,
         orderSettings: {
           ...orderSettings,
           ticketToOrderEnabled: true,
@@ -212,6 +228,7 @@ export const businessRouter = router({
     .input(z.object({
       email: z.string().email(),
       businessId: z.string().min(1),
+      bookingsEnabled: z.boolean(),
       unitCapacity: z.number().int().min(1),
       timeslotMinutes: z.number().int().min(5).max(600),
       openTime: z.string().regex(/^\d{2}:\d{2}$/),
@@ -236,6 +253,7 @@ export const businessRouter = router({
       const [updated] = await db
         .update(businesses)
         .set({
+          bookingsEnabled: input.bookingsEnabled,
           bookingUnitCapacity: input.unitCapacity,
           bookingTimeslotMinutes: input.timeslotMinutes,
           bookingOpenTime: input.openTime,
@@ -306,6 +324,7 @@ export const businessRouter = router({
         })
         .where(eq(businesses.id, input.businessId))
         .returning();
+      await upsertBusinessTimezone(input.businessId, tz);
       if (updated) {
         recordBusinessEvent({
           event: "business.timezone_updated",
@@ -381,6 +400,8 @@ export const businessRouter = router({
           bankQr: input.bankQr,
         },
       });
+
+      await upsertBusinessOrderSettings(input.businessId, normalized);
 
       const [updated] = await db
         .update(businesses)
@@ -465,6 +486,8 @@ export const businessRouter = router({
         },
       });
 
+      await upsertBusinessCustomizationSettings(input.businessId, normalized);
+
       const [updated] = await db
         .update(businesses)
         .set({
@@ -517,7 +540,7 @@ export const businessRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
       }
 
-      const current = normalizeWebsiteWidgetSettings(biz.settings);
+      const current = await getBusinessWebsiteWidgetSettingsRecord(input.businessId, biz.settings);
       const key = current.key || `ww_${randomBytes(18).toString("base64url")}`;
       const nextSettings = mergeWebsiteWidgetSettings(biz.settings, {
         enabled: true,
@@ -525,6 +548,7 @@ export const businessRouter = router({
         title: current.title,
         accentColor: current.accentColor,
       });
+      const normalizedWidget = normalizeWebsiteWidgetSettings(nextSettings);
 
       const [updated] = await db
         .update(businesses)
@@ -538,8 +562,8 @@ export const businessRouter = router({
       if (!updated) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save website widget settings" });
       }
+      await upsertBusinessWebsiteWidgetSettings(input.businessId, normalizedWidget);
 
-      const widget = normalizeWebsiteWidgetSettings(updated.settings);
       recordBusinessEvent({
         event: current.key ? "business.website_widget_accessed" : "business.website_widget_enabled",
         action: "ensureWebsiteWidget",
@@ -551,14 +575,14 @@ export const businessRouter = router({
         actorId: ctx.firebaseUid ?? ctx.userId ?? null,
         actorType: "user",
         outcome: "success",
-        status: widget.enabled ? "enabled" : "disabled",
+        status: normalizedWidget.enabled ? "enabled" : "disabled",
       });
 
       return {
-        enabled: widget.enabled,
-        key: widget.key,
-        title: widget.title,
-        accentColor: widget.accentColor,
+        enabled: normalizedWidget.enabled,
+        key: normalizedWidget.key,
+        title: normalizedWidget.title,
+        accentColor: normalizedWidget.accentColor,
       };
     }),
 

@@ -10,6 +10,7 @@ import { logOrderEvent } from "@/server/services/orderFlow";
 import { assertOperationThrottle } from "@/server/operationalHardening";
 import { resolvePaymentProofAssessment } from "@/server/services/paymentProofSupport";
 import { recordAiUsageEvent } from "@/server/services/aiUsage";
+import { getBusinessOrderSettingsRecord } from "@/server/services/businessSettingsStore";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -194,17 +195,8 @@ export async function POST(request: Request) {
     .from(businesses)
     .where(eq(businesses.id, businessId))
     .limit(1);
-  const orderFlow = businessRow?.settings && typeof businessRow.settings === "object" && !Array.isArray(businessRow.settings)
-    ? ((businessRow.settings as Record<string, unknown>).orderFlow as Record<string, unknown> | undefined)
-    : undefined;
-  const paymentProofAiEnabled = (() => {
-    const raw = orderFlow?.paymentProofAiEnabled;
-    if (typeof raw === "boolean") return raw;
-    if (typeof raw === "number") return raw === 1;
-    const normalized = String(raw ?? "").trim().toLowerCase();
-    if (!normalized) return true;
-    return normalized === "true" || normalized === "1" || normalized === "yes";
-  })();
+  const orderSettings = await getBusinessOrderSettingsRecord(businessId, businessRow?.settings);
+  const paymentProofAiEnabled = orderSettings.paymentProofAiEnabled;
   const allowedStatuses = new Set(["awaiting_payment", "payment_submitted", "payment_rejected"]);
   if (!allowedStatuses.has(String(orderRow.status || "").trim().toLowerCase())) {
     return NextResponse.json(
