@@ -1429,6 +1429,593 @@ export type InventoryReservationRow = typeof inventoryReservations.$inferSelect;
 export type NewInventoryReservation = typeof inventoryReservations.$inferInsert;
 
 // ==========================
+// Shared Commerce Core
+// ==========================
+
+export const commerceSettings = pgTable(
+  "commerce_settings",
+  {
+    businessId: text("business_id")
+      .primaryKey()
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    suiteTenantId: text("suite_tenant_id"),
+    itemsEnabled: boolean("items_enabled").notNull().default(false),
+    currency: text("currency").notNull().default("LKR"),
+    columnMapping: jsonb("column_mapping").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceSettingsSuiteTenantIdx: index("commerce_settings_suite_tenant_idx").on(t.suiteTenantId),
+  }),
+);
+
+export const commerceImportBatches = pgTable(
+  "commerce_import_batches",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    suiteTenantId: text("suite_tenant_id"),
+    source: text("source").notNull().default("shared_commerce"),
+    fileName: text("file_name"),
+    fileType: text("file_type"),
+    rowCount: integer("row_count").notNull().default(0),
+    importedCount: integer("imported_count").notNull().default(0),
+    skippedCount: integer("skipped_count").notNull().default(0),
+    status: text("status").notNull().default("completed"),
+    columnMapping: jsonb("column_mapping").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceImportBatchesBusinessCreatedIdx: index("commerce_import_batches_business_created_idx").on(t.businessId, t.createdAt),
+    commerceImportBatchesSuiteTenantIdx: index("commerce_import_batches_suite_tenant_idx").on(t.suiteTenantId, t.createdAt),
+  }),
+);
+
+export const commerceProducts = pgTable(
+  "commerce_products",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    suiteTenantId: text("suite_tenant_id"),
+    source: text("source").notNull().default("shared_commerce"),
+    sourceFilename: text("source_filename"),
+    sourceSheet: text("source_sheet").notNull().default(""),
+    sourceRowNumber: integer("source_row_number").notNull().default(0),
+    sourceRowKey: text("source_row_key").notNull(),
+    sku: text("sku"),
+    name: text("name").notNull(),
+    description: text("description"),
+    specification: text("specification"),
+    category: text("category"),
+    brand: text("brand"),
+    model: text("model"),
+    unit: text("unit"),
+    imageUrl: text("image_url"),
+    documentUrl: text("document_url"),
+    basePriceMinor: integer("base_price_minor").notNull().default(0),
+    currency: text("currency").notNull().default("LKR"),
+    status: text("status").notNull().default("active"),
+    publicVisibility: text("public_visibility").notNull().default("hidden"),
+    rawFields: jsonb("raw_fields").$type<Record<string, string>>().notNull().default({}),
+    searchText: text("search_text").notNull().default(""),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    lastImportedAt: timestamp("last_imported_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceProductsBusinessIdx: index("commerce_products_business_id_idx").on(t.businessId),
+    commerceProductsSuiteTenantStatusIdx: index("commerce_products_suite_tenant_status_idx").on(t.suiteTenantId, t.status),
+    commerceProductsBusinessStatusIdx: index("commerce_products_business_status_idx").on(t.businessId, t.status),
+    commerceProductsBusinessSkuIdx: index("commerce_products_business_sku_idx").on(t.businessId, t.sku),
+    commerceProductsBusinessNameIdx: index("commerce_products_business_name_idx").on(t.businessId, t.name),
+    commerceProductsBusinessSourceRowUx: uniqueIndex("commerce_products_business_source_row_ux").on(t.businessId, t.sourceRowKey),
+    commerceProductsStatusValid: check(
+      "commerce_products_status_valid",
+      sql`${t.status} in ('active', 'archived', 'draft')`,
+    ),
+    commerceProductsVisibilityValid: check(
+      "commerce_products_visibility_valid",
+      sql`${t.publicVisibility} in ('hidden', 'public', 'private')`,
+    ),
+    commerceProductsNameNonEmpty: check("commerce_products_name_nonempty", sql`length(btrim(${t.name})) > 0`),
+    commerceProductsSourceRowKeyNonEmpty: check(
+      "commerce_products_source_row_key_nonempty",
+      sql`length(btrim(${t.sourceRowKey})) > 0`,
+    ),
+  }),
+);
+
+export const commerceProductPrices = pgTable(
+  "commerce_product_prices",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    productId: text("product_id")
+      .notNull()
+      .references(() => commerceProducts.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    sourceKey: text("source_key").notNull(),
+    label: text("label").notNull(),
+    valueText: text("value_text").notNull(),
+    amountMinor: integer("amount_minor").notNull().default(0),
+    currency: text("currency").notNull().default("LKR"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceProductPricesBusinessIdx: index("commerce_product_prices_business_id_idx").on(t.businessId),
+    commerceProductPricesProductIdx: index("commerce_product_prices_product_id_idx").on(t.productId),
+    commerceProductPricesProductSourceUx: uniqueIndex("commerce_product_prices_product_source_ux").on(t.productId, t.sourceKey),
+    commerceProductPricesLabelNonEmpty: check(
+      "commerce_product_prices_label_nonempty",
+      sql`length(btrim(${t.label})) > 0`,
+    ),
+  }),
+);
+
+export const commerceStockBalances = pgTable(
+  "commerce_stock_balances",
+  {
+    productId: text("product_id")
+      .primaryKey()
+      .notNull()
+      .references(() => commerceProducts.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    availableQty: integer("available_qty").notNull().default(0),
+    reservedQty: integer("reserved_qty").notNull().default(0),
+    lastMovementAt: timestamp("last_movement_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceStockBalancesBusinessQtyIdx: index("commerce_stock_balances_business_qty_idx").on(t.businessId, t.availableQty),
+    commerceStockBalancesNonNegativeAvailable: check(
+      "commerce_stock_balances_available_nonnegative",
+      sql`${t.availableQty} >= 0`,
+    ),
+    commerceStockBalancesNonNegativeReserved: check(
+      "commerce_stock_balances_reserved_nonnegative",
+      sql`${t.reservedQty} >= 0`,
+    ),
+  }),
+);
+
+export const commerceOrders = pgTable(
+  "commerce_orders",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    suiteTenantId: text("suite_tenant_id"),
+    orderNumber: text("order_number").notNull(),
+    channel: text("channel").notNull().default("manual"),
+    status: text("status").notNull().default("draft"),
+    paymentStatus: text("payment_status").notNull().default("unpaid"),
+    stockStatus: text("stock_status").notNull().default("not_reserved"),
+    customerName: text("customer_name"),
+    customerPhone: text("customer_phone"),
+    customerEmail: text("customer_email"),
+    currency: text("currency").notNull().default("LKR"),
+    subtotalMinor: integer("subtotal_minor").notNull().default(0),
+    discountMinor: integer("discount_minor").notNull().default(0),
+    totalMinor: integer("total_minor").notNull().default(0),
+    notes: text("notes"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    completedByUserId: text("completed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceOrdersBusinessOrderNumberUx: uniqueIndex("commerce_orders_business_order_number_ux").on(t.businessId, t.orderNumber),
+    commerceOrdersBusinessCreatedIdx: index("commerce_orders_business_created_idx").on(t.businessId, t.createdAt),
+    commerceOrdersBusinessStatusIdx: index("commerce_orders_business_status_idx").on(t.businessId, t.status),
+    commerceOrdersSuiteTenantCreatedIdx: index("commerce_orders_suite_tenant_created_idx").on(t.suiteTenantId, t.createdAt),
+  }),
+);
+
+export const commerceOrderLines = pgTable(
+  "commerce_order_lines",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => commerceOrders.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    productId: text("product_id").references(() => commerceProducts.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    priceId: text("price_id").references(() => commerceProductPrices.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    itemType: text("item_type").notNull().default("product"),
+    itemName: text("item_name").notNull(),
+    sku: text("sku"),
+    quantity: integer("quantity").notNull(),
+    unitPriceMinor: integer("unit_price_minor").notNull().default(0),
+    lineTotalMinor: integer("line_total_minor").notNull().default(0),
+    currency: text("currency").notNull().default("LKR"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceOrderLinesBusinessOrderIdx: index("commerce_order_lines_business_order_idx").on(t.businessId, t.orderId),
+    commerceOrderLinesBusinessProductIdx: index("commerce_order_lines_business_product_idx").on(t.businessId, t.productId),
+    commerceOrderLinesQuantityPositive: check("commerce_order_lines_quantity_positive", sql`${t.quantity} > 0`),
+  }),
+);
+
+export const commerceOrderPayments = pgTable(
+  "commerce_order_payments",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => commerceOrders.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    paymentMethod: text("payment_method").notNull().default("bank_qr"),
+    status: text("status").notNull().default("pending"),
+    currency: text("currency").notNull().default("LKR"),
+    expectedAmountMinor: integer("expected_amount_minor").notNull().default(0),
+    paidAmountMinor: integer("paid_amount_minor").notNull().default(0),
+    paidDate: text("paid_date"),
+    referenceCode: text("reference_code"),
+    bankReferenceCode: text("bank_reference_code"),
+    proofUrl: text("proof_url"),
+    aiCheckStatus: text("ai_check_status"),
+    aiCheckNotes: text("ai_check_notes"),
+    details: jsonb("details").$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceOrderPaymentsBusinessOrderIdx: index("commerce_order_payments_business_order_idx").on(t.businessId, t.orderId),
+    commerceOrderPaymentsBankReferenceIdx: index("commerce_order_payments_bank_reference_idx").on(
+      t.businessId,
+      t.bankReferenceCode,
+      t.paidAmountMinor,
+    ),
+  }),
+);
+
+export const commerceStockReservations = pgTable(
+  "commerce_stock_reservations",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    orderId: text("order_id").notNull(),
+    orderLineId: text("order_line_id"),
+    productId: text("product_id")
+      .notNull()
+      .references(() => commerceProducts.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    quantity: integer("quantity").notNull(),
+    status: text("status").notNull().default("active"),
+    reason: text("reason"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceStockReservationsBusinessStatusIdx: index("commerce_stock_reservations_business_status_idx").on(t.businessId, t.status),
+    commerceStockReservationsBusinessOrderIdx: index("commerce_stock_reservations_business_order_idx").on(t.businessId, t.orderId),
+    commerceStockReservationsProductIdx: index("commerce_stock_reservations_product_idx").on(t.productId),
+    commerceStockReservationsStatusValid: check(
+      "commerce_stock_reservations_status_valid",
+      sql`${t.status} in ('active', 'consumed', 'released', 'expired')`,
+    ),
+    commerceStockReservationsQuantityPositive: check("commerce_stock_reservations_quantity_positive", sql`${t.quantity} > 0`),
+  }),
+);
+
+export const commerceStockMovements = pgTable(
+  "commerce_stock_movements",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    suiteTenantId: text("suite_tenant_id"),
+    productId: text("product_id")
+      .notNull()
+      .references(() => commerceProducts.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    orderId: text("order_id"),
+    movementType: text("movement_type").notNull(),
+    quantityDelta: integer("quantity_delta").notNull(),
+    balanceAfter: integer("balance_after"),
+    sourceRefType: text("source_ref_type"),
+    sourceRefId: text("source_ref_id"),
+    notes: text("notes"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceStockMovementsBusinessCreatedIdx: index("commerce_stock_movements_business_created_idx").on(t.businessId, t.createdAt),
+    commerceStockMovementsProductCreatedIdx: index("commerce_stock_movements_product_created_idx").on(t.productId, t.createdAt),
+    commerceStockMovementsSourceIdx: index("commerce_stock_movements_source_idx").on(t.sourceRefType, t.sourceRefId),
+  }),
+);
+
+export const commerceImportRows = pgTable(
+  "commerce_import_rows",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    batchId: text("batch_id")
+      .notNull()
+      .references(() => commerceImportBatches.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    rowNumber: integer("row_number").notNull(),
+    sourceRowKey: text("source_row_key").notNull(),
+    productId: text("product_id").references(() => commerceProducts.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    rawFields: jsonb("raw_fields").$type<Record<string, string>>().notNull().default({}),
+    status: text("status").notNull().default("imported"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceImportRowsBatchRowUx: uniqueIndex("commerce_import_rows_batch_row_ux").on(t.batchId, t.rowNumber),
+    commerceImportRowsBusinessBatchIdx: index("commerce_import_rows_business_batch_idx").on(t.businessId, t.batchId),
+    commerceImportRowsBusinessSourceIdx: index("commerce_import_rows_business_source_idx").on(t.businessId, t.sourceRowKey),
+  }),
+);
+
+export const commerceOffers = pgTable(
+  "commerce_offers",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    suiteTenantId: text("suite_tenant_id"),
+    productId: text("product_id")
+      .notNull()
+      .references(() => commerceProducts.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    title: text("title").notNull().default("Offer"),
+    description: text("description"),
+    originalPriceMinor: integer("original_price_minor"),
+    offerPriceMinor: integer("offer_price_minor").notNull(),
+    currency: text("currency").notNull().default("LKR"),
+    active: boolean("active").notNull().default(true),
+    publicVisible: boolean("public_visible").notNull().default(false),
+    startsAt: timestamp("starts_at", { withTimezone: true }),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceOffersBusinessActiveIdx: index("commerce_offers_business_active_idx").on(t.businessId, t.active),
+    commerceOffersProductIdx: index("commerce_offers_product_idx").on(t.productId),
+  }),
+);
+
+export const commerceCustomerProfiles = pgTable(
+  "commerce_customer_profiles",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    suiteTenantId: text("suite_tenant_id"),
+    customerId: text("customer_id").references(() => customers.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    name: text("name"),
+    phone: text("phone"),
+    email: text("email"),
+    lifetimeSpendMinor: integer("lifetime_spend_minor").notNull().default(0),
+    orderCount: integer("order_count").notNull().default(0),
+    loyaltyPoints: integer("loyalty_points").notNull().default(0),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceCustomerProfilesBusinessPhoneIdx: index("commerce_customer_profiles_business_phone_idx").on(t.businessId, t.phone),
+    commerceCustomerProfilesBusinessEmailIdx: index("commerce_customer_profiles_business_email_idx").on(t.businessId, t.email),
+    commerceCustomerProfilesCustomerIdx: index("commerce_customer_profiles_customer_id_idx").on(t.customerId),
+  }),
+);
+
+export const commerceLoyaltyLedger = pgTable(
+  "commerce_loyalty_ledger",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => commerceCustomerProfiles.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    orderId: text("order_id").references(() => commerceOrders.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    pointsDelta: integer("points_delta").notNull(),
+    reason: text("reason").notNull().default("manual"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceLoyaltyLedgerBusinessProfileIdx: index("commerce_loyalty_ledger_business_profile_idx").on(t.businessId, t.profileId),
+    commerceLoyaltyLedgerOrderIdx: index("commerce_loyalty_ledger_order_idx").on(t.orderId),
+  }),
+);
+
+export const commerceMembershipPlans = pgTable(
+  "commerce_membership_plans",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    suiteTenantId: text("suite_tenant_id"),
+    name: text("name").notNull(),
+    description: text("description"),
+    status: text("status").notNull().default("draft"),
+    currency: text("currency").notNull().default("LKR"),
+    priceMinor: integer("price_minor").notNull().default(0),
+    billingMode: text("billing_mode").notNull().default("manual"),
+    benefitRules: jsonb("benefit_rules").$type<Record<string, unknown>>().notNull().default({}),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceMembershipPlansBusinessStatusIdx: index("commerce_membership_plans_business_status_idx").on(t.businessId, t.status),
+    commerceMembershipPlansNameNonEmpty: check("commerce_membership_plans_name_nonempty", sql`length(btrim(${t.name})) > 0`),
+  }),
+);
+
+export const commerceMemberships = pgTable(
+  "commerce_memberships",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => commerceCustomerProfiles.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    planId: text("plan_id")
+      .notNull()
+      .references(() => commerceMembershipPlans.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    status: text("status").notNull().default("active"),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull().defaultNow(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    sourceOrderId: text("source_order_id").references(() => commerceOrders.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    commerceMembershipsBusinessProfileIdx: index("commerce_memberships_business_profile_idx").on(t.businessId, t.profileId),
+    commerceMembershipsPlanIdx: index("commerce_memberships_plan_idx").on(t.planId),
+    commerceMembershipsStatusValid: check(
+      "commerce_memberships_status_valid",
+      sql`${t.status} in ('active', 'paused', 'cancelled', 'expired')`,
+    ),
+  }),
+);
+
+export type CommerceSettingsRow = typeof commerceSettings.$inferSelect;
+export type NewCommerceSettings = typeof commerceSettings.$inferInsert;
+export type CommerceProductRow = typeof commerceProducts.$inferSelect;
+export type NewCommerceProduct = typeof commerceProducts.$inferInsert;
+export type CommerceProductPriceRow = typeof commerceProductPrices.$inferSelect;
+export type NewCommerceProductPrice = typeof commerceProductPrices.$inferInsert;
+export type CommerceStockBalanceRow = typeof commerceStockBalances.$inferSelect;
+export type NewCommerceStockBalance = typeof commerceStockBalances.$inferInsert;
+export type CommerceOrderRow = typeof commerceOrders.$inferSelect;
+export type NewCommerceOrder = typeof commerceOrders.$inferInsert;
+export type CommerceOrderLineRow = typeof commerceOrderLines.$inferSelect;
+export type NewCommerceOrderLine = typeof commerceOrderLines.$inferInsert;
+export type CommerceOrderPaymentRow = typeof commerceOrderPayments.$inferSelect;
+export type NewCommerceOrderPayment = typeof commerceOrderPayments.$inferInsert;
+export type CommerceStockReservationRow = typeof commerceStockReservations.$inferSelect;
+export type NewCommerceStockReservation = typeof commerceStockReservations.$inferInsert;
+export type CommerceStockMovementRow = typeof commerceStockMovements.$inferSelect;
+export type NewCommerceStockMovement = typeof commerceStockMovements.$inferInsert;
+export type CommerceCustomerProfileRow = typeof commerceCustomerProfiles.$inferSelect;
+export type NewCommerceCustomerProfile = typeof commerceCustomerProfiles.$inferInsert;
+export type CommerceMembershipPlanRow = typeof commerceMembershipPlans.$inferSelect;
+export type NewCommerceMembershipPlan = typeof commerceMembershipPlans.$inferInsert;
+export type CommerceMembershipRow = typeof commerceMemberships.$inferSelect;
+export type NewCommerceMembership = typeof commerceMemberships.$inferInsert;
+
+// ==========================
 // RAG / Training Documents
 // ==========================
 

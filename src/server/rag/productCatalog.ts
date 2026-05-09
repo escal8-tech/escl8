@@ -11,6 +11,10 @@ import {
   getBusinessStockSettings,
 } from "@/server/inventory/stockMapping";
 import { acquireInventoryBusinessLock } from "@/server/inventory/locks";
+import {
+  archiveCommerceProductsMissingFromInventoryScope,
+  upsertCommerceProductFromInventory,
+} from "@/server/commerce/inventoryBridge";
 
 export type IndexedProductRef = {
   productId: string;
@@ -272,6 +276,21 @@ export async function replaceInventoryProductsForRows(params: {
           updatedAt: now,
         });
       }
+
+      await upsertCommerceProductFromInventory(tx, {
+        businessId: params.businessId,
+        productId: product.id,
+        trainingDocumentId: params.trainingDocumentId || null,
+        source: params.source,
+        sourceFilename: params.sourceFilename || null,
+        sourceSheet: row.sheetName || "",
+        sourceRowNumber: row.rowNumber,
+        sourceRowKey,
+        derived,
+        rawFields: row.fields || {},
+        stockSettings,
+        status: "active",
+      });
     }
 
     const activeIds = Array.from(activeProductIds);
@@ -285,6 +304,12 @@ export async function replaceInventoryProductsForRows(params: {
       .update(inventoryProducts)
       .set({ status: "archived", updatedAt: new Date() })
       .where(and(scopeWhere, notInArray(inventoryProducts.id, activeIds)));
+    await archiveCommerceProductsMissingFromInventoryScope(tx, {
+      businessId: params.businessId,
+      activeProductIds: activeIds,
+      source: params.source,
+      trainingDocumentId: params.trainingDocumentId || null,
+    });
   });
 
   return refs;

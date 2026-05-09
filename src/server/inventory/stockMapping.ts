@@ -21,6 +21,10 @@ import {
   summarizeInventoryFields,
 } from "@/server/rag/inventoryFields";
 import { acquireInventoryBusinessLock } from "@/server/inventory/locks";
+import {
+  ensureCommerceSettingsForBusiness,
+  upsertCommerceProductFromInventory,
+} from "@/server/commerce/inventoryBridge";
 
 export type DerivedPriceField = {
   sourceKey: string;
@@ -260,22 +264,31 @@ export async function saveBusinessStockSettings(params: {
   businessId: string;
   settings: BusinessStockSettings;
 }): Promise<void> {
-  const [biz] = await db
-    .select({ settings: businesses.settings })
-    .from(businesses)
-    .where(eq(businesses.id, params.businessId))
-    .limit(1);
-  const nextSettings = mergeStockSettings(
-    (biz?.settings ?? {}) as Record<string, unknown>,
-    {
-      ...params.settings,
-      updatedAt: new Date().toISOString(),
-    },
-  );
-  await db
-    .update(businesses)
-    .set({ settings: nextSettings, updatedAt: new Date() })
-    .where(eq(businesses.id, params.businessId));
+  await db.transaction(async (tx) => {
+    const [biz] = await tx
+      .select({ settings: businesses.settings })
+      .from(businesses)
+      .where(eq(businesses.id, params.businessId))
+      .limit(1);
+    const nextSettings = mergeStockSettings(
+      (biz?.settings ?? {}) as Record<string, unknown>,
+      {
+        ...params.settings,
+        updatedAt: new Date().toISOString(),
+      },
+    );
+    await tx
+      .update(businesses)
+      .set({ settings: nextSettings, updatedAt: new Date() })
+      .where(eq(businesses.id, params.businessId));
+    await ensureCommerceSettingsForBusiness(tx, {
+      businessId: params.businessId,
+      stockSettings: {
+        ...params.settings,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  });
 }
 
 export async function applyStockColumnMappingForBusiness(params: {
@@ -299,7 +312,7 @@ export async function applyStockColumnMappingForBusiness(params: {
       const mapped = deriveInventoryProductFromFields(rawFields as Record<string, string>, settings);
       if (!mapped.name) continue;
 
-      await tx
+      const [updatedProduct] = await tx
         .update(inventoryProducts)
         .set({
           itemCode: mapped.itemCode,
@@ -318,7 +331,8 @@ export async function applyStockColumnMappingForBusiness(params: {
           searchText: mapped.searchText,
           updatedAt: new Date(),
         })
-        .where(eq(inventoryProducts.id, row.id));
+        .where(eq(inventoryProducts.id, row.id))
+        .returning();
 
       await tx
         .delete(inventoryProductPriceOptions)
@@ -336,6 +350,22 @@ export async function applyStockColumnMappingForBusiness(params: {
           sortOrder: field.sortOrder,
           createdAt: new Date(),
           updatedAt: new Date(),
+        });
+      }
+      if (updatedProduct) {
+        await upsertCommerceProductFromInventory(tx, {
+          businessId: params.businessId,
+          productId: updatedProduct.id,
+          trainingDocumentId: updatedProduct.trainingDocumentId,
+          source: updatedProduct.source,
+          sourceFilename: updatedProduct.sourceFilename,
+          sourceSheet: updatedProduct.sourceSheet,
+          sourceRowNumber: updatedProduct.sourceRowNumber,
+          sourceRowKey: updatedProduct.sourceRowKey,
+          derived: mapped,
+          rawFields: rawFields as Record<string, string>,
+          stockSettings: settings,
+          status: updatedProduct.status === "archived" ? "archived" : "active",
         });
       }
       applied += 1;
