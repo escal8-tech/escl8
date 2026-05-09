@@ -2797,22 +2797,24 @@ export default function SettingsPage() {
         </div>
       ) : null}
 
-      {/* Tabs */}
-      <div style={styles.tabs}>
-        {visibleTabs.map((tab) => (
-          <button
-            key={tab.id}
-            style={{
-              ...styles.tab,
-              ...(activeTab === tab.id ? styles.tabActive : {}),
-            }}
-            onClick={() => handleTabSelect(tab.id)}
-          >
-            <span style={{ opacity: activeTab === tab.id ? 1 : 0.6 }}>{tab.icon}</span>
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {activeTab !== "overview" ? (
+        <div style={styles.tabs}>
+          {visibleTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              style={{
+                ...styles.tab,
+                ...(activeTab === tab.id ? styles.tabActive : {}),
+              }}
+              onClick={() => handleTabSelect(tab.id)}
+            >
+              <span style={{ opacity: activeTab === tab.id ? 1 : 0.6 }}>{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {/* Tab Content */}
       <div style={{ animation: "fadeIn 0.3s ease" }}>
