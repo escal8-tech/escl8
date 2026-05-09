@@ -28,6 +28,7 @@ import {
   saveBusinessStockSettings,
 } from "@/server/inventory/stockMapping";
 import { acquireInventoryBusinessLock } from "@/server/inventory/locks";
+import { setCommerceStockAbsolute } from "@/server/commerce/inventoryBridge";
 
 const sortDirectionSchema = z.enum(["asc", "desc"]);
 const itemSortKeySchema = z.enum(["name", "updatedAt", "quantity"]);
@@ -390,6 +391,16 @@ export const inventoryRouter = router({
           .set({ quantityOnHand: input.quantity, updatedAt: new Date() })
           .where(and(eq(inventoryProducts.businessId, ctx.businessId), eq(inventoryProducts.id, input.productId)))
           .returning();
+        if (updated) {
+          await setCommerceStockAbsolute(tx, {
+            businessId: ctx.businessId,
+            productId: input.productId,
+            quantity: input.quantity,
+            sourceRefType: "manual_inventory_adjustment",
+            sourceRefId: input.productId,
+            notes: "Manual stock count from agent inventory page.",
+          });
+        }
         return updated;
       });
       if (!row) {
