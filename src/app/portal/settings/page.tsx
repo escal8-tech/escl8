@@ -1113,8 +1113,10 @@ export default function SettingsPage() {
       setOpenTime(businessQuery.data.bookingOpenTime ?? "");
       setCloseTime(businessQuery.data.bookingCloseTime ?? "");
       setBookingsEnabled(businessQuery.data.bookingsEnabled ?? false);
-      const tz = (businessQuery.data.settings as Record<string, unknown> | null | undefined)?.timezone;
-      setTimezone(typeof tz === "string" && tz ? tz : "UTC");
+      const settingsTz = (businessQuery.data.settings as Record<string, unknown> | null | undefined)?.timezone;
+      const businessTz = String((businessQuery.data as { timezone?: unknown }).timezone ?? "").trim();
+      const tz = businessTz || (typeof settingsTz === "string" ? settingsTz : "");
+      setTimezone(tz || "UTC");
       const orderSettings = businessQuery.data.orderSettings;
       setOrderPaymentMethod((orderSettings?.paymentMethod as OrderPaymentMethod | undefined) ?? "manual");
       setPaymentProofAiEnabled(orderSettings?.paymentProofAiEnabled ?? true);
@@ -1533,7 +1535,8 @@ export default function SettingsPage() {
   const responsesUsed = Number(businessQuery.data?.responseUsage?.used ?? 0);
   const responsesMax = Number(businessQuery.data?.responseUsage?.max ?? 50_000);
   const responsesPercent = Math.min(100, Math.max(0, (responsesUsed / Math.max(1, responsesMax)) * 100));
-  const websiteWidget = normalizeWebsiteWidgetSettings(businessQuery.data?.settings);
+  const websiteWidget = (businessQuery.data as { websiteWidgetSettings?: ReturnType<typeof normalizeWebsiteWidgetSettings> } | undefined)
+    ?.websiteWidgetSettings ?? normalizeWebsiteWidgetSettings(businessQuery.data?.settings);
   const whatsappConnected = (phoneNumbersQuery.data?.length ?? 0) > 0;
   const fmtInt = (value: number) => value.toLocaleString("en-US");
 

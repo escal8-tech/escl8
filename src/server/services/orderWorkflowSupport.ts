@@ -8,6 +8,7 @@ import {
   type OrderFulfillmentStatus,
 } from "@/lib/order-operations";
 import { assertOperationThrottle, getStaffActorKey } from "@/server/operationalHardening";
+import { getBusinessOrderSettingsRecord } from "@/server/services/businessSettingsStore";
 import { drainBusinessOutbox } from "@/server/services/messageOutbox";
 import { db } from "@/server/db/client";
 import {
@@ -159,7 +160,7 @@ export async function getBusinessOrderSettings(businessId: string) {
     .from(businesses)
     .where(eq(businesses.id, businessId))
     .limit(1);
-  return normalizeOrderFlowSettings(biz?.settings);
+  return getBusinessOrderSettingsRecord(businessId, biz?.settings);
 }
 
 export function cleanOptionalText(value: string | null | undefined, max = 500): string | null {

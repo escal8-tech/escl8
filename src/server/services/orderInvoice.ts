@@ -3,6 +3,7 @@ import { PDFDocument, PDFName, PDFString, StandardFonts, rgb, type PDFFont, type
 
 import { buildPrivateBlobReadUrl, storePrivateFileAtPath } from "@/lib/storage";
 import { isDeliveryLineItemName } from "@/lib/order-line-items";
+import { getBusinessCustomizationSettingsRecord } from "@/server/services/businessSettingsStore";
 import { businesses, orders } from "../../../drizzle/schema";
 import { db } from "../db/client";
 import {
@@ -615,6 +616,9 @@ export async function createOrderInvoiceForOrder(input: {
     .from(businesses)
     .where(eq(businesses.id, businessId))
     .limit(1);
+  const customizationSettings = business
+    ? await getBusinessCustomizationSettingsRecord(businessId, business.settings)
+    : null;
 
   const containerName = orderInvoiceContainer();
   if (!input.forceRegenerate) {
@@ -675,7 +679,16 @@ export async function createOrderInvoiceForOrder(input: {
     const artifact = await createOrderInvoiceArtifact({
       businessId,
       order,
-      business: business ? { id: business.id, name: business.name, settings: business.settings ?? null } : null,
+      business: business
+        ? {
+            id: business.id,
+            name: business.name,
+            settings: {
+              ...((business.settings ?? {}) as Record<string, unknown>),
+              customization: customizationSettings ?? {},
+            },
+          }
+        : null,
       issuedAt: now,
       trackingUrl: input.trackingUrl ?? null,
     });

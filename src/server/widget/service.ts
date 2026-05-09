@@ -1,10 +1,20 @@
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 
-import { businesses, customers, messageThreads, threadMessages } from "@/../drizzle/schema";
+import {
+  businessWebsiteWidgetSettings,
+  businesses,
+  customers,
+  messageThreads,
+  threadMessages,
+} from "@/../drizzle/schema";
 import { normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
 import { db } from "@/server/db/client";
 import { getTenantModuleAccess, tenantHasFeature } from "@/server/control/access";
 import { SUITE_FEATURES } from "@/server/control/subscription-features";
+import {
+  isSettingsSchemaUnavailable,
+  websiteWidgetSettingsFromRow,
+} from "@/server/services/businessSettingsStore";
 
 export type WebsiteWidgetMessage = {
   id: string;
@@ -18,6 +28,56 @@ export type WebsiteWidgetMessage = {
 export async function getBusinessByWebsiteWidgetKey(key: string) {
   const normalizedKey = String(key || "").trim();
   if (!normalizedKey) return null;
+
+  try {
+    const [row] = await db
+      .select({
+        id: businesses.id,
+        name: businesses.name,
+        settings: businesses.settings,
+        isActive: businesses.isActive,
+        suiteTenantId: businesses.suiteTenantId,
+        widgetBusinessId: businessWebsiteWidgetSettings.businessId,
+        widgetEnabled: businessWebsiteWidgetSettings.enabled,
+        widgetKey: businessWebsiteWidgetSettings.widgetKey,
+        widgetTitle: businessWebsiteWidgetSettings.title,
+        widgetAccentColor: businessWebsiteWidgetSettings.accentColor,
+        widgetCreatedAt: businessWebsiteWidgetSettings.createdAt,
+        widgetUpdatedAt: businessWebsiteWidgetSettings.updatedAt,
+      })
+      .from(businessWebsiteWidgetSettings)
+      .innerJoin(businesses, eq(businessWebsiteWidgetSettings.businessId, businesses.id))
+      .where(
+        and(
+          eq(businesses.isActive, true),
+          eq(businessWebsiteWidgetSettings.widgetKey, normalizedKey),
+        ),
+      )
+      .limit(1);
+
+    if (row) {
+      const widget = websiteWidgetSettingsFromRow({
+        businessId: row.widgetBusinessId,
+        enabled: row.widgetEnabled,
+        widgetKey: row.widgetKey,
+        title: row.widgetTitle,
+        accentColor: row.widgetAccentColor,
+        createdAt: row.widgetCreatedAt,
+        updatedAt: row.widgetUpdatedAt,
+      }, row.settings);
+      if (!widget.enabled || widget.key !== normalizedKey) return null;
+      const access = row.suiteTenantId ? await getTenantModuleAccess(row.suiteTenantId, "agent") : null;
+      if (!tenantHasFeature(access, SUITE_FEATURES.AGENT_WIDGET_PUBLIC)) return null;
+
+      return {
+        businessId: row.id,
+        businessName: row.name ?? null,
+        widget,
+      };
+    }
+  } catch (error) {
+    if (!isSettingsSchemaUnavailable(error)) throw error;
+  }
 
   const [row] = await db
     .select({
