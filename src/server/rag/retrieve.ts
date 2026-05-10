@@ -93,12 +93,7 @@ export async function retrieve(
     
     expandedQuery = expansion.expanded;
     searchQueries = [expandedQuery];
-    
-    // Apply suggested filters if not explicitly set
-    if (!opts.chunkTypes && expansion.suggestedFilters.chunkTypes?.length) {
-      opts.chunkTypes = expansion.suggestedFilters.chunkTypes;
-    }
-    
+
     console.log(`[rag:retrieve] expanded query="${expandedQuery.slice(0, 100)}..." intents=${expansion.intents.join(',')}`);
   }
   
@@ -336,4 +331,3 @@ ${result.context}
 
 ${footer}`;
 }
-
