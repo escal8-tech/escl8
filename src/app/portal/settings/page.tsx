@@ -20,6 +20,7 @@ import { UploadContent } from "@/app/portal/upload/components/UploadContent";
 import { FlowBuilderContent } from "@/app/portal/flowbuilder/FlowBuilderContent";
 import { StockSettingsPanel } from "@/app/portal/settings/components/StockSettingsPanel";
 import { usePortalTheme } from "@/app/portal/components/PortalThemeProvider";
+import UsersPermissionsPanel from "@/app/portal/settings/components/UsersPermissionsPanel";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ICONS (inline SVGs for clean dependency-free icons)
@@ -249,13 +250,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   overview: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-    gap: 22,
+    gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
+    gap: 24,
     alignItems: "stretch",
   },
   overviewCard: {
-    minHeight: 230,
-    padding: 28,
+    minHeight: 310,
+    padding: 32,
     border: "1px solid var(--border)",
     borderRadius: 16,
     background: "var(--card)",
@@ -268,9 +269,9 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
   overviewIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 14,
+    width: 56,
+    height: 56,
+    borderRadius: 18,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -290,6 +291,31 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--muted)",
     fontSize: 15,
     lineHeight: 1.55,
+  },
+  overviewPointList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    marginTop: 20,
+  },
+  overviewPoint: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 34,
+    padding: "8px 12px",
+    borderRadius: 12,
+    background: "rgba(96, 165, 250, 0.08)",
+    color: "var(--foreground)",
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  overviewDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    background: "var(--gold-light)",
+    flexShrink: 0,
   },
   overviewAction: {
     display: "inline-flex",
@@ -903,7 +929,7 @@ function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onC
 /* ─────────────────────────────────────────────────────────────────────────────
    SETTINGS PAGE TABS
 ───────────────────────────────────────────────────────────────────────────── */
-type SettingsTab = "profile" | "booking" | "payments" | "customization" | "integrations" | "documents" | "stock" | "flowbuilder";
+type SettingsTab = "profile" | "booking" | "payments" | "customization" | "integrations" | "documents" | "stock" | "users" | "flowbuilder";
 type ActiveSettingsView = SettingsTab | "overview";
 
 const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
@@ -914,6 +940,7 @@ const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "integrations", label: "Integrations", icon: Icons.whatsapp },
   { id: "documents", label: "Documents", icon: Icons.upload },
   { id: "stock", label: "Stock", icon: Icons.stock },
+  { id: "users", label: "Users & Permissions", icon: Icons.user },
   { id: "flowbuilder", label: "Flow Builder", icon: Icons.flow },
 ];
 
@@ -925,6 +952,7 @@ const settingsTabFeatureMap: Partial<Record<SettingsTab, string>> = {
   integrations: "agent.whatsapp.connect",
   documents: "agent.settings.basic",
   stock: "agent.settings.basic",
+  users: "agent.settings.basic",
   flowbuilder: "agent.messages.view",
 };
 
@@ -936,7 +964,20 @@ const settingsTabDescriptions: Record<SettingsTab, string> = {
   integrations: "WhatsApp numbers, Gmail connection, embedded signup, and automation controls.",
   documents: "AI training documents for policies, product knowledge, conversations, and stock lists.",
   stock: "Column mapping for uploaded item sheets so inventory, prices, and product fields stay structured.",
+  users: "Invite teammates, manage roles, and remove users from this business workspace.",
   flowbuilder: "Conversation routing, automation rules, message flows, and AI handoff logic.",
+};
+
+const settingsTabPoints: Record<SettingsTab, string[]> = {
+  profile: ["Business identity and account", "Password, theme, and access", "Connected company basics"],
+  booking: ["Availability and operating hours", "Slot capacity and timing", "Appointment intake defaults"],
+  payments: ["Payment method and currency", "Bank QR and transfer details", "Slip checks and delivery charge"],
+  customization: ["Invoice branding and logo", "Business colors and footer", "Customer-facing contact details"],
+  integrations: ["WhatsApp number connection", "Gmail and embedded signup", "Automation connection health"],
+  documents: ["Policy and product documents", "AI training knowledge", "Conversation support material"],
+  stock: ["Product sheet upload mapping", "Inventory and price columns", "Structured stock controls"],
+  users: ["Invite teammates", "Roles and permissions", "Remove workspace access"],
+  flowbuilder: ["Routing rules and handoffs", "Message flow automation", "AI control logic"],
 };
 
 function isSettingsTab(value: string): value is SettingsTab {
@@ -2609,6 +2650,14 @@ export default function SettingsPage() {
             <div style={styles.overviewIcon}>{tab.icon}</div>
             <h3 style={styles.overviewTitle}>{tab.label}</h3>
             <p style={styles.overviewDescription}>{settingsTabDescriptions[tab.id]}</p>
+            <div style={styles.overviewPointList}>
+              {settingsTabPoints[tab.id].map((point) => (
+                <div key={point} style={styles.overviewPoint}>
+                  <span style={styles.overviewDot} />
+                  <span>{point}</span>
+                </div>
+              ))}
+            </div>
           </div>
           <span style={styles.overviewAction}>
             Open section
@@ -2636,6 +2685,8 @@ export default function SettingsPage() {
         return renderDocumentsTab();
       case "stock":
         return renderStockTab();
+      case "users":
+        return <UsersPermissionsPanel />;
       case "flowbuilder":
         return renderFlowBuilderTab();
       default:

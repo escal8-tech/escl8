@@ -7,7 +7,6 @@ import { isClientErrorReported, recordClientBusinessEvent, shouldCaptureUnexpect
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { APP_DEFAULT_AUTH_REDIRECT, APP_LOGIN_ROUTE } from "@/lib/app-routes";
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "firebase/auth";
-import { trpc } from "@/utils/trpc";
 import { useRouter } from "next/navigation";
 import { AuthLayout } from "./AuthLayout";
 import { LoginForm, LoginFormState } from "./LoginForm";
@@ -15,7 +14,6 @@ import { LoginForm, LoginFormState } from "./LoginForm";
 export function PortalLogin() {
   const auth = getFirebaseAuth();
   const router = useRouter();
-  const upsertUser = trpc.user.upsert.useMutation();
   const [authChecked, setAuthChecked] = useState(!auth);
   const [state, setState] = useState<LoginFormState>({
     busy: false,
@@ -159,7 +157,6 @@ export function PortalLogin() {
         route: APP_LOGIN_ROUTE,
         tokenFailureEvent: "auth.google_login_failed",
       });
-      await upsertUser.mutateAsync({ email: googleEmail, whatsappConnected: false });
       recordClientBusinessEvent({
         event: "auth.google_login_succeeded",
         action: "portal-google-login",

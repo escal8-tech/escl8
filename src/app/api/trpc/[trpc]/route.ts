@@ -39,6 +39,9 @@ const handler = async (req: Request) => {
     );
   }
 
+  const trpcPath = decodeURIComponent(new URL(req.url).pathname);
+  const setupAccessBypass = /business\.(getSetupStatus|completeOnboardingSetup)/.test(trpcPath);
+
   const res = await fetchRequestHandler({
     endpoint: "/api/trpc",
     req,
@@ -167,15 +170,17 @@ const handler = async (req: Request) => {
         }
 
         const access = await getTenantModuleAccess(suiteTenantId, "agent");
-        if (!access.allowed) {
+        if (!access.allowed && !setupAccessBypass) {
           return { userEmail, firebaseUid, userId: null, businessId: null };
         }
 
-        void syncFirebaseSuiteClaims(firebaseUid, {
-          suiteTenantId,
-          suiteUserId: suiteUser.id,
-          modules: ["agent"],
-        }).catch(() => {});
+        if (access.allowed) {
+          void syncFirebaseSuiteClaims(firebaseUid, {
+            suiteTenantId,
+            suiteUserId: suiteUser.id,
+            modules: ["agent"],
+          }).catch(() => {});
+        }
 
         return {
           userEmail,

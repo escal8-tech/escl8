@@ -303,6 +303,7 @@ export async function archiveCommerceProductsMissingFromInventoryScope(
     activeProductIds: string[];
     source?: string | null;
     trainingDocumentId?: string | null;
+    inventoryBridgeOnly?: boolean;
   },
 ) {
   if (params.activeProductIds.length === 0) return;
@@ -311,6 +312,7 @@ export async function archiveCommerceProductsMissingFromInventoryScope(
     SET status = 'archived',
         updated_at = now()
     WHERE business_id = ${params.businessId}
+      ${params.inventoryBridgeOnly ? sql`AND metadata->>'bridge' = 'inventory'` : sql``}
       ${params.trainingDocumentId ? sql`AND metadata->>'trainingDocumentId' = ${params.trainingDocumentId}` : sql``}
       ${params.source && !params.trainingDocumentId ? sql`AND source = ${params.source}` : sql``}
       AND NOT (id = ANY(${params.activeProductIds}))

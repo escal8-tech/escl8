@@ -84,6 +84,8 @@ export function inferStockColumnRole(rawKey: unknown): StockColumnRole {
     "product",
     "item",
     "title",
+    "descript",
+    "desc",
   ].includes(key)) {
     return "name";
   }

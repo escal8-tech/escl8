@@ -4,7 +4,7 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
 import { isClientErrorReported } from "@/lib/client-business-monitoring";
-import { APP_ACCESS_ROUTE, APP_LOGIN_ROUTE, isAppPath } from "@/lib/app-routes";
+import { APP_ACCESS_ROUTE, APP_LOGIN_ROUTE, APP_ONBOARDING_ROUTE, isAppPath } from "@/lib/app-routes";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { usePathname, useRouter } from "next/navigation";
 import { trpc } from "@/utils/trpc";
@@ -92,7 +92,7 @@ export default function PortalAuthProvider({ children }: Props) {
           cache: "no-store",
         });
         const status = statusRes.ok ? await statusRes.json().catch(() => null) : null;
-        if (status?.accessBlocked && status?.workspaceMode === "blocked") {
+        if (status?.accessBlocked && status?.workspaceMode === "blocked" && pathnameRef.current !== APP_ONBOARDING_ROUTE) {
           router.replace(APP_ACCESS_ROUTE);
           return;
         }
@@ -100,6 +100,10 @@ export default function PortalAuthProvider({ children }: Props) {
       } catch (e: unknown) {
         if (cancelled) return;
         const message = e instanceof Error ? e.message : "Failed to initialize your account.";
+        if (/No business is connected|Business membership is not initialized/i.test(message)) {
+          router.replace(APP_ACCESS_ROUTE);
+          return;
+        }
         recordSentryMetric("count", "escl8.auth.ensure_user_error", 1, {
           area: "auth",
           route: pathnameRef.current,

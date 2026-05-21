@@ -139,12 +139,7 @@ export async function replaceInventoryProductsForRows(params: {
   await db.transaction(async (tx) => {
     await acquireInventoryBusinessLock(tx, params.businessId);
 
-    const scopeWhere = params.trainingDocumentId
-      ? and(
-          eq(inventoryProducts.businessId, params.businessId),
-          eq(inventoryProducts.trainingDocumentId, params.trainingDocumentId),
-        )
-      : and(eq(inventoryProducts.businessId, params.businessId), eq(inventoryProducts.source, params.source));
+    const scopeWhere = eq(inventoryProducts.businessId, params.businessId);
 
     const existingProducts = await tx
       .select()
@@ -307,8 +302,7 @@ export async function replaceInventoryProductsForRows(params: {
     await archiveCommerceProductsMissingFromInventoryScope(tx, {
       businessId: params.businessId,
       activeProductIds: activeIds,
-      source: params.source,
-      trainingDocumentId: params.trainingDocumentId || null,
+      inventoryBridgeOnly: true,
     });
   });
 

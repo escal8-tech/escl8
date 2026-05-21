@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SetupChecklistDrawer } from "@/app/portal/components/SetupChecklistDrawer";
 import Breadcrumbs from "@/app/portal/components/Breadcrumbs";
 import { useIsMobileViewport } from "@/app/portal/hooks/useIsMobileViewport";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
@@ -63,9 +64,11 @@ function TimeChip() {
 }
 
 export default function TopBar({ sidebarWidth, onMobileMenuOpen }: TopBarProps) {
+  const [setupOpen, setSetupOpen] = useState(false);
   const isMobile = useIsMobileViewport();
   const { selectedPhoneNumberId, setSelectedPhoneNumberId } = usePhoneFilter();
   const phoneNumbersQuery = trpc.business.listPhoneNumbers.useQuery();
+  const setupStatusQuery = trpc.business.getSetupStatus.useQuery(undefined, { refetchOnWindowFocus: false });
   const phoneNumbers = phoneNumbersQuery.data ?? [];
   const hasPhoneFilter = phoneNumbers.length > 0 || phoneNumbersQuery.isLoading;
   const phoneFilterOptions = [
@@ -98,6 +101,7 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: TopBarProps) 
   ) : null;
 
   return (
+    <>
     <header
       className="portal-topbar"
       data-mobile-has-filter={isMobile && hasPhoneFilter ? "true" : "false"}
@@ -130,6 +134,14 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: TopBarProps) 
       {/* Right side: Phone number filter */}
       {!isMobile || hasPhoneFilter ? (
         <div className={`topbar-right${hasPhoneFilter ? " has-filter" : ""}`}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setSetupOpen(true)}
+            style={{ padding: "8px 12px", minHeight: 38 }}
+          >
+            {setupStatusQuery.data ? `%` : "0%"} Complete setup
+          </button>
           {phoneFilterControl}
           <div className="topbar-secondary">
             <TimeChip />
@@ -137,5 +149,7 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: TopBarProps) 
         </div>
       ) : null}
     </header>
+    <SetupChecklistDrawer open={setupOpen} onClose={() => setSetupOpen(false)} status={setupStatusQuery.data} />
+    </>
   );
 }
