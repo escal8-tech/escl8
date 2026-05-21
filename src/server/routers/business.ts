@@ -644,4 +644,109 @@ export const businessRouter = router({
         gmailError: updated?.gmailError ?? null,
       };
     }),
+
+  getSetupStatus: businessProcedure.query(async ({ ctx }) => {
+    const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId)).limit(1);
+    if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
+
+    const [customization, preferences, websiteWidgetSettings, phoneNumbers] = await Promise.all([
+      getBusinessCustomizationSettingsRecord(ctx.businessId, biz.settings),
+      getBusinessPreferencesRecord(ctx.businessId, biz.settings),
+      getBusinessWebsiteWidgetSettingsRecord(ctx.businessId, biz.settings),
+      db
+        .select({ phoneNumberId: whatsappIdentities.phoneNumberId })
+        .from(whatsappIdentities)
+        .where(and(eq(whatsappIdentities.businessId, ctx.businessId), eq(whatsappIdentities.isActive, true))),
+    ]);
+
+    const settings = (biz.settings ?? {}) as Record<string, unknown>;
+    const onboarding = settings.onboarding && typeof settings.onboarding === "object" ? settings.onboarding as Record<string, unknown> : {};
+    const businessName = String(customization.businessName || biz.name || "").trim();
+    const hasRealName = Boolean(businessName) && !/^Business\s*\(|^Business Demo|^Business\s*$/i.test(businessName);
+    const onboardingLocation = onboarding.location && typeof onboarding.location === "object" ? onboarding.location as Record<string, unknown> : {};
+    const hasLocation = Boolean(String(customization.address || "").trim() || String(onboardingLocation.address || "").trim());
+    const hasTimezone = Boolean(preferences.timezone && preferences.timezone !== "UTC");
+    const required = [
+      { id: "profile", label: "Complete business profile", detail: "Business name, contact details, and brand identity.", complete: hasRealName },
+      { id: "location", label: "Set location and timezone", detail: "Needed for customer widgets, schedules, receipts, and due times.", complete: hasLocation && hasTimezone },
+      { id: "whatsapp", label: "Connect WhatsApp", detail: "Required before live customer messaging and automation.", complete: phoneNumbers.length > 0 },
+      { id: "gmail", label: "Connect Gmail", detail: "Required for invite emails, order emails, and payment instructions.", complete: Boolean(biz.gmailConnected) },
+      { id: "widget", label: "Prepare customer widget", detail: "Enable and preview the public customer entry point.", complete: Boolean(websiteWidgetSettings.enabled || websiteWidgetSettings.key) },
+    ];
+    const completed = required.filter((item) => item.complete).length;
+
+    return {
+      completed,
+      total: required.length,
+      percent: Math.round((completed / required.length) * 100),
+      required,
+      thingsToTry: [
+        { id: "invite", label: "Invite teammates", detail: "Add staff from Users & Permissions when you are ready." },
+        { id: "catalog", label: "Upload documents or stock", detail: "Give the AI and operations screens real business data." },
+        { id: "first-order", label: "Create a test order or appointment", detail: "Run one internal flow before going live." },
+      ],
+      onboarding,
+    };
+  }),
+
+  completeOnboardingSetup: businessProcedure
+    .input(z.object({
+      businessName: z.string().min(1).max(160),
+      website: z.string().max(240).optional(),
+      phone: z.string().max(120).optional(),
+      address: z.string().max(500).optional(),
+      timezone: z.string().min(1),
+      primaryCategory: z.string().max(80).optional(),
+      categories: z.array(z.string().max(80)).max(8).default([]),
+      serviceTypes: z.array(z.string().max(80)).max(12).default([]),
+      resourceTypes: z.array(z.string().max(80)).max(12).default([]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId)).limit(1);
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
+
+      const timezone = input.timezone.trim();
+      try {
+        new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date());
+      } catch {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid IANA timezone" });
+      }
+
+      const customization = await getBusinessCustomizationSettingsRecord(ctx.businessId, biz.settings);
+      const normalized = normalizeCustomizationSettings({
+        customization: {
+          ...customization,
+          businessName: input.businessName.trim(),
+          address: input.address?.trim() || customization.address || "",
+          phone: input.phone?.trim() || customization.phone || "",
+          email: ctx.userEmail || customization.email || "",
+          website: input.website?.trim() || customization.website || "",
+        },
+      });
+      await upsertBusinessCustomizationSettings(ctx.businessId, normalized);
+      await upsertBusinessTimezone(ctx.businessId, timezone);
+
+      const settings = (biz.settings ?? {}) as Record<string, unknown>;
+      const onboarding = {
+        ...(settings.onboarding && typeof settings.onboarding === "object" ? settings.onboarding as Record<string, unknown> : {}),
+        completedAt: new Date().toISOString(),
+        primaryCategory: input.primaryCategory || null,
+        categories: input.categories,
+        serviceTypes: input.serviceTypes,
+        resourceTypes: input.resourceTypes,
+        location: { address: input.address?.trim() || "", timezone },
+      };
+
+      const [updated] = await db
+        .update(businesses)
+        .set({
+          name: input.businessName.trim(),
+          settings: mergeCustomizationSettings({ ...settings, timezone, onboarding }, normalized),
+          updatedAt: new Date(),
+        })
+        .where(eq(businesses.id, ctx.businessId))
+        .returning();
+
+      return updated ?? null;
+    }),
 });

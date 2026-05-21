@@ -218,6 +218,35 @@ export const users = pgTable(
   }),
 );
 
+export const businessUserInvites = pgTable(
+  "business_user_invites",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role").notNull().default("member"),
+    tokenHash: text("token_hash").notNull(),
+    invitedByUserId: text("invited_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    businessUserInvitesTokenUx: uniqueIndex("business_user_invites_token_ux").on(t.tokenHash),
+    businessUserInvitesBusinessEmailIdx: index("business_user_invites_business_email_idx").on(t.businessId, t.email),
+    businessUserInvitesAcceptedIdx: index("business_user_invites_accepted_idx").on(t.acceptedAt),
+  }),
+);
+
 /**
  * WHATSAPP IDENTITIES = strict routing table for Option A.
  *

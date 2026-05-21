@@ -29,6 +29,8 @@ const PRODUCT_KEYS = new Set([
   "model_name",
   "model",
   "title",
+  "descript",
+  "desc",
 ]);
 
 const CODE_KEYS = new Set([
@@ -49,6 +51,8 @@ const DETAIL_KEYS = new Set([
   "use_case",
   "product_description",
   "description",
+  "descript",
+  "desc",
   "specification",
   "spec",
   "details",

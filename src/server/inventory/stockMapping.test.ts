@@ -44,3 +44,19 @@ test("parseInventoryAmount rejects placeholders and zero prices", () => {
   assert.equal(parseInventoryAmount("-"), null);
   assert.equal(parseInventoryAmount("N/A"), null);
 });
+
+test("deriveInventoryProductFromFields supports compact stock report headers", () => {
+  const product = deriveInventoryProductFromFields({
+    code: "0.5X",
+    descript: "M28 CTV LENS RELIFE",
+    tot_qty: "10",
+    unitprice: "4950",
+  });
+
+  assert.equal(product.itemCode, "0.5X");
+  assert.equal(product.name, "M28 CTV LENS RELIFE");
+  assert.equal(product.quantityOnHand, 10);
+  assert.deepEqual(product.priceFields.map((field) => [field.sourceKey, field.valueText, field.amount]), [
+    ["unitprice", "4950", "4950.00"],
+  ]);
+});

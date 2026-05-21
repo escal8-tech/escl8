@@ -69,6 +69,9 @@ export default function AccessBlockedPage() {
             <span aria-hidden="true">$</span>
             Book a demo
           </a>
+          <Link className="btn btn-primary" href="/onboarding">
+            Complete setup
+          </Link>
           <Link className="btn" href={APP_LOGIN_ROUTE}>
             Back to login
           </Link>
