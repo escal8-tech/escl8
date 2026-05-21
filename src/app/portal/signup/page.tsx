@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
 import { isClientErrorReported, recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
@@ -13,7 +13,7 @@ import Link from "next/link";
 import { SignupHeader } from "./components/SignupHeader";
 import { SignupForm } from "./components/SignupForm";
 
-export default function SignupPage() {
+function SignupPageContent() {
   const auth = getFirebaseAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -165,5 +165,13 @@ export default function SignupPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupPageContent />
+    </Suspense>
   );
 }
