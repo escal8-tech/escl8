@@ -30,6 +30,11 @@ import {
 
 const businessMessageUsageTierSchema = z.enum(["minimum", "standard", "enterprise"]);
 
+function numberLimit(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export const businessRouter = router({
   listPhoneNumbers: businessProcedure.query(async ({ ctx }) => {
     const rows = await db
@@ -197,7 +202,7 @@ export const businessRouter = router({
         subscriptionAccess: access,
         responseUsage: {
           used: creditsUsed,
-          max: getBusinessMessageUsageLimit(biz.messageUsageTier),
+          max: numberLimit(access?.limits?.["agent.messages.monthly"], getBusinessMessageUsageLimit(biz.messageUsageTier)),
           tier: normalizeBusinessMessageUsageTier(biz.messageUsageTier),
         },
       };

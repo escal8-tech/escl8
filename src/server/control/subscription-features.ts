@@ -7,6 +7,7 @@ export const SUITE_FEATURES = {
   AGENT_WIDGET_MANAGE: "agent.widget.manage",
   AGENT_WIDGET_PUBLIC: "agent.widget.public",
   AGENT_ANALYTICS_VIEW: "agent.analytics.view",
+  AGENT_API_ACCESS: "agent.api.access",
   RESERVATION_WORKSPACE: "reservation.workspace.access",
   RESERVATION_SETTINGS_BASIC: "reservation.settings.basic",
   RESERVATION_WIDGET_PUBLIC: "reservation.widget.public",
@@ -27,6 +28,7 @@ export const AGENT_READONLY_FEATURES: SuiteFeatureManifest = {
   [SUITE_FEATURES.AGENT_WIDGET_MANAGE]: false,
   [SUITE_FEATURES.AGENT_WIDGET_PUBLIC]: false,
   [SUITE_FEATURES.AGENT_ANALYTICS_VIEW]: false,
+  [SUITE_FEATURES.AGENT_API_ACCESS]: false,
 };
 
 export const AGENT_FULL_FEATURES: SuiteFeatureManifest = {
@@ -36,6 +38,7 @@ export const AGENT_FULL_FEATURES: SuiteFeatureManifest = {
   [SUITE_FEATURES.AGENT_WIDGET_MANAGE]: true,
   [SUITE_FEATURES.AGENT_WIDGET_PUBLIC]: true,
   [SUITE_FEATURES.AGENT_ANALYTICS_VIEW]: true,
+  [SUITE_FEATURES.AGENT_API_ACCESS]: false,
 };
 
 export const RESERVATION_BLOCKED_FEATURES: SuiteFeatureManifest = {

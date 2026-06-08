@@ -59,15 +59,6 @@ const handler = async (req: Request) => {
           return { userEmail: null, firebaseUid: null, userId: null, businessId: null };
         }
 
-        const claimModules = Array.isArray((decoded as Record<string, unknown>).modules)
-          ? ((decoded as Record<string, unknown>).modules as unknown[]).filter((m): m is string => typeof m === "string")
-          : [];
-        const hasAgentClaim = claimModules.includes("agent");
-        const claimSuiteTenantId =
-          typeof (decoded as Record<string, unknown>).suiteTenantId === "string"
-            ? ((decoded as Record<string, unknown>).suiteTenantId as string)
-            : null;
-
         let user = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid)).then((r) => r[0] ?? null);
 
         if (!user) {
@@ -90,15 +81,6 @@ const handler = async (req: Request) => {
           : null;
         if (!business) {
           return { userEmail, firebaseUid, userId: (user?.id as string) ?? null, businessId: null };
-        }
-
-        if (hasAgentClaim && claimSuiteTenantId && business.suiteTenantId && claimSuiteTenantId === business.suiteTenantId && user.suiteUserId) {
-          return {
-            userEmail,
-            firebaseUid,
-            userId: (user?.id as string) ?? null,
-            businessId: (user?.businessId as string) ?? null,
-          };
         }
 
         let suiteUser = await controlDb.select().from(suiteUsers).where(eq(suiteUsers.firebaseUid, firebaseUid)).then((r) => r[0] ?? null);
