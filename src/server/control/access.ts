@@ -25,6 +25,7 @@ export type SuiteProductModule = "agent" | "reservation";
 export const SUITE_PLAN_CODES = {
   AGENT_BASIC: "AGENT_BASIC",
   AGENT_GROWTH: "AGENT_GROWTH",
+  AGENT_ENTERPRISE: "AGENT_ENTERPRISE",
   RESERVE_BASIC: "RESERVE_BASIC",
   RESERVE_PRO: "RESERVE_PRO",
   BUNDLE_CORE: "BUNDLE_CORE",
@@ -85,6 +86,8 @@ function getDefaultFeaturesForPlan(planCode: string, module: SuiteProductModule)
       return { ...AGENT_FULL_FEATURES };
     case SUITE_PLAN_CODES.AGENT_GROWTH:
       return { ...AGENT_FULL_FEATURES, [SUITE_FEATURES.AGENT_ANALYTICS_VIEW]: true };
+    case SUITE_PLAN_CODES.AGENT_ENTERPRISE:
+      return { ...AGENT_FULL_FEATURES, [SUITE_FEATURES.AGENT_API_ACCESS]: true };
     case SUITE_PLAN_CODES.RESERVE_BASIC:
       return {
         ...RESERVATION_FULL_FEATURES,
@@ -108,19 +111,22 @@ function getDefaultFeaturesForPlan(planCode: string, module: SuiteProductModule)
 function getDefaultLimitsForPlan(planCode: string): SuiteLimitManifest {
   switch (planCode) {
     case SUITE_PLAN_CODES.AGENT_BASIC:
-      return { "agent.messages.monthly": 1500 };
+      return { "agent.messages.monthly": 30000, "agent.whatsappNumbers.max": 1, "agent.agents.max": 1 };
     case SUITE_PLAN_CODES.AGENT_GROWTH:
-      return { "agent.messages.monthly": 5000 };
+      return { "agent.messages.monthly": 50000, "agent.whatsappNumbers.max": 3, "agent.agents.max": 1 };
+    case SUITE_PLAN_CODES.AGENT_ENTERPRISE:
+      return { "agent.messages.monthly": 100000, "agent.whatsappNumbers.max": 10, "agent.agents.max": 1 };
     case SUITE_PLAN_CODES.RESERVE_BASIC:
       return { "reservation.widgets.monthlyBookings": 300 };
     case SUITE_PLAN_CODES.RESERVE_PRO:
       return { "reservation.widgets.monthlyBookings": 1500 };
     case SUITE_PLAN_CODES.BUNDLE_CORE:
-      return { "agent.messages.monthly": 3500, "reservation.widgets.monthlyBookings": 1000 };
+      return { "agent.messages.monthly": 30000, "agent.whatsappNumbers.max": 1, "agent.agents.max": 1, "reservation.widgets.monthlyBookings": 1000 };
     case SUITE_PLAN_CODES.BUNDLE_FULL:
+      return { "agent.messages.monthly": 50000, "agent.whatsappNumbers.max": 3, "agent.agents.max": 1, "reservation.widgets.monthlyBookings": 10000 };
     case SUITE_PLAN_CODES.DEMO_FULL_ACCESS:
     case SUITE_PLAN_CODES.PARTNER_FULL_ACCESS:
-      return { "agent.messages.monthly": 20000, "reservation.widgets.monthlyBookings": 10000 };
+      return { "agent.messages.monthly": 50000, "agent.whatsappNumbers.max": 10, "agent.agents.max": 1, "reservation.widgets.monthlyBookings": 50000 };
     default:
       return {};
   }
@@ -129,8 +135,8 @@ function getDefaultLimitsForPlan(planCode: string): SuiteLimitManifest {
 function readonlyFallback(module: SuiteProductModule, reason: TenantModuleAccess["reason"]): TenantModuleAccess {
   if (module === "agent") {
     return {
-      allowed: true,
-      workspaceMode: "readonly",
+      allowed: false,
+      workspaceMode: "blocked",
       canConnectWhatsapp: false,
       isGrandfathered: false,
       reason,
@@ -238,24 +244,6 @@ function normalizeSubscriptionAccess(latestSubscription: LatestSubscriptionRow, 
     latestSubscription.limitOverrides ?? {},
   );
 
-  if (module === "agent" && !fullAccess) {
-    return {
-      allowed: true,
-      workspaceMode: "readonly",
-      canConnectWhatsapp: false,
-      isGrandfathered: false,
-      reason: "subscription_inactive",
-      planCode: latestSubscription.planCode,
-      planName: latestSubscription.planName,
-      subscriptionStatus: latestSubscription.status,
-      grantKind: latestSubscription.grantKind,
-      lastPaidAt: latestSubscription.lastPaidAt ?? null,
-      nextDueAt: latestSubscription.nextDueAt ?? null,
-      features: mergeFeatureManifests(AGENT_READONLY_FEATURES, features),
-      limits,
-    };
-  }
-
   return {
     allowed: fullAccess,
     workspaceMode: fullAccess ? "full" : "blocked",
@@ -294,13 +282,7 @@ export async function getTenantModuleAccess(
       .then((rows) => rows[0] ?? null);
   } catch (error) {
     if (isMissingRelationError(error)) {
-      return {
-        ...readonlyFallback(module, "schema_unavailable"),
-        allowed: true,
-        workspaceMode: "full",
-        canConnectWhatsapp: module === "agent",
-        features: module === "agent" ? { ...AGENT_FULL_FEATURES } : { ...RESERVATION_FULL_FEATURES },
-      };
+      return readonlyFallback(module, "schema_unavailable");
     }
     throw error;
   }

@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/server/db/client";
 import { businesses, users, whatsappIdentities } from "../../../../../../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { generateSixDigitPin } from "@/server/meta/crypto";
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
 import { getAuthedUserFromRequest } from "@/server/apiAuth";
@@ -18,6 +18,11 @@ import {
 } from "@/server/services/metaWhatsappSupport";
 
 export const runtime = "nodejs";
+
+function numberLimit(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 // This endpoint receives the authorization code from Facebook Embedded Signup
 // along with the WhatsApp Business Account (WABA) ID and Phone Number ID.
@@ -93,6 +98,30 @@ export async function POST(req: Request) {
           ok: false,
           error: "This tenant needs an active paid plan, demo grant, or partner grant before WhatsApp can be connected.",
           code: "SUBSCRIPTION_REQUIRED",
+        },
+        { status: 402, headers: rl.headers },
+      );
+    }
+    const maxPhoneNumbers = numberLimit(access.limits?.["agent.whatsappNumbers.max"], 1);
+    const existingPhoneRows = user.businessId
+      ? await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(whatsappIdentities)
+          .where(
+            and(
+              eq(whatsappIdentities.businessId, user.businessId),
+              eq(whatsappIdentities.isActive, true),
+              ne(whatsappIdentities.phoneNumberId, phoneNumberId),
+            ),
+          )
+          .limit(1)
+      : [];
+    if (Number(existingPhoneRows[0]?.count ?? 0) >= maxPhoneNumbers) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `This plan allows ${maxPhoneNumbers} active WhatsApp number${maxPhoneNumbers === 1 ? "" : "s"}. Upgrade before connecting another number.`,
+          code: "WHATSAPP_NUMBER_LIMIT_REACHED",
         },
         { status: 402, headers: rl.headers },
       );
