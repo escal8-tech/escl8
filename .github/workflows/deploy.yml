@@ -87,27 +87,41 @@ jobs:
 
       - name: Verify required secrets
         shell: bash
+        env:
+          CONTROL_PLANE_DATABASE_URL: ${{ secrets.CONTROL_PLANE_DATABASE_URL }}
+          AGENT_DATABASE_URL: ${{ secrets.AGENT_DATABASE_URL }}
+          SENANGPAY_MERCHANT_ID: ${{ secrets.SENANGPAY_MERCHANT_ID }}
+          SENANGPAY_SECRET_KEY: ${{ secrets.SENANGPAY_SECRET_KEY }}
+          PRODUCTION_SENTRY_AUTH_TOKEN: ${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}
+          GRAFANA_LOGS_USER: ${{ secrets.GRAFANA_LOGS_USER }}
+          GRAFANA_LOGS_API_KEY: ${{ secrets.GRAFANA_LOGS_API_KEY }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          ACA_OPEN_AI_API: ${{ secrets.ACA_OPEN_AI_API }}
+          ACA_PINECONE_API: ${{ secrets.ACA_PINECONE_API }}
+          ACA_SERVICE_BUS_CONN: ${{ secrets.ACA_SERVICE_BUS_CONN }}
+          ACA_PUBSUB_CONN: ${{ secrets.ACA_PUBSUB_CONN }}
+          ACA_FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.ACA_FIREBASE_SERVICE_ACCOUNT_JSON }}
+          ACA_AZURE_BLOB_CONNECTION_STRING: ${{ secrets.ACA_AZURE_BLOB_CONNECTION_STRING }}
+          ACA_AZURE_QUEUE_CONNECTION_STRING: ${{ secrets.ACA_AZURE_QUEUE_CONNECTION_STRING }}
+          ACA_META_SYSTEM_KEY: ${{ secrets.ACA_META_SYSTEM_KEY }}
+          ACA_META_APP_SECRET: ${{ secrets.ACA_META_APP_SECRET }}
+          ACA_BOT_INTERNAL_API_KEY: ${{ secrets.ACA_BOT_INTERNAL_API_KEY }}
+          ACA_OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}
         run: |
-          test -n "${{ secrets.CONTROL_PLANE_DATABASE_URL }}"
-          test -n "${{ secrets.AGENT_DATABASE_URL }}"
-          test -n "${{ secrets.SENANGPAY_MERCHANT_ID }}"
-          test -n "${{ secrets.SENANGPAY_SECRET_KEY }}"
-          test -n "${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}"
-          test -n "${{ secrets.GRAFANA_LOGS_USER }}"
-          test -n "${{ secrets.GRAFANA_LOGS_API_KEY }}"
-          test -n "${{ secrets.ACR_USERNAME }}"
-          test -n "${{ secrets.ACR_PASSWORD }}"
-          test -n "${{ secrets.ACA_OPEN_AI_API }}"
-          test -n "${{ secrets.ACA_PINECONE_API }}"
-          test -n "${{ secrets.ACA_SERVICE_BUS_CONN }}"
-          test -n "${{ secrets.ACA_PUBSUB_CONN }}"
-          test -n "${{ secrets.ACA_FIREBASE_SERVICE_ACCOUNT_JSON }}"
-          test -n "${{ secrets.ACA_AZURE_BLOB_CONNECTION_STRING }}"
-          test -n "${{ secrets.ACA_AZURE_QUEUE_CONNECTION_STRING }}"
-          test -n "${{ secrets.ACA_META_SYSTEM_KEY }}"
-          test -n "${{ secrets.ACA_META_APP_SECRET }}"
-          test -n "${{ secrets.ACA_BOT_INTERNAL_API_KEY }}"
-          test -n "${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}"
+          required=(
+            CONTROL_PLANE_DATABASE_URL AGENT_DATABASE_URL
+            SENANGPAY_MERCHANT_ID SENANGPAY_SECRET_KEY
+            PRODUCTION_SENTRY_AUTH_TOKEN GRAFANA_LOGS_USER GRAFANA_LOGS_API_KEY
+            ACR_USERNAME ACR_PASSWORD ACA_OPEN_AI_API ACA_PINECONE_API
+            ACA_SERVICE_BUS_CONN ACA_PUBSUB_CONN ACA_FIREBASE_SERVICE_ACCOUNT_JSON
+            ACA_AZURE_BLOB_CONNECTION_STRING ACA_AZURE_QUEUE_CONNECTION_STRING
+            ACA_META_SYSTEM_KEY ACA_META_APP_SECRET ACA_BOT_INTERNAL_API_KEY
+            ACA_OTEL_EXPORTER_OTLP_HEADERS
+          )
+          for name in "${required[@]}"; do
+            [[ -n "${!name}" ]] || { echo "Missing required secret: $name"; exit 1; }
+          done
 
       - name: Ensure web, worker, and rollover job exist
         shell: bash
