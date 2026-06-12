@@ -28,7 +28,9 @@ permissions:
   contents: read
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   AZURE_RESOURCE_GROUP: Escal8
+  CONTAINERAPPS_ENVIRONMENT: whatsapp-bot-env
   WEB_APP_NAME: escal8-web
   WORKER_APP_NAME: escal8-worker
   JOB_APP_NAME: escal8-agent-request-rollover
@@ -93,6 +95,50 @@ jobs:
           test -n "${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}"
           test -n "${{ secrets.GRAFANA_LOGS_USER }}"
           test -n "${{ secrets.GRAFANA_LOGS_API_KEY }}"
+          test -n "${{ secrets.ACR_USERNAME }}"
+          test -n "${{ secrets.ACR_PASSWORD }}"
+          test -n "${{ secrets.ACA_OPEN_AI_API }}"
+          test -n "${{ secrets.ACA_PINECONE_API }}"
+          test -n "${{ secrets.ACA_SERVICE_BUS_CONN }}"
+          test -n "${{ secrets.ACA_PUBSUB_CONN }}"
+          test -n "${{ secrets.ACA_FIREBASE_SERVICE_ACCOUNT_JSON }}"
+          test -n "${{ secrets.ACA_AZURE_BLOB_CONNECTION_STRING }}"
+          test -n "${{ secrets.ACA_AZURE_QUEUE_CONNECTION_STRING }}"
+          test -n "${{ secrets.ACA_META_SYSTEM_KEY }}"
+          test -n "${{ secrets.ACA_META_APP_SECRET }}"
+          test -n "${{ secrets.ACA_BOT_INTERNAL_API_KEY }}"
+          test -n "${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}"
+
+      - name: Ensure web, worker, and rollover job exist
+        shell: bash
+        run: |
+          WEB_IMAGE="${{ env.ACR_LOGIN_SERVER }}/${{ env.WEB_IMAGE_NAME }}:${{ steps.image.outputs.tag }}"
+          WORKER_IMAGE="${{ env.ACR_LOGIN_SERVER }}/${{ env.WORKER_IMAGE_NAME }}:${{ steps.image.outputs.tag }}"
+          JOB_IMAGE="${{ env.ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:${{ steps.image.outputs.tag }}"
+
+          if ! az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.web_app }}" >/dev/null 2>&1; then
+            az containerapp create -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.web_app }}" \
+              --environment "$CONTAINERAPPS_ENVIRONMENT" --image "$WEB_IMAGE" \
+              --registry-server "$ACR_LOGIN_SERVER" --registry-username "${{ secrets.ACR_USERNAME }}" \
+              --registry-password "${{ secrets.ACR_PASSWORD }}" --ingress external --target-port 3000 \
+              --cpu 0.5 --memory 1Gi --min-replicas 1 --max-replicas 3
+          fi
+          if ! az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.worker_app }}" >/dev/null 2>&1; then
+            az containerapp create -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.worker_app }}" \
+              --environment "$CONTAINERAPPS_ENVIRONMENT" --image "$WORKER_IMAGE" \
+              --registry-server "$ACR_LOGIN_SERVER" --registry-username "${{ secrets.ACR_USERNAME }}" \
+              --registry-password "${{ secrets.ACR_PASSWORD }}" \
+              --cpu 0.5 --memory 1Gi --min-replicas 1 --max-replicas 3
+          fi
+          if ! az containerapp job show -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.job_app }}" >/dev/null 2>&1; then
+            az containerapp job create -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.job_app }}" \
+              --environment "$CONTAINERAPPS_ENVIRONMENT" --image "$JOB_IMAGE" \
+              --registry-server "$ACR_LOGIN_SERVER" --registry-username "${{ secrets.ACR_USERNAME }}" \
+              --registry-password "${{ secrets.ACR_PASSWORD }}" \
+              --trigger-type Schedule --cron-expression "0 * * * *" \
+              --replica-timeout 1800 --replica-retry-limit 3 \
+              --replica-completion-count 1 --parallelism 1
+          fi
 
       - name: Update Web Container App secrets
         shell: bash
@@ -105,7 +151,20 @@ jobs:
               senangpay-secret-key="${{ secrets.SENANGPAY_SECRET_KEY }}" \
               control-plane-database-url="${{ secrets.CONTROL_PLANE_DATABASE_URL }}" \
               database-url="${{ secrets.AGENT_DATABASE_URL }}" \
-              sentry-auth-token="${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}"
+              sentry-auth-token="${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}" \
+              open-ai-api="${{ secrets.ACA_OPEN_AI_API }}" \
+              pinecone-api="${{ secrets.ACA_PINECONE_API }}" \
+              service-bus-conn="${{ secrets.ACA_SERVICE_BUS_CONN }}" \
+              pubsub-conn="${{ secrets.ACA_PUBSUB_CONN }}" \
+              firebase-service-account-json="${{ secrets.ACA_FIREBASE_SERVICE_ACCOUNT_JSON }}" \
+              azure-blob-connection-string="${{ secrets.ACA_AZURE_BLOB_CONNECTION_STRING }}" \
+              azure-queue-connection-string="${{ secrets.ACA_AZURE_QUEUE_CONNECTION_STRING }}" \
+              meta-system-key="${{ secrets.ACA_META_SYSTEM_KEY }}" \
+              meta-app-secret="${{ secrets.ACA_META_APP_SECRET }}" \
+              bot-internal-api-key="${{ secrets.ACA_BOT_INTERNAL_API_KEY }}" \
+              otel-exporter-otlp-headers="${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}" \
+              grafana-logs-user="${{ secrets.GRAFANA_LOGS_USER }}" \
+              grafana-logs-api-key="${{ secrets.GRAFANA_LOGS_API_KEY }}"
 
       - name: Update Worker Container App secrets
         shell: bash
@@ -115,7 +174,17 @@ jobs:
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --secrets \
               control-plane-database-url="${{ secrets.CONTROL_PLANE_DATABASE_URL }}" \
-              database-url="${{ secrets.AGENT_DATABASE_URL }}"
+              database-url="${{ secrets.AGENT_DATABASE_URL }}" \
+              open-ai-api="${{ secrets.ACA_OPEN_AI_API }}" \
+              pinecone-api-key="${{ secrets.ACA_PINECONE_API }}" \
+              service-bus-conn="${{ secrets.ACA_SERVICE_BUS_CONN }}" \
+              pubsub-conn="${{ secrets.ACA_PUBSUB_CONN }}" \
+              firebase-service-account-json="${{ secrets.ACA_FIREBASE_SERVICE_ACCOUNT_JSON }}" \
+              azure-blob-connection-string="${{ secrets.ACA_AZURE_BLOB_CONNECTION_STRING }}" \
+              azure-queue-connection-string="${{ secrets.ACA_AZURE_QUEUE_CONNECTION_STRING }}" \
+              otel-exporter-otlp-headers="${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}" \
+              grafana-logs-user="${{ secrets.GRAFANA_LOGS_USER }}" \
+              grafana-logs-api-key="${{ secrets.GRAFANA_LOGS_API_KEY }}"
 
       - name: Update Job secrets
         shell: bash
@@ -146,6 +215,19 @@ jobs:
               SENANGPAY_SANDBOX=false \
               NEXT_PUBLIC_SENTRY_DSN="${{ secrets.PRODUCTION_NEXT_PUBLIC_SENTRY_DSN }}" \
               SENTRY_AUTH_TOKEN=secretref:sentry-auth-token \
+              OPENAI_API_KEY=secretref:open-ai-api \
+              PINECONE_API_KEY=secretref:pinecone-api \
+              SERVICE_BUS_CONNECTION_STRING=secretref:service-bus-conn \
+              WEB_PUBSUB_CONNECTION_STRING=secretref:pubsub-conn \
+              FIREBASE_SERVICE_ACCOUNT_JSON=secretref:firebase-service-account-json \
+              AZURE_BLOB_CONNECTION_STRING=secretref:azure-blob-connection-string \
+              AZURE_QUEUE_CONNECTION_STRING=secretref:azure-queue-connection-string \
+              META_SYSTEM_USER_TOKEN=secretref:meta-system-key \
+              META_APP_SECRET=secretref:meta-app-secret \
+              BOT_INTERNAL_API_KEY=secretref:bot-internal-api-key \
+              OTEL_EXPORTER_OTLP_HEADERS=secretref:otel-exporter-otlp-headers \
+              GRAFANA_LOGS_USER=secretref:grafana-logs-user \
+              GRAFANA_LOGS_API_KEY=secretref:grafana-logs-api-key \
               SENTRY_ORG="${{ secrets.PRODUCTION_SENTRY_ORG }}" \
               SENTRY_PROJECT="${{ secrets.PRODUCTION_SENTRY_PROJECT }}" \
               NEXT_PUBLIC_SENTRY_ENVIRONMENT=production \
@@ -166,6 +248,16 @@ jobs:
             --set-env-vars \
               CONTROL_PLANE_DATABASE_URL=secretref:control-plane-database-url \
               DATABASE_URL=secretref:database-url \
+              OPENAI_API_KEY=secretref:open-ai-api \
+              PINECONE_API_KEY=secretref:pinecone-api-key \
+              SERVICE_BUS_CONNECTION_STRING=secretref:service-bus-conn \
+              WEB_PUBSUB_CONNECTION_STRING=secretref:pubsub-conn \
+              FIREBASE_SERVICE_ACCOUNT_JSON=secretref:firebase-service-account-json \
+              AZURE_BLOB_CONNECTION_STRING=secretref:azure-blob-connection-string \
+              AZURE_QUEUE_CONNECTION_STRING=secretref:azure-queue-connection-string \
+              OTEL_EXPORTER_OTLP_HEADERS=secretref:otel-exporter-otlp-headers \
+              GRAFANA_LOGS_USER=secretref:grafana-logs-user \
+              GRAFANA_LOGS_API_KEY=secretref:grafana-logs-api-key \
               RAG_WORKER_MODE=queue \
               RAG_WORKER_POLL_MS=1500
 

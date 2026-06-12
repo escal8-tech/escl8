@@ -10,12 +10,29 @@ permissions:
   contents: read
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   WEB_IMAGE_NAME: escal8-agent
   WORKER_IMAGE_NAME: escal8-agent-worker
   JOB_IMAGE_NAME: escal8-agent-job
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run lint
+      - run: npm audit --omit=dev --audit-level=critical
+
   build-and-push:
+    needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 45
     concurrency:

@@ -351,7 +351,7 @@ function TierCard({
 }
 
 function FeatureComparisonTable({ tiers }: { tiers: Tier[] }) {
-  const features = [
+  const features: Array<{ key: keyof Tier; label: string; type?: "number" }> = [
     { key: "maxWhatsAppNumbers", label: "WhatsApp Numbers", type: "number" as const },
     { key: "maxTeamMembers", label: "Team Members", type: "number" as const },
     { key: "aiEnabled", label: "AI-Powered Responses" },
@@ -380,7 +380,7 @@ function FeatureComparisonTable({ tiers }: { tiers: Tier[] }) {
             <tr key={feature.key} className="hover:bg-gray-50">
               <td className="px-6 py-4 text-sm font-medium text-gray-900">{feature.label}</td>
               {tiers.map((tier) => {
-                const value = (tier as any)[feature.key];
+                const value = tier[feature.key];
                 return (
                   <td key={tier.id} className="px-6 py-4 text-center">
                     {typeof value === "boolean" ? (
