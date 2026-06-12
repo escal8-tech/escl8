@@ -63,9 +63,10 @@ jobs:
             NEXT_PUBLIC_SENTRY_DSN=${{ secrets.PRODUCTION_NEXT_PUBLIC_SENTRY_DSN }}
             NEXT_PUBLIC_SENTRY_RELEASE=${{ github.sha }}
             NEXT_PUBLIC_SENTRY_ENVIRONMENT=production
-            SENTRY_AUTH_TOKEN=${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ secrets.PRODUCTION_SENTRY_ORG }}
             SENTRY_PROJECT=${{ secrets.PRODUCTION_SENTRY_PROJECT }}
+          secrets: |
+            sentry_auth_token=${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}
 
       - name: Build and push worker image (RAG worker)
         uses: docker/build-push-action@v6

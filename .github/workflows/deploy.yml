@@ -90,6 +90,7 @@ jobs:
           test -n "${{ secrets.AGENT_DATABASE_URL }}"
           test -n "${{ secrets.SENANGPAY_MERCHANT_ID }}"
           test -n "${{ secrets.SENANGPAY_SECRET_KEY }}"
+          test -n "${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}"
 
       - name: Update Web Container App secrets
         shell: bash
@@ -101,7 +102,8 @@ jobs:
               senangpay-merchant-id="${{ secrets.SENANGPAY_MERCHANT_ID }}" \
               senangpay-secret-key="${{ secrets.SENANGPAY_SECRET_KEY }}" \
               control-plane-database-url="${{ secrets.CONTROL_PLANE_DATABASE_URL }}" \
-              database-url="${{ secrets.AGENT_DATABASE_URL }}"
+              database-url="${{ secrets.AGENT_DATABASE_URL }}" \
+              sentry-auth-token="${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}"
 
       - name: Update Worker Container App secrets
         shell: bash
@@ -139,7 +141,7 @@ jobs:
               SENANGPAY_HASH_TYPE=sha256 \
               SENANGPAY_SANDBOX=false \
               NEXT_PUBLIC_SENTRY_DSN="${{ secrets.PRODUCTION_NEXT_PUBLIC_SENTRY_DSN }}" \
-              SENTRY_AUTH_TOKEN="${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}" \
+              SENTRY_AUTH_TOKEN=secretref:sentry-auth-token \
               SENTRY_ORG="${{ secrets.PRODUCTION_SENTRY_ORG }}" \
               SENTRY_PROJECT="${{ secrets.PRODUCTION_SENTRY_PROJECT }}" \
               NEXT_PUBLIC_SENTRY_ENVIRONMENT=production \
