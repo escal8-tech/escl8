@@ -44,8 +44,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.WEB_IMAGE_NAME }}:${{ github.sha }}
-            ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.WEB_IMAGE_NAME }}:latest
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.WEB_IMAGE_NAME }}:${{ github.sha }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.WEB_IMAGE_NAME }}:latest
           build-args: |
             NEXT_PUBLIC_FIREBASE_API_KEY=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_API_KEY }}
             NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
@@ -68,8 +68,8 @@ jobs:
           file: Dockerfile.worker
           push: true
           tags: |
-            ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.WORKER_IMAGE_NAME }}:${{ github.sha }}
-            ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.WORKER_IMAGE_NAME }}:latest
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.WORKER_IMAGE_NAME }}:${{ github.sha }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.WORKER_IMAGE_NAME }}:latest
           build-args: |
             NEXT_PUBLIC_FIREBASE_API_KEY=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_API_KEY }}
             NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
@@ -92,5 +92,5 @@ jobs:
           file: Dockerfile.job
           push: true
           tags: |
-            ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:${{ github.sha }}
-            ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:latest
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:${{ github.sha }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:latest
