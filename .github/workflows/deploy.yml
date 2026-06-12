@@ -32,7 +32,7 @@ env:
   WEB_APP_NAME: escal8-web
   WORKER_APP_NAME: escl8-worker
   JOB_APP_NAME: escal8-agent-request-rollover
-  ACR_LOGIN_SERVER: ${{ secrets.AZURE_ACR_LOGIN_SERVER }}
+  ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
   WEB_IMAGE_NAME: escal8-web
   WORKER_IMAGE_NAME: escl8-worker
   JOB_IMAGE_NAME: escl8-job
@@ -100,8 +100,8 @@ jobs:
         run: |
           for VAR in \
             ACR_LOGIN_SERVER \
-            AZURE_ACR_USERNAME \
-            AZURE_ACR_PASSWORD \
+            ACR_USERNAME \
+            ACR_PASSWORD \
             AZURE_CREDENTIALS \
             SENANGPAY_MERCHANT_ID \
             SENANGPAY_SECRET_KEY \
