@@ -31,6 +31,13 @@ export const businesses = pgTable(
     bookingCloseTime: text("booking_close_time"), // "18:00"
     messageUsageTier: text("message_usage_tier").notNull().default("standard"),
 
+    // Credit system columns
+    creditPool: integer("credit_pool").notNull().default(0),
+    creditPoolResetAt: timestamp("credit_pool_reset_at", { withTimezone: true }),
+    subscriptionTier: text("subscription_tier"),
+    senangpayRecurringId: text("senangpay_recurring_id"),
+    senangpayCustomerEmail: text("senangpay_customer_email"),
+
     settings: jsonb("settings").$type<Record<string, unknown>>().default({}),
     gmailConnected: boolean("gmail_connected").notNull().default(false),
     gmailEmail: text("gmail_email"),
@@ -52,7 +59,7 @@ export const businesses = pgTable(
     ),
     businessesMessageUsageTierValid: check(
       "businesses_message_usage_tier_valid",
-      sql`${t.messageUsageTier} in ('minimum', 'standard', 'enterprise')`,
+      sql`${t.messageUsageTier} in ('minimum', 'standard', 'agent', 'pro_bundle', 'enterprise', 'partner')`,
     ),
   }),
 );
@@ -295,6 +302,13 @@ export const whatsappIdentities = pgTable(
     creditLineSharedAt: timestamp("credit_line_shared_at", { withTimezone: true }),
     creditLineAllocationConfigId: text("credit_line_allocation_config_id"),
     wabaCurrency: text("waba_currency"),
+
+    // Credit system columns
+    monthlyCreditLimit: integer("monthly_credit_limit").notNull().default(0),
+    creditBalance: integer("credit_balance").notNull().default(0),
+    creditResetAt: timestamp("credit_reset_at", { withTimezone: true }),
+    totalCreditsConsumed: integer("total_credits_consumed").notNull().default(0),
+    totalCreditsToppedUp: integer("total_credits_topped_up").notNull().default(0),
 
     isActive: boolean("is_active").notNull().default(true),
     connectedAt: timestamp("connected_at", { withTimezone: true }),
@@ -2246,3 +2260,68 @@ export type NewTrainingDocument = typeof trainingDocuments.$inferInsert;
 
 export type RagJobRow = typeof ragJobs.$inferSelect;
 export type NewRagJob = typeof ragJobs.$inferInsert;
+
+/**
+ * Credit topups table for tracking manual and subscription credit purchases
+ */
+export const creditTopups = pgTable(
+  "credit_topups",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    whatsappIdentityId: text("whatsapp_identity_id").references(
+      () => whatsappIdentities.phoneNumberId,
+      { onDelete: "set null", onUpdate: "cascade" }
+    ),
+    amount: integer("amount").notNull(),
+    currency: text("currency").notNull().default("MYR"),
+    type: text("type").notNull().default("manual"), // manual, subscription_renewal, addon_purchase
+    status: text("status").notNull().default("pending"), // pending, completed, failed
+    senangpayOrderId: text("senangpay_order_id"),
+    senangpayTransactionId: text("senangpay_transaction_id"),
+    description: text("description"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => ({
+    creditTopupsBusinessIdx: index("credit_topups_business_idx").on(t.businessId),
+    creditTopupsWhatsappIdentityIdx: index("credit_topups_whatsapp_identity_idx").on(t.whatsappIdentityId),
+    creditTopupsStatusIdx: index("credit_topups_status_idx").on(t.status),
+    creditTopupsCreatedAtIdx: index("credit_topups_created_at_idx").on(t.createdAt),
+  }),
+);
+
+/**
+ * Credit consumption events for audit trail
+ */
+export const creditConsumptionEvents = pgTable(
+  "credit_consumption_events",
+  {
+    id: text("id")
+      .primaryKey()
+      .notNull()
+      .$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    whatsappIdentityId: text("whatsapp_identity_id").references(
+      () => whatsappIdentities.phoneNumberId,
+      { onDelete: "set null", onUpdate: "cascade" }
+    ),
+    creditsConsumed: integer("credits_consumed").notNull().default(1),
+    eventType: text("event_type").notNull().default("ai_message"), // ai_message, api_call, etc.
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    creditConsumptionBusinessIdx: index("credit_consumption_business_idx").on(t.businessId, t.createdAt),
+    creditConsumptionWhatsappIdx: index("credit_consumption_whatsapp_idx").on(t.whatsappIdentityId, t.createdAt),
+  }),
+);

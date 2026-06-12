@@ -929,7 +929,7 @@ function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onC
 /* ─────────────────────────────────────────────────────────────────────────────
    SETTINGS PAGE TABS
 ───────────────────────────────────────────────────────────────────────────── */
-type SettingsTab = "profile" | "booking" | "payments" | "customization" | "integrations" | "documents" | "stock" | "users" | "flowbuilder";
+type SettingsTab = "profile" | "booking" | "payments" | "customization" | "integrations" | "documents" | "stock" | "users" | "flowbuilder" | "subscription";
 type ActiveSettingsView = SettingsTab | "overview";
 
 const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
@@ -942,6 +942,7 @@ const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "stock", label: "Stock", icon: Icons.stock },
   { id: "users", label: "Users & Permissions", icon: Icons.user },
   { id: "flowbuilder", label: "Flow Builder", icon: Icons.flow },
+  { id: "subscription", label: "Subscription", icon: Icons.shield },
 ];
 
 const settingsTabFeatureMap: Partial<Record<SettingsTab, string>> = {
@@ -954,6 +955,7 @@ const settingsTabFeatureMap: Partial<Record<SettingsTab, string>> = {
   stock: "agent.settings.basic",
   users: "agent.settings.basic",
   flowbuilder: "agent.messages.view",
+  subscription: "agent.settings.basic",
 };
 
 const settingsTabDescriptions: Record<SettingsTab, string> = {
@@ -966,6 +968,7 @@ const settingsTabDescriptions: Record<SettingsTab, string> = {
   stock: "Column mapping for uploaded item sheets so inventory, prices, and product fields stay structured.",
   users: "Invite teammates, manage roles, and remove users from this business workspace.",
   flowbuilder: "Conversation routing, automation rules, message flows, and AI handoff logic.",
+  subscription: "View subscription status, plan details, credits usage, billing history, and manage upgrades.",
 };
 
 const settingsTabPoints: Record<SettingsTab, string[]> = {
@@ -978,6 +981,7 @@ const settingsTabPoints: Record<SettingsTab, string[]> = {
   stock: ["Product sheet upload mapping", "Inventory and price columns", "Structured stock controls"],
   users: ["Invite teammates", "Roles and permissions", "Remove workspace access"],
   flowbuilder: ["Routing rules and handoffs", "Message flow automation", "AI control logic"],
+  subscription: ["Current plan and billing cycle", "Monthly credits and usage", "Next payment date and history", "Upgrade or change plans"],
 };
 
 function isSettingsTab(value: string): value is SettingsTab {
@@ -2689,6 +2693,15 @@ export default function SettingsPage() {
         return <UsersPermissionsPanel />;
       case "flowbuilder":
         return renderFlowBuilderTab();
+      case "subscription":
+        return (
+          <iframe
+            src="/subscription"
+            className="w-full h-[calc(100vh-200px)] min-h-[600px] border-0 rounded-xl bg-[var(--bg-canvas)]"
+            title="Subscription Management"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+          />
+        );
       default:
         return null;
     }

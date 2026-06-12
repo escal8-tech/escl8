@@ -754,4 +754,118 @@ export const businessRouter = router({
 
       return updated ?? null;
     }),
+
+  getSubscription: businessProcedure.query(async ({ ctx }) => {
+    const [biz] = await db
+      .select({ suiteTenantId: businesses.suiteTenantId })
+      .from(businesses)
+      .where(eq(businesses.id, ctx.businessId))
+      .limit(1);
+
+    if (!biz?.suiteTenantId) {
+      return {
+        hasSubscription: false,
+        status: "none",
+        planCode: null,
+        planName: null,
+        grantKind: null,
+        subscriptionStatus: null,
+        lastPaidAt: null,
+        nextDueAt: null,
+        monthlyCredits: 0,
+        creditsUsed: 0,
+        creditsBalance: 0,
+        priceAmount: 0,
+        currency: "MYR",
+        features: {},
+        limits: {},
+        isActive: false,
+        isSpecialGrant: false,
+      };
+    }
+
+    try {
+      const access = await getTenantModuleAccess(biz.suiteTenantId, "agent");
+      if (!access) {
+        return {
+          hasSubscription: false,
+          status: "none",
+          planCode: null,
+          planName: null,
+          grantKind: null,
+          subscriptionStatus: null,
+          lastPaidAt: null,
+          nextDueAt: null,
+          monthlyCredits: 0,
+          creditsUsed: 0,
+          creditsBalance: 0,
+          priceAmount: 0,
+          currency: "MYR",
+          features: {},
+          limits: {},
+          isActive: false,
+          isSpecialGrant: false,
+        };
+      }
+
+      const planCode = access.planCode;
+      const planName = access.planName;
+      const isActive = access.workspaceMode === "full";
+      const isSpecialGrant = access.grantKind === "partner" || access.grantKind === "demo";
+
+      const creditsMap: Record<string, number> = {
+        standard: 10000,
+        agent: 50000,
+        pro_bundle: 60000,
+        enterprise: 999999,
+        AGENT_BASIC: 10000,
+        AGENT_GROWTH: 50000,
+        AGENT_ENTERPRISE: 100000,
+        BUNDLE_CORE: 60000,
+        BUNDLE_FULL: 100000,
+      };
+      const monthlyCredits = creditsMap[planCode || ""] || 0;
+
+      return {
+        hasSubscription: true,
+        status: access.subscriptionStatus || "none",
+        planCode,
+        planName,
+        grantKind: access.grantKind,
+        subscriptionStatus: access.subscriptionStatus,
+        lastPaidAt: access.lastPaidAt,
+        nextDueAt: access.nextDueAt,
+        monthlyCredits,
+        creditsUsed: 0,
+        creditsBalance: monthlyCredits,
+        priceAmount: 0,
+        currency: "MYR",
+        features: access.features,
+        limits: access.limits,
+        isActive,
+        isSpecialGrant,
+      };
+    } catch (error) {
+      console.error("Error fetching subscription:", error);
+      return {
+        hasSubscription: false,
+        status: "error",
+        planCode: null,
+        planName: null,
+        grantKind: null,
+        subscriptionStatus: null,
+        lastPaidAt: null,
+        nextDueAt: null,
+        monthlyCredits: 0,
+        creditsUsed: 0,
+        creditsBalance: 0,
+        priceAmount: 0,
+        currency: "MYR",
+        features: {},
+        limits: {},
+        isActive: false,
+        isSpecialGrant: false,
+      };
+    }
+  }),
 });
