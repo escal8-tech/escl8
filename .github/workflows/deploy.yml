@@ -205,14 +205,11 @@ jobs:
                 echo "$APP revision $TARGET_REVISION is healthy"
                 break
               fi
-              if [[ "$HEALTH" == "Unhealthy" ]]; then
-                echo "$APP revision $TARGET_REVISION is unhealthy"
-                exit 1
-              fi
               if [[ "$i" == 60 ]]; then
-                echo "$APP revision $TARGET_REVISION did not become healthy"
+                echo "$APP revision $TARGET_REVISION did not become healthy (last state: $HEALTH)"
                 exit 1
               fi
+              echo "$APP revision $TARGET_REVISION is not ready yet (state: $HEALTH)"
               sleep 10
             done
           done
