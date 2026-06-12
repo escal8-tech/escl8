@@ -27,7 +27,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
-      - run: npm test
+      - name: Run tests
+        run: find src -name '*.test.ts' -print0 | xargs -0 npx tsx --test
       - run: npm run lint
       - run: npm audit --omit=dev --audit-level=critical
 
