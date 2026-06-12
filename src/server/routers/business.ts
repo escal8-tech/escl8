@@ -757,7 +757,10 @@ export const businessRouter = router({
 
   getSubscription: businessProcedure.query(async ({ ctx }) => {
     const [biz] = await db
-      .select({ suiteTenantId: businesses.suiteTenantId })
+      .select({
+        suiteTenantId: businesses.suiteTenantId,
+        creditPool: businesses.creditPool,
+      })
       .from(businesses)
       .where(eq(businesses.id, ctx.businessId))
       .limit(1);
@@ -813,18 +816,8 @@ export const businessRouter = router({
       const isActive = access.workspaceMode === "full";
       const isSpecialGrant = access.grantKind === "partner" || access.grantKind === "demo";
 
-      const creditsMap: Record<string, number> = {
-        standard: 10000,
-        agent: 50000,
-        pro_bundle: 60000,
-        enterprise: 999999,
-        AGENT_BASIC: 10000,
-        AGENT_GROWTH: 50000,
-        AGENT_ENTERPRISE: 100000,
-        BUNDLE_CORE: 60000,
-        BUNDLE_FULL: 100000,
-      };
-      const monthlyCredits = creditsMap[planCode || ""] || 0;
+      const monthlyCredits = Number(access.limits["agent.messages.monthly"] || 0);
+      const creditsUsed = await getBusinessAiCreditsUsedThisMonth(ctx.businessId);
 
       return {
         hasSubscription: true,
@@ -836,12 +829,12 @@ export const businessRouter = router({
         lastPaidAt: access.lastPaidAt,
         nextDueAt: access.nextDueAt,
         monthlyCredits,
-        creditsUsed: 0,
-        creditsBalance: monthlyCredits,
+        creditsUsed,
+        creditsBalance: Number(biz.creditPool || 0),
         priceAmount: 0,
         currency: "MYR",
-        features: access.features,
-        limits: access.limits,
+        features: filterSubscriptionRecord(access.features, "agent."),
+        limits: filterSubscriptionRecord(access.limits, "agent."),
         isActive,
         isSpecialGrant,
       };
@@ -869,3 +862,7 @@ export const businessRouter = router({
     }
   }),
 });
+
+function filterSubscriptionRecord<T>(record: Record<string, T>, prefix: string): Record<string, T> {
+  return Object.fromEntries(Object.entries(record).filter(([key]) => key.startsWith(prefix)));
+}

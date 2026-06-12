@@ -15,3 +15,6 @@ dist
 tmp
 temp
 .DS_Store
+docs
+*.md
+AGENTS.md

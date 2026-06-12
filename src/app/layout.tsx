@@ -5,6 +5,7 @@ import FooterSwitcher from "@/components/FooterSwitcher";
 import SentryTestButton from "@/components/SentryTestButton";
 import { TRPCProvider } from "@/utils/trpc";
 import { ToastProvider } from "@/components/ToastProvider";
+import { AuthSubscriptionProvider } from "@/contexts/AuthSubscriptionContext";
 import { absoluteUrl, conciergeSeo } from "@/lib/seo";
 import "./globals.css";
 
@@ -88,10 +89,12 @@ export default function RootLayout({
       <body className={`${montserrat.variable} ${catamaran.variable} ${inter.variable}`}>
         <TRPCProvider>
           <ToastProvider>
-            <TopNavSwitcher />
-            <main className="site-main">{children}</main>
-            <FooterSwitcher />
-            <SentryTestButton />
+            <AuthSubscriptionProvider>
+              <TopNavSwitcher />
+              <main className="site-main">{children}</main>
+              <FooterSwitcher />
+              <SentryTestButton />
+            </AuthSubscriptionProvider>
           </ToastProvider>
         </TRPCProvider>
       </body>

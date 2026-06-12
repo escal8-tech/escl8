@@ -1,26 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { useScopedVenue } from "@/hooks/useScopedVenue";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   CreditCard,
   Calendar,
   Crown,
-  Shield,
   AlertCircle,
   CheckCircle,
   Zap,
   Users,
-  Globe,
   Settings,
-  ArrowUpRight,
   RefreshCw,
   MessageSquare,
-  Cpu,
-  Database,
-  Lock,
 } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
 import { useAuthSubscription } from "@/contexts/AuthSubscriptionContext";
@@ -105,50 +99,46 @@ const AGENT_PLAN_FEATURES: Record<string, string[]> = {
     "White-label option",
   ],
   BUNDLE_CORE: [
-    "Everything in Agent Growth",
-    "Full Reservation system access",
-    "5 resources & 2 locations",
-    "Staff management & scheduling",
-    "Floor plan editor",
-    "Events & ticketing",
-    "Stripe + SenangPay payments",
-    "Custom domain & branding",
-    "API access",
-    "75,000 credits/month",
-    "Priority support with SLA",
+    "1 WhatsApp Business number",
+    "AI-powered responses",
+    "30,000 messages/month",
+    "Agent analytics dashboard",
+    "Agent widget management",
+    "Priority support",
   ],
   BUNDLE_FULL: [
-    "Everything in Bundle Core",
-    "Unlimited resources & locations",
-    "Advanced staff scheduling",
-    "Multi-brand management",
-    "Full API access",
-    "100,000 credits/month",
-    "Dedicated infrastructure option",
-    "Custom contract & billing",
-    "White-label solution",
+    "Up to 3 WhatsApp Business numbers",
+    "AI-powered responses",
+    "50,000 messages/month",
+    "Advanced agent analytics",
+    "Agent widget management",
+    "Priority support",
+  ],
+  DEMO_FULL_ACCESS: [
+    "Up to 10 WhatsApp Business numbers",
+    "AI-powered responses",
+    "50,000 messages/month",
+    "Advanced agent analytics",
+    "Agent widget management",
+  ],
+  PARTNER_FULL_ACCESS: [
+    "Up to 10 WhatsApp Business numbers",
+    "AI-powered responses",
+    "50,000 messages/month",
+    "Advanced agent analytics",
+    "Agent widget management",
   ],
 };
 
-interface SubscriptionContentProps {
-  /** When provided, use this app kind instead of detecting from pathname */
-  appKindOverride?: "agent" | "reservation";
-}
-
-export function SubscriptionContent({ appKindOverride }: SubscriptionContentProps = {}) {
-  const pathname = usePathname();
+export function SubscriptionContent() {
   const searchParams = useSearchParams();
   const { subscription: cachedSubscription } = useAuthSubscription();
-
-  const appKind = appKindOverride || "agent";
 
   const { businessId } = useScopedVenue();
   const toast = useToast();
 
-  // Priority: explicit prop > context cache > tRPC query
   const initialSubscription = cachedSubscription;
-  const [subscription, setSubscription] = useState<SubscriptionData | null>(initialSubscription);
-  const [loading, setLoading] = useState(!initialSubscription);
+  const [refreshedSubscription, setRefreshedSubscription] = useState<SubscriptionData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const subscriptionQuery = trpc.business.getSubscription.useQuery(
@@ -156,16 +146,13 @@ export function SubscriptionContent({ appKindOverride }: SubscriptionContentProp
     { enabled: !!businessId && !initialSubscription, refetchOnWindowFocus: false }
   );
 
-  useEffect(() => {
-    if (!initialSubscription && subscriptionQuery.data) {
-      setSubscription(subscriptionQuery.data);
-    }
-    setLoading(false);
-  }, [subscriptionQuery.data, initialSubscription]);
+  const subscription = refreshedSubscription ?? initialSubscription ?? subscriptionQuery.data ?? null;
+  const loading = !subscription && subscriptionQuery.isLoading;
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await subscriptionQuery.refetch();
+    const result = await subscriptionQuery.refetch();
+    if (result.data) setRefreshedSubscription(result.data);
     setRefreshing(false);
     toast.show({ type: "success", title: "Refreshed", message: "Subscription data updated" });
   };
@@ -367,9 +354,9 @@ export function SubscriptionContent({ appKindOverride }: SubscriptionContentProp
                   <Users className="w-5 h-5 text-orange-400" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.05em] text-gray-500 dark:text-gray-400">Team Limit</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.05em] text-gray-500 dark:text-gray-400">AI Agents</p>
                   <p className="text-lg font-bold text-gray-900 dark:text-white">
-                    {subscription.limits?.["agent.team.max"] || "Unlimited"}
+                    {subscription.limits?.["agent.agents.max"] ?? "Unlimited"}
                   </p>
                 </div>
               </div>

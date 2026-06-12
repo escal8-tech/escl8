@@ -1,4 +1,4 @@
-FROM node:20-bullseye-slim AS base
+FROM node:20-bullseye-slim AS deps
 RUN apt-get -o Acquire::Retries=3 update \
   && apt-get -o Acquire::Retries=3 install -y --no-install-recommends --fix-missing \
     python3 \
@@ -14,9 +14,14 @@ RUN apt-get -o Acquire::Retries=3 update \
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
+RUN npm prune --omit=dev
 
-COPY . .
-
+FROM node:20-bullseye-slim AS runtime
+WORKDIR /app
 ENV NODE_ENV=production
-
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json tsconfig.json ./
+COPY scripts ./scripts
+COPY src ./src
+COPY drizzle ./drizzle
 CMD ["npm", "run", "requests:rollover"]

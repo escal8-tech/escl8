@@ -24,9 +24,11 @@ export function SubscriptionGuard({
 }: SubscriptionGuardProps) {
   const router = useRouter();
   const hasValidSubscription = useHasValidSubscription();
+  const agentAccess = useModuleAccess("agent");
+  const reservationAccess = useModuleAccess("reservation");
   const moduleAccess = requiredModule === "both"
-    ? useModuleAccess("agent") && useModuleAccess("reservation")
-    : useModuleAccess(requiredModule);
+    ? agentAccess && reservationAccess
+    : requiredModule === "agent" ? agentAccess : reservationAccess;
   const { subscription } = useAuthSubscription();
 
   const isLoading = subscription === null; // null means not loaded yet
@@ -78,10 +80,10 @@ export function FeatureGuard({
   const hasFeatures = useMemo(() => {
     if (!subscription?.features) return false;
     if (requireAll) {
-      return requiredFeatures.every((key) => subscription.features[key as any] === true);
+      return requiredFeatures.every((key) => subscription.features[key] === true);
     }
-    return requiredFeatures.some((key) => subscription.features[key as any] === true);
-  }, [subscription?.features, requiredFeatures, requireAll]);
+    return requiredFeatures.some((key) => subscription.features[key] === true);
+  }, [subscription, requiredFeatures, requireAll]);
 
   const isLoading = subscription === null;
 

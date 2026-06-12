@@ -24,6 +24,7 @@ function resolveConnectionString(kind: PoolKind) {
       process.env.AGENT_DATABASE_URL ??
       process.env.ESCL8_DATABASE_URL ??
       process.env.ESCAL8_AGENT_DATABASE_URL ??
+      process.env.DATABASE_URL ??
       null
     );
   }

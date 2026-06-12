@@ -117,16 +117,16 @@ function getDefaultLimitsForPlan(planCode: string): SuiteLimitManifest {
     case SUITE_PLAN_CODES.AGENT_ENTERPRISE:
       return { "agent.messages.monthly": 100000, "agent.whatsappNumbers.max": 10, "agent.agents.max": 1 };
     case SUITE_PLAN_CODES.RESERVE_BASIC:
-      return { "reservation.widgets.monthlyBookings": 300 };
+      return { "reservation.floors.max": 1, "reservation.widgets.monthlyBookings": 300 };
     case SUITE_PLAN_CODES.RESERVE_PRO:
-      return { "reservation.widgets.monthlyBookings": 1500 };
+      return { "reservation.floors.max": 5, "reservation.widgets.monthlyBookings": 1500 };
     case SUITE_PLAN_CODES.BUNDLE_CORE:
-      return { "agent.messages.monthly": 30000, "agent.whatsappNumbers.max": 1, "agent.agents.max": 1, "reservation.widgets.monthlyBookings": 1000 };
+      return { "agent.messages.monthly": 30000, "agent.whatsappNumbers.max": 1, "agent.agents.max": 1, "reservation.floors.max": 5, "reservation.widgets.monthlyBookings": 1000 };
     case SUITE_PLAN_CODES.BUNDLE_FULL:
-      return { "agent.messages.monthly": 50000, "agent.whatsappNumbers.max": 3, "agent.agents.max": 1, "reservation.widgets.monthlyBookings": 10000 };
+      return { "agent.messages.monthly": 50000, "agent.whatsappNumbers.max": 3, "agent.agents.max": 1, "reservation.floors.max": -1, "reservation.widgets.monthlyBookings": 10000 };
     case SUITE_PLAN_CODES.DEMO_FULL_ACCESS:
     case SUITE_PLAN_CODES.PARTNER_FULL_ACCESS:
-      return { "agent.messages.monthly": 50000, "agent.whatsappNumbers.max": 10, "agent.agents.max": 1, "reservation.widgets.monthlyBookings": 50000 };
+      return { "agent.messages.monthly": 50000, "agent.whatsappNumbers.max": 10, "agent.agents.max": 1, "reservation.floors.max": -1, "reservation.widgets.monthlyBookings": 50000 };
     default:
       return {};
   }
@@ -212,21 +212,6 @@ async function getLatestSubscriptionRow(suiteTenantId: string): Promise<LatestSu
   }
 }
 
-async function hasAnySubscriptionRows(suiteTenantId: string) {
-  try {
-    const rows = await controlDb
-      .select({ count: sql<number>`count(*)::int` })
-      .from(suiteTenantSubscriptions)
-      .where(eq(suiteTenantSubscriptions.suiteTenantId, suiteTenantId));
-    return (rows[0]?.count ?? 0) > 0;
-  } catch (error) {
-    if (isMissingRelationError(error)) {
-      return false;
-    }
-    throw error;
-  }
-}
-
 function normalizeSubscriptionAccess(latestSubscription: LatestSubscriptionRow, module: SuiteProductModule): TenantModuleAccess {
   const grantKind = String(latestSubscription.grantKind || "standard");
   const isSpecialAlwaysOn = grantKind === "partner" || grantKind === "demo";
@@ -266,8 +251,6 @@ export async function getTenantModuleAccess(
   module: SuiteProductModule,
 ): Promise<TenantModuleAccess> {
   const latestSubscription = await getLatestSubscriptionRow(suiteTenantId);
-  const hasSubscriptionRows = latestSubscription ? true : await hasAnySubscriptionRows(suiteTenantId);
-
   if (latestSubscription) {
     return normalizeSubscriptionAccess(latestSubscription, module);
   }
@@ -285,24 +268,6 @@ export async function getTenantModuleAccess(
       return readonlyFallback(module, "schema_unavailable");
     }
     throw error;
-  }
-
-  if (entitlement && ["active", "trial"].includes(String(entitlement.status))) {
-    return {
-      allowed: true,
-      workspaceMode: "full",
-      canConnectWhatsapp: module === "agent",
-      isGrandfathered: !hasSubscriptionRows,
-      reason: "legacy_entitlement",
-      planCode: null,
-      planName: null,
-      subscriptionStatus: entitlement.status,
-      grantKind: null,
-      lastPaidAt: null,
-      nextDueAt: null,
-      features: module === "agent" ? { ...AGENT_FULL_FEATURES } : { ...RESERVATION_FULL_FEATURES },
-      limits: {},
-    };
   }
 
   return readonlyFallback(module, entitlement ? "legacy_entitlement_inactive" : "subscription_missing");

@@ -10,13 +10,17 @@ permissions:
   contents: read
 
 env:
-  WEB_IMAGE_NAME: escal8-web
-  WORKER_IMAGE_NAME: escl8-worker
-  JOB_IMAGE_NAME: escl8-job
+  WEB_IMAGE_NAME: escal8-agent
+  WORKER_IMAGE_NAME: escal8-agent-worker
+  JOB_IMAGE_NAME: escal8-agent-job
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: agent-images-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
       - name: Checkout
@@ -43,6 +47,8 @@ jobs:
         with:
           context: .
           push: true
+          cache-from: type=gha,scope=agent-web
+          cache-to: type=gha,mode=max,scope=agent-web
           tags: |
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.WEB_IMAGE_NAME }}:${{ github.sha }}
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.WEB_IMAGE_NAME }}:latest
@@ -67,30 +73,19 @@ jobs:
           context: .
           file: Dockerfile.worker
           push: true
+          cache-from: type=gha,scope=agent-worker
+          cache-to: type=gha,mode=max,scope=agent-worker
           tags: |
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.WORKER_IMAGE_NAME }}:${{ github.sha }}
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.WORKER_IMAGE_NAME }}:latest
-          build-args: |
-            NEXT_PUBLIC_FIREBASE_API_KEY=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_API_KEY }}
-            NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
-            NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
-            NEXT_PUBLIC_FIREBASE_APP_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_APP_ID }}
-            NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
-            NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
-            NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}
-            NEXT_PUBLIC_SENTRY_DSN=${{ secrets.PRODUCTION_NEXT_PUBLIC_SENTRY_DSN }}
-            NEXT_PUBLIC_SENTRY_RELEASE=${{ github.sha }}
-            NEXT_PUBLIC_SENTRY_ENVIRONMENT=production
-            SENTRY_AUTH_TOKEN=${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}
-            SENTRY_ORG=${{ secrets.PRODUCTION_SENTRY_ORG }}
-            SENTRY_PROJECT=${{ secrets.PRODUCTION_SENTRY_PROJECT }}
-
       - name: Build and push job image (requests rollover cron)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.job
           push: true
+          cache-from: type=gha,scope=agent-job
+          cache-to: type=gha,mode=max,scope=agent-job
           tags: |
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:${{ github.sha }}
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:latest

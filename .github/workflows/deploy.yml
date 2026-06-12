@@ -30,28 +30,26 @@ permissions:
 env:
   AZURE_RESOURCE_GROUP: Escal8
   WEB_APP_NAME: escal8-web
-  WORKER_APP_NAME: escl8-worker
+  WORKER_APP_NAME: escal8-worker
   JOB_APP_NAME: escal8-agent-request-rollover
   ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
-  WEB_IMAGE_NAME: escal8-web
-  WORKER_IMAGE_NAME: escl8-worker
-  JOB_IMAGE_NAME: escl8-job
+  WEB_IMAGE_NAME: escal8-agent
+  WORKER_IMAGE_NAME: escal8-agent-worker
+  JOB_IMAGE_NAME: escal8-agent-job
 
 jobs:
   deploy:
     name: Deploy escl8
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    concurrency:
+      group: agent-production-deploy
+      cancel-in-progress: false
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
 
-    environment: >-
-      ${
-        github.event_name == 'workflow_dispatch' &&
-        github.event.inputs.environment ||
-        (github.event.workflow_run.head_branch == 'main' && 'production' || 'staging')
-      }
+    environment: production
 
     steps:
       - name: Checkout
@@ -66,54 +64,32 @@ jobs:
         id: env
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TARGET_ENV="${{ github.event.inputs.environment }}"
-          elif [[ "${{ github.event.workflow_run.head_branch }}" == "main" ]]; then
-            TARGET_ENV="production"
-          else
-            TARGET_ENV="staging"
-          fi
-
-          echo "target_env=$TARGET_ENV" >> $GITHUB_OUTPUT
-          if [[ "$TARGET_ENV" == "production" ]]; then
-            echo "web_app=${WEB_APP_NAME}" >> $GITHUB_OUTPUT
-            echo "worker_app=${WORKER_APP_NAME}" >> $GITHUB_OUTPUT
-            echo "job_app=${JOB_APP_NAME}" >> $GITHUB_OUTPUT
-          else
-            echo "web_app=${WEB_APP_NAME}-staging" >> $GITHUB_OUTPUT
-            echo "worker_app=${WORKER_APP_NAME}-staging" >> $GITHUB_OUTPUT
-            echo "job_app=${JOB_APP_NAME}-staging" >> $GITHUB_OUTPUT
-          fi
+          echo "target_env=production" >> "$GITHUB_OUTPUT"
+          echo "web_app=${WEB_APP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "worker_app=${WORKER_APP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "job_app=${JOB_APP_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Determine image tag
         id: image
         shell: bash
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.image-tag }}" ]]; then
-            echo "tag=${{ github.event.inputs.image-tag }}" >> $GITHUB_OUTPUT
+            TAG="${{ github.event.inputs.image-tag }}"
+          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            TAG="${{ github.event.workflow_run.head_sha }}"
           else
-            echo "tag=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+            TAG="${GITHUB_SHA}"
           fi
+          test -n "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Verify required secrets
         shell: bash
         run: |
-          for VAR in \
-            ACR_LOGIN_SERVER \
-            ACR_USERNAME \
-            ACR_PASSWORD \
-            AZURE_CREDENTIALS \
-            SENANGPAY_MERCHANT_ID \
-            SENANGPAY_SECRET_KEY \
-            CONTROL_PLANE_DATABASE_URL \
-            AGENT_DATABASE_URL \
-            RESERVATION_DATABASE_URL
-          do
-            if [[ -z "${!VAR}" && -z "${{ secrets[VAR] }}" ]]; then
-              echo "$VAR is missing"
-              exit 1
-            fi
-          done
+          test -n "${{ secrets.CONTROL_PLANE_DATABASE_URL }}"
+          test -n "${{ secrets.AGENT_DATABASE_URL }}"
+          test -n "${{ secrets.SENANGPAY_MERCHANT_ID }}"
+          test -n "${{ secrets.SENANGPAY_SECRET_KEY }}"
 
       - name: Update Web Container App secrets
         shell: bash
@@ -125,8 +101,7 @@ jobs:
               senangpay-merchant-id="${{ secrets.SENANGPAY_MERCHANT_ID }}" \
               senangpay-secret-key="${{ secrets.SENANGPAY_SECRET_KEY }}" \
               control-plane-database-url="${{ secrets.CONTROL_PLANE_DATABASE_URL }}" \
-              agent-database-url="${{ secrets.AGENT_DATABASE_URL }}" \
-              reservation-database-url="${{ secrets.RESERVATION_DATABASE_URL }}"
+              database-url="${{ secrets.AGENT_DATABASE_URL }}"
 
       - name: Update Worker Container App secrets
         shell: bash
@@ -135,11 +110,8 @@ jobs:
             --name "${{ steps.env.outputs.worker_app }}" \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --secrets \
-              senangpay-merchant-id="${{ secrets.SENANGPAY_MERCHANT_ID }}" \
-              senangpay-secret-key="${{ secrets.SENANGPAY_SECRET_KEY }}" \
               control-plane-database-url="${{ secrets.CONTROL_PLANE_DATABASE_URL }}" \
-              agent-database-url="${{ secrets.AGENT_DATABASE_URL }}" \
-              reservation-database-url="${{ secrets.RESERVATION_DATABASE_URL }}"
+              database-url="${{ secrets.AGENT_DATABASE_URL }}"
 
       - name: Update Job secrets
         shell: bash
@@ -148,9 +120,7 @@ jobs:
             --name "${{ steps.env.outputs.job_app }}" \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --secrets \
-              control-plane-database-url="${{ secrets.CONTROL_PLANE_DATABASE_URL }}" \
-              agent-database-url="${{ secrets.AGENT_DATABASE_URL }}" \
-              reservation-database-url="${{ secrets.RESERVATION_DATABASE_URL }}"
+              database-url="${{ secrets.AGENT_DATABASE_URL }}"
 
       - name: Deploy Web Container App (dashboard)
         shell: bash
@@ -162,6 +132,10 @@ jobs:
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --image "$IMAGE" \
             --set-env-vars \
+              CONTROL_PLANE_DATABASE_URL=secretref:control-plane-database-url \
+              DATABASE_URL=secretref:database-url \
+              SENANGPAY_MERCHANT_ID=secretref:senangpay-merchant-id \
+              SENANGPAY_SECRET_KEY=secretref:senangpay-secret-key \
               SENANGPAY_HASH_TYPE=sha256 \
               SENANGPAY_SANDBOX=false \
               NEXT_PUBLIC_SENTRY_DSN="${{ secrets.PRODUCTION_NEXT_PUBLIC_SENTRY_DSN }}" \
@@ -184,8 +158,8 @@ jobs:
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --image "$IMAGE" \
             --set-env-vars \
-              SENANGPAY_HASH_TYPE=sha256 \
-              SENANGPAY_SANDBOX=false \
+              CONTROL_PLANE_DATABASE_URL=secretref:control-plane-database-url \
+              DATABASE_URL=secretref:database-url \
               RAG_WORKER_MODE=queue \
               RAG_WORKER_POLL_MS=1500
 
@@ -199,14 +173,48 @@ jobs:
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --image "$IMAGE" \
             --trigger-type Schedule \
-            --schedule "0 3 * * *" \
+            --schedule "0 * * * *" \
             --replica-timeout 1800 \
             --replica-retry-limit 3 \
             --replica-completion-count 1 \
             --parallelism 1
 
-      - name: Wait for rollout
-        run: sleep 60
+      - name: Wait for exact revisions
+        shell: bash
+        run: |
+          for APP in "${{ steps.env.outputs.web_app }}" "${{ steps.env.outputs.worker_app }}"; do
+            TARGET_REVISION=$(az containerapp show \
+              --name "$APP" \
+              --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+              --query properties.latestRevisionName -o tsv)
+
+            for i in {1..60}; do
+              HEALTH=$(az containerapp revision show \
+                --name "$APP" \
+                --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+                --revision "$TARGET_REVISION" \
+                --query properties.healthState -o tsv)
+              REVISION_IMAGE=$(az containerapp revision show \
+                --name "$APP" \
+                --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+                --revision "$TARGET_REVISION" \
+                --query "properties.template.containers[0].image" -o tsv)
+
+              if [[ "$HEALTH" == "Healthy" && "$REVISION_IMAGE" == *":${{ steps.image.outputs.tag }}" ]]; then
+                echo "$APP revision $TARGET_REVISION is healthy"
+                break
+              fi
+              if [[ "$HEALTH" == "Unhealthy" ]]; then
+                echo "$APP revision $TARGET_REVISION is unhealthy"
+                exit 1
+              fi
+              if [[ "$i" == 60 ]]; then
+                echo "$APP revision $TARGET_REVISION did not become healthy"
+                exit 1
+              fi
+              sleep 10
+            done
+          done
 
       - name: Health check (web)
         shell: bash
@@ -241,6 +249,30 @@ jobs:
             -o tsv)
 
           curl -fsS "https://$FQDN/api/ready" | grep -q '"ready":true'
+
+      - name: Smoke test rollover job
+        shell: bash
+        run: |
+          EXECUTION=$(az containerapp job start \
+            --name "${{ steps.env.outputs.job_app }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --query name -o tsv)
+          test -n "$EXECUTION"
+
+          for i in {1..60}; do
+            STATUS=$(az containerapp job execution show \
+              --name "${{ steps.env.outputs.job_app }}" \
+              --job-execution-name "$EXECUTION" \
+              --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+              --query properties.status -o tsv)
+            case "$STATUS" in
+              Succeeded) echo "Rollover job succeeded"; exit 0 ;;
+              Failed) echo "Rollover job failed"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "Rollover job timed out"
+          exit 1
 
       - name: Deployment summary
         shell: bash

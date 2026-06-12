@@ -1,4 +1,4 @@
-FROM node:20-bullseye-slim AS base
+FROM node:20-bullseye-slim AS deps
 RUN apt-get -o Acquire::Retries=3 update \
   && apt-get -o Acquire::Retries=3 install -y --no-install-recommends --fix-missing \
     python3 \
@@ -13,6 +13,21 @@ RUN apt-get -o Acquire::Retries=3 update \
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
+
+FROM node:20-bullseye-slim AS builder
+RUN apt-get -o Acquire::Retries=3 update \
+  && apt-get -o Acquire::Retries=3 install -y --no-install-recommends --fix-missing \
+    python3 \
+    make \
+    g++ \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libjpeg-dev \
+    libgif-dev \
+    librsvg2-dev \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ARG NEXT_PUBLIC_FIREBASE_API_KEY
 ARG NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
@@ -53,14 +68,11 @@ RUN npm run build
 FROM node:20-bullseye-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=base /app/.next/standalone ./
-COPY --from=base /app/.next/static ./.next/static
-COPY --from=base /app/public ./public
-COPY --from=base /app/node_modules ./node_modules
-COPY --from=base /app/package.json ./package.json
-COPY --from=base /app/scripts ./scripts
-COPY --from=base /app/src ./src
-COPY --from=base /app/drizzle ./drizzle
-COPY --from=base /app/tsconfig.json ./tsconfig.json
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
 EXPOSE 3000
 CMD ["node", "server.js"]

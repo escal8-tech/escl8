@@ -1,16 +1,12 @@
 import "server-only";
 import { randomUUID } from "crypto";
 import type { PoolClient } from "pg";
-import { withTransaction } from "@/lib/db";
+import { executeStatement, withTransaction } from "@/lib/db";
 import { amountForSenangPay, senangPayCheckoutUrl, type SenangPayCallbackPayload } from "@/lib/senangpay";
 import {
-  amountForSenangPay as amountForSenangPayRecurring,
   senangPayRecurringCheckoutUrl,
-  parseSenangPayRecurringRequest,
   type SenangPayRecurringCallbackPayload,
   type SenangPayRecurringStandardCallbackPayload,
-  verifySenangPayRecurringAdvanceCallback,
-  verifySenangPayRecurringStandardCallback,
 } from "@/lib/senangpay-recurring";
 
 type CheckoutInput = {
@@ -23,7 +19,7 @@ type CheckoutInput = {
 
 type RecurringCheckoutInput = {
   suiteTenantId: string;
-  recurringId: string;
+  planCode: string;
   customerName?: string | null;
   customerEmail?: string | null;
   customerPhone?: string | null;
@@ -113,7 +109,7 @@ async function ensureSubscriptionForPlan(client: PoolClient, input: CheckoutInpu
           starts_at = coalesce(starts_at, $3::timestamptz),
           current_period_start = coalesce(current_period_start, $3::timestamptz),
           current_period_due_at = $4::timestamptz,
-          next_due_at = case when $2 in ('active', 'past_due', 'pending_setup') then $4::timestamptz else next_due_at end,
+          next_due_at = $4::timestamptz,
           cancelled_at = case when $2 = 'cancelled' then now() else null end,
           metadata = coalesce(metadata, '{}'::jsonb) || $5::jsonb,
           updated_at = now()
@@ -378,8 +374,6 @@ export async function finalizeSenangPayPayment(payload: SenangPayCallbackPayload
 
 export async function createSenangPayRecurringCheckout(input: RecurringCheckoutInput) {
   return withTransaction("control", async (client) => {
-    const recurringId = input.recurringId;
-
     const planRows = await client.query<{
       code: string;
       display_name: string;
@@ -387,17 +381,20 @@ export async function createSenangPayRecurringCheckout(input: RecurringCheckoutI
       currency: string;
       billing_period_months: number;
       grant_kind: string;
+      metadata: Record<string, unknown> | null;
     }>(
       `
-        select code, display_name, price_amount, currency, billing_period_months, grant_kind
+        select code, display_name, price_amount, currency, billing_period_months, grant_kind, metadata
         from suite_subscription_plans
-        where senangpay_recurring_id = $1 and is_active = true
+        where code = $1 and is_active = true
         limit 1
       `,
-      [recurringId],
+      [input.planCode],
     );
     const plan = planRows.rows[0];
-    if (!plan) throw new Error("Recurring plan not found for this recurring_id.");
+    if (!plan) throw new Error("Plan code was not found.");
+    const recurringId = String(plan.metadata?.senangpayRecurringId || "").trim();
+    if (!recurringId) throw new Error(`Plan ${plan.code} does not have a SenangPay recurring ID configured.`);
 
     if (String(plan.grant_kind || "standard") !== "standard") {
       throw new Error("Demo and partner plans are not payable through SenangPay.");
@@ -428,7 +425,7 @@ export async function createSenangPayRecurringCheckout(input: RecurringCheckoutI
             starts_at = coalesce(starts_at, $3::timestamptz),
             current_period_start = coalesce(current_period_start, $3::timestamptz),
             current_period_due_at = $4::timestamptz,
-            next_due_at = case when $2 in ('active', 'past_due', 'pending_setup') then $4::timestamptz else next_due_at end,
+            next_due_at = $4::timestamptz,
             metadata = coalesce(metadata, '{}'::jsonb) || $5::jsonb,
             updated_at = now()
           where id = $1
@@ -438,7 +435,7 @@ export async function createSenangPayRecurringCheckout(input: RecurringCheckoutI
           plan.code,
           now.toISOString(),
           dueAt.toISOString(),
-          JSON.stringify({ lastCheckoutSource: "senangpay-recurring", recurringId: input.recurringId }),
+          JSON.stringify({ lastCheckoutSource: "senangpay-recurring", recurringId }),
         ],
       );
     } else {
@@ -462,7 +459,7 @@ export async function createSenangPayRecurringCheckout(input: RecurringCheckoutI
           plan.code,
           now.toISOString(),
           dueAt.toISOString(),
-          JSON.stringify({ source: "senangpay-recurring-checkout", recurringId: input.recurringId }),
+          JSON.stringify({ source: "senangpay-recurring-checkout", recurringId }),
         ],
       );
       subscriptionId = created.rows[0]?.id ?? null;
@@ -533,7 +530,7 @@ export async function createSenangPayRecurringCheckout(input: RecurringCheckoutI
         JSON.stringify({
           source: "senangpay-recurring-checkout",
           planCode: subscription.plan_code,
-          recurringId: input.recurringId,
+          recurringId,
         }),
       ],
     );
@@ -553,7 +550,7 @@ export async function createSenangPayRecurringCheckout(input: RecurringCheckoutI
         JSON.stringify({
           senangpay: {
             orderId,
-            recurringId: input.recurringId,
+            recurringId,
           },
         }),
       ],
@@ -561,7 +558,7 @@ export async function createSenangPayRecurringCheckout(input: RecurringCheckoutI
 
     const checkoutUrl = senangPayRecurringCheckoutUrl({
       orderId,
-      recurringId: input.recurringId,
+      recurringId,
       name: normalizeContact(input.customerName, "Escal8 Customer"),
       email: normalizeContact(input.customerEmail, "billing@escal8.tech"),
       phone: normalizeContact(input.customerPhone, "0000000000"),
@@ -610,7 +607,7 @@ export async function finalizeSenangPayRecurringPayment(
         from suite_tenant_payment_events p
         inner join suite_tenant_subscriptions sub on sub.id = p.subscription_id
         inner join suite_subscription_plans plan on plan.code = sub.plan_code
-        where p.recurring_payment_id = $1
+        where p.metadata->'senangpay'->>'recurringId' = $1
         limit 1
       `,
       [payload.recurringId],
@@ -676,12 +673,7 @@ export async function finalizeSenangPayRecurringPayment(
 
     // Determine success based on payload type
     const statusId = payload.statusId ?? "0";
-    let paid = statusId === "1" || statusId === "3";
-
-    // For standard callback, also check action
-    if (stdPayload) {
-      paid = paid || stdPayload.action === "new_schedule";
-    }
+    const paid = statusId === "1";
 
     const paidAt = new Date();
     const dueAnchor =
@@ -746,60 +738,47 @@ export async function finalizeSenangPayRecurringPayment(
           where id = $1`,
         [
           payment.subscription_id,
-          new Date().toISOString(),
-          new Date().toISOString(),
-          new Date().toISOString(),
+          paidAt.toISOString(),
+          paidAt.toISOString(),
+          nextDueAt.toISOString(),
           JSON.stringify({
             lastPaymentProvider: "senangpay-recurring",
             lastSenangPayTransactionId: payload.recurringId,
-            recurringAction: "action" in payload ? (payload as any).action : undefined,
+            recurringAction: stdPayload?.action,
             recurringStatusId: payload.statusId,
           }),
         ],
       );
 
-      // Top up credits for the renewed subscription
-      const planRows = await client.query<{
-        monthly_credits: number;
-        business_id: string;
-      }>(
-        `SELECT p.monthly_credits, b.id as business_id
-          FROM suite_subscription_plans p
-          JOIN suite_tenant_subscriptions s ON s.plan_code = p.code
-          JOIN businesses b ON b.suite_tenant_id = s.suite_tenant_id
-          WHERE s.id = $1
-          LIMIT 1`,
+      const planRows = await client.query<{ monthly_credits: number }>(
+        `select coalesce((p.limits->>'agent.messages.monthly')::integer, 0) as monthly_credits
+         from suite_subscription_plans p
+         join suite_tenant_subscriptions s on s.plan_code = p.code
+         where s.id = $1
+         limit 1`,
         [payment.subscription_id],
       );
-
       const plan = planRows.rows[0];
-      if (plan?.monthly_credits && plan?.business_id) {
-        const identityRows = await client.query<{ phone_number_id: string }>(
-          `SELECT phone_number_id FROM whatsapp_identities WHERE business_id = $1 LIMIT 1`,
-          [plan.business_id],
-        );
-        const identity = identityRows.rows[0];
-
-        if (identity?.phone_number_id) {
-          await client.query(
-            `UPDATE whatsapp_identities
-              SET credit_balance = credit_balance + $2,
-                  monthly_credit_limit = $2,
-                  total_credits_topped_up = total_credits_topped_up + $2,
-                  credit_reset_at = now() + INTERVAL '30 days',
-                  updated_at = now()
-              WHERE phone_number_id = $1`,
-            [identity.phone_number_id, plan.monthly_credits],
-          );
-        }
-
-        await client.query(
-          `UPDATE businesses
-            SET credit_pool = credit_pool + $2,
-                credit_pool_reset_at = now() + INTERVAL '30 days',
-                updated_at = now()
-            WHERE id = $1`,
-          [plan.business_id, plan.monthly_credits],
+      if (plan?.monthly_credits > 0) {
+        await executeStatement(
+          "agent",
+          `with target_business as (
+             update businesses
+             set credit_pool = credit_pool + $2,
+                 credit_pool_reset_at = now() + interval '30 days',
+                 updated_at = now()
+             where suite_tenant_id = $1
+             returning id
+           )
+           update whatsapp_identities wi
+           set credit_balance = credit_balance + $2,
+               monthly_credit_limit = $2,
+               total_credits_topped_up = total_credits_topped_up + $2,
+               credit_reset_at = now() + interval '30 days',
+               updated_at = now()
+           from target_business b
+           where wi.business_id = b.id`,
+          [payment.suite_tenant_id, plan.monthly_credits],
         );
       }
     } else {

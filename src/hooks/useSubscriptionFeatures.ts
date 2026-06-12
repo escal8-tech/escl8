@@ -1,11 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
 import { useAuthSubscription } from "@/contexts/AuthSubscriptionContext";
 import {
   SUITE_FEATURES,
   hasFeature,
-  type SuiteFeatureManifest,
   type SuiteFeatureKey,
 } from "@/server/control/subscription-features";
 
@@ -16,10 +14,7 @@ import {
 export function useSubscriptionFeature(featureKey: SuiteFeatureKey): boolean {
   const { subscription } = useAuthSubscription();
 
-  return useMemo(() => {
-    if (!subscription?.features) return false;
-    return hasFeature(subscription.features, featureKey);
-  }, [subscription?.features, featureKey]);
+  return hasFeature(subscription?.features, featureKey);
 }
 
 /**
@@ -28,10 +23,7 @@ export function useSubscriptionFeature(featureKey: SuiteFeatureKey): boolean {
 export function useSubscriptionAnyFeature(featureKeys: SuiteFeatureKey[]): boolean {
   const { subscription } = useAuthSubscription();
 
-  return useMemo(() => {
-    if (!subscription?.features) return false;
-    return featureKeys.some((key) => hasFeature(subscription.features, key));
-  }, [subscription?.features, featureKeys]);
+  return featureKeys.some((key) => hasFeature(subscription?.features, key));
 }
 
 /**
@@ -40,10 +32,7 @@ export function useSubscriptionAnyFeature(featureKeys: SuiteFeatureKey[]): boole
 export function useSubscriptionAllFeatures(featureKeys: SuiteFeatureKey[]): boolean {
   const { subscription } = useAuthSubscription();
 
-  return useMemo(() => {
-    if (!subscription?.features) return false;
-    return featureKeys.every((key) => hasFeature(subscription.features, key));
-  }, [subscription?.features, featureKeys]);
+  return featureKeys.every((key) => hasFeature(subscription?.features, key));
 }
 
 /**
@@ -53,11 +42,8 @@ export function useSubscriptionAllFeatures(featureKeys: SuiteFeatureKey[]): bool
 export function useWorkspaceMode(): "full" | "readonly" | "blocked" {
   const { subscription } = useAuthSubscription();
 
-  return useMemo(() => {
-    if (!subscription?.isActive) return "blocked";
-    if (!subscription?.hasSubscription) return "blocked";
-    return subscription.isSpecialGrant || subscription.status === "active" ? "full" : "readonly";
-  }, [subscription?.isActive, subscription?.hasSubscription, subscription?.isSpecialGrant, subscription?.status]);
+  if (!subscription?.isActive || !subscription.hasSubscription) return "blocked";
+  return subscription.isSpecialGrant || subscription.status === "active" ? "full" : "readonly";
 }
 
 /**
@@ -66,9 +52,7 @@ export function useWorkspaceMode(): "full" | "readonly" | "blocked" {
 export function useSubscriptionLimits(): Record<string, number> {
   const { subscription } = useAuthSubscription();
 
-  return useMemo(() => {
-    return subscription?.limits || {};
-  }, [subscription?.limits]);
+  return subscription?.limits || {};
 }
 
 /**
@@ -77,19 +61,11 @@ export function useSubscriptionLimits(): Record<string, number> {
 export function useModuleAccess(module: "agent" | "reservation"): boolean {
   const { subscription } = useAuthSubscription();
 
-  return useMemo(() => {
-    if (!subscription?.isActive) return false;
-    if (!subscription?.hasSubscription) return false;
-
-    // Check if subscription grants access to this module
-    if (module === "agent") {
-      return subscription.features?.["agent.granted"] === true || subscription.isSpecialGrant;
-    }
-    if (module === "reservation") {
-      return subscription.features?.["reservation.granted"] === true || subscription.isSpecialGrant;
-    }
-    return true;
-  }, [subscription?.isActive, subscription?.hasSubscription, subscription?.features, subscription?.isSpecialGrant]);
+  if (!subscription?.isActive || !subscription.hasSubscription) return false;
+  if (module === "agent") {
+    return subscription.features?.[SUITE_FEATURES.AGENT_PORTAL_VIEW] === true || subscription.isSpecialGrant;
+  }
+  return subscription.features?.[SUITE_FEATURES.RESERVATION_WORKSPACE] === true || subscription.isSpecialGrant;
 }
 
 /**
@@ -98,8 +74,7 @@ export function useModuleAccess(module: "agent" | "reservation"): boolean {
 export function useCurrentPlan() {
   const { subscription } = useAuthSubscription();
 
-  return useMemo(() => {
-    if (!subscription?.hasSubscription) return null;
+  if (!subscription?.hasSubscription) return null;
 
     const displayNames: Record<string, string> = {
       RESERVE_BASIC: "Starter",
@@ -113,7 +88,7 @@ export function useCurrentPlan() {
       PARTNER_FULL_ACCESS: "Partner Access",
     };
 
-    return {
+  return {
       planCode: subscription.planCode,
       planName: subscription.planName ? displayNames[subscription.planName] || subscription.planName : "Custom Plan",
       status: subscription.status,
@@ -127,8 +102,7 @@ export function useCurrentPlan() {
       currency: subscription.currency,
       nextDueAt: subscription.nextDueAt,
       lastPaidAt: subscription.lastPaidAt,
-    };
-  }, [subscription]);
+  };
 }
 
 /**
@@ -137,7 +111,5 @@ export function useCurrentPlan() {
 export function useHasValidSubscription(): boolean {
   const { subscription } = useAuthSubscription();
 
-  return useMemo(() => {
-    return subscription?.isActive === true && subscription?.hasSubscription === true;
-  }, [subscription?.isActive, subscription?.hasSubscription]);
+  return subscription?.isActive === true && subscription?.hasSubscription === true;
 }
