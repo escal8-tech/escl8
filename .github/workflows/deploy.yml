@@ -172,8 +172,7 @@ jobs:
             --name "${{ steps.env.outputs.job_app }}" \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --image "$IMAGE" \
-            --trigger-type Schedule \
-            --schedule "0 * * * *" \
+            --cron-expression "0 * * * *" \
             --replica-timeout 1800 \
             --replica-retry-limit 3 \
             --replica-completion-count 1 \
