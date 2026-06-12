@@ -52,6 +52,27 @@ jobs:
       github.event.workflow_run.conclusion == 'success'
 
     environment: production
+    env:
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+      CONTROL_PLANE_DATABASE_URL: ${{ secrets.CONTROL_PLANE_DATABASE_URL }}
+      AGENT_DATABASE_URL: ${{ secrets.AGENT_DATABASE_URL }}
+      SENANGPAY_MERCHANT_ID: ${{ secrets.SENANGPAY_MERCHANT_ID }}
+      SENANGPAY_SECRET_KEY: ${{ secrets.SENANGPAY_SECRET_KEY }}
+      PRODUCTION_SENTRY_AUTH_TOKEN: ${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}
+      GRAFANA_LOGS_USER: ${{ secrets.GRAFANA_LOGS_USER }}
+      GRAFANA_LOGS_API_KEY: ${{ secrets.GRAFANA_LOGS_API_KEY }}
+      ACA_OPEN_AI_API: ${{ secrets.ACA_OPEN_AI_API }}
+      ACA_PINECONE_API: ${{ secrets.ACA_PINECONE_API }}
+      ACA_SERVICE_BUS_CONN: ${{ secrets.ACA_SERVICE_BUS_CONN }}
+      ACA_PUBSUB_CONN: ${{ secrets.ACA_PUBSUB_CONN }}
+      ACA_FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.ACA_FIREBASE_SERVICE_ACCOUNT_JSON }}
+      ACA_AZURE_BLOB_CONNECTION_STRING: ${{ secrets.ACA_AZURE_BLOB_CONNECTION_STRING }}
+      ACA_AZURE_QUEUE_CONNECTION_STRING: ${{ secrets.ACA_AZURE_QUEUE_CONNECTION_STRING }}
+      ACA_META_SYSTEM_KEY: ${{ secrets.ACA_META_SYSTEM_KEY }}
+      ACA_META_APP_SECRET: ${{ secrets.ACA_META_APP_SECRET }}
+      ACA_BOT_INTERNAL_API_KEY: ${{ secrets.ACA_BOT_INTERNAL_API_KEY }}
+      ACA_OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}
 
     steps:
       - name: Checkout
@@ -133,22 +154,22 @@ jobs:
           if ! az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.web_app }}" >/dev/null 2>&1; then
             az containerapp create -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.web_app }}" \
               --environment "$CONTAINERAPPS_ENVIRONMENT" --image "$WEB_IMAGE" \
-              --registry-server "$ACR_LOGIN_SERVER" --registry-username "${{ secrets.ACR_USERNAME }}" \
-              --registry-password "${{ secrets.ACR_PASSWORD }}" --ingress external --target-port 3000 \
+              --registry-server "$ACR_LOGIN_SERVER" --registry-username "$ACR_USERNAME" \
+              --registry-password "$ACR_PASSWORD" --ingress external --target-port 3000 \
               --cpu 0.5 --memory 1Gi --min-replicas 1 --max-replicas 3
           fi
           if ! az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.worker_app }}" >/dev/null 2>&1; then
             az containerapp create -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.worker_app }}" \
               --environment "$CONTAINERAPPS_ENVIRONMENT" --image "$WORKER_IMAGE" \
-              --registry-server "$ACR_LOGIN_SERVER" --registry-username "${{ secrets.ACR_USERNAME }}" \
-              --registry-password "${{ secrets.ACR_PASSWORD }}" \
+              --registry-server "$ACR_LOGIN_SERVER" --registry-username "$ACR_USERNAME" \
+              --registry-password "$ACR_PASSWORD" \
               --cpu 0.5 --memory 1Gi --min-replicas 1 --max-replicas 3
           fi
           if ! az containerapp job show -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.job_app }}" >/dev/null 2>&1; then
             az containerapp job create -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.job_app }}" \
               --environment "$CONTAINERAPPS_ENVIRONMENT" --image "$JOB_IMAGE" \
-              --registry-server "$ACR_LOGIN_SERVER" --registry-username "${{ secrets.ACR_USERNAME }}" \
-              --registry-password "${{ secrets.ACR_PASSWORD }}" \
+              --registry-server "$ACR_LOGIN_SERVER" --registry-username "$ACR_USERNAME" \
+              --registry-password "$ACR_PASSWORD" \
               --trigger-type Schedule --cron-expression "0 * * * *" \
               --replica-timeout 1800 --replica-retry-limit 3 \
               --replica-completion-count 1 --parallelism 1
@@ -161,24 +182,24 @@ jobs:
             --name "${{ steps.env.outputs.web_app }}" \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --secrets \
-              senangpay-merchant-id="${{ secrets.SENANGPAY_MERCHANT_ID }}" \
-              senangpay-secret-key="${{ secrets.SENANGPAY_SECRET_KEY }}" \
-              control-plane-database-url="${{ secrets.CONTROL_PLANE_DATABASE_URL }}" \
-              database-url="${{ secrets.AGENT_DATABASE_URL }}" \
-              sentry-auth-token="${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}" \
-              open-ai-api="${{ secrets.ACA_OPEN_AI_API }}" \
-              pinecone-api="${{ secrets.ACA_PINECONE_API }}" \
-              service-bus-conn="${{ secrets.ACA_SERVICE_BUS_CONN }}" \
-              pubsub-conn="${{ secrets.ACA_PUBSUB_CONN }}" \
-              firebase-service-account-json="${{ secrets.ACA_FIREBASE_SERVICE_ACCOUNT_JSON }}" \
-              azure-blob-connection-string="${{ secrets.ACA_AZURE_BLOB_CONNECTION_STRING }}" \
-              azure-queue-connection-string="${{ secrets.ACA_AZURE_QUEUE_CONNECTION_STRING }}" \
-              meta-system-key="${{ secrets.ACA_META_SYSTEM_KEY }}" \
-              meta-app-secret="${{ secrets.ACA_META_APP_SECRET }}" \
-              bot-internal-api-key="${{ secrets.ACA_BOT_INTERNAL_API_KEY }}" \
-              otel-exporter-otlp-headers="${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}" \
-              grafana-logs-user="${{ secrets.GRAFANA_LOGS_USER }}" \
-              grafana-logs-api-key="${{ secrets.GRAFANA_LOGS_API_KEY }}"
+              senangpay-merchant-id="$SENANGPAY_MERCHANT_ID" \
+              senangpay-secret-key="$SENANGPAY_SECRET_KEY" \
+              control-plane-database-url="$CONTROL_PLANE_DATABASE_URL" \
+              database-url="$AGENT_DATABASE_URL" \
+              sentry-auth-token="$PRODUCTION_SENTRY_AUTH_TOKEN" \
+              open-ai-api="$ACA_OPEN_AI_API" \
+              pinecone-api="$ACA_PINECONE_API" \
+              service-bus-conn="$ACA_SERVICE_BUS_CONN" \
+              pubsub-conn="$ACA_PUBSUB_CONN" \
+              firebase-service-account-json="$ACA_FIREBASE_SERVICE_ACCOUNT_JSON" \
+              azure-blob-connection-string="$ACA_AZURE_BLOB_CONNECTION_STRING" \
+              azure-queue-connection-string="$ACA_AZURE_QUEUE_CONNECTION_STRING" \
+              meta-system-key="$ACA_META_SYSTEM_KEY" \
+              meta-app-secret="$ACA_META_APP_SECRET" \
+              bot-internal-api-key="$ACA_BOT_INTERNAL_API_KEY" \
+              otel-exporter-otlp-headers="$ACA_OTEL_EXPORTER_OTLP_HEADERS" \
+              grafana-logs-user="$GRAFANA_LOGS_USER" \
+              grafana-logs-api-key="$GRAFANA_LOGS_API_KEY"
 
       - name: Update Worker Container App secrets
         shell: bash
@@ -187,18 +208,18 @@ jobs:
             --name "${{ steps.env.outputs.worker_app }}" \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --secrets \
-              control-plane-database-url="${{ secrets.CONTROL_PLANE_DATABASE_URL }}" \
-              database-url="${{ secrets.AGENT_DATABASE_URL }}" \
-              open-ai-api="${{ secrets.ACA_OPEN_AI_API }}" \
-              pinecone-api-key="${{ secrets.ACA_PINECONE_API }}" \
-              service-bus-conn="${{ secrets.ACA_SERVICE_BUS_CONN }}" \
-              pubsub-conn="${{ secrets.ACA_PUBSUB_CONN }}" \
-              firebase-service-account-json="${{ secrets.ACA_FIREBASE_SERVICE_ACCOUNT_JSON }}" \
-              azure-blob-connection-string="${{ secrets.ACA_AZURE_BLOB_CONNECTION_STRING }}" \
-              azure-queue-connection-string="${{ secrets.ACA_AZURE_QUEUE_CONNECTION_STRING }}" \
-              otel-exporter-otlp-headers="${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}" \
-              grafana-logs-user="${{ secrets.GRAFANA_LOGS_USER }}" \
-              grafana-logs-api-key="${{ secrets.GRAFANA_LOGS_API_KEY }}"
+              control-plane-database-url="$CONTROL_PLANE_DATABASE_URL" \
+              database-url="$AGENT_DATABASE_URL" \
+              open-ai-api="$ACA_OPEN_AI_API" \
+              pinecone-api-key="$ACA_PINECONE_API" \
+              service-bus-conn="$ACA_SERVICE_BUS_CONN" \
+              pubsub-conn="$ACA_PUBSUB_CONN" \
+              firebase-service-account-json="$ACA_FIREBASE_SERVICE_ACCOUNT_JSON" \
+              azure-blob-connection-string="$ACA_AZURE_BLOB_CONNECTION_STRING" \
+              azure-queue-connection-string="$ACA_AZURE_QUEUE_CONNECTION_STRING" \
+              otel-exporter-otlp-headers="$ACA_OTEL_EXPORTER_OTLP_HEADERS" \
+              grafana-logs-user="$GRAFANA_LOGS_USER" \
+              grafana-logs-api-key="$GRAFANA_LOGS_API_KEY"
 
       - name: Update Job secrets
         shell: bash
@@ -207,9 +228,9 @@ jobs:
             --name "${{ steps.env.outputs.job_app }}" \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --secrets \
-              database-url="${{ secrets.AGENT_DATABASE_URL }}" \
-              grafana-logs-user="${{ secrets.GRAFANA_LOGS_USER }}" \
-              grafana-logs-api-key="${{ secrets.GRAFANA_LOGS_API_KEY }}"
+              database-url="$AGENT_DATABASE_URL" \
+              grafana-logs-user="$GRAFANA_LOGS_USER" \
+              grafana-logs-api-key="$GRAFANA_LOGS_API_KEY"
 
       - name: Deploy Web Container App (dashboard)
         shell: bash
