@@ -1,0 +1,270 @@
+name: Deploy escl8 to Container Apps
+
+on:
+  workflow_run:
+    workflows:
+      - "Build and push escl8 images"
+    types:
+      - completed
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - staging
+
+      image-tag:
+        description: Image tag to deploy (defaults to workflow SHA)
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  AZURE_RESOURCE_GROUP: Escal8
+  WEB_APP_NAME: escal8-web
+  WORKER_APP_NAME: escl8-worker
+  JOB_APP_NAME: escal8-agent-request-rollover
+  ACR_LOGIN_SERVER: ${{ secrets.AZURE_ACR_LOGIN_SERVER }}
+  WEB_IMAGE_NAME: escal8-web
+  WORKER_IMAGE_NAME: escl8-worker
+  JOB_IMAGE_NAME: escl8-job
+
+jobs:
+  deploy:
+    name: Deploy escl8
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    environment: >-
+      ${
+        github.event_name == 'workflow_dispatch' &&
+        github.event.inputs.environment ||
+        (github.event.workflow_run.head_branch == 'main' && 'production' || 'staging')
+      }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Determine environment
+        id: env
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TARGET_ENV="${{ github.event.inputs.environment }}"
+          elif [[ "${{ github.event.workflow_run.head_branch }}" == "main" ]]; then
+            TARGET_ENV="production"
+          else
+            TARGET_ENV="staging"
+          fi
+
+          echo "target_env=$TARGET_ENV" >> $GITHUB_OUTPUT
+          if [[ "$TARGET_ENV" == "production" ]]; then
+            echo "web_app=${WEB_APP_NAME}" >> $GITHUB_OUTPUT
+            echo "worker_app=${WORKER_APP_NAME}" >> $GITHUB_OUTPUT
+            echo "job_app=${JOB_APP_NAME}" >> $GITHUB_OUTPUT
+          else
+            echo "web_app=${WEB_APP_NAME}-staging" >> $GITHUB_OUTPUT
+            echo "worker_app=${WORKER_APP_NAME}-staging" >> $GITHUB_OUTPUT
+            echo "job_app=${JOB_APP_NAME}-staging" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine image tag
+        id: image
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.image-tag }}" ]]; then
+            echo "tag=${{ github.event.inputs.image-tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Verify required secrets
+        shell: bash
+        run: |
+          for VAR in \
+            ACR_LOGIN_SERVER \
+            AZURE_ACR_USERNAME \
+            AZURE_ACR_PASSWORD \
+            AZURE_CREDENTIALS \
+            SENANGPAY_MERCHANT_ID \
+            SENANGPAY_SECRET_KEY \
+            CONTROL_PLANE_DATABASE_URL \
+            AGENT_DATABASE_URL \
+            RESERVATION_DATABASE_URL
+          do
+            if [[ -z "${!VAR}" && -z "${{ secrets[VAR] }}" ]]; then
+              echo "$VAR is missing"
+              exit 1
+            fi
+          done
+
+      - name: Update Web Container App secrets
+        shell: bash
+        run: |
+          az containerapp secret set \
+            --name "${{ steps.env.outputs.web_app }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --secrets \
+              senangpay-merchant-id="${{ secrets.SENANGPAY_MERCHANT_ID }}" \
+              senangpay-secret-key="${{ secrets.SENANGPAY_SECRET_KEY }}" \
+              control-plane-database-url="${{ secrets.CONTROL_PLANE_DATABASE_URL }}" \
+              agent-database-url="${{ secrets.AGENT_DATABASE_URL }}" \
+              reservation-database-url="${{ secrets.RESERVATION_DATABASE_URL }}"
+
+      - name: Update Worker Container App secrets
+        shell: bash
+        run: |
+          az containerapp secret set \
+            --name "${{ steps.env.outputs.worker_app }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --secrets \
+              senangpay-merchant-id="${{ secrets.SENANGPAY_MERCHANT_ID }}" \
+              senangpay-secret-key="${{ secrets.SENANGPAY_SECRET_KEY }}" \
+              control-plane-database-url="${{ secrets.CONTROL_PLANE_DATABASE_URL }}" \
+              agent-database-url="${{ secrets.AGENT_DATABASE_URL }}" \
+              reservation-database-url="${{ secrets.RESERVATION_DATABASE_URL }}"
+
+      - name: Update Job secrets
+        shell: bash
+        run: |
+          az containerapp job secret set \
+            --name "${{ steps.env.outputs.job_app }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --secrets \
+              control-plane-database-url="${{ secrets.CONTROL_PLANE_DATABASE_URL }}" \
+              agent-database-url="${{ secrets.AGENT_DATABASE_URL }}" \
+              reservation-database-url="${{ secrets.RESERVATION_DATABASE_URL }}"
+
+      - name: Deploy Web Container App (dashboard)
+        shell: bash
+        run: |
+          IMAGE="${{ env.ACR_LOGIN_SERVER }}/${{ env.WEB_IMAGE_NAME }}:${{ steps.image.outputs.tag }}"
+
+          az containerapp update \
+            --name "${{ steps.env.outputs.web_app }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --image "$IMAGE" \
+            --set-env-vars \
+              SENANGPAY_HASH_TYPE=sha256 \
+              SENANGPAY_SANDBOX=false \
+              NEXT_PUBLIC_SENTRY_DSN="${{ secrets.PRODUCTION_NEXT_PUBLIC_SENTRY_DSN }}" \
+              SENTRY_AUTH_TOKEN="${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}" \
+              SENTRY_ORG="${{ secrets.PRODUCTION_SENTRY_ORG }}" \
+              SENTRY_PROJECT="${{ secrets.PRODUCTION_SENTRY_PROJECT }}" \
+              NEXT_PUBLIC_SENTRY_ENVIRONMENT=production \
+              NEXT_PUBLIC_SENTRY_RELEASE="${{ steps.image.outputs.tag }}" \
+              NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE=1 \
+              NEXT_PUBLIC_SENTRY_ENABLE_LOGS=true \
+              NEXT_PUBLIC_GRAFANA_BROWSER_LOGS_ENABLED=false
+
+      - name: Deploy Worker Container App (RAG worker)
+        shell: bash
+        run: |
+          IMAGE="${{ env.ACR_LOGIN_SERVER }}/${{ env.WORKER_IMAGE_NAME }}:${{ steps.image.outputs.tag }}"
+
+          az containerapp update \
+            --name "${{ steps.env.outputs.worker_app }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --image "$IMAGE" \
+            --set-env-vars \
+              SENANGPAY_HASH_TYPE=sha256 \
+              SENANGPAY_SANDBOX=false \
+              RAG_WORKER_MODE=queue \
+              RAG_WORKER_POLL_MS=1500
+
+      - name: Deploy Container App Job (requests rollover)
+        shell: bash
+        run: |
+          IMAGE="${{ env.ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:${{ steps.image.outputs.tag }}"
+
+          az containerapp job update \
+            --name "${{ steps.env.outputs.job_app }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --image "$IMAGE" \
+            --trigger-type Schedule \
+            --schedule "0 3 * * *" \
+            --replica-timeout 1800 \
+            --replica-retry-limit 3 \
+            --replica-completion-count 1 \
+            --parallelism 1
+
+      - name: Wait for rollout
+        run: sleep 60
+
+      - name: Health check (web)
+        shell: bash
+        run: |
+          FQDN=$(az containerapp show \
+            --name "${{ steps.env.outputs.web_app }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+
+          echo "Checking https://$FQDN/api/health"
+
+          for i in {1..20}; do
+            if curl -fsS "https://$FQDN/api/health" | grep -q '"ok":true'; then
+              echo "Health check passed"
+              exit 0
+            fi
+
+            echo "Attempt $i/20"
+            sleep 10
+          done
+
+          exit 1
+
+      - name: Readiness check (web)
+        shell: bash
+        run: |
+          FQDN=$(az containerapp show \
+            --name "${{ steps.env.outputs.web_app }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+
+          curl -fsS "https://$FQDN/api/ready" | grep -q '"ready":true'
+
+      - name: Deployment summary
+        shell: bash
+        run: |
+          WEB_FQDN=$(az containerapp show \
+            --name "${{ steps.env.outputs.web_app }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+
+          WORKER_FQDN=$(az containerapp show \
+            --name "${{ steps.env.outputs.worker_app }}" \
+            --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+
+          echo "## escl8 Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ steps.env.outputs.target_env }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Web App (Dashboard) | ${{ steps.env.outputs.web_app }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Worker App (RAG) | ${{ steps.env.outputs.worker_app }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Job App (Rollover) | ${{ steps.env.outputs.job_app }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image Tag | ${{ steps.image.outputs.tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Web URL | https://$WEB_FQDN |" >> $GITHUB_STEP_SUMMARY
+          echo "| Worker URL | https://$WORKER_FQDN |" >> $GITHUB_STEP_SUMMARY

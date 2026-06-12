@@ -1,0 +1,96 @@
+name: Build and push escl8 images
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  WEB_IMAGE_NAME: escal8-web
+  WORKER_IMAGE_NAME: escl8-worker
+  JOB_IMAGE_NAME: escl8-job
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate image secrets
+        run: |
+          test -n "${{ secrets.AZURE_ACR_LOGIN_SERVER }}"
+          test -n "${{ secrets.AZURE_ACR_USERNAME }}"
+          test -n "${{ secrets.AZURE_ACR_PASSWORD }}"
+
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.AZURE_ACR_LOGIN_SERVER }}
+          username: ${{ secrets.AZURE_ACR_USERNAME }}
+          password: ${{ secrets.AZURE_ACR_PASSWORD }}
+
+      - name: Build and push web image (dashboard)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.WEB_IMAGE_NAME }}:${{ github.sha }}
+            ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.WEB_IMAGE_NAME }}:latest
+          build-args: |
+            NEXT_PUBLIC_FIREBASE_API_KEY=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_API_KEY }}
+            NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+            NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+            NEXT_PUBLIC_FIREBASE_APP_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_APP_ID }}
+            NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+            NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+            NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}
+            NEXT_PUBLIC_SENTRY_DSN=${{ secrets.PRODUCTION_NEXT_PUBLIC_SENTRY_DSN }}
+            NEXT_PUBLIC_SENTRY_RELEASE=${{ github.sha }}
+            NEXT_PUBLIC_SENTRY_ENVIRONMENT=production
+            SENTRY_AUTH_TOKEN=${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}
+            SENTRY_ORG=${{ secrets.PRODUCTION_SENTRY_ORG }}
+            SENTRY_PROJECT=${{ secrets.PRODUCTION_SENTRY_PROJECT }}
+
+      - name: Build and push worker image (RAG worker)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.worker
+          push: true
+          tags: |
+            ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.WORKER_IMAGE_NAME }}:${{ github.sha }}
+            ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.WORKER_IMAGE_NAME }}:latest
+          build-args: |
+            NEXT_PUBLIC_FIREBASE_API_KEY=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_API_KEY }}
+            NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+            NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+            NEXT_PUBLIC_FIREBASE_APP_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_APP_ID }}
+            NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+            NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+            NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}
+            NEXT_PUBLIC_SENTRY_DSN=${{ secrets.PRODUCTION_NEXT_PUBLIC_SENTRY_DSN }}
+            NEXT_PUBLIC_SENTRY_RELEASE=${{ github.sha }}
+            NEXT_PUBLIC_SENTRY_ENVIRONMENT=production
+            SENTRY_AUTH_TOKEN=${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}
+            SENTRY_ORG=${{ secrets.PRODUCTION_SENTRY_ORG }}
+            SENTRY_PROJECT=${{ secrets.PRODUCTION_SENTRY_PROJECT }}
+
+      - name: Build and push job image (requests rollover cron)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.job
+          push: true
+          tags: |
+            ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:${{ github.sha }}
+            ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:latest

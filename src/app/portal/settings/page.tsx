@@ -21,6 +21,7 @@ import { FlowBuilderContent } from "@/app/portal/flowbuilder/FlowBuilderContent"
 import { StockSettingsPanel } from "@/app/portal/settings/components/StockSettingsPanel";
 import { usePortalTheme } from "@/app/portal/components/PortalThemeProvider";
 import UsersPermissionsPanel from "@/app/portal/settings/components/UsersPermissionsPanel";
+import { SubscriptionContent } from "@/components/subscription/SubscriptionContent";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ICONS (inline SVGs for clean dependency-free icons)
@@ -2694,14 +2695,7 @@ export default function SettingsPage() {
       case "flowbuilder":
         return renderFlowBuilderTab();
       case "subscription":
-        return (
-          <iframe
-            src="/subscription"
-            className="w-full h-[calc(100vh-200px)] min-h-[600px] border-0 rounded-xl bg-[var(--bg-canvas)]"
-            title="Subscription Management"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-          />
-        );
+        return <SubscriptionContent />;
       default:
         return null;
     }
