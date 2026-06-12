@@ -91,6 +91,8 @@ jobs:
           test -n "${{ secrets.SENANGPAY_MERCHANT_ID }}"
           test -n "${{ secrets.SENANGPAY_SECRET_KEY }}"
           test -n "${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}"
+          test -n "${{ secrets.GRAFANA_LOGS_USER }}"
+          test -n "${{ secrets.GRAFANA_LOGS_API_KEY }}"
 
       - name: Update Web Container App secrets
         shell: bash
@@ -122,7 +124,9 @@ jobs:
             --name "${{ steps.env.outputs.job_app }}" \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --secrets \
-              database-url="${{ secrets.AGENT_DATABASE_URL }}"
+              database-url="${{ secrets.AGENT_DATABASE_URL }}" \
+              grafana-logs-user="${{ secrets.GRAFANA_LOGS_USER }}" \
+              grafana-logs-api-key="${{ secrets.GRAFANA_LOGS_API_KEY }}"
 
       - name: Deploy Web Container App (dashboard)
         shell: bash
@@ -178,7 +182,11 @@ jobs:
             --replica-timeout 1800 \
             --replica-retry-limit 3 \
             --replica-completion-count 1 \
-            --parallelism 1
+            --parallelism 1 \
+            --set-env-vars \
+              DATABASE_URL=secretref:database-url \
+              GRAFANA_LOGS_USER=secretref:grafana-logs-user \
+              GRAFANA_LOGS_API_KEY=secretref:grafana-logs-api-key
 
       - name: Wait for exact revisions
         shell: bash
