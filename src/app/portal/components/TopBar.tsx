@@ -274,7 +274,7 @@ function SetupChecklistDrawer({ open, onClose, status, businessName, isDark }: {
   return (
     <div className="fixed inset-0 z-[100]">
       <button type="button" aria-label="Close setup checklist" onClick={onClose} className="absolute inset-0 bg-slate-950/55 backdrop-blur-[2px]" />
-      <aside className={`absolute right-0 top-0 h-full w-full max-w-[560px] overflow-auto border-l shadow-2xl ${isDark ? "border-accent-gold/20 bg-[#07111f] text-dark-50 shadow-black/50" : "border-gray-200 bg-[#f8fafc] text-gray-950 shadow-slate-950/20"}`}>
+      <aside className={`absolute right-0 top-[72px] h-[calc(100vh-72px)] w-full max-w-[560px] overflow-auto border-l shadow-2xl ${isDark ? "border-accent-gold/20 bg-[#07111f] text-dark-50 shadow-black/50" : "border-gray-200 bg-[#f8fafc] text-gray-950 shadow-slate-950/20"}`}>
         <div className={`sticky top-0 z-10 border-b px-7 py-5 backdrop-blur-xl ${isDark ? "border-white/10 bg-[#07111f]/90" : "border-gray-200 bg-white/88"}`}>
           <div className="flex items-center justify-between gap-4">
             <div>
