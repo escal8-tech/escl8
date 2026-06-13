@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { WebPubSubServiceClient } from "@azure/web-pubsub";
 
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { captureSentryException } from "@/lib/sentry-monitoring";
@@ -41,9 +42,6 @@ function getWebPubSubClient(): WebPubSubClient | null {
   if (!conn) return null;
 
   try {
-    // Keep this lazy for environments where the package may be omitted.
-    const reqFn = eval("require") as NodeRequire;
-    const { WebPubSubServiceClient } = reqFn("@azure/web-pubsub");
     const serviceClient = new WebPubSubServiceClient(conn, hub);
     cachedClient = {
       async sendToGroup(group: string, message: JsonValue[] | { [k: string]: JsonValue } | string, options?: { contentType?: string }) {

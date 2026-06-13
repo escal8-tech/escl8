@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
+import { WebPubSubServiceClient } from "@azure/web-pubsub";
 import { getAuthedUserFromRequest } from "@/server/apiAuth";
 import { checkRateLimit } from "@/server/rateLimit";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
@@ -116,41 +117,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "WEB_PUBSUB_CONNECTION_STRING missing" }, { status: 503, headers: rl.headers });
   }
 
-  let WebPubSubServiceClientCtor: any;
-  try {
-    const reqFn = eval("require") as NodeRequire;
-    WebPubSubServiceClientCtor = reqFn("@azure/web-pubsub").WebPubSubServiceClient;
-  } catch (error) {
-    recordBusinessEvent({
-      event: "realtime.negotiate_failed",
-      level: "error",
-      action: "negotiate",
-      area: "realtime",
-      businessId: identity.businessId,
-      source: "api.events.negotiate",
-      outcome: "failed",
-      status: "missing_dependency",
-      entity: "realtime_session",
-      attributes: {
-        dependency: "@azure/web-pubsub",
-        ...getErrorDiagnostics(error),
-      },
-    });
-    captureSentryException(error, {
-      action: "realtime-negotiate",
-      area: "realtime",
-      level: "error",
-      tags: {
-        "escal8.business_id": identity.businessId,
-        "realtime.hub": hub,
-      },
-    });
-    return NextResponse.json({ error: "@azure/web-pubsub not installed" }, { status: 503, headers: rl.headers });
-  }
-
   const group = `business.${identity.businessId}`;
   try {
-    const client = new WebPubSubServiceClientCtor(conn, hub);
+    const client = new WebPubSubServiceClient(conn, hub);
     const token = await client.getClientAccessToken({
       userId: identity.userId,
       roles: [`webpubsub.joinLeaveGroup.${group}`],

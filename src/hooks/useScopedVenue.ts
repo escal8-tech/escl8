@@ -5,7 +5,7 @@ import { trpc } from "@/utils/trpc";
 
 export function useScopedVenue() {
   const businessQuery = trpc.business.getMine.useQuery(
-    { email: "" }, // email is validated server-side against session
+    undefined,
     { staleTime: 30000, refetchOnWindowFocus: false }
   );
 

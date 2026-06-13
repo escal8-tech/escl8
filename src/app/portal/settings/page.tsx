@@ -989,6 +989,13 @@ function isSettingsTab(value: string): value is SettingsTab {
   return tabConfig.some((tab) => tab.id === value);
 }
 
+function getRequestedSettingsTab(rawValue: string | null): SettingsTab | "overview" {
+  const normalized = String(rawValue || "").trim().toLowerCase();
+  if (!normalized) return "overview";
+  const requestedTab = normalized === "tickets" ? "payments" : normalized;
+  return isSettingsTab(requestedTab) ? requestedTab : "overview";
+}
+
 function readAccessFeatures(value: unknown): Record<string, boolean> | undefined {
   if (!value || typeof value !== "object" || !("features" in value)) return undefined;
   const features = (value as { features?: unknown }).features;
@@ -1008,7 +1015,7 @@ export default function SettingsPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ActiveSettingsView>("overview");
+  const [activeTab, setActiveTab] = useState<ActiveSettingsView>(() => getRequestedSettingsTab(searchParams?.get("tab")));
 
   // Booking settings state
   const [unitCapacity, setUnitCapacity] = useState<number>(1);
@@ -1194,13 +1201,16 @@ export default function SettingsPage() {
   }, [businessQuery.data]);
 
   useEffect(() => {
-    const rawRequestedTab = String(searchParams?.get("tab") || "").trim().toLowerCase();
-    const requestedTab = rawRequestedTab === "tickets" ? "payments" : rawRequestedTab;
+    const requestedTab = getRequestedSettingsTab(searchParams?.get("tab"));
     if (!requestedTab) {
       setActiveTab("overview");
       return;
     }
-    if (isSettingsTab(requestedTab) && visibleTabs.some((tab) => tab.id === requestedTab)) {
+    if (requestedTab === "overview") {
+      setActiveTab("overview");
+      return;
+    }
+    if (visibleTabs.some((tab) => tab.id === requestedTab)) {
       setActiveTab(requestedTab);
     }
   }, [searchParams, visibleTabs]);

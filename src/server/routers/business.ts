@@ -150,9 +150,9 @@ export const businessRouter = router({
     }),
 
   getMine: businessProcedure
-    .input(z.object({ email: z.string().email() }))
+    .input(z.object({ email: z.string().email().optional() }).optional().default({}))
     .query(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email !== ctx.userEmail) {
+      if (ctx.userEmail && input.email && input.email !== ctx.userEmail) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
       }
 

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { useScopedVenue } from "@/hooks/useScopedVenue";
-import { useSearchParams } from "next/navigation";
 import {
   CreditCard,
   Calendar,
@@ -132,10 +131,9 @@ const AGENT_PLAN_FEATURES: Record<string, string[]> = {
 };
 
 export function SubscriptionContent() {
-  const searchParams = useSearchParams();
   const { subscription: cachedSubscription } = useAuthSubscription();
 
-  const { businessId } = useScopedVenue();
+  const { businessId, businessQuery } = useScopedVenue();
   const toast = useToast();
 
   const initialSubscription = cachedSubscription;
@@ -149,7 +147,13 @@ export function SubscriptionContent() {
   );
 
   const subscription = refreshedSubscription ?? initialSubscription ?? subscriptionQuery.data ?? null;
-  const loading = !subscription && subscriptionQuery.isLoading;
+  const loading = !subscription && (businessQuery.isLoading || subscriptionQuery.isLoading || !businessId);
+  const canManagePaidPlan = Boolean(
+    subscription?.isActive &&
+    subscription?.planCode &&
+    !subscription?.isSpecialGrant &&
+    subscription?.priceAmount > 0
+  );
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -160,7 +164,7 @@ export function SubscriptionContent() {
   };
 
   const handleManagePlan = () => {
-    if (subscription?.planCode) {
+    if (canManagePaidPlan && subscription?.planCode) {
       fetchWithFirebaseAuth("/api/billing/recurring-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -378,7 +382,7 @@ export function SubscriptionContent() {
           </div>
 
           {/* Manage Plan Button */}
-          {isActive && subscription.planCode && (
+          {canManagePaidPlan && (
             <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
               <button
                 onClick={handleManagePlan}
