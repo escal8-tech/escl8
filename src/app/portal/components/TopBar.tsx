@@ -203,8 +203,7 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: { sidebarWidt
             <button
               type="button"
               onClick={() => setSetupOpen(true)}
-              className={`h-12 min-w-[210px] items-center gap-3 rounded-full px-3.5 pr-5 text-sm font-bold shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl flex ${isDark ? "bg-gradient-to-r from-accent-gold via-[#e7bd68] to-[#b8860b] text-dark-950 shadow-accent-gold/15" : "bg-gradient-to-r from-[#07111f] via-[#0A3A76] to-[#1f5f9f] text-white shadow-[#0A3A76]/25"}`}
-              style={{ padding: "0 16px" }}
+              className={`hidden h-12 min-w-[210px] items-center gap-3 rounded-full px-3.5 pr-5 text-sm font-bold shadow-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl sm:inline-flex ${isDark ? "bg-gradient-to-r from-accent-gold via-[#e7bd68] to-[#b8860b] text-dark-950 shadow-accent-gold/15" : "bg-gradient-to-r from-[#07111f] via-[#0A3A76] to-[#1f5f9f] text-white shadow-[#0A3A76]/25"}`}
             >
               <span className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[10px] font-black ${isDark ? "text-dark-950" : "text-[#0A3A76]"}`} style={setupRingStyle}>
                 <span className={`absolute inset-[4px] rounded-full ${isDark ? "bg-[#f4d17b]" : "bg-white"}`} />
