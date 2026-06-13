@@ -1453,6 +1453,7 @@ tr:last-child td {
   height: calc(100vh - var(--portal-nav-rail-height));
   padding: 0;
   overflow: hidden;
+  background: var(--settings-page-bg);
 }
 
 .portal-content--settings > * {
@@ -3002,6 +3003,7 @@ tr:last-child td {
 html.portal-theme-dark {
   --portal-page-bg: #1a2332;
   --portal-page-bg-flat: #1a2332;
+  --settings-page-bg: #102a43;
   --portal-sidebar-bg: #111a2a;
   --portal-topbar-bg: rgba(12, 22, 39, 0.92);
   --portal-surface: #111b2a;
@@ -3033,6 +3035,7 @@ html.portal-theme-dark {
 html.portal-theme-light {
   --portal-page-bg: #f5f7fb;
   --portal-page-bg-flat: #f5f7fb;
+  --settings-page-bg: #f9fafb;
   --portal-sidebar-bg: #ffffff;
   --portal-topbar-bg: rgba(255, 255, 255, 0.94);
   --portal-surface: #ffffff;
@@ -3088,6 +3091,10 @@ html.portal-theme-light {
 
 .portal-main {
   background: var(--portal-page-bg);
+}
+
+.portal-main--settings {
+  background: var(--settings-page-bg);
 }
 
 .portal-topbar {

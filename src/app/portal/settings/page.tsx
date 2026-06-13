@@ -2758,7 +2758,7 @@ export default function SettingsPage() {
               height: "100%",
               minHeight: 0,
               overflowY: "auto",
-              background: "var(--portal-page-bg)",
+              background: "var(--settings-page-bg)",
             }
           : styles.page
       }

@@ -38,7 +38,7 @@ function PortalLayoutShell({ children }: { children: React.ReactNode }) {
         <PortalLiveDocumentToasts />
         <div className="portal-layout" data-theme={theme} suppressHydrationWarning>
           <PortalNav />
-          <main className={`portal-main portal-main--with-topbar${isWorkbenchDetailPage ? " portal-main--workbench-detail" : ""}`}>
+          <main className={`portal-main portal-main--with-topbar${isSettingsPage ? " portal-main--settings" : ""}${isWorkbenchDetailPage ? " portal-main--workbench-detail" : ""}`}>
             <div className={`portal-content${isFlushPage ? " portal-content--flush" : ""}${isMessagesPage ? " portal-content--flush-messages" : ""}${isSettingsPage ? " portal-content--settings" : ""}${isWorkbenchDetailPage ? " portal-content--workbench-detail" : ""}`}>
               {children}
             </div>
