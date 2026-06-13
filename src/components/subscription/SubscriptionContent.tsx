@@ -1,23 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { trpc } from "@/utils/trpc";
-import { useScopedVenue } from "@/hooks/useScopedVenue";
 import {
-  CreditCard,
-  Calendar,
-  Crown,
   AlertCircle,
+  ArrowUpRight,
+  Calendar,
   CheckCircle,
-  Zap,
-  Users,
-  Settings,
+  CreditCard,
   RefreshCw,
-  MessageSquare,
+  Settings,
+  Shield,
+  Users,
 } from "lucide-react";
-import { useToast } from "@/components/ToastProvider";
 import { useAuthSubscription } from "@/contexts/AuthSubscriptionContext";
+import { useScopedVenue } from "@/hooks/useScopedVenue";
 import { fetchWithFirebaseAuth } from "@/lib/client-auth-ops";
+import { trpc } from "@/utils/trpc";
+import { useToast } from "@/components/ToastProvider";
 
 interface SubscriptionData {
   hasSubscription: boolean;
@@ -46,10 +45,10 @@ const PLAN_DISPLAY_NAMES: Record<string, string> = {
   BUNDLE_CORE: "Pro Bundle",
   BUNDLE_FULL: "Full Bundle",
   DEMO_FULL_ACCESS: "Demo Access",
-  PARTNER_FULL_ACCESS: "Partner Access",
+  PARTNER_FULL_ACCESS: "Partner Full Access",
 };
 
-const STATUS_COLORS: Record<string, { bg: string; text: string; icon: typeof CheckCircle }> = {
+const STATUS_STYLES: Record<string, { bg: string; text: string; icon: typeof CheckCircle }> = {
   active: { bg: "bg-emerald-500/20", text: "text-emerald-400", icon: CheckCircle },
   past_due: { bg: "bg-amber-500/20", text: "text-amber-400", icon: AlertCircle },
   pending_setup: { bg: "bg-blue-500/20", text: "text-blue-400", icon: Calendar },
@@ -66,93 +65,40 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const AGENT_PLAN_FEATURES: Record<string, string[]> = {
-  AGENT_BASIC: [
-    "1 WhatsApp Business number",
-    "Up to 10 team members",
-    "AI-powered responses",
-    "Basic analytics dashboard",
-    "30,000 messages/month",
-    "Email support",
-    "SenangPay integration",
-  ],
-  AGENT_GROWTH: [
-    "Up to 3 WhatsApp Business numbers",
-    "Up to 10 team members",
-    "AI-powered responses with custom prompts",
-    "Advanced analytics & reporting",
-    "50,000 messages/month",
-    "Priority email support",
-    "SenangPay integration",
-    "API access",
-    "Webhook integrations",
-  ],
-  AGENT_ENTERPRISE: [
-    "Up to 10 WhatsApp Business numbers",
-    "Unlimited team members",
-    "Custom AI model training",
-    "Advanced analytics & BI",
-    "100,000 messages/month",
-    "Dedicated account manager",
-    "SLA guarantee",
-    "API access with higher limits",
-    "Custom webhook integrations",
-    "White-label option",
-  ],
-  BUNDLE_CORE: [
-    "1 WhatsApp Business number",
-    "AI-powered responses",
-    "30,000 messages/month",
-    "Agent analytics dashboard",
-    "Agent widget management",
-    "Priority support",
-  ],
-  BUNDLE_FULL: [
-    "Up to 3 WhatsApp Business numbers",
-    "AI-powered responses",
-    "50,000 messages/month",
-    "Advanced agent analytics",
-    "Agent widget management",
-    "Priority support",
-  ],
-  DEMO_FULL_ACCESS: [
-    "Up to 10 WhatsApp Business numbers",
-    "AI-powered responses",
-    "50,000 messages/month",
-    "Advanced agent analytics",
-    "Agent widget management",
-  ],
-  PARTNER_FULL_ACCESS: [
-    "Up to 10 WhatsApp Business numbers",
-    "AI-powered responses",
-    "50,000 messages/month",
-    "Advanced agent analytics",
-    "Agent widget management",
-  ],
+  AGENT_BASIC: ["1 WhatsApp Business number", "Up to 10 team members", "AI-powered responses", "Basic analytics dashboard", "30,000 messages/month", "Email support", "SenangPay integration"],
+  AGENT_GROWTH: ["Up to 3 WhatsApp Business numbers", "Up to 10 team members", "AI-powered responses with custom prompts", "Advanced analytics & reporting", "50,000 messages/month", "Priority email support", "API access", "Webhook integrations"],
+  AGENT_ENTERPRISE: ["Up to 10 WhatsApp Business numbers", "Unlimited team members", "Custom AI model training", "Advanced analytics & BI", "100,000 messages/month", "Dedicated account manager", "SLA guarantee", "White-label option"],
+  BUNDLE_CORE: ["1 WhatsApp Business number", "AI-powered responses", "30,000 messages/month", "Agent analytics dashboard", "Agent widget management", "Priority support"],
+  BUNDLE_FULL: ["Up to 3 WhatsApp Business numbers", "AI-powered responses", "50,000 messages/month", "Advanced agent analytics", "Agent widget management", "Priority support"],
+  DEMO_FULL_ACCESS: ["Up to 10 WhatsApp Business numbers", "AI-powered responses", "50,000 messages/month", "Advanced agent analytics", "Agent widget management"],
+  PARTNER_FULL_ACCESS: ["Up to 10 WhatsApp Business numbers", "AI-powered responses", "50,000 messages/month", "Advanced agent analytics", "Agent widget management"],
 };
+
+function formatLimit(value: number | string | boolean | null | undefined): string {
+  if (value === null || value === undefined || value === -1 || value === "unlimited") return "Unlimited";
+  if (typeof value === "number") return value.toLocaleString();
+  return String(value);
+}
 
 export function SubscriptionContent() {
   const { subscription: cachedSubscription } = useAuthSubscription();
-
   const { businessId, businessQuery } = useScopedVenue();
   const toast = useToast();
-
-  const initialSubscription = cachedSubscription;
   const [refreshedSubscription, setRefreshedSubscription] = useState<SubscriptionData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [planFamily, setPlanFamily] = useState<"agent" | "bundle">("agent");
 
-  const subscriptionQuery = trpc.business.getSubscription.useQuery(
-    undefined,
-    { enabled: !!businessId && !initialSubscription, refetchOnWindowFocus: false }
-  );
+  const subscriptionQuery = trpc.business.getSubscription.useQuery(undefined, {
+    enabled: Boolean(businessId && !cachedSubscription),
+    refetchOnWindowFocus: false,
+  });
 
-  const subscription = refreshedSubscription ?? initialSubscription ?? subscriptionQuery.data ?? null;
+  const subscription = refreshedSubscription ?? cachedSubscription ?? subscriptionQuery.data ?? null;
   const loading = !subscription && (businessQuery.isLoading || subscriptionQuery.isLoading || !businessId);
   const canManagePaidPlan = Boolean(
-    subscription?.isActive &&
-    subscription?.planCode &&
-    !subscription?.isSpecialGrant &&
-    subscription?.priceAmount > 0
+    subscription?.isActive
+      && subscription.planCode
+      && !subscription.isSpecialGrant
+      && subscription.priceAmount > 0,
   );
 
   const handleRefresh = async () => {
@@ -163,411 +109,186 @@ export function SubscriptionContent() {
     toast.show({ type: "success", title: "Refreshed", message: "Subscription data updated" });
   };
 
-  const handleManagePlan = () => {
-    if (canManagePaidPlan && subscription?.planCode) {
-      fetchWithFirebaseAuth("/api/billing/recurring-checkout", {
+  const handleManagePlan = async () => {
+    if (!canManagePaidPlan || !subscription?.planCode) return;
+    const response = await fetchWithFirebaseAuth(
+      "/api/billing/recurring-checkout",
+      {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planCode: subscription.planCode }),
-      }, { action: "create-recurring-checkout", area: "billing" })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.checkoutUrl) {
-            window.location.href = data.checkoutUrl;
-          } else {
-            console.error("Checkout failed:", data.error);
-          }
-        })
-        .catch((err) => console.error("Checkout error:", err));
-    }
+      },
+      { action: "create-recurring-checkout", area: "billing" },
+    );
+    const data = await response.json();
+    if (data.checkoutUrl) window.location.href = data.checkoutUrl;
   };
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center bg-white dark:bg-[#1A2332]">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-emerald-500 border-t-transparent"></div>
+      <div className="flex min-h-96 items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
       </div>
     );
   }
 
   if (!subscription) {
-    return (
-      <div className="flex h-full items-center justify-center bg-white dark:bg-[#1A2332]">
-        <p className="text-gray-600 dark:text-gray-400">Unable to load subscription data</p>
-      </div>
-    );
+    return <div className="py-16 text-center text-gray-400">Unable to load subscription data</div>;
   }
 
-  const statusConfig = STATUS_COLORS[subscription.status] || STATUS_COLORS.none;
-  const StatusIcon = statusConfig.icon;
-  const isActive = subscription.isActive;
-
-  const formatCurrency = (amount: number, currency: string) => {
-    return new Intl.NumberFormat("en-MY", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const formatDate = (date: string | Date | null) => {
-    if (!date) return "N/A";
-    try {
-      const d = new Date(date);
-      return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    } catch {
-      return "Invalid date";
-    }
-  };
+  const statusStyle = STATUS_STYLES[subscription.status] ?? STATUS_STYLES.none;
+  const StatusIcon = statusStyle.icon;
+  const features = AGENT_PLAN_FEATURES[subscription.planCode ?? ""] ?? [];
+  const creditPercent = subscription.monthlyCredits > 0
+    ? Math.min(100, (subscription.creditsUsed / subscription.monthlyCredits) * 100)
+    : 0;
+  const formatDate = (date: string | Date | null) => date
+    ? new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : "N/A";
 
   return (
-    <div className="flex h-full bg-white dark:bg-[#1A2332]">
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 space-y-6">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400 mb-1">
-              Agent Platform
-            </p>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              Subscription &amp; Billing
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
-              Manage your agent subscription, view credits, and billing details
-            </p>
+    <div className="space-y-6 bg-[#1A2332] text-white">
+      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">Agent Platform</p>
+          <h1 className="text-3xl font-bold">Subscription &amp; Billing</h1>
+          <p className="mt-1 text-slate-400">Manage your agent subscription, message credits, limits, and billing details</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-700 bg-[#253044] px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-800 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
+      </header>
+
+      <section className={`rounded-2xl border-2 p-6 ${subscription.isActive ? "border-emerald-500/30 bg-emerald-500/10" : "border-slate-700 bg-[#253044]"}`}>
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl ${statusStyle.bg}`}>
+              <StatusIcon className={`h-8 w-8 ${statusStyle.text}`} />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-2xl font-bold">
+                  {subscription.planName ? PLAN_DISPLAY_NAMES[subscription.planName] ?? subscription.planName : "No Active Plan"}
+                </h2>
+                <span className={`rounded-full px-3 py-1 text-sm font-medium ${statusStyle.bg} ${statusStyle.text}`}>
+                  {STATUS_LABELS[subscription.status] ?? subscription.status}
+                </span>
+                {subscription.isSpecialGrant ? (
+                  <span className="rounded-full bg-purple-500/20 px-3 py-1 text-sm font-medium text-purple-400">
+                    {subscription.grantKind === "demo" ? "Demo Access" : "Partner Access"}
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-1 text-slate-400">
+                Plan: <span className="font-medium text-white">{subscription.planCode ?? "N/A"}</span>
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#253044] border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
+
+          <div className="flex min-w-48 items-center gap-3 rounded-xl border border-slate-700 bg-slate-950/30 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/20">
+              <Calendar className="h-5 w-5 text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Next Payment</p>
+              <p className="text-lg font-bold">{formatDate(subscription.nextDueAt)}</p>
+            </div>
           </div>
         </div>
 
-        {/* Current Subscription Card */}
-        <div
-          className={`
-            rounded-2xl border-2 p-6 transition-all ${
-              isActive
-                ? "border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-500/10"
-                : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#253044]"
-            }
-          `}
-        >
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-            <div className="flex items-center gap-4">
-              <div className={`flex items-center justify-center w-16 h-16 rounded-2xl ${statusConfig.bg}`}>
-                <StatusIcon className={`w-8 h-8 ${statusConfig.text}`} />
+        {canManagePaidPlan ? (
+          <div className="mt-6 border-t border-slate-700 pt-6">
+            <button
+              type="button"
+              onClick={() => void handleManagePlan()}
+              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 font-semibold transition hover:bg-emerald-700 sm:w-auto"
+            >
+              <Settings className="h-4 w-4" />
+              Manage Plan / Upgrade
+            </button>
+          </div>
+        ) : null}
+      </section>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <section className="overflow-hidden rounded-2xl border border-slate-700 bg-[#253044] lg:col-span-2">
+          <div className="border-b border-slate-700 p-5">
+            <h3 className="flex items-center gap-2 text-lg font-semibold">
+              <Shield className="h-5 w-5 text-emerald-400" />
+              Plan Features
+            </h3>
+          </div>
+          <div className="grid gap-3 p-5 sm:grid-cols-2">
+            {features.length ? features.map((feature) => (
+              <div key={feature} className="flex items-center gap-3 text-sm text-slate-300">
+                <CheckCircle className="h-5 w-5 shrink-0 text-emerald-400" />
+                <span>{feature}</span>
               </div>
-              <div>
-                <div className="flex items-center gap-3">
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {subscription.planName
-                      ? PLAN_DISPLAY_NAMES[subscription.planName] || subscription.planName
-                      : "No Active Plan"}
-                  </h2>
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusConfig.bg} ${statusConfig.text}`}>
-                    {STATUS_LABELS[subscription.status] || subscription.status}
-                  </span>
-                  {subscription.isSpecialGrant && (
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-500/20 text-purple-400">
-                      {subscription.grantKind === "demo" ? "Demo Access" : "Partner Access"}
-                    </span>
-                  )}
-                </div>
-                <p className="text-gray-600 dark:text-gray-400 mt-1">
-                  Plan:{" "}
-                  <span className="font-medium text-gray-900 dark:text-white">{subscription.planCode || "N/A"}</span>
-                  {subscription.priceAmount > 0 && (
-                    <>
-                      {" • "}
-                      {formatCurrency(subscription.priceAmount, subscription.currency)}/{" "}
-                      {subscription.currency === "MYR" ? "month" : "month"}
-                    </>
-                  )}
-                </p>
+            )) : (
+              <p className="text-sm text-slate-400">No feature details available for this plan.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-slate-700 bg-[#253044]">
+          <div className="border-b border-slate-700 p-5">
+            <h3 className="flex items-center gap-2 text-lg font-semibold">
+              <Users className="h-5 w-5 text-emerald-400" />
+              Limits &amp; Usage
+            </h3>
+          </div>
+          <div className="space-y-5 p-5">
+            <div>
+              <div className="flex justify-between gap-4 text-sm">
+                <span className="text-slate-400">Message Credits</span>
+                <span className="font-medium">{subscription.creditsUsed.toLocaleString()} / {subscription.monthlyCredits.toLocaleString()}</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-700">
+                <div className="h-full rounded-full bg-emerald-500" style={{ width: `${creditPercent}%` }} />
               </div>
             </div>
-
-            <div className="flex flex-wrap items-center gap-4">
-              {/* Next Billing Date */}
-              <div className="flex items-center gap-3 p-4 bg-white/50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-700 min-w-[200px]">
-                <div className="flex items-center justify-center w-10 h-10 bg-emerald-500/20 rounded-lg">
-                  <Calendar className="w-5 h-5 text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.05em] text-gray-500 dark:text-gray-400">Next Payment</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-white">
-                    {subscription.nextDueAt ? formatDate(subscription.nextDueAt) : "N/A"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Monthly Credits */}
-              <div className="flex items-center gap-3 p-4 bg-white/50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-700 min-w-[200px]">
-                <div className="flex items-center justify-center w-10 h-10 bg-blue-500/20 rounded-lg">
-                  <Zap className="w-5 h-5 text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.05em] text-gray-500 dark:text-gray-400">Monthly Credits</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {subscription.monthlyCredits.toLocaleString()}
-                    </span>
-                    <span className="text-gray-500 dark:text-gray-400">/month</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Credits Usage */}
-              {subscription.monthlyCredits > 0 && (
-                <div className="flex items-center gap-3 p-4 bg-white/50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-700 min-w-[200px]">
-                  <div className="flex items-center justify-center w-10 h-10 bg-purple-500/20 rounded-lg">
-                    <Crown className="w-5 h-5 text-purple-400" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.05em] text-gray-500 dark:text-gray-400">Credits Used</p>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                        {subscription.creditsUsed.toLocaleString()}
-                      </span>
-                      <span className="text-gray-500 dark:text-gray-400">/ {subscription.monthlyCredits.toLocaleString()}</span>
-                    </div>
-                    <div className="mt-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden w-32">
-                      <div
-                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-500"
-                        style={{
-                          width: `${
-                            subscription.monthlyCredits > 0
-                              ? Math.min(100, (subscription.creditsUsed / subscription.monthlyCredits) * 100)
-                              : 0
-                          }%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Team Members */}
-              <div className="flex items-center gap-3 p-4 bg-white/50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-700 min-w-[180px]">
-                <div className="flex items-center justify-center w-10 h-10 bg-orange-500/20 rounded-lg">
-                  <Users className="w-5 h-5 text-orange-400" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.05em] text-gray-500 dark:text-gray-400">AI Agents</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-white">
-                    {subscription.limits?.["agent.agents.max"] ?? "Unlimited"}
-                  </p>
-                </div>
-              </div>
-
-              {/* WhatsApp Numbers */}
-              <div className="flex items-center gap-3 p-4 bg-white/50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-700 min-w-[180px]">
-                <div className="flex items-center justify-center w-10 h-10 bg-green-500/20 rounded-lg">
-                  <MessageSquare className="w-5 h-5 text-green-400" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.05em] text-gray-500 dark:text-gray-400">WhatsApp Numbers</p>
-                  <p className="text-lg font-bold text-gray-900 dark:text-white">
-                    {subscription.limits?.["agent.whatsappNumbers.max"] || "Unlimited"}
-                  </p>
-                </div>
-              </div>
+            <div className="flex justify-between gap-4 text-sm">
+              <span className="text-slate-400">AI Agents</span>
+              <span className="font-medium">{formatLimit(subscription.limits["agent.agents.max"])}</span>
+            </div>
+            <div className="flex justify-between gap-4 text-sm">
+              <span className="text-slate-400">WhatsApp Numbers</span>
+              <span className="font-medium">{formatLimit(subscription.limits["agent.whatsappNumbers.max"])}</span>
             </div>
           </div>
+        </section>
+      </div>
 
-          {/* Manage Plan Button */}
-          {canManagePaidPlan && (
-            <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-              <button
-                onClick={handleManagePlan}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors"
-              >
-                <Settings className="w-4 h-4" />
-                Manage Plan / Upgrade
-              </button>
+      <section className="overflow-hidden rounded-2xl border border-slate-700 bg-[#1A2332]">
+        <div className="flex items-center justify-between border-b border-slate-700 p-5">
+          <h3 className="flex items-center gap-2 text-lg font-semibold">
+            <Calendar className="h-5 w-5 text-emerald-400" />
+            Billing History
+          </h3>
+          <span className="flex items-center gap-1 text-sm text-emerald-400">View All <ArrowUpRight className="h-3 w-3" /></span>
+        </div>
+        <div className="p-5">
+          {subscription.lastPaidAt ? (
+            <div className="grid gap-3 rounded-xl bg-[#253044] p-4 text-sm sm:grid-cols-3">
+              <span>{formatDate(subscription.lastPaidAt)}</span>
+              <span>{subscription.planName ?? subscription.planCode}</span>
+              <span className="text-emerald-400">Paid</span>
+            </div>
+          ) : (
+            <div className="py-8 text-center">
+              <CreditCard className="mx-auto mb-4 h-12 w-12 text-slate-600" />
+              <p className="text-slate-400">Billing history will appear here after your first payment.</p>
+              <p className="mt-1 text-sm text-slate-500">Payments are processed through SenangPay recurring billing.</p>
             </div>
           )}
         </div>
-
-        {/* Plan Features */}
-        <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#253044] p-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Current Plan Features</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {subscription.planCode && AGENT_PLAN_FEATURES[subscription.planCode]?.map((feature, index) => (
-              <div key={index} className="flex items-start gap-3 text-gray-700 dark:text-gray-300">
-                <svg className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                <span className="text-sm">{feature}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Pricing Tiers Overview */}
-        <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#253044] p-6">
-          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Available Plans</h2>
-            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-900">
-              {(["agent", "bundle"] as const).map((family) => (
-                <button
-                  key={family}
-                  type="button"
-                  onClick={() => setPlanFamily(family)}
-                  className={`rounded-md px-4 py-2 text-sm font-semibold ${
-                    planFamily === family
-                      ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white"
-                      : "text-gray-500 dark:text-gray-400"
-                  }`}
-                >
-                  {family === "agent" ? "Agent Plans" : "Bundle Plans"}
-                </button>
-              ))}
-            </div>
-          </div>
-          <p className="mb-4 text-xs text-gray-500 dark:text-gray-400">
-            Monthly billing. Yearly plans will appear after their SenangPay recurring products are configured.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[
-              { code: "AGENT_BASIC", name: "Agent Basic", price: 349, popular: false },
-              { code: "AGENT_GROWTH", name: "Agent Growth", price: 599, popular: true },
-              { code: "AGENT_ENTERPRISE", name: "Agent Enterprise", price: 0, popular: false, enterprise: true },
-              { code: "BUNDLE_CORE", name: "Pro Bundle", price: 799, popular: false },
-              { code: "BUNDLE_FULL", name: "Full Bundle", price: 1199, popular: false },
-            ].filter((plan) => planFamily === "bundle" ? plan.code.startsWith("BUNDLE_") : plan.code.startsWith("AGENT_")).map((plan) => (
-              <div
-                key={plan.code}
-                className={`
-                  relative p-6 rounded-xl border-2 transition-all duration-200 ${
-                    subscription.planCode === plan.code
-                      ? "border-emerald-500 shadow-lg ring-2 ring-emerald-500/20 bg-emerald-500/5"
-                      : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
-                  }
-                `}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="bg-emerald-600 text-white text-sm font-semibold px-4 py-1 rounded-full">Most Popular</span>
-                  </div>
-                )}
-                {plan.enterprise && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="bg-gradient-to-r from-purple-600 to-pink-600 text-white text-sm font-semibold px-4 py-1 rounded-full">Enterprise</span>
-                  </div>
-                )}
-
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">{plan.name}</h3>
-                <div className="mb-4">
-                  {plan.enterprise ? (
-                    <div className="text-center">
-                      <span className="text-3xl font-bold text-gray-900 dark:text-white">Custom</span>
-                      <span className="text-gray-500 dark:text-gray-400 ml-1">/month</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-baseline">
-                      <span className="text-3xl font-bold text-gray-900 dark:text-white">{plan.price.toLocaleString()}</span>
-                      <span className="text-gray-500 dark:text-gray-400 ml-1">/month</span>
-                    </div>
-                  )}
-                </div>
-
-                <ul className="space-y-2 mb-6 text-sm text-gray-600 dark:text-gray-400">
-                  {AGENT_PLAN_FEATURES[plan.code]?.slice(0, 4).map((feature, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <svg className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                  {AGENT_PLAN_FEATURES[plan.code]?.length > 4 && (
-                    <li className="text-gray-400 dark:text-gray-500 text-center">
-                      +{AGENT_PLAN_FEATURES[plan.code].length - 4} more features
-                    </li>
-                  )}
-                </ul>
-
-                <button
-                  className={`
-                    w-full py-3 px-4 rounded-xl font-semibold text-sm transition-all duration-200 ${
-                      plan.enterprise
-                        ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
-                        : subscription.planCode === plan.code
-                        ? "bg-emerald-600 text-white hover:bg-emerald-700 cursor-default"
-                        : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700"
-                    }
-                  `}
-                  onClick={() => {
-                    if (subscription.planCode !== plan.code && plan.code) {
-                      fetchWithFirebaseAuth("/api/billing/recurring-checkout", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ planCode: plan.code }),
-                      }, { action: "create-recurring-checkout", area: "billing" })
-                        .then((res) => res.json())
-                        .then((data) => {
-                          if (data.checkoutUrl) window.location.href = data.checkoutUrl;
-                        });
-                    }
-                  }}
-                  disabled={subscription.planCode === plan.code}
-                >
-                  {subscription.planCode === plan.code ? "Current Plan" : plan.enterprise ? "Contact Sales" : "Upgrade"}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Billing History */}
-        <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#253044] p-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Billing History</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700">
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-500 dark:text-gray-400">Date</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-500 dark:text-gray-400">Plan</th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-500 dark:text-gray-400">Amount</th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-500 dark:text-gray-400">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {subscription.lastPaidAt && (
-                  <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{formatDate(subscription.lastPaidAt)}</td>
-                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                      {subscription.planName ? PLAN_DISPLAY_NAMES[subscription.planName] || subscription.planName : subscription.planCode}
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm font-medium text-gray-900 dark:text-white">
-                      {formatCurrency(subscription.priceAmount, subscription.currency)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-400">
-                        Paid
-                      </span>
-                    </td>
-                  </tr>
-                )}
-                {!subscription.lastPaidAt && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                      No billing history yet
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }

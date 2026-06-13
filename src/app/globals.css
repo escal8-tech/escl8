@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @config "../../tailwind.config.ts";
-@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant dark (&:where(.dark, .dark *, .portal-theme-dark, .portal-theme-dark *));
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ESCL8 DESIGN SYSTEM — Enterprise Edition

@@ -1,8 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, signOut, updatePassword } from "firebase/auth";
 import { fetchWithFirebaseAuth, getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
 import { describeCompanyGmailError } from "@/lib/company-gmail";
@@ -1012,10 +1012,8 @@ export default function SettingsPage() {
   const toast = useToast();
   const { theme, setTheme } = usePortalTheme();
   const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ActiveSettingsView>(() => getRequestedSettingsTab(searchParams?.get("tab")));
 
   // Booking settings state
   const [unitCapacity, setUnitCapacity] = useState<number>(1);
@@ -1072,7 +1070,19 @@ export default function SettingsPage() {
   const phoneNumbersQuery = trpc.business.listPhoneNumbers.useQuery(undefined, { enabled: !!email });
   const accessStatusQuery = trpc.user.getAccessStatus.useQuery({ email: email ?? "" }, { enabled: !!email });
   const accessFeatures = readAccessFeatures(accessStatusQuery.data);
-  const visibleTabs = tabConfig.filter((tab) => (accessFeatures ? accessFeatures[settingsTabFeatureMap[tab.id] ?? "agent.settings.basic"] !== false : true));
+  const visibleTabs = useMemo(
+    () => tabConfig.filter((tab) => (
+      accessFeatures
+        ? accessFeatures[settingsTabFeatureMap[tab.id] ?? "agent.settings.basic"] !== false
+        : true
+    )),
+    [accessFeatures],
+  );
+  const requestedTab = getRequestedSettingsTab(searchParams?.get("tab"));
+  const activeTab: ActiveSettingsView = requestedTab === "overview"
+    || visibleTabs.some((tab) => tab.id === requestedTab)
+    ? requestedTab
+    : "overview";
   const ensureWebsiteWidget = trpc.business.ensureWebsiteWidget.useMutation();
   const updateBooking = trpc.business.updateBookingConfig.useMutation({
     onSuccess: () => {
@@ -1200,32 +1210,10 @@ export default function SettingsPage() {
     }
   }, [businessQuery.data]);
 
-  useEffect(() => {
-    const requestedTab = getRequestedSettingsTab(searchParams?.get("tab"));
-    if (!requestedTab) {
-      setActiveTab("overview");
-      return;
-    }
-    if (requestedTab === "overview") {
-      setActiveTab("overview");
-      return;
-    }
-    if (visibleTabs.some((tab) => tab.id === requestedTab)) {
-      setActiveTab(requestedTab);
-    }
-  }, [searchParams, visibleTabs]);
-
-  useEffect(() => {
-    if (activeTab === "overview") return;
-    if (visibleTabs.some((tab) => tab.id === activeTab)) return;
-    setActiveTab(visibleTabs[0]?.id ?? "profile");
-  }, [activeTab, visibleTabs]);
-
   const handleTabSelect = (tab: SettingsTab) => {
-    setActiveTab(tab);
     const params = new URLSearchParams(searchParams?.toString() || "");
     params.set("tab", tab);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    router.push(`/settings?${params.toString()}`, { scroll: false });
   };
 
   useEffect(() => {
