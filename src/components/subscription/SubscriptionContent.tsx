@@ -147,7 +147,8 @@ export function SubscriptionContent() {
     : "N/A";
 
   return (
-    <div className="space-y-6 bg-[#1A2332] text-white">
+    <div className="flex h-full bg-white dark:bg-[#1A2332]">
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4 md:p-6">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">Agent Platform</p>
@@ -289,6 +290,7 @@ export function SubscriptionContent() {
           )}
         </div>
       </section>
+      </div>
     </div>
   );
 }

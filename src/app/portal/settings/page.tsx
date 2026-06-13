@@ -2660,45 +2660,46 @@ export default function SettingsPage() {
   const renderFlowBuilderTab = () => <FlowBuilderContent />;
 
   const renderOverview = () => (
-    <div style={styles.overview}>
-      {visibleOverviewTabs.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          style={styles.overviewCard}
-          onClick={() => handleTabSelect(tab.id)}
-          onMouseEnter={(e) => {
-            const target = e.currentTarget as HTMLElement;
-            target.style.transform = "translateY(-2px)";
-            target.style.boxShadow = "var(--shadow-md)";
-            target.style.borderColor = "var(--primary)";
-          }}
-          onMouseLeave={(e) => {
-            const target = e.currentTarget as HTMLElement;
-            target.style.transform = "translateY(0)";
-            target.style.boxShadow = "var(--shadow-sm)";
-            target.style.borderColor = "var(--border)";
-          }}
-        >
-          <div>
-            <div style={styles.overviewIcon}>{tab.icon}</div>
-            <h3 style={styles.overviewTitle}>{tab.label}</h3>
-            <p style={styles.overviewDescription}>{settingsTabDescriptions[tab.id]}</p>
-            <div style={styles.overviewPointList}>
-              {settingsTabPoints[tab.id].map((point) => (
-                <div key={point} style={styles.overviewPoint}>
-                  <span style={styles.overviewDot} />
-                  <span>{point}</span>
+    <div className="h-full min-h-full bg-gray-50 dark:bg-dark-950">
+      <div className="min-h-full w-full px-4 py-4 sm:px-5 lg:h-full lg:px-6 lg:py-4">
+        <div className="grid min-h-full grid-cols-1 items-stretch gap-4 md:grid-cols-2 lg:h-full lg:grid-cols-3 lg:[grid-template-rows:repeat(2,minmax(250px,1fr))]">
+          {visibleOverviewTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => handleTabSelect(tab.id)}
+              className="group flex min-h-[232px] flex-col justify-between rounded-xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-900/25 dark:border-dark-800 dark:bg-dark-900/70 dark:hover:border-dark-700 lg:min-h-0 2xl:p-6"
+            >
+              <div>
+                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary-50 text-primary-900 dark:bg-accent-gold/10 dark:text-accent-gold [&>svg]:h-5 [&>svg]:w-5">
+                  {tab.icon}
                 </div>
-              ))}
-            </div>
-          </div>
-          <span style={styles.overviewAction}>
-            Open section
-            {Icons.chevronRight}
-          </span>
-        </button>
-      ))}
+                <h3 className="font-heading text-[22px] font-bold leading-tight text-gray-950 dark:text-luxury-50 2xl:text-2xl">
+                  {tab.label}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-accent-grey">
+                  {settingsTabDescriptions[tab.id]}
+                </p>
+                <div className="mt-4 space-y-2">
+                  {settingsTabPoints[tab.id].map((point) => (
+                    <div
+                      key={point}
+                      className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-1.5 text-[13px] font-medium leading-5 text-gray-700 dark:bg-dark-800/60 dark:text-luxury-100"
+                    >
+                      <span className="h-1.5 w-1.5 flex-none rounded-full bg-primary-900 dark:bg-accent-gold" />
+                      <span>{point}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-primary-900 dark:text-accent-gold">
+                Open section
+                {Icons.chevronRight}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 
@@ -2743,7 +2744,19 @@ export default function SettingsPage() {
   }
 
   return (
-    <div style={styles.page}>
+    <div
+      style={
+        activeTab === "overview"
+          ? {
+              width: "100%",
+              height: "calc(100vh - var(--portal-nav-rail-height))",
+              minHeight: 0,
+              overflowY: "auto",
+              background: "var(--portal-page-bg)",
+            }
+          : styles.page
+      }
+    >
       {passwordModalOpen ? (
         <div
           style={styles.modalBackdrop}
