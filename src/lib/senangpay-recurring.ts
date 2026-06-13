@@ -1,5 +1,5 @@
 import "server-only";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 export type SenangPayRecurringStatus = "1" | "0" | "3"; // 1=success, 0=failed, 3=pending
 export type SenangPayRecurringType = "subscription" | "installment";
@@ -62,8 +62,7 @@ export function senangPaySecretKey() {
 }
 
 function senangPayHash(value: string) {
-  const secretKey = senangPaySecretKey();
-  return createHmac("sha256", secretKey).update(value).digest("hex");
+  return createHash("sha256").update(value).digest("hex");
 }
 
 // ============================================================
@@ -105,10 +104,11 @@ export function verifySenangPayRecurringAdvanceCallback(payload: SenangPayRecurr
 
 // ============================================================
 // STANDARD CALLBACK HASH VERIFICATION (for non-advance callbacks)
-// Based on observed format: action + recurring_id + type + customer_email
+// Official recurring action callback:
+// sha256(secret_key + recurring_id + type + customer_email)
 // ============================================================
-export function senangPayRecurringStandardCallbackHash(payload: Pick<SenangPayRecurringStandardCallbackPayload, "action" | "recurringId" | "type" | "customerEmail">) {
-  return senangPayHash(`${senangPaySecretKey()}${payload.action}${payload.recurringId}${payload.type}${payload.customerEmail}`);
+export function senangPayRecurringStandardCallbackHash(payload: Pick<SenangPayRecurringStandardCallbackPayload, "recurringId" | "type" | "customerEmail">) {
+  return senangPayHash(`${senangPaySecretKey()}${payload.recurringId}${payload.type}${payload.customerEmail}`);
 }
 
 export function verifySenangPayRecurringStandardCallback(payload: SenangPayRecurringStandardCallbackPayload) {

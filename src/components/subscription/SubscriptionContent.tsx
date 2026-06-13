@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/ToastProvider";
 import { useAuthSubscription } from "@/contexts/AuthSubscriptionContext";
+import { fetchWithFirebaseAuth } from "@/lib/client-auth-ops";
 
 interface SubscriptionData {
   hasSubscription: boolean;
@@ -140,6 +141,7 @@ export function SubscriptionContent() {
   const initialSubscription = cachedSubscription;
   const [refreshedSubscription, setRefreshedSubscription] = useState<SubscriptionData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [planFamily, setPlanFamily] = useState<"agent" | "bundle">("agent");
 
   const subscriptionQuery = trpc.business.getSubscription.useQuery(
     undefined,
@@ -158,13 +160,12 @@ export function SubscriptionContent() {
   };
 
   const handleManagePlan = () => {
-    const tenantId = searchParams.get("tenant");
-    if (tenantId && subscription?.planCode) {
-      fetch("/api/billing/recurring-checkout", {
+    if (subscription?.planCode) {
+      fetchWithFirebaseAuth("/api/billing/recurring-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ suiteTenantId: tenantId, planCode: subscription.planCode }),
-      })
+        body: JSON.stringify({ planCode: subscription.planCode }),
+      }, { action: "create-recurring-checkout", area: "billing" })
         .then((res) => res.json())
         .then((data) => {
           if (data.checkoutUrl) {
@@ -407,15 +408,36 @@ export function SubscriptionContent() {
 
         {/* Pricing Tiers Overview */}
         <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#253044] p-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Available Plans</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Available Plans</h2>
+            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-900">
+              {(["agent", "bundle"] as const).map((family) => (
+                <button
+                  key={family}
+                  type="button"
+                  onClick={() => setPlanFamily(family)}
+                  className={`rounded-md px-4 py-2 text-sm font-semibold ${
+                    planFamily === family
+                      ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white"
+                      : "text-gray-500 dark:text-gray-400"
+                  }`}
+                >
+                  {family === "agent" ? "Agent Plans" : "Bundle Plans"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="mb-4 text-xs text-gray-500 dark:text-gray-400">
+            Monthly billing. Yearly plans will appear after their SenangPay recurring products are configured.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
               { code: "AGENT_BASIC", name: "Agent Basic", price: 349, popular: false },
               { code: "AGENT_GROWTH", name: "Agent Growth", price: 599, popular: true },
               { code: "AGENT_ENTERPRISE", name: "Agent Enterprise", price: 0, popular: false, enterprise: true },
               { code: "BUNDLE_CORE", name: "Pro Bundle", price: 799, popular: false },
               { code: "BUNDLE_FULL", name: "Full Bundle", price: 1199, popular: false },
-            ].map((plan) => (
+            ].filter((plan) => planFamily === "bundle" ? plan.code.startsWith("BUNDLE_") : plan.code.startsWith("AGENT_")).map((plan) => (
               <div
                 key={plan.code}
                 className={`
@@ -480,18 +502,15 @@ export function SubscriptionContent() {
                   `}
                   onClick={() => {
                     if (subscription.planCode !== plan.code && plan.code) {
-                      const tenantId = searchParams.get("tenant");
-                      if (tenantId) {
-                        fetch("/api/billing/recurring-checkout", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ suiteTenantId: tenantId, planCode: plan.code }),
-                        })
-                          .then((res) => res.json())
-                          .then((data) => {
-                            if (data.checkoutUrl) window.location.href = data.checkoutUrl;
-                          });
-                      }
+                      fetchWithFirebaseAuth("/api/billing/recurring-checkout", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ planCode: plan.code }),
+                      }, { action: "create-recurring-checkout", area: "billing" })
+                        .then((res) => res.json())
+                        .then((data) => {
+                          if (data.checkoutUrl) window.location.href = data.checkoutUrl;
+                        });
                     }
                   }}
                   disabled={subscription.planCode === plan.code}

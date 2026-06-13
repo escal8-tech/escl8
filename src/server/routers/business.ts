@@ -759,7 +759,6 @@ export const businessRouter = router({
     const [biz] = await db
       .select({
         suiteTenantId: businesses.suiteTenantId,
-        creditPool: businesses.creditPool,
       })
       .from(businesses)
       .where(eq(businesses.id, ctx.businessId))
@@ -830,7 +829,7 @@ export const businessRouter = router({
         nextDueAt: access.nextDueAt,
         monthlyCredits,
         creditsUsed,
-        creditsBalance: Number(biz.creditPool || 0),
+        creditsBalance: Math.max(0, monthlyCredits - creditsUsed),
         priceAmount: 0,
         currency: "MYR",
         features: filterSubscriptionRecord(access.features, "agent."),

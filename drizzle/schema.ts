@@ -31,13 +31,6 @@ export const businesses = pgTable(
     bookingCloseTime: text("booking_close_time"), // "18:00"
     messageUsageTier: text("message_usage_tier").notNull().default("standard"),
 
-    // Credit system columns
-    creditPool: integer("credit_pool").notNull().default(0),
-    creditPoolResetAt: timestamp("credit_pool_reset_at", { withTimezone: true }),
-    subscriptionTier: text("subscription_tier"),
-    senangpayRecurringId: text("senangpay_recurring_id"),
-    senangpayCustomerEmail: text("senangpay_customer_email"),
-
     settings: jsonb("settings").$type<Record<string, unknown>>().default({}),
     gmailConnected: boolean("gmail_connected").notNull().default(false),
     gmailEmail: text("gmail_email"),
@@ -302,13 +295,6 @@ export const whatsappIdentities = pgTable(
     creditLineSharedAt: timestamp("credit_line_shared_at", { withTimezone: true }),
     creditLineAllocationConfigId: text("credit_line_allocation_config_id"),
     wabaCurrency: text("waba_currency"),
-
-    // Credit system columns
-    monthlyCreditLimit: integer("monthly_credit_limit").notNull().default(0),
-    creditBalance: integer("credit_balance").notNull().default(0),
-    creditResetAt: timestamp("credit_reset_at", { withTimezone: true }),
-    totalCreditsConsumed: integer("total_credits_consumed").notNull().default(0),
-    totalCreditsToppedUp: integer("total_credits_topped_up").notNull().default(0),
 
     isActive: boolean("is_active").notNull().default(true),
     connectedAt: timestamp("connected_at", { withTimezone: true }),

@@ -33,6 +33,7 @@ export async function getBusinessAiCreditsUsedThisMonth(businessId: string): Pro
     .where(
       and(
         eq(aiUsageEvents.businessId, businessId),
+        eq(aiUsageEvents.eventType, "bot_outbound_message"),
         gte(aiUsageEvents.createdAt, sql`date_trunc('month', now())`),
       ),
     );

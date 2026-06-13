@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "crypto";
 import type { PoolClient } from "pg";
-import { executeStatement, withTransaction } from "@/lib/db";
+import { withTransaction } from "@/lib/db";
 import { amountForSenangPay, senangPayCheckoutUrl, type SenangPayCallbackPayload } from "@/lib/senangpay";
 import {
   senangPayRecurringCheckoutUrl,
@@ -20,6 +20,7 @@ type CheckoutInput = {
 type RecurringCheckoutInput = {
   suiteTenantId: string;
   planCode: string;
+  requiredModule?: "agent" | "reservation";
   customerName?: string | null;
   customerEmail?: string | null;
   customerPhone?: string | null;
@@ -55,6 +56,10 @@ function safeOrderId(id: string) {
   const uuidPrefix = randomUUID().slice(0, 8);
   const sanitized = id.replace(/[^A-Za-z0-9-]/g, "").slice(0, 48);
   return `${uuidPrefix}-${sanitized}`.slice(0, 60);
+}
+
+function normalizeOrderId(id: string) {
+  return String(id || "").trim().replace(/[^A-Za-z0-9-]/g, "").slice(0, 60);
 }
 
 async function ensureSubscriptionForPlan(client: PoolClient, input: CheckoutInput): Promise<SubscriptionForPayment> {
@@ -246,7 +251,7 @@ export async function createSenangPayCheckout(input: CheckoutInput) {
 }
 
 export async function finalizeSenangPayPayment(payload: SenangPayCallbackPayload) {
-  const orderId = safeOrderId(payload.orderId);
+  const orderId = normalizeOrderId(payload.orderId);
   if (!orderId) throw new Error("Missing SenangPay order id.");
 
   return withTransaction("control", async (client) => {
@@ -304,13 +309,7 @@ export async function finalizeSenangPayPayment(payload: SenangPayCallbackPayload
 
     const paid = payload.statusId === "1";
     const paidAt = new Date();
-    const dueAnchor =
-      (payment.due_at ? new Date(payment.due_at) : null) ??
-      (payment.current_period_due_at ? new Date(payment.current_period_due_at) : null) ??
-      (payment.next_due_at ? new Date(payment.next_due_at) : null) ??
-      (payment.starts_at ? new Date(payment.starts_at) : null) ??
-      paidAt;
-    const nextDueAt = addMonths(dueAnchor, Number(payment.billing_period_months || 1) || 1);
+    const nextDueAt = addMonths(paidAt, Number(payment.billing_period_months || 1) || 1);
 
     await client.query(
       `
@@ -318,7 +317,12 @@ export async function finalizeSenangPayPayment(payload: SenangPayCallbackPayload
         set
           status = $2,
           paid_at = case when $2 = 'recorded' then $3::timestamptz else paid_at end,
-          metadata = metadata || $4::jsonb,
+          metadata = jsonb_set(
+            coalesce(metadata, '{}'::jsonb),
+            '{senangpay}',
+            coalesce(metadata->'senangpay', '{}'::jsonb) || ($4::jsonb->'senangpay'),
+            true
+          ),
           updated_at = now()
         where id = $1
       `,
@@ -354,7 +358,7 @@ export async function finalizeSenangPayPayment(payload: SenangPayCallbackPayload
         [
           payment.subscription_id,
           paidAt.toISOString(),
-          dueAnchor.toISOString(),
+          paidAt.toISOString(),
           nextDueAt.toISOString(),
           JSON.stringify({
             lastPaymentProvider: "senangpay",
@@ -381,10 +385,13 @@ export async function createSenangPayRecurringCheckout(input: RecurringCheckoutI
       currency: string;
       billing_period_months: number;
       grant_kind: string;
+      grants_agent: boolean;
+      grants_reservation: boolean;
       metadata: Record<string, unknown> | null;
     }>(
       `
-        select code, display_name, price_amount, currency, billing_period_months, grant_kind, metadata
+        select code, display_name, price_amount, currency, billing_period_months, grant_kind,
+               grants_agent, grants_reservation, metadata
         from suite_subscription_plans
         where code = $1 and is_active = true
         limit 1
@@ -393,6 +400,12 @@ export async function createSenangPayRecurringCheckout(input: RecurringCheckoutI
     );
     const plan = planRows.rows[0];
     if (!plan) throw new Error("Plan code was not found.");
+    if (input.requiredModule === "agent" && !plan.grants_agent) {
+      throw new Error("This plan does not include the Agent product.");
+    }
+    if (input.requiredModule === "reservation" && !plan.grants_reservation) {
+      throw new Error("This plan does not include the Reservation product.");
+    }
     const recurringId = String(plan.metadata?.senangpayRecurringId || "").trim();
     if (!recurringId) throw new Error(`Plan ${plan.code} does not have a SenangPay recurring ID configured.`);
 
@@ -420,12 +433,12 @@ export async function createSenangPayRecurringCheckout(input: RecurringCheckoutI
         `
           update suite_tenant_subscriptions
           set
-            plan_code = $2,
-            status = case when status = 'active' and plan_code = $2 then status else 'pending_setup' end,
+            plan_code = case when status = 'active' then plan_code else $2 end,
+            status = case when status = 'active' then status else 'pending_setup' end,
             starts_at = coalesce(starts_at, $3::timestamptz),
             current_period_start = coalesce(current_period_start, $3::timestamptz),
-            current_period_due_at = $4::timestamptz,
-            next_due_at = $4::timestamptz,
+            current_period_due_at = case when status = 'active' then current_period_due_at else $4::timestamptz end,
+            next_due_at = case when status = 'active' then next_due_at else $4::timestamptz end,
             metadata = coalesce(metadata, '{}'::jsonb) || $5::jsonb,
             updated_at = now()
           where id = $1
@@ -484,7 +497,7 @@ export async function createSenangPayRecurringCheckout(input: RecurringCheckoutI
         select
           sub.id,
           sub.suite_tenant_id,
-          sub.plan_code,
+          plan.code as plan_code,
           sub.current_period_due_at::text,
           sub.starts_at::text,
           sub.next_due_at::text,
@@ -494,11 +507,11 @@ export async function createSenangPayRecurringCheckout(input: RecurringCheckoutI
           plan.display_name,
           plan.grant_kind
         from suite_tenant_subscriptions sub
-        inner join suite_subscription_plans plan on plan.code = sub.plan_code
+        inner join suite_subscription_plans plan on plan.code = $2
         where sub.id = $1
         limit 1
       `,
-      [subscriptionId],
+      [subscriptionId, plan.code],
     );
 
     const subscription = subscriptionRows.rows[0];
@@ -574,8 +587,7 @@ export async function createSenangPayRecurringCheckout(input: RecurringCheckoutI
 export async function finalizeSenangPayRecurringPayment(
   payload: (SenangPayRecurringCallbackPayload | SenangPayRecurringStandardCallbackPayload) & { statusId?: "1" | "0" | "3" }
 ) {
-  const orderId = safeOrderId(payload.recurringId);
-  if (!orderId) throw new Error("Missing SenangPay recurring reference.");
+  if (!normalizeOrderId(payload.recurringId)) throw new Error("Missing SenangPay recurring reference.");
 
   return withTransaction("control", async (client) => {
     const rows = await client.query<{
@@ -590,6 +602,9 @@ export async function finalizeSenangPayRecurringPayment(
       current_period_due_at: string | null;
       next_due_at: string | null;
       billing_period_months: number;
+      target_plan_code: string;
+      subscription_status: string;
+      current_plan_code: string;
     }>(
       `
         select
@@ -603,14 +618,20 @@ export async function finalizeSenangPayRecurringPayment(
           sub.starts_at::text,
           sub.current_period_due_at::text,
           sub.next_due_at::text,
-          plan.billing_period_months
+          sub.status as subscription_status,
+          sub.plan_code as current_plan_code,
+          plan.billing_period_months,
+          plan.code as target_plan_code
         from suite_tenant_payment_events p
         inner join suite_tenant_subscriptions sub on sub.id = p.subscription_id
-        inner join suite_subscription_plans plan on plan.code = sub.plan_code
+        inner join suite_subscription_plans plan
+          on plan.code = coalesce(p.metadata->>'planCode', sub.plan_code)
         where p.metadata->'senangpay'->>'recurringId' = $1
+          and ($2::text is null or p.reference = $2)
+        order by p.created_at desc
         limit 1
       `,
-      [payload.recurringId],
+      [payload.recurringId, "orderId" in payload ? normalizeOrderId(payload.orderId) : null],
     );
     const payment = rows.rows[0];
     if (!payment) throw new Error("Payment attempt was not found for this recurring ID.");
@@ -620,21 +641,41 @@ export async function finalizeSenangPayRecurringPayment(
     const stdPayload = isStandard ? payload as SenangPayRecurringStandardCallbackPayload : null;
     const advPayload = !isStandard ? payload as SenangPayRecurringCallbackPayload : null;
 
+    // Standard callbacks describe schedule changes, not successful charges.
+    // Only the signed payment callback containing status/order/transaction may activate access.
+    if (stdPayload) {
+      const cancelled = stdPayload.action === "terminate" || stdPayload.action === "remove_schedule";
+      await client.query(
+        `update suite_tenant_subscriptions
+         set status = case when $2 then 'cancelled' else status end,
+             cancelled_at = case when $2 then now() else cancelled_at end,
+             metadata = metadata || $3::jsonb,
+             updated_at = now()
+         where id = $1`,
+        [
+          payment.subscription_id,
+          cancelled,
+          JSON.stringify({
+            senangpaySchedule: {
+              action: stdPayload.action,
+              recurringId: stdPayload.recurringId,
+              type: stdPayload.type,
+              customerEmail: stdPayload.customerEmail,
+              newPaymentTimestamp: stdPayload.newPaymentTimestamp,
+            },
+          }),
+        ],
+      );
+      return {
+        paid: false,
+        scheduleUpdated: true,
+        suiteTenantId: payment.suite_tenant_id,
+        paymentEventId: payment.id,
+      };
+    }
+
     // IDEMPOTENCY: Check if this recurring payment has already been processed
-    if (isStandard && stdPayload) {
-        const existingPayment = await client.query<{ id: string }>(
-          `SELECT id FROM suite_tenant_payment_events
-           WHERE metadata->'senangpay'->>'recurringId' = $1
-           AND metadata->'senangpay'->>'newPaymentTimestamp' = $2
-           AND status = 'recorded'
-           LIMIT 1`,
-          [stdPayload.recurringId, stdPayload.newPaymentTimestamp],
-        );
-        if (existingPayment.rows.length > 0) {
-          console.log(`[billing] Duplicate recurring payment detected: ${stdPayload.recurringId} at ${stdPayload.newPaymentTimestamp}, skipping`);
-          return { paid: true, suiteTenantId: payment.suite_tenant_id, paymentEventId: existingPayment.rows[0].id, duplicate: true };
-        }
-      } else if (advPayload) {
+    if (advPayload) {
       // Advance callback
       if (advPayload.recurringId && advPayload.transactionId && advPayload.msg) {
 
@@ -655,14 +696,7 @@ export async function finalizeSenangPayRecurringPayment(
     }
 
     // TIMESTAMP VALIDATION: Reject callbacks with timestamp older than 30 minutes
-    if (stdPayload?.newPaymentTimestamp) {
-      const paymentTime = parseInt(stdPayload.newPaymentTimestamp, 10) * 1000;
-      const callbackTime = Date.now();
-      const ageMinutes = (callbackTime - paymentTime) / 60000;
-      if (ageMinutes > 30) {
-        console.warn(`[billing] Recurring callback timestamp too old: ${ageMinutes} minutes`);
-      }
-    } else if (advPayload?.nextPaymentTimestamp) {
+    if (advPayload?.nextPaymentTimestamp) {
       const paymentTime = parseInt(advPayload.nextPaymentTimestamp, 10) * 1000;
       const callbackTime = Date.now();
       const ageMinutes = (callbackTime - paymentTime) / 60000;
@@ -676,13 +710,7 @@ export async function finalizeSenangPayRecurringPayment(
     const paid = statusId === "1";
 
     const paidAt = new Date();
-    const dueAnchor =
-      (payment.due_at ? new Date(payment.due_at) : null) ??
-      (payment.current_period_due_at ? new Date(payment.current_period_due_at) : null) ??
-      (payment.next_due_at ? new Date(payment.next_due_at) : null) ??
-      (payment.starts_at ? new Date(payment.starts_at) : null) ??
-      new Date();
-    const nextDueAt = addMonths(dueAnchor, Number(payment.billing_period_months || 1) || 1);
+    const nextDueAt = addMonths(paidAt, Number(payment.billing_period_months || 1) || 1);
 
     // Prepare metadata for payment event - handle both payload types
     const isAdvance = "orderId" in payload && "transactionId" in payload && "msg" in payload;
@@ -713,7 +741,12 @@ export async function finalizeSenangPayRecurringPayment(
         set
           status = $2,
           paid_at = case when $2 = 'recorded' then $3::timestamptz else paid_at end,
-          metadata = metadata || $4::jsonb,
+          metadata = jsonb_set(
+            coalesce(metadata, '{}'::jsonb),
+            '{senangpay}',
+            coalesce(metadata->'senangpay', '{}'::jsonb) || ($4::jsonb->'senangpay'),
+            true
+          ),
           updated_at = now()
         where id = $1`,
       [
@@ -728,6 +761,7 @@ export async function finalizeSenangPayRecurringPayment(
       await client.query(
         `update suite_tenant_subscriptions
           set
+            plan_code = $6,
             status = 'active',
             last_paid_at = $2::timestamptz,
             current_period_start = $3::timestamptz,
@@ -744,44 +778,13 @@ export async function finalizeSenangPayRecurringPayment(
           JSON.stringify({
             lastPaymentProvider: "senangpay-recurring",
             lastSenangPayTransactionId: payload.recurringId,
-            recurringAction: stdPayload?.action,
             recurringStatusId: payload.statusId,
           }),
+          payment.target_plan_code,
         ],
       );
 
-      const planRows = await client.query<{ monthly_credits: number }>(
-        `select coalesce((p.limits->>'agent.messages.monthly')::integer, 0) as monthly_credits
-         from suite_subscription_plans p
-         join suite_tenant_subscriptions s on s.plan_code = p.code
-         where s.id = $1
-         limit 1`,
-        [payment.subscription_id],
-      );
-      const plan = planRows.rows[0];
-      if (plan?.monthly_credits > 0) {
-        await executeStatement(
-          "agent",
-          `with target_business as (
-             update businesses
-             set credit_pool = credit_pool + $2,
-                 credit_pool_reset_at = now() + interval '30 days',
-                 updated_at = now()
-             where suite_tenant_id = $1
-             returning id
-           )
-           update whatsapp_identities wi
-           set credit_balance = credit_balance + $2,
-               monthly_credit_limit = $2,
-               total_credits_topped_up = total_credits_topped_up + $2,
-               credit_reset_at = now() + interval '30 days',
-               updated_at = now()
-           from target_business b
-           where wi.business_id = b.id`,
-          [payment.suite_tenant_id, plan.monthly_credits],
-        );
-      }
-    } else {
+    } else if (payment.subscription_status !== "active" || payment.current_plan_code === payment.target_plan_code) {
       // Payment failed → immediately mark subscription as past_due
       await client.query(
         `update suite_tenant_subscriptions
