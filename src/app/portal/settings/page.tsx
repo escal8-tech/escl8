@@ -197,6 +197,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 24,
     width: "100%",
     padding: "0 24px",
+    minHeight: "calc(100vh - 80px)", // Account for header/tab bar
   },
   header: {
     display: "flex",
@@ -257,6 +258,7 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateRows: "repeat(2, minmax(250px, 1fr))",
     height: "100%",
     minHeight: "100%",
+    flex: 1,
   },
   overviewCard: {
     padding: 20,
@@ -271,6 +273,8 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--foreground)",
     cursor: "pointer",
     transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
+    minHeight: 0, // Allow stretching in grid
+    height: "100%",
   },
   overviewIcon: {
     width: 44,
@@ -282,6 +286,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--primary-light)",
     color: "var(--primary)",
     marginBottom: 16,
+    flexShrink: 0,
   },
   overviewTitle: {
     margin: 0,
@@ -290,18 +295,21 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--foreground)",
     letterSpacing: 0,
     lineHeight: 1.2,
+    flexShrink: 0,
   },
   overviewDescription: {
     marginTop: 8,
     color: "var(--muted)",
     fontSize: 14,
     lineHeight: 1.5,
+    flexShrink: 0,
   },
   overviewPointList: {
     display: "flex",
     flexDirection: "column",
     gap: 6,
     marginTop: 16,
+    flexShrink: 0,
   },
   overviewPoint: {
     display: "flex",
@@ -313,6 +321,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--foreground)",
     fontSize: 13,
     fontWeight: 500,
+    flexShrink: 0,
   },
   overviewDot: {
     width: 5,
@@ -325,10 +334,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    marginTop: 16,
+    marginTop: "auto", // Push to bottom
     color: "var(--primary)",
     fontSize: 13,
     fontWeight: 700,
+    flexShrink: 0,
   },
   section: {
     display: "flex",
@@ -2655,21 +2665,19 @@ export default function SettingsPage() {
         <button
           key={tab.id}
           type="button"
-          style={{
-            ...styles.overviewCard,
-            // Hover effects matching Reservation page
-            WebkitTapHighlightColor: "transparent",
-          }}
+          style={styles.overviewCard}
           onClick={() => handleTabSelect(tab.id)}
           onMouseEnter={(e) => {
-            e.currentTarget.style.transform = "translateY(-2px)";
-            e.currentTarget.style.boxShadow = "var(--shadow-md)";
-            e.currentTarget.style.borderColor = "var(--primary)";
+            const target = e.currentTarget as HTMLElement;
+            target.style.transform = "translateY(-2px)";
+            target.style.boxShadow = "var(--shadow-md)";
+            target.style.borderColor = "var(--primary)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.transform = "translateY(0)";
-            e.currentTarget.style.boxShadow = "var(--shadow-sm)";
-            e.currentTarget.style.borderColor = "var(--border)";
+            const target = e.currentTarget as HTMLElement;
+            target.style.transform = "translateY(0)";
+            target.style.boxShadow = "var(--shadow-sm)";
+            target.style.borderColor = "var(--border)";
           }}
         >
           <div>
