@@ -251,15 +251,17 @@ const styles: Record<string, React.CSSProperties> = {
   },
   overview: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
-    gap: 24,
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: 16,
     alignItems: "stretch",
+    gridTemplateRows: "repeat(2, minmax(250px, 1fr))",
+    height: "100%",
+    minHeight: "100%",
   },
   overviewCard: {
-    minHeight: 310,
-    padding: 32,
+    padding: 20,
     border: "1px solid var(--border)",
-    borderRadius: 16,
+    borderRadius: 12,
     background: "var(--card)",
     boxShadow: "var(--shadow-sm)",
     display: "flex",
@@ -268,52 +270,53 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: "left",
     color: "var(--foreground)",
     cursor: "pointer",
+    transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
   },
   overviewIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "rgba(184, 134, 11, 0.14)",
-    color: "var(--gold-light)",
-    marginBottom: 24,
+    background: "var(--primary-light)",
+    color: "var(--primary)",
+    marginBottom: 16,
   },
   overviewTitle: {
     margin: 0,
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: 700,
     color: "var(--foreground)",
     letterSpacing: 0,
+    lineHeight: 1.2,
   },
   overviewDescription: {
-    marginTop: 12,
+    marginTop: 8,
     color: "var(--muted)",
-    fontSize: 15,
-    lineHeight: 1.55,
+    fontSize: 14,
+    lineHeight: 1.5,
   },
   overviewPointList: {
     display: "flex",
     flexDirection: "column",
-    gap: 8,
-    marginTop: 20,
+    gap: 6,
+    marginTop: 16,
   },
   overviewPoint: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    minHeight: 34,
-    padding: "8px 12px",
-    borderRadius: 12,
-    background: "rgba(96, 165, 250, 0.08)",
+    gap: 8,
+    padding: "6px 10px",
+    borderRadius: 8,
+    background: "var(--card-muted)",
     color: "var(--foreground)",
-    fontSize: 14,
-    fontWeight: 600,
+    fontSize: 13,
+    fontWeight: 500,
   },
   overviewDot: {
-    width: 6,
-    height: 6,
+    width: 5,
+    height: 5,
     borderRadius: 999,
     background: "var(--gold-light)",
     flexShrink: 0,
@@ -322,9 +325,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    marginTop: 28,
-    color: "var(--gold-light)",
-    fontSize: 14,
+    marginTop: 16,
+    color: "var(--primary)",
+    fontSize: 13,
     fontWeight: 700,
   },
   section: {
@@ -1077,6 +1080,12 @@ export default function SettingsPage() {
         : true
     )),
     [accessFeatures],
+  );
+
+  // Limit overview to first 6 tabs for consistent 3x2 grid layout (matching Reservation page)
+  const visibleOverviewTabs = useMemo(
+    () => visibleTabs.slice(0, 6),
+    [visibleTabs],
   );
   const requestedTab = getRequestedSettingsTab(searchParams?.get("tab"));
   const activeTab: ActiveSettingsView = requestedTab === "overview"
@@ -2642,12 +2651,26 @@ export default function SettingsPage() {
 
   const renderOverview = () => (
     <div style={styles.overview}>
-      {visibleTabs.map((tab) => (
+      {visibleOverviewTabs.map((tab) => (
         <button
           key={tab.id}
           type="button"
-          style={styles.overviewCard}
+          style={{
+            ...styles.overviewCard,
+            // Hover effects matching Reservation page
+            WebkitTapHighlightColor: "transparent",
+          }}
           onClick={() => handleTabSelect(tab.id)}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "translateY(-2px)";
+            e.currentTarget.style.boxShadow = "var(--shadow-md)";
+            e.currentTarget.style.borderColor = "var(--primary)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.boxShadow = "var(--shadow-sm)";
+            e.currentTarget.style.borderColor = "var(--border)";
+          }}
         >
           <div>
             <div style={styles.overviewIcon}>{tab.icon}</div>
