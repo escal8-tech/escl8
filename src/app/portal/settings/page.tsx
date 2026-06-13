@@ -2749,7 +2749,7 @@ export default function SettingsPage() {
         activeTab === "overview"
           ? {
               width: "100%",
-              height: "calc(100vh - var(--portal-nav-rail-height))",
+              height: "100%",
               minHeight: 0,
               overflowY: "auto",
               background: "var(--portal-page-bg)",

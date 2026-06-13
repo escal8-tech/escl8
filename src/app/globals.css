@@ -1449,6 +1449,16 @@ tr:last-child td {
   height: 100%;
 }
 
+.portal-content--settings {
+  height: calc(100vh - var(--portal-nav-rail-height));
+  padding: 0;
+  overflow: hidden;
+}
+
+.portal-content--settings > * {
+  height: 100%;
+}
+
 .portal-content--flush-messages {
   padding: 0;
 }
@@ -6531,6 +6541,13 @@ html.portal-theme-light .drawer-backdrop {
   .portal-content--flush {
     height: auto;
     min-height: calc(100vh - 126px);
+  }
+
+  .portal-content--settings {
+    height: auto;
+    min-height: calc(100vh - 126px);
+    padding: 0;
+    overflow: visible;
   }
 
   .portal-content--flush > * {

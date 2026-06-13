@@ -16,6 +16,7 @@ function PortalLayoutShell({ children }: { children: React.ReactNode }) {
   const appPath = normalizeAppPath(pathname);
   const isAuthPage = isAppAuthPath(appPath);
   const isMessagesPage = appPath === "/messages" || appPath.startsWith("/messages/");
+  const isSettingsPage = appPath === "/settings" || appPath.startsWith("/settings/");
   const isFlushPage = isAppFlushPath(appPath);
   const isWorkbenchDetailPage =
     appPath.startsWith("/ticket/")
@@ -38,7 +39,7 @@ function PortalLayoutShell({ children }: { children: React.ReactNode }) {
         <div className="portal-layout" data-theme={theme} suppressHydrationWarning>
           <PortalNav />
           <main className={`portal-main portal-main--with-topbar${isWorkbenchDetailPage ? " portal-main--workbench-detail" : ""}`}>
-            <div className={`portal-content${isFlushPage ? " portal-content--flush" : ""}${isMessagesPage ? " portal-content--flush-messages" : ""}${isWorkbenchDetailPage ? " portal-content--workbench-detail" : ""}`}>
+            <div className={`portal-content${isFlushPage ? " portal-content--flush" : ""}${isMessagesPage ? " portal-content--flush-messages" : ""}${isSettingsPage ? " portal-content--settings" : ""}${isWorkbenchDetailPage ? " portal-content--workbench-detail" : ""}`}>
               {children}
             </div>
           </main>
