@@ -21,8 +21,6 @@ import {
 } from "./subscription-features";
 
 export type SuiteProductModule = "agent" | "reservation";
-export type { SuiteFeatureKey };
-export const SUITE_FEATURES_KEYS = SUITE_FEATURES;
 
 export const SUITE_PLAN_CODES = {
   AGENT_BASIC: "AGENT_BASIC",
