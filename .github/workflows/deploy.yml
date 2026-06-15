@@ -266,6 +266,7 @@ jobs:
               OTEL_EXPORTER_OTLP_HEADERS=secretref:otel-exporter-otlp-headers \
               GRAFANA_LOGS_USER=secretref:grafana-logs-user \
               GRAFANA_LOGS_API_KEY=secretref:grafana-logs-api-key \
+              JWT_SECRET=secretref:jwt-secret \
               SENTRY_ORG="${{ secrets.PRODUCTION_SENTRY_ORG }}" \
               SENTRY_PROJECT="${{ secrets.PRODUCTION_SENTRY_PROJECT }}" \
               NEXT_PUBLIC_SENTRY_ENVIRONMENT=production \
