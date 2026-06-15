@@ -2749,18 +2749,6 @@ export default function SettingsPage() {
     }
   };
 
-  if (!email) {
-    return (
-      <div style={{ ...styles.page, paddingTop: 80, textAlign: "center" }}>
-        <div className="card" style={{ padding: 40 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
-          <h2 style={{ marginBottom: 8 }}>Loading...</h2>
-          <p style={{ color: "var(--muted)" }}>Please wait while we load your settings</p>
-        </div>
-      </div>
-    );
-  }
-
   // Base page styles with scrolling enabled for all tabs
   const pageStyle = useMemo(
     () => ({
@@ -2772,6 +2760,18 @@ export default function SettingsPage() {
     }),
     []
   );
+
+  if (!email) {
+    return (
+      <div style={{ ...styles.page, paddingTop: 80, textAlign: "center" }}>
+        <div className="card" style={{ padding: 40 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+          <h2 style={{ marginBottom: 8 }}>Loading...</h2>
+          <p style={{ color: "var(--muted)" }}>Please wait while we load your settings</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={pageStyle}>
