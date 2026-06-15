@@ -60,11 +60,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { idToken, module = 'agent' } = body;
+    const { idToken, module: rawModule = 'agent' } = body;
 
     if (!idToken) {
       return NextResponse.json({ error: 'idToken is required' }, { status: 400 });
     }
+
+    // Validate module to a known value to prevent invalid values from bypassing TS checks
+    const module: 'agent' | 'reservation' = rawModule === 'reservation' ? 'reservation' : 'agent';
 
     // Verify Firebase ID token
     let decoded;
@@ -101,7 +104,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate token pair
-    const tokens = await generateTokenPair(firebaseUid, email, suiteTenantId, module as 'agent' | 'reservation');
+    const tokens = await generateTokenPair(firebaseUid, email, suiteTenantId, module);
 
     // Return response with httpOnly cookies set
     const response = NextResponse.json({ 
