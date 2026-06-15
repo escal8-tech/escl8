@@ -53,6 +53,17 @@ jobs:
 
     environment: production
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      AZURE_RESOURCE_GROUP: Escal8
+      CONTAINERAPPS_ENVIRONMENT: whatsapp-bot-env
+      WEB_APP_NAME: escal8-web
+      WORKER_APP_NAME: escal8-worker
+      JOB_APP_NAME: escal8-agent-request-rollover
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+      WEB_IMAGE_NAME: escal8-agent
+      WORKER_IMAGE_NAME: escal8-agent-worker
+      JOB_IMAGE_NAME: escal8-agent-job
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
       ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
       ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
       CONTROL_PLANE_DATABASE_URL: ${{ secrets.CONTROL_PLANE_DATABASE_URL }}
@@ -73,6 +84,7 @@ jobs:
       ACA_META_APP_SECRET: ${{ secrets.ACA_META_APP_SECRET }}
       ACA_BOT_INTERNAL_API_KEY: ${{ secrets.ACA_BOT_INTERNAL_API_KEY }}
       ACA_OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
 
     steps:
       - name: Checkout
@@ -179,7 +191,10 @@ jobs:
 
       - name: Update Web Container App secrets
         shell: bash
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: |
+          test -n "$JWT_SECRET" || { echo "JWT_SECRET missing"; exit 1; }
           az containerapp secret set \
             --name "${{ steps.env.outputs.web_app }}" \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
@@ -211,18 +226,18 @@ jobs:
             --name "${{ steps.env.outputs.worker_app }}" \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --secrets \
-              control-plane-database-url="$CONTROL_PLANE_DATABASE_URL" \
-              database-url="$AGENT_DATABASE_URL" \
-              open-ai-api="$ACA_OPEN_AI_API" \
-              pinecone-api-key="$ACA_PINECONE_API" \
-              service-bus-conn="$ACA_SERVICE_BUS_CONN" \
-              pubsub-conn="$ACA_PUBSUB_CONN" \
-              firebase-service-account-json="$ACA_FIREBASE_SERVICE_ACCOUNT_JSON" \
-              azure-blob-connection-string="$ACA_AZURE_BLOB_CONNECTION_STRING" \
-              azure-queue-connection-string="$ACA_AZURE_QUEUE_CONNECTION_STRING" \
-              otel-exporter-otlp-headers="$ACA_OTEL_EXPORTER_OTLP_HEADERS" \
-              grafana-logs-user="$GRAFANA_LOGS_USER" \
-              grafana-logs-api-key="$GRAFANA_LOGS_API_KEY"
+              control-plane-database-url="${CONTROL_PLANE_DATABASE_URL}" \
+              database-url="${AGENT_DATABASE_URL}" \
+              open-ai-api="${ACA_OPEN_AI_API}" \
+              pinecone-api="${ACA_PINECONE_API}" \
+              service-bus-conn="${ACA_SERVICE_BUS_CONN}" \
+              pubsub-conn="${ACA_PUBSUB_CONN}" \
+              firebase-service-account-json="${ACA_FIREBASE_SERVICE_ACCOUNT_JSON}" \
+              azure-blob-connection-string="${ACA_AZURE_BLOB_CONNECTION_STRING}" \
+              azure-queue-connection-string="${ACA_AZURE_QUEUE_CONNECTION_STRING}" \
+              otel-exporter-otlp-headers="${ACA_OTEL_EXPORTER_OTLP_HEADERS}" \
+              grafana-logs-user="${GRAFANA_LOGS_USER}" \
+              grafana-logs-api-key="${GRAFANA_LOGS_API_KEY}"
 
       - name: Update Job secrets
         shell: bash
@@ -231,9 +246,9 @@ jobs:
             --name "${{ steps.env.outputs.job_app }}" \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --secrets \
-              database-url="$AGENT_DATABASE_URL" \
-              grafana-logs-user="$GRAFANA_LOGS_USER" \
-              grafana-logs-api-key="$GRAFANA_LOGS_API_KEY"
+              database-url="${AGENT_DATABASE_URL}" \
+              grafana-logs-user="${GRAFANA_LOGS_USER}" \
+              grafana-logs-api-key="${GRAFANA_LOGS_API_KEY}"
 
       - name: Deploy Web Container App (dashboard)
         shell: bash
