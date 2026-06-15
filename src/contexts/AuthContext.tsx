@@ -87,27 +87,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(err.error || 'Token exchange failed')
       }
       
-      // Server sets tokens via httpOnly cookies, returns only expiresIn
+      // Server sets tokens via httpOnly cookies and returns only { success, expiresIn, tokenType }
       const { expiresIn, success } = await tokenResponse.json()
       
       if (!success) {
         throw new Error('Token exchange failed')
       }
       
-      // Verify tokens and get payload
-      const verifyResponse = await fetch('/api/auth/verify', {
-        credentials: 'include' // Include httpOnly cookies
+      // Fetch verified payload using the cookie session
+      const verifyResponse = await fetch('/api/auth/token', {
+        method: 'GET',
+        credentials: 'include',
       })
-      
       if (!verifyResponse.ok) {
-        throw new Error('Failed to verify tokens')
+        throw new Error('Token verification failed after sign-in')
       }
-      
       const { payload: jwtPayload } = await verifyResponse.json()
       
-      // Access token is stored in httpOnly cookie, get from there if needed
-      // For now just store the payload
       setPayload(jwtPayload)
+      setSubscription(jwtPayload.subscription as SubscriptionClaims)
       setFirebaseUser({ uid: firebasePayload.sub, email: firebasePayload.email })
       setIsAuthenticated(true)
       
@@ -141,11 +139,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Token refresh failed')
       }
       
-      const { accessToken: newAccessToken, refreshToken: newRefreshToken, expiresIn, payload: newPayload } = await response.json()
-      
-      tokenHandler.setTokens(newAccessToken, newRefreshToken)
-      setAccessToken(newAccessToken)
-      setPayload(newPayload)
+      // Server rotates cookies and returns only { success, expiresIn, tokenType }
+      const { expiresIn } = await response.json()
       scheduleTokenRefresh(expiresIn)
       
     } catch (err) {
@@ -156,12 +151,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     if (refreshTimer) clearTimeout(refreshTimer)
-    // Call server-side logout to blacklist tokens
+    
+    // Invalidate tokens server-side (blacklists tokens and clears cookies)
     try {
-      await fetch('/api/auth/token', { method: 'DELETE' })
-    } catch {
-      // Ignore errors during logout
+      await fetch('/api/auth/token', {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+    } catch (err) {
+      console.error('Server sign-out failed:', err)
+      // Continue with local cleanup even if server call fails
     }
+    
     tokenHandler.clearTokens()
     setIsAuthenticated(false)
     setFirebaseUser(null)
@@ -198,7 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setPayload(jwtPayload)
             setSubscription(jwtPayload.subscription as SubscriptionClaims)
             setIsAuthenticated(true)
-            
+
             // Schedule refresh based on token expiry
             const exp = jwtPayload.exp * 1000
             const expiresIn = Math.max(Math.floor((exp - Date.now()) / 1000), 1)

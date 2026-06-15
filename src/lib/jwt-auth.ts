@@ -11,7 +11,11 @@ const REFRESH_TOKEN_TTL='***'; // 7 days
 function getJWTSecret(): Uint8Array {
   const secret = process.env.JWT_SECRET
   if (!secret) {
-    throw new Error('JWT_SECRET environment variable is required for production. Set a secure 32+ character secret.')
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET environment variable is required in production')
+    }
+    console.warn('[jwt-auth] Using development JWT secret - do not use in production')
+    return new TextEncoder().encode('dev-secret-change-in-production-min-32-chars!!')
   }
   return new TextEncoder().encode(secret)
 }

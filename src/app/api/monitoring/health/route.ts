@@ -17,10 +17,14 @@ export async function GET(request: NextRequest) {
   const dbStart = Date.now();
   try {
     const { queryRows } = await import('@/lib/db');
-    await queryRows('control', 'SELECT 1');
+    const probe = await queryRows('control', 'SELECT 1');
+    if (probe.length === 0) {
+      throw new Error('Control DB pool not configured');
+    }
     checks.services.controlDatabase = { status: 'healthy', latencyMs: Date.now() - dbStart };
   } catch (error) {
-    checks.services.controlDatabase = { status: 'down', latencyMs: Date.now() - dbStart, message: String(error) };
+    console.error('[health] controlDatabase check failed:', error);
+    checks.services.controlDatabase = { status: 'down', latencyMs: Date.now() - dbStart, message: 'Control DB check failed' };
     checks.overall = 'down';
   }
 
@@ -28,18 +32,26 @@ export async function GET(request: NextRequest) {
   const agentDbStart = Date.now();
   try {
     const { queryRows } = await import('@/lib/db');
-    await queryRows('agent', 'SELECT 1');
+    const probe = await queryRows('agent', 'SELECT 1');
+    if (probe.length === 0) {
+      throw new Error('Agent DB pool not configured');
+    }
     checks.services.agentDatabase = { status: 'healthy', latencyMs: Date.now() - agentDbStart };
   } catch (error) {
-    checks.services.agentDatabase = { status: 'down', latencyMs: Date.now() - agentDbStart, message: String(error) };
+    console.error('[health] agentDatabase check failed:', error);
+    checks.services.agentDatabase = { status: 'down', latencyMs: Date.now() - agentDbStart, message: 'Agent DB check failed' };
     checks.overall = 'down';
   }
 
   // Check SenangPay config
+  const senangPayConfigured = Boolean(process.env.SENANGPAY_SECRET_KEY && process.env.SENANGPAY_MERCHANT_ID);
   checks.services.senangPay = {
-    status: process.env.SENANGPAY_SECRET_KEY && process.env.SENANGPAY_MERCHANT_ID ? 'healthy' : 'degraded',
-    message: 'SenangPay credentials configured',
+    status: senangPayConfigured ? 'healthy' : 'degraded',
+    message: senangPayConfigured ? 'SenangPay credentials configured' : 'SenangPay credentials missing',
   };
+  if (checks.overall === 'healthy' && checks.services.senangPay.status === 'degraded') {
+    checks.overall = 'degraded';
+  }
 
   // Check JWT config
   checks.services.jwt = {
@@ -58,6 +70,7 @@ export async function GET(request: NextRequest) {
     };
   } catch {
     checks.services.webhookReplay = { status: 'degraded', message: 'Replay store not available' };
+    if (checks.overall === 'healthy') checks.overall = 'degraded';
   }
 
   const statusCode = checks.overall === 'healthy' ? 200 : checks.overall === 'degraded' ? 200 : 503;
