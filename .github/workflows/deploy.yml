@@ -129,6 +129,7 @@ jobs:
           ACA_META_APP_SECRET: ${{ secrets.ACA_META_APP_SECRET }}
           ACA_BOT_INTERNAL_API_KEY: ${{ secrets.ACA_BOT_INTERNAL_API_KEY }}
           ACA_OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: |
           required=(
             CONTROL_PLANE_DATABASE_URL AGENT_DATABASE_URL
@@ -139,6 +140,7 @@ jobs:
             ACA_AZURE_BLOB_CONNECTION_STRING ACA_AZURE_QUEUE_CONNECTION_STRING
             ACA_META_SYSTEM_KEY ACA_META_APP_SECRET ACA_BOT_INTERNAL_API_KEY
             ACA_OTEL_EXPORTER_OTLP_HEADERS
+            JWT_SECRET
           )
           for name in "${required[@]}"; do
             [[ -n "${!name}" ]] || { echo "Missing required secret: $name"; exit 1; }
@@ -182,24 +184,25 @@ jobs:
             --name "${{ steps.env.outputs.web_app }}" \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --secrets \
-              senangpay-merchant-id="$SENANGPAY_MERCHANT_ID" \
-              senangpay-secret-key="$SENANGPAY_SECRET_KEY" \
-              control-plane-database-url="$CONTROL_PLANE_DATABASE_URL" \
-              database-url="$AGENT_DATABASE_URL" \
-              sentry-auth-token="$PRODUCTION_SENTRY_AUTH_TOKEN" \
-              open-ai-api="$ACA_OPEN_AI_API" \
-              pinecone-api="$ACA_PINECONE_API" \
-              service-bus-conn="$ACA_SERVICE_BUS_CONN" \
-              pubsub-conn="$ACA_PUBSUB_CONN" \
-              firebase-service-account-json="$ACA_FIREBASE_SERVICE_ACCOUNT_JSON" \
-              azure-blob-connection-string="$ACA_AZURE_BLOB_CONNECTION_STRING" \
-              azure-queue-connection-string="$ACA_AZURE_QUEUE_CONNECTION_STRING" \
-              meta-system-key="$ACA_META_SYSTEM_KEY" \
-              meta-app-secret="$ACA_META_APP_SECRET" \
-              bot-internal-api-key="$ACA_BOT_INTERNAL_API_KEY" \
-              otel-exporter-otlp-headers="$ACA_OTEL_EXPORTER_OTLP_HEADERS" \
-              grafana-logs-user="$GRAFANA_LOGS_USER" \
-              grafana-logs-api-key="$GRAFANA_LOGS_API_KEY"
+              senangpay-merchant-id="${SENANGPAY_MERCHANT_ID}" \
+              senangpay-secret-key="${SENANGPAY_SECRET_KEY}" \
+              control-plane-database-url="${CONTROL_PLANE_DATABASE_URL}" \
+              database-url="${AGENT_DATABASE_URL}" \
+              sentry-auth-token="${PRODUCTION_SENTRY_AUTH_TOKEN}" \
+              open-ai-api="${ACA_OPEN_AI_API}" \
+              pinecone-api="${ACA_PINECONE_API}" \
+              service-bus-conn="${ACA_SERVICE_BUS_CONN}" \
+              pubsub-conn="${ACA_PUBSUB_CONN}" \
+              firebase-service-account-json="${ACA_FIREBASE_SERVICE_ACCOUNT_JSON}" \
+              azure-blob-connection-string="${ACA_AZURE_BLOB_CONNECTION_STRING}" \
+              azure-queue-connection-string="${ACA_AZURE_QUEUE_CONNECTION_STRING}" \
+              meta-system-key="${ACA_META_SYSTEM_KEY}" \
+              meta-app-secret="${ACA_META_APP_SECRET}" \
+              bot-internal-api-key="${ACA_BOT_INTERNAL_API_KEY}" \
+              otel-exporter-otlp-headers="${ACA_OTEL_EXPORTER_OTLP_HEADERS}" \
+              grafana-logs-user="${GRAFANA_LOGS_USER}" \
+              grafana-logs-api-key="${GRAFANA_LOGS_API_KEY}" \
+              jwt-secret="${JWT_SECRET}"
 
       - name: Update Worker Container App secrets
         shell: bash
@@ -263,13 +266,15 @@ jobs:
               OTEL_EXPORTER_OTLP_HEADERS=secretref:otel-exporter-otlp-headers \
               GRAFANA_LOGS_USER=secretref:grafana-logs-user \
               GRAFANA_LOGS_API_KEY=secretref:grafana-logs-api-key \
+              JWT_SECRET=secretref:jwt-secret \
               SENTRY_ORG="${{ secrets.PRODUCTION_SENTRY_ORG }}" \
               SENTRY_PROJECT="${{ secrets.PRODUCTION_SENTRY_PROJECT }}" \
               NEXT_PUBLIC_SENTRY_ENVIRONMENT=production \
               NEXT_PUBLIC_SENTRY_RELEASE="${{ steps.image.outputs.tag }}" \
               NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE=1 \
               NEXT_PUBLIC_SENTRY_ENABLE_LOGS=true \
-              NEXT_PUBLIC_GRAFANA_BROWSER_LOGS_ENABLED=false
+              NEXT_PUBLIC_GRAFANA_BROWSER_LOGS_ENABLED=false \
+              JWT_SECRET=secretref:jwt-secret
 
       - name: Deploy Worker Container App (RAG worker)
         shell: bash
