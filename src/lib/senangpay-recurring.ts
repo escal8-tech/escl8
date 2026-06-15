@@ -1,5 +1,31 @@
 import "server-only";
-import { createHash, timingSafeEqual } from "node:crypto";
+
+// Use Web Crypto API (global crypto) for Edge + Node.js compatibility
+const crypto = globalThis.crypto;
+
+function createHash(algorithm: string) {
+  return {
+    update(data: string) {
+      return {
+        async digest(encoding: "hex") {
+          const buffer = await crypto.subtle.digest(algorithm.toUpperCase(), new TextEncoder().encode(data));
+          return Array.from(new Uint8Array(buffer))
+            .map(b => b.toString(16).padStart(2, "0"))
+            .join("");
+        }
+      };
+    }
+  };
+}
+
+function timingSafeEqual(a: Uint8Array | Buffer, b: Uint8Array | Buffer) {
+  const arrA = a instanceof Uint8Array ? a : new Uint8Array(a);
+  const arrB = b instanceof Uint8Array ? b : new Uint8Array(b);
+  if (arrA.length !== arrB.length) return false;
+  let result = 0;
+  for (let i = 0; i < arrA.length; i++) result |= arrA[i] ^ arrB[i];
+  return result === 0;
+}
 
 export type SenangPayRecurringStatus = "1" | "0" | "3"; // 1=success, 0=failed, 3=pending
 export type SenangPayRecurringType = "subscription" | "installment";

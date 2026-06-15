@@ -1,5 +1,53 @@
 import "server-only";
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+
+// Use Web Crypto API (global crypto) for Edge + Node.js compatibility
+const crypto = globalThis.crypto;
+
+function createHash(algorithm: string) {
+  return {
+    update(data: string) {
+      return {
+        digest(encoding: "hex") {
+          return crypto.subtle.digest(algorithm.toUpperCase(), new TextEncoder().encode(data))
+            .then(buffer => Array.from(new Uint8Array(buffer))
+              .map(b => b.toString(16).padStart(2, "0"))
+              .join(""));
+        }
+      };
+    }
+  };
+}
+
+function createHmac(algorithm: string, key: string) {
+  return {
+    async update(data: string) {
+      const cryptoKey = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(key),
+        { name: "HMAC", hash: { name: algorithm.toUpperCase() } },
+        false,
+        ["sign"]
+      );
+      const signature = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
+      return {
+        digest(encoding: "hex") {
+          return Array.from(new Uint8Array(signature))
+            .map(b => b.toString(16).padStart(2, "0"))
+            .join("");
+        }
+      };
+    }
+  };
+}
+
+function timingSafeEqual(a: Uint8Array | Buffer, b: Uint8Array | Buffer) {
+  const arrA = a instanceof Uint8Array ? a : new Uint8Array(a);
+  const arrB = b instanceof Uint8Array ? b : new Uint8Array(b);
+  if (arrA.length !== arrB.length) return false;
+  let result = 0;
+  for (let i = 0; i < arrA.length; i++) result |= arrA[i] ^ arrB[i];
+  return result === 0;
+}
 
 export type SenangPayStatus = "2" | "1" | "0";
 export type SenangPayHashType = "md5" | "sha256";

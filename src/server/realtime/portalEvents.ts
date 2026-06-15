@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+// Use Web Crypto API (global crypto.randomUUID) for Edge + Node.js compatibility
+const randomUUID = () => globalThis.crypto.randomUUID();
 import { WebPubSubServiceClient } from "@azure/web-pubsub";
 
 import { recordBusinessEvent } from "@/lib/business-monitoring";

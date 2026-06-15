@@ -1,7 +1,9 @@
-import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { storePrivateFileAtPath } from "@/lib/storage";
 import { isInternalApiAuthorized } from "@/server/internalSecurity";
+
+// Use Web Crypto API (global crypto.randomUUID) for Edge + Node.js compatibility
+const randomUUID = () => globalThis.crypto.randomUUID();
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -38,7 +40,7 @@ export async function POST(request: Request) {
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
   const stored = await storePrivateFileAtPath({
-    blobPath: `${businessId}/thread-media/${phoneNumberId}/${Date.now()}-${crypto.randomUUID()}-${rawName}`,
+    blobPath: `${businessId}/thread-media/${phoneNumberId}/${Date.now()}-${randomUUID()}-${rawName}`,
     buffer,
     fileName: rawName,
     contentType: file.type || undefined,

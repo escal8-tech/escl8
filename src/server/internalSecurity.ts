@@ -1,4 +1,12 @@
-import { timingSafeEqual } from "node:crypto";
+// Use local timingSafeEqual implementation for Edge + Node.js compatibility
+function timingSafeEqual(a: Uint8Array | Buffer, b: Uint8Array | Buffer): boolean {
+  const arrA = a instanceof Uint8Array ? a : new Uint8Array(a);
+  const arrB = b instanceof Uint8Array ? b : new Uint8Array(b);
+  if (arrA.length !== arrB.length) return false;
+  let result = 0;
+  for (let i = 0; i < arrA.length; i++) result |= arrA[i] ^ arrB[i];
+  return result === 0;
+}
 
 export function readInternalApiKey(request: Request): string {
   return String(

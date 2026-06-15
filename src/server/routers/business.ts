@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { randomBytes } from "node:crypto";
+
+// Use Web Crypto API (global crypto.getRandomValues) for Edge + Node.js compatibility
+const randomBytes = (size: number) => {
+  const bytes = new Uint8Array(size);
+  globalThis.crypto.getRandomValues(bytes);
+  return bytes;
+};
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { businesses, users, whatsappIdentities } from "../../../drizzle/schema";

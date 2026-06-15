@@ -1,13 +1,17 @@
 name: Deploy escl8 to Container Apps
 
 on:
-  workflow_run:
-    workflows:
-      - "Build and push escl8 images"
-    types:
-      - completed
-    branches:
-      - main
+  workflow_call:
+    inputs:
+      image-tag:
+        description: Image tag to deploy (SHA)
+        required: true
+        type: string
+      environment:
+        description: Target environment
+        required: true
+        type: string
+        default: "production"
 
   workflow_dispatch:
     inputs:
@@ -46,9 +50,6 @@ jobs:
     concurrency:
       group: agent-production-deploy
       cancel-in-progress: false
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
 
     environment: production
 
@@ -88,7 +89,7 @@ jobs:
         id: env
         shell: bash
         run: |
-          echo "target_env=production" >> "$GITHUB_OUTPUT"
+          echo "target_env=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
           echo "web_app=${WEB_APP_NAME}" >> "$GITHUB_OUTPUT"
           echo "worker_app=${WORKER_APP_NAME}" >> "$GITHUB_OUTPUT"
           echo "job_app=${JOB_APP_NAME}" >> "$GITHUB_OUTPUT"
@@ -97,13 +98,7 @@ jobs:
         id: image
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.image-tag }}" ]]; then
-            TAG="${{ github.event.inputs.image-tag }}"
-          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            TAG="${{ github.event.workflow_run.head_sha }}"
-          else
-            TAG="${GITHUB_SHA}"
-          fi
+          TAG="${{ inputs.image-tag }}"
           test -n "$TAG"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
