@@ -1095,8 +1095,11 @@ export default function SettingsPage() {
   const primaryOverviewTabs = visibleTabs.slice(0, 6);
   const additionalOverviewTabs = visibleTabs.slice(6);
   const requestedTab = getRequestedSettingsTab(searchParams?.get("tab"));
+  
+  // Use all possible tabs for validation so URL deep-links work even before accessFeatures loads
+  const allTabIds = tabConfig.map(t => t.id) as SettingsTab[];
   const activeTab: ActiveSettingsView = requestedTab === "overview"
-    || visibleTabs.some((tab) => tab.id === requestedTab)
+    || allTabIds.includes(requestedTab)
     ? requestedTab
     : "overview";
   const ensureWebsiteWidget = trpc.business.ensureWebsiteWidget.useMutation();
@@ -1231,6 +1234,15 @@ export default function SettingsPage() {
     params.set("tab", tab);
     router.push(`/settings?${params.toString()}`, { scroll: false });
   };
+
+  // If URL tab is not in visibleTabs (permission issue), redirect to overview
+  useEffect(() => {
+    if (activeTab !== "overview" && !visibleTabs.some((t) => t.id === activeTab)) {
+      const params = new URLSearchParams(searchParams?.toString() || "");
+      params.delete("tab");
+      router.replace(`/settings?${params.toString()}`, { scroll: false });
+    }
+  }, [activeTab, visibleTabs, router, searchParams]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2749,20 +2761,20 @@ export default function SettingsPage() {
     );
   }
 
+  // Base page styles with scrolling enabled for all tabs
+  const pageStyle = useMemo(
+    () => ({
+      ...styles.page,
+      overflowY: "auto" as const,
+      minHeight: 0,
+      height: "100%",
+      background: "var(--settings-page-bg)",
+    }),
+    []
+  );
+
   return (
-    <div
-      style={
-        activeTab === "overview"
-          ? {
-              width: "100%",
-              height: "100%",
-              minHeight: 0,
-              overflowY: "auto",
-              background: "var(--settings-page-bg)",
-            }
-          : styles.page
-      }
-    >
+    <div style={pageStyle}>
       {passwordModalOpen ? (
         <div
           style={styles.modalBackdrop}

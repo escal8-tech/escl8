@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import {
   businesses,
@@ -20,6 +20,7 @@ import {
   normalizeHeaderKey,
   summarizeInventoryFields,
 } from "@/server/rag/inventoryFields";
+import type { SpreadsheetRow } from "@/server/rag/extractText";
 import { acquireInventoryBusinessLock } from "@/server/inventory/locks";
 import {
   ensureCommerceSettingsForBusiness,
@@ -294,12 +295,14 @@ export async function saveBusinessStockSettings(params: {
 export async function applyStockColumnMappingForBusiness(params: {
   businessId: string;
   settings?: BusinessStockSettings;
+  trainingDocumentId?: string | null; // Only update products from this training document
 }): Promise<number> {
   const settings = params.settings ?? await getBusinessStockSettings(params.businessId);
   const rows = await db
     .select({
       id: inventoryProducts.id,
       rawFields: inventoryProducts.rawFields,
+      trainingDocumentId: inventoryProducts.trainingDocumentId,
     })
     .from(inventoryProducts)
     .where(and(eq(inventoryProducts.businessId, params.businessId), eq(inventoryProducts.status, "active")));
@@ -308,6 +311,10 @@ export async function applyStockColumnMappingForBusiness(params: {
   await db.transaction(async (tx) => {
     await acquireInventoryBusinessLock(tx, params.businessId);
     for (const row of rows) {
+      // Skip products not from the current training document (if specified)
+      if (params.trainingDocumentId && row.trainingDocumentId !== params.trainingDocumentId) {
+        continue;
+      }
       const rawFields = row.rawFields && typeof row.rawFields === "object" ? row.rawFields : {};
       const mapped = deriveInventoryProductFromFields(rawFields as Record<string, string>, settings);
       if (!mapped.name) continue;
@@ -373,4 +380,88 @@ export async function applyStockColumnMappingForBusiness(params: {
   });
 
   return applied;
+}
+
+export async function rebaseInventoryFromTrainingDocument(params: {
+  businessId: string;
+  trainingDocumentId: string;
+  settings?: BusinessStockSettings;
+}): Promise<{ deleted: number; inserted: number }> {
+  const settings = params.settings ?? await getBusinessStockSettings(params.businessId);
+
+  // Get the training document to extract structured rows
+  const { db } = await import("@/server/db/client");
+  const { trainingDocuments } = await import("../../../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const [doc] = await db
+    .select()
+    .from(trainingDocuments)
+    .where(eq(trainingDocuments.id, params.trainingDocumentId))
+    .limit(1);
+
+  if (!doc) {
+    throw new Error(`Training document not found: ${params.trainingDocumentId}`);
+  }
+
+  // Download and parse the document to get structured rows
+  const { downloadBlobToBuffer } = await import("../rag/blob");
+  const { extractTextFromBuffer } = await import("../rag/extractText");
+
+  const blob = await downloadBlobToBuffer(doc.blobPath);
+  const extracted = await extractTextFromBuffer({
+    buffer: blob.buffer,
+    filename: doc.originalFilename,
+    contentType: doc.contentType ?? undefined,
+    preserveLineBreaks: true,
+  });
+
+  if (!extracted.structuredRows || extracted.structuredRows.length === 0) {
+    throw new Error("No structured rows found in training document");
+  }
+
+  const structuredRows: SpreadsheetRow[] = extracted.structuredRows;
+
+  let deleted = 0;
+  let inserted = 0;
+
+  await db.transaction(async (tx) => {
+    await acquireInventoryBusinessLock(tx, params.businessId);
+
+    // 1. Archive all products NOT from this training document
+    // Use raw SQL for IS DISTINCT FROM (handles null trainingDocumentId correctly)
+    const archiveResult = await tx.execute(sql`
+      UPDATE inventory_products
+      SET status = 'archived', updated_at = now()
+      WHERE business_id = ${params.businessId}
+        AND status = 'active'
+        AND training_document_id IS DISTINCT FROM ${params.trainingDocumentId}
+    `);
+
+    // Count archived
+    const archivedProducts = await tx
+      .select({ id: inventoryProducts.id })
+      .from(inventoryProducts)
+      .where(
+        and(
+          eq(inventoryProducts.businessId, params.businessId),
+          eq(inventoryProducts.status, "archived"),
+        )
+      );
+    deleted = archivedProducts.length;
+
+    // 2. Insert fresh products from the new training document
+    const { replaceInventoryProductsForRows } = await import("../rag/productCatalog");
+    const refs = await replaceInventoryProductsForRows({
+      businessId: params.businessId,
+      trainingDocumentId: params.trainingDocumentId,
+      source: doc.blobPath,
+      sourceFilename: doc.originalFilename,
+      rows: structuredRows,
+    });
+
+    inserted = refs.size;
+  });
+
+  return { deleted, inserted };
 }

@@ -10,6 +10,7 @@ import {
   inventoryProducts,
   inventoryReservations,
   businesses,
+  trainingDocuments,
 } from "../../../drizzle/schema";
 import {
   friendlyStockColumnLabel,
@@ -296,10 +297,35 @@ export const inventoryRouter = router({
     const stockSettings = normalizeStockSettings(biz?.settings);
     const mapped = new Map(stockSettings.columnMapping.map((entry) => [entry.key, entry]));
 
+    // Find the latest inventory training document for this business
+    const [latestInventoryDoc] = await db
+      .select({ id: trainingDocuments.id })
+      .from(trainingDocuments)
+      .where(
+        and(
+          eq(trainingDocuments.businessId, ctx.businessId),
+          eq(trainingDocuments.docType, "inventory")
+        )
+      )
+      .orderBy(desc(trainingDocuments.uploadedAt))
+      .limit(1);
+
+    // Only get products from the latest training document (or all active if no training doc yet)
+    const productWhere = latestInventoryDoc
+      ? and(
+          eq(inventoryProducts.businessId, ctx.businessId),
+          eq(inventoryProducts.status, "active"),
+          eq(inventoryProducts.trainingDocumentId, latestInventoryDoc.id)
+        )
+      : and(
+          eq(inventoryProducts.businessId, ctx.businessId),
+          eq(inventoryProducts.status, "active")
+        );
+
     const rows = await db
       .select({ rawFields: inventoryProducts.rawFields })
       .from(inventoryProducts)
-      .where(and(eq(inventoryProducts.businessId, ctx.businessId), eq(inventoryProducts.status, "active")))
+      .where(productWhere)
       .limit(1000);
 
     const columnStats = new Map<string, { count: number; samples: string[] }>();

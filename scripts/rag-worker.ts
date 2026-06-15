@@ -226,6 +226,51 @@ async function processJob(job: RagJobRow) {
 
   console.log(`[rag-worker] done job=${job.id} businessId=${job.businessId} docType=${docType} chunks=${res.chunkCount}`);
 
+  // After successful inventory indexing, do a full rebase of products from the new sheet
+  if (docType === "inventory") {
+    try {
+      const { rebaseInventoryFromTrainingDocument } = await import(
+        "../src/server/inventory/stockMapping"
+      );
+      const result = await rebaseInventoryFromTrainingDocument({
+        businessId: job.businessId,
+        trainingDocumentId: doc.id,
+      });
+      console.log(
+        `[rag-worker] inventory rebase complete: deleted=${result.deleted}, inserted=${result.inserted}`
+      );
+      recordBusinessEvent({
+        event: "inventory.rebase_complete",
+        action: "rag-worker.rebase-inventory",
+        area: "inventory",
+        businessId: job.businessId,
+        entity: "rag_job",
+        entityId: job.id,
+        outcome: "success",
+        attributes: {
+          deleted: result.deleted,
+          inserted: result.inserted,
+          doc_type: docType,
+        },
+      });
+    } catch (rebaseErr: any) {
+      console.error(
+        `[rag-worker] inventory rebase failed: ${rebaseErr?.message || String(rebaseErr)}`
+      );
+      captureSentryException(rebaseErr, {
+        action: "rag-worker.rebase-inventory",
+        area: "inventory",
+        level: "error",
+        tags: {
+          "rag.doc_type": docType,
+          "rag.job_id": job.id,
+          "escal8.business_id": job.businessId,
+        },
+      });
+      // Don't fail the job - rebase is best-effort
+    }
+  }
+
   // After successful indexing, check if all 3 key docs are indexed and generate bot instructions
   if (isKeyDocType(docType)) {
     try {
