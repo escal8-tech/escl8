@@ -3,13 +3,18 @@ import {getTenantModuleAccess, type TenantModuleAccess, type SuiteProductModule}
 import {getRedisClient, existsCached, setCached} from '@/lib/redis';
 import {REDIS_KEYS} from '@/lib/redis';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'dev-secret-change-in-production-min-32-chars!!'
-);
 const JWT_ISSUER = 'escal8';
 const JWT_AUDIENCE = 'escal8-apps';
-const ACCESS_TOKEN_TTL = '15m'; // 15 minutes
-const REFRESH_TOKEN_TTL = '7d'; // 7 days
+const ACCESS_TOKEN_TTL='***'; // 15 minutes
+const REFRESH_TOKEN_TTL='***'; // 7 days
+
+function getJWTSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required for production. Set a secure 32+ character secret.')
+  }
+  return new TextEncoder().encode(secret)
+}
 
 export interface SubscriptionClaims {
   suiteTenantId: string;
@@ -29,7 +34,7 @@ export interface Escal8JWTPayload extends JWTPayload {
   sub: string;           // firebaseUid
   email: string;
   suiteTenantId: string;
-  subscription: SubscriptionClaims;
+  subscription?: SubscriptionClaims; // Optional for refresh tokens
   type: 'access' | 'refresh';
 }
 
@@ -85,7 +90,7 @@ export async function generateAccessToken(
     .setIssuedAt()
     .setExpirationTime(ACCESS_TOKEN_TTL)
     .setSubject(firebaseUid)
-    .sign(JWT_SECRET);
+    .sign(getJWTSecret());
 }
 
 /**
@@ -96,12 +101,12 @@ export async function generateRefreshToken(
   email: string,
   suiteTenantId: string
 ): Promise<string> {
-  const payload: Escal8JWTPayload = {
+  const payload = {
     sub: firebaseUid,
     email,
     suiteTenantId,
-    subscription: {} as SubscriptionClaims, // Not included in refresh token
-    type: 'refresh',
+    // subscription field omitted for refresh tokens
+    type: 'refresh' as const,
     iss: JWT_ISSUER,
     aud: JWT_AUDIENCE,
   };
@@ -111,7 +116,7 @@ export async function generateRefreshToken(
     .setIssuedAt()
     .setExpirationTime(REFRESH_TOKEN_TTL)
     .setSubject(firebaseUid)
-    .sign(JWT_SECRET);
+    .sign(getJWTSecret());
 }
 
 /**
@@ -151,7 +156,7 @@ export async function verifyAccessToken(token: string): Promise<Escal8JWTPayload
       }
     }
 
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jwtVerify(token, getJWTSecret(), {
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     });
@@ -175,7 +180,7 @@ export async function verifyRefreshToken(token: string): Promise<Escal8JWTPayloa
       }
     }
 
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jwtVerify(token, getJWTSecret(), {
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     });

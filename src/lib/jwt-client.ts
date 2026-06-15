@@ -110,7 +110,7 @@ export interface SubscriptionClaims {
 /**
  * Decode JWT payload without verification (client-side only)
  */
-export function decodeJwtPayload(token: string): any {
+export function decodeJwtPayload<T = Escal8JWTPayload>(token: string): T | null {
   try {
     const base64Url = token.split('.')[1]
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
@@ -120,7 +120,7 @@ export function decodeJwtPayload(token: string): any {
         .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
         .join('')
     )
-    return JSON.parse(jsonPayload)
+    return JSON.parse(jsonPayload) as T
   } catch {
     return null
   }
@@ -130,13 +130,7 @@ export function decodeJwtPayload(token: string): any {
  * Check if access token is valid (not expired)
  */
 export function isAccessTokenValid(): boolean {
-  const token = tokenHandler.getAccessToken()
-  if (!token) return false
-  
-  const expiresAt = tokenHandler.getExpiresAt()
-  if (!expiresAt) return false
-  
-  return Date.now() < expiresAt - 30000 // 30s buffer
+  return !tokenHandler.isTokenExpired()
 }
 
 /**

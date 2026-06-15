@@ -1,21 +1,7 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react'
 import { tokenHandler, type Escal8JWTPayload, type SubscriptionClaims } from '@/lib/jwt-client'
-
-interface SubscriptionClaimsClient extends SubscriptionClaims {
-  suiteTenantId: string
-  planCode: string | null
-  planName: string | null
-  status: string
-  grantKind: string | null
-  grantsAgent: boolean
-  grantsReservation: boolean
-  workspaceMode: 'full' | 'readonly' | 'blocked'
-  isSpecialGrant: boolean
-  features: Record<string, boolean>
-  limits: Record<string, number>
-}
 
 export interface AuthContextValue {
   // Auth state
@@ -23,7 +9,7 @@ export interface AuthContextValue {
   firebaseUser: { uid: string; email: string } | null
   accessToken: string | null
   payload: Escal8JWTPayload | null
-  subscription: SubscriptionClaimsClient | null
+  subscription: SubscriptionClaims | null
   isLoading: boolean
   error: string | null
   
@@ -31,7 +17,7 @@ export interface AuthContextValue {
   signInWithFirebaseToken: (idToken: string, module?: 'agent' | 'reservation') => Promise<void>
   signOut: () => Promise<void>
   refreshAccessToken: () => Promise<void>
-  updateSubscription: (subscription: SubscriptionClaimsClient | null) => void
+  updateSubscription: (subscription: SubscriptionClaims | null) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -41,10 +27,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<{ uid: string; email: string } | null>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [payload, setPayload] = useState<Escal8JWTPayload | null>(null)
-  const [subscription, setSubscription] = useState<SubscriptionClaimsClient | null>(null)
+  const [subscription, setSubscription] = useState<SubscriptionClaims | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [refreshTimer, setRefreshTimer] = useState<NodeJS.Timeout | null>(null)
+  const [refreshTimer, setRefreshTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
+  // Use ref to avoid stale closure in scheduleTokenRefresh
+  const refreshAccessTokenRef = useRef<() => Promise<void> | null>(null)
 
   // Clear refresh timer on unmount
   useEffect(() => {
@@ -62,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     const timer = setTimeout(async () => {
       try {
-        await refreshAccessToken()
+        await refreshAccessTokenRef.current?.()
       } catch (err) {
         console.error('Auto token refresh failed:', err)
       }
@@ -99,11 +87,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(err.error || 'Token exchange failed')
       }
       
-      const { accessToken, refreshToken, expiresIn, payload: jwtPayload } = await tokenResponse.json()
+      // Server sets tokens via httpOnly cookies, returns only expiresIn
+      const { expiresIn, success } = await tokenResponse.json()
       
-      // Store tokens
-      tokenHandler.setTokens(accessToken, refreshToken)
-      setAccessToken(accessToken)
+      if (!success) {
+        throw new Error('Token exchange failed')
+      }
+      
+      // Verify tokens and get payload
+      const verifyResponse = await fetch('/api/auth/verify', {
+        credentials: 'include' // Include httpOnly cookies
+      })
+      
+      if (!verifyResponse.ok) {
+        throw new Error('Failed to verify tokens')
+      }
+      
+      const { payload: jwtPayload } = await verifyResponse.json()
+      
+      // Access token is stored in httpOnly cookie, get from there if needed
+      // For now just store the payload
       setPayload(jwtPayload)
       setFirebaseUser({ uid: firebasePayload.sub, email: firebasePayload.email })
       setIsAuthenticated(true)
@@ -128,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     try {
-      const response = await fetch('/api/auth/refresh', {
+      const response = await fetch('/api/auth/token', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken })
@@ -153,6 +156,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     if (refreshTimer) clearTimeout(refreshTimer)
+    // Call server-side logout to blacklist tokens
+    try {
+      await fetch('/api/auth/token', { method: 'DELETE' })
+    } catch {
+      // Ignore errors during logout
+    }
     tokenHandler.clearTokens()
     setIsAuthenticated(false)
     setFirebaseUser(null)
@@ -162,9 +171,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null)
   }, [refreshTimer])
 
-  const updateSubscription = useCallback((sub: SubscriptionClaimsClient | null) => {
+  const updateSubscription = useCallback((sub: SubscriptionClaims | null) => {
     setSubscription(sub)
   }, [])
+
+  // Update ref when refreshAccessToken changes (placed here to avoid stale closure)
+  useEffect(() => {
+    refreshAccessTokenRef.current = refreshAccessToken
+  }, [refreshAccessToken])
 
   // Check for stored tokens on mount
   useEffect(() => {
@@ -182,13 +196,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (response.ok) {
             const { payload: jwtPayload } = await response.json()
             setPayload(jwtPayload)
-            setSubscription(jwtPayload.subscription as SubscriptionClaimsClient)
+            setSubscription(jwtPayload.subscription as SubscriptionClaims)
             setIsAuthenticated(true)
             
             // Schedule refresh based on token expiry
             const exp = jwtPayload.exp * 1000
             const expiresIn = Math.max(Math.floor((exp - Date.now()) / 1000), 1)
             scheduleTokenRefresh(expiresIn)
+            setIsLoading(false)
             return
           }
         } catch {
