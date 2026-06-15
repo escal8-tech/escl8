@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { getRedisClient, existsCached, setCached, getCached } from './redis';
 import { REDIS_KEYS } from './redis';
 
@@ -87,6 +88,10 @@ export const webhookReplayStore = {
 };
 
 /** Generate idempotency key from webhook payload */
+function hashPayload(payload: object): string {
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 16);
+}
+
 export function generateIdempotencyKey(
   provider: 'senangpay' | 'senangpay-recurring',
   payload: object
@@ -99,6 +104,7 @@ export function generateIdempotencyKey(
     const orderId = p.orderId as string | undefined;
     if (transactionId) keyParts.push(`txn:${transactionId}`);
     else if (orderId) keyParts.push(`order:${orderId}`);
+    else keyParts.push(`hash:${hashPayload(payload)}`);
   } else if (provider === 'senangpay-recurring') {
     const recurringId = p.recurringId as string | undefined;
     const transactionId = p.transactionId as string | undefined;
@@ -111,6 +117,10 @@ export function generateIdempotencyKey(
     if (msg) keyParts.push(`msg:${msg}`);
     if (action) keyParts.push(`action:${action}`);
     if (type) keyParts.push(`type:${type}`);
+    // If no identifiers found, use payload hash
+    if (keyParts.length === 1) {
+      keyParts.push(`hash:${hashPayload(payload)}`);
+    }
   }
 
   return keyParts.join('|');

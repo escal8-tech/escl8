@@ -32,7 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [refreshTimer, setRefreshTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
   // Use ref to avoid stale closure in scheduleTokenRefresh
-  const refreshAccessTokenRef = useRef<() => Promise<void> | null>(null)
+  const refreshAccessTokenRef = useRef<(() => Promise<void>) | null>(null)
 
   // Clear refresh timer on unmount
   useEffect(() => {
@@ -94,9 +94,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Token exchange failed')
       }
       
-      // Fetch verified payload using the cookie session
+      // Fetch verified payload using the cookie session + Authorization header
       const verifyResponse = await fetch('/api/auth/token', {
         method: 'GET',
+        headers: { authorization: `Bearer ${accessToken}` },
         credentials: 'include',
       })
       if (!verifyResponse.ok) {
@@ -121,6 +122,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [scheduleTokenRefresh])
 
+  const signOut = useCallback(async () => {
+    if (refreshTimer) clearTimeout(refreshTimer)
+    
+    // Invalidate tokens server-side (blacklists tokens and clears cookies)
+    try {
+      await fetch('/api/auth/token', {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+    } catch (err) {
+      console.error('Server sign-out failed:', err)
+      // Continue with local cleanup even if server call fails
+    }
+    
+    tokenHandler.clearTokens()
+    setIsAuthenticated(false)
+    setFirebaseUser(null)
+    setAccessToken(null)
+    setPayload(null)
+    setSubscription(null)
+    setError(null)
+  }, [refreshTimer])
+
+  // Add signOut to deps for refreshAccessToken - signOut is now declared above
   const refreshAccessToken = useCallback(async () => {
     const refreshToken = tokenHandler.getRefreshToken()
     if (!refreshToken) {
@@ -147,30 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Token refresh failed:', err)
       await signOut()
     }
-  }, [scheduleTokenRefresh])
-
-  const signOut = useCallback(async () => {
-    if (refreshTimer) clearTimeout(refreshTimer)
-    
-    // Invalidate tokens server-side (blacklists tokens and clears cookies)
-    try {
-      await fetch('/api/auth/token', {
-        method: 'DELETE',
-        credentials: 'include',
-      })
-    } catch (err) {
-      console.error('Server sign-out failed:', err)
-      // Continue with local cleanup even if server call fails
-    }
-    
-    tokenHandler.clearTokens()
-    setIsAuthenticated(false)
-    setFirebaseUser(null)
-    setAccessToken(null)
-    setPayload(null)
-    setSubscription(null)
-    setError(null)
-  }, [refreshTimer])
+  }, [scheduleTokenRefresh, signOut])
 
   const updateSubscription = useCallback((sub: SubscriptionClaims | null) => {
     setSubscription(sub)

@@ -31,7 +31,7 @@ export async function checkIdempotencyKey(
   const client = await getRedisClient();
   if (!client) return { exists: false }; // Fail-open if no Redis
 
-  const key = `${REDIS_KEYS.RATE_LIMIT}${options.keyPrefix || 'idemp'}:${idempotencyKey}`;
+  const key = `${REDIS_KEYS.IDEMPOTENCY}${options.keyPrefix || 'idemp'}:${idempotencyKey}`;
   
   try {
     const existing = await getCached<{ status: string; result?: unknown }>(key);
@@ -66,14 +66,14 @@ export async function storeIdempotencyResult(
   const client = await getRedisClient();
   if (!client) return; // Fail silently if no Redis
 
-  const key = `${REDIS_KEYS.RATE_LIMIT}${options.keyPrefix || 'idemp'}:${idempotencyKey}`;
+  const key = `${REDIS_KEYS.IDEMPOTENCY}${options.keyPrefix || 'idemp'}:${idempotencyKey}`;
   const ttl = options.ttlSeconds || IDEMPOTENCY_TTL;
   
   try {
     await setCached(key, { 
       status: 'completed', 
       completedAt: Date.now(),
-      result 
+      result
     }, options.ttlSeconds || IDEMPOTENCY_TTL);
   } catch (err) {
     console.error('Failed to store idempotency result:', err);
@@ -91,7 +91,7 @@ export async function markIdempotencyFailed(
   const client = await getRedisClient();
   if (!client) return;
 
-  const key = `${REDIS_KEYS.RATE_LIMIT}${options.keyPrefix || 'idemp'}:${idempotencyKey}`;
+  const key = `${REDIS_KEYS.IDEMPOTENCY}${options.keyPrefix || 'idemp'}:${idempotencyKey}`;
   
   try {
     await setCached(key, { 

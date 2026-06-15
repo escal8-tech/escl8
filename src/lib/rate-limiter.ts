@@ -1,6 +1,9 @@
 /**
  * Rate Limiter Utility
- * In-memory store for development. Replace with Redis in production.
+ * In-memory rate limiter for single-instance deployments or local development.
+ * For distributed deployments, use checkRateLimit from `@/lib/redis` instead.
+ * This implementation is used by createRateLimitMiddleware for Next.js API routes
+ * where simplicity is preferred over distributed consistency.
  */
 import { NextResponse } from 'next/server';
 

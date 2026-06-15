@@ -85,7 +85,7 @@ export interface Escal8JWTPayload {
   sub: string
   email: string
   suiteTenantId: string
-  subscription: SubscriptionClaims
+  subscription?: SubscriptionClaims
   type: 'access' | 'refresh'
   exp: number
   iat: number
@@ -136,9 +136,9 @@ export function isAccessTokenValid(): boolean {
 /**
  * Get subscription claims from current token
  */
-export function getSubscriptionFromToken(): any {
+export function getSubscriptionFromToken(): SubscriptionClaims | null {
   const token = tokenHandler.getAccessToken()
   if (!token) return null
   
-  return decodeJwtPayload(token)?.subscription || null
+  return decodeJwtPayload(token)?.subscription ?? null
 }

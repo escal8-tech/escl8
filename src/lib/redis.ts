@@ -91,6 +91,10 @@ export const REDIS_KEYS = {
   RATE_LIMIT: 'ratelimit:',              // Rate limit counters
   RATE_LIMIT_TTL: 60,                    // 1 minute window
   
+  // Idempotency keys (for mutation deduplication)
+  IDEMPOTENCY: 'idempotency:',           // Idempotency keys
+  IDEMPOTENCY_TTL: 86400,               // 24 hours
+  
   // JWT token blacklist (for logout/revocation)
   TOKEN_BLACKLIST: 'token:blacklist:',   // Revoked tokens
   TOKEN_BLACKLIST_TTL: 604800,           // 7 days (match refresh token TTL)
@@ -235,7 +239,9 @@ export async function checkRateLimit(
     // results[1] is the zCard result
     const currentCount = Number(results[1]) || 0;
     
-    const allowed = currentCount <= limit;
+    // Use < instead of <= because zCard returns count BEFORE current request is added by zAdd
+    // This prevents exceeding the limit by 1 request per window
+    const allowed = currentCount < limit;
     const remaining = Math.max(0, limit - currentCount);
     const resetAt = now + windowMs;
     
