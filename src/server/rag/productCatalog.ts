@@ -222,6 +222,9 @@ export async function replaceInventoryProductsForRows(params: {
     // ============================================================
     const now = new Date();
 
+    // Track duplicate sourceRowKeys within this batch (for rows with identical product identity)
+    const sourceRowKeyCounts = new Map<string, number>();
+
     for (const row of rows) {
       const derived = deriveInventoryProductFromFields(row.fields || {}, stockSettings);
       const name = normalizeText(derived.name);
@@ -232,7 +235,9 @@ export async function replaceInventoryProductsForRows(params: {
         row,
         stockSettings,
       });
-      const sourceRowKey = sourceRowKeyBase;
+      const duplicateIndex = (sourceRowKeyCounts.get(sourceRowKeyBase) ?? 0) + 1;
+      sourceRowKeyCounts.set(sourceRowKeyBase, duplicateIndex);
+      const sourceRowKey = duplicateIndex === 1 ? sourceRowKeyBase : `${sourceRowKeyBase}:${duplicateIndex}`;
       const legacyKey = legacySourceRowKey({ source: params.source, sheetName: row.sheetName, rowNumber: row.rowNumber });
       const itemCodeKey = normalizeIdentity(derived.itemCode);
 
