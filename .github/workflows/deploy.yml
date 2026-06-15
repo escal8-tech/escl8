@@ -273,7 +273,8 @@ jobs:
               NEXT_PUBLIC_SENTRY_RELEASE="${{ steps.image.outputs.tag }}" \
               NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE=1 \
               NEXT_PUBLIC_SENTRY_ENABLE_LOGS=true \
-              NEXT_PUBLIC_GRAFANA_BROWSER_LOGS_ENABLED=false
+              NEXT_PUBLIC_GRAFANA_BROWSER_LOGS_ENABLED=false \
+              JWT_SECRET=secretref:jwt-secret
 
       - name: Deploy Worker Container App (RAG worker)
         shell: bash
