@@ -7,6 +7,7 @@ import {
   refreshAccessToken,
   validateAuthToken 
 } from '@/lib/jwt-auth';
+import { SuiteProductModule } from '@/server/control/access';
 import { rateLimiter, RATE_LIMITS } from '@/lib/rate-limiter';
 import { setAuthCookies, clearAuthCookies, blacklistToken } from '@/lib/auth-cookies';
 
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate module to a known value to prevent invalid values from bypassing TS checks
-    const module: 'agent' | 'reservation' = rawModule === 'reservation' ? 'reservation' : 'agent';
+    const selectedModule: SuiteProductModule = rawModule === 'reservation' ? 'reservation' : 'agent';
 
     // Verify Firebase ID token
     let decoded;
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate token pair
-    const tokens = await generateTokenPair(firebaseUid, email, suiteTenantId, module);
+    const tokens = await generateTokenPair(firebaseUid, email, suiteTenantId, selectedModule);
 
     // Return response with httpOnly cookies set
     const response = NextResponse.json({ 
