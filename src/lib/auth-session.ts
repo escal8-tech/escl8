@@ -25,7 +25,8 @@ export async function getSuiteTenantIdFromRequest(request: Request): Promise<str
       FROM suite_tenants st
       JOIN suite_memberships sm ON sm.suite_tenant_id = st.id
       JOIN suite_users su ON su.id = sm.suite_user_id
-      WHERE su.firebase_uid = $1 AND sm.status = 'active'
+      WHERE su.firebase_uid = $1 AND sm.is_active = true
+      ORDER BY sm.created_at ASC, st.id ASC
       LIMIT 1
       `,
       [firebaseUid]
@@ -48,7 +49,8 @@ export async function getSuiteTenantIdFromFirebaseUid(firebaseUid: string): Prom
     FROM suite_tenants st
     JOIN suite_memberships sm ON sm.suite_tenant_id = st.id
     JOIN suite_users su ON su.id = sm.suite_user_id
-    WHERE su.firebase_uid = $1 AND sm.status = 'active'
+    WHERE su.firebase_uid = $1 AND sm.is_active = true
+    ORDER BY sm.created_at ASC, st.id ASC
     LIMIT 1
     `,
     [firebaseUid]

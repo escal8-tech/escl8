@@ -37,6 +37,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/billing/senangpay') ||
+    pathname.startsWith('/api/monitoring') ||
     pathname.startsWith('/widget') || // public widget
     pathname === '/' ||
     pathname === '/pricing' ||

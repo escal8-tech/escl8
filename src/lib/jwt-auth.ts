@@ -3,9 +3,19 @@ import {getTenantModuleAccess, type TenantModuleAccess, type SuiteProductModule}
 import {getRedisClient, existsCached, setCached} from '@/lib/redis';
 import {REDIS_KEYS} from '@/lib/redis';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'dev-secret-change-in-production-min-32-chars!!'
-);
+function getJwtSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET environment variable is required in production');
+    }
+    console.warn('[jwt-auth] Using development JWT secret - do not use in production');
+    return new TextEncoder().encode('dev-secret-change-in-production-min-32-chars!!');
+  }
+  return new TextEncoder().encode(secret);
+}
+
+const JWT_SECRET = getJwtSecret();
 const JWT_ISSUER = 'escal8';
 const JWT_AUDIENCE = 'escal8-apps';
 const ACCESS_TOKEN_TTL = '15m'; // 15 minutes

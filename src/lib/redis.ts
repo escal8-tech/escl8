@@ -2,7 +2,7 @@ import { createClient, RedisClientType } from 'redis';
 
 // Redis configuration from environment/secrets
 function getRedisConfig() {
-  const host = process.env.REDIS_HOST || process.env.REDIS_HOST_NAME || process.env.REDIS_HOST_NAME;
+  const host = process.env.REDIS_HOST || process.env.REDIS_HOST_NAME;
   const port = parseInt(process.env.REDIS_PORT || process.env.REDIS_PORT_NUMBER || '6380', 10);
   const password = process.env.REDIS_PASSWORD || process.env.REDIS_PRIMARY_KEY || process.env.REDIS_KEY;
 
@@ -153,30 +153,38 @@ export async function existsCached(key: string): Promise<boolean> {
 }
 
 // Distributed lock implementation
-export async function acquireLock(lockKey: string, ttlSeconds: number = 30): Promise<boolean> {
+/**
+ * Acquire a distributed lock atomically using SET NX EX.
+ * Returns a unique lock value on success (pass it to releaseLock), or null on failure.
+ */
+export async function acquireLock(lockKey: string, ttlSeconds: number = 30): Promise<string | null> {
   const client = await getRedisClient();
-  if (!client) return false;
-  
+  if (!client) return null;
+
+  const lockValue = `${Date.now()}:${Math.random().toString(36).slice(2)}`;
   try {
-    const result = await client.setNX(lockKey, Date.now().toString());
-    if (result) {
-      await client.expire(lockKey, ttlSeconds);
-      return true;
-    }
-    return false;
+    // Atomic: only set if not exists, with TTL applied in the same call (no deadlock window)
+    const result = await client.set(lockKey, lockValue, { NX: true, EX: ttlSeconds });
+    return result === 'OK' ? lockValue : null;
   } catch (err) {
     console.error('Redis LOCK error:', err);
-    return false;
+    return null;
   }
 }
 
-export async function releaseLock(lockKey: string): Promise<boolean> {
+/**
+ * Release a distributed lock only if the caller still owns it (matches lockValue
+ * returned by acquireLock). Prevents releasing another client's re-acquired lock.
+ */
+export async function releaseLock(lockKey: string, lockValue: string): Promise<boolean> {
   const client = await getRedisClient();
   if (!client) return false;
-  
+
   try {
-    await client.del(lockKey);
-    return true;
+    // Atomic check-and-delete via Lua script - avoids GET/DEL race
+    const script = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`;
+    const result = (await client.eval(script, { keys: [lockKey], arguments: [lockValue] })) as number | string;
+    return Number(result) === 1;
   } catch (err) {
     console.error('Redis UNLOCK error:', err);
     return false;

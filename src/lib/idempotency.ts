@@ -123,11 +123,20 @@ export function withIdempotency<T extends { idempotencyKey?: string }>(
     const { exists, result } = await checkIdempotencyKey(idempotencyKey, options);
     
     if (exists) {
-      console.log(`[idempotency] Duplicate request ignored: ${idempotencyKey}`);
-      return { 
-        success: true, 
-        data: result, 
-        duplicate: true 
+      // Distinguish in-progress conflicts from completed duplicates
+      const isInProgress = !!result && typeof result === 'object' && result !== null && 'error' in (result as Record<string, unknown>);
+      console.log(`[idempotency] Duplicate request ignored: ${idempotencyKey}${isInProgress ? ' (in-progress)' : ' (completed)'}`);
+      if (isInProgress) {
+        return {
+          success: false,
+          error: 'Request already in progress',
+          duplicate: true
+        };
+      }
+      return {
+        success: true,
+        data: result,
+        duplicate: true
       };
     }
 
