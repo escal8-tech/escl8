@@ -1,18 +1,21 @@
 import crypto from "crypto";
-import { and, eq, notInArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import {
+  businesses,
+  inventoryProductOffers,
   inventoryProductPriceOptions,
   inventoryProducts,
+  inventoryReservations,
 } from "../../../drizzle/schema";
 import type { SpreadsheetRow } from "./extractText";
 import {
   deriveInventoryProductFromFields,
   getBusinessStockSettings,
 } from "@/server/inventory/stockMapping";
+import { normalizeStockSettings, type BusinessStockSettings } from "@/lib/stock-settings";
 import { acquireInventoryBusinessLock } from "@/server/inventory/locks";
 import {
-  archiveCommerceProductsMissingFromInventoryScope,
   upsertCommerceProductFromInventory,
 } from "@/server/commerce/inventoryBridge";
 
@@ -107,23 +110,6 @@ function searchTextForRow(row: SpreadsheetRow): string {
     .trim();
 }
 
-function addUniqueMap<T>(map: Map<string, T | null>, key: string, value: T) {
-  if (!key) return;
-  if (!map.has(key)) {
-    map.set(key, value);
-    return;
-  }
-  if (map.get(key) !== value) {
-    map.set(key, null);
-  }
-}
-
-function firstUnused<T extends { id: string }>(map: Map<string, T | null>, key: string, usedIds: Set<string>): T | null {
-  const row = map.get(key);
-  if (!row || usedIds.has(row.id)) return null;
-  return row;
-}
-
 export async function replaceInventoryProductsForRows(params: {
   businessId: string;
   trainingDocumentId?: string | null;
@@ -139,42 +125,102 @@ export async function replaceInventoryProductsForRows(params: {
   await db.transaction(async (tx) => {
     await acquireInventoryBusinessLock(tx, params.businessId);
 
-    const scopeWhere = eq(inventoryProducts.businessId, params.businessId);
-
-    const existingProducts = await tx
-      .select()
+    // ============================================================
+    // COMPLETE WIPE: Delete ALL old inventory data for this business
+    // This is a weekly stock refresh system - no merging, no archiving
+    // ============================================================
+    
+    // 1. Get all existing inventory product IDs for this business (to clean up commerce)
+    const existingProductIds = await tx
+      .select({ id: inventoryProducts.id })
       .from(inventoryProducts)
-      .where(scopeWhere);
+      .where(eq(inventoryProducts.businessId, params.businessId));
+    const existingIds = existingProductIds.map(p => p.id);
 
-    const existingBySourceRowKey = new Map<string, (typeof existingProducts)[number] | null>();
-    const existingByItemCode = new Map<string, (typeof existingProducts)[number] | null>();
-    const existingByIdentity = new Map<string, (typeof existingProducts)[number] | null>();
-    const existingByLegacySourceRowKey = new Map<string, (typeof existingProducts)[number] | null>();
-
-    for (const product of existingProducts) {
-      const rawFields = product.rawFields && typeof product.rawFields === "object" ? product.rawFields as Record<string, string> : {};
-      const derived = deriveInventoryProductFromFields(rawFields, stockSettings);
-      const itemCode = normalizeIdentity(derived.itemCode || product.itemCode);
-      const identityKey = productIdentityBaseKey({
-        itemCode: derived.itemCode || product.itemCode,
-        name: derived.name || product.name,
-        specification: derived.specification || product.specification,
-        description: derived.description || product.description,
-        model: derived.model || product.model,
-      });
-      addUniqueMap(existingBySourceRowKey, product.sourceRowKey, product);
-      addUniqueMap(existingByItemCode, itemCode, product);
-      addUniqueMap(existingByIdentity, identityKey, product);
-      addUniqueMap(existingByLegacySourceRowKey, legacySourceRowKey({
-        source: params.source,
-        sheetName: product.sourceSheet || "",
-        rowNumber: product.sourceRowNumber,
-      }), product);
+    // 2. Delete price options for all existing products
+    if (existingIds.length > 0) {
+      await tx
+        .delete(inventoryProductPriceOptions)
+        .where(inArray(inventoryProductPriceOptions.productId, existingIds));
     }
 
-    const sourceRowKeyCounts = new Map<string, number>();
-    const usedProductIds = new Set<string>();
-    const activeProductIds = new Set<string>();
+    // 3. Delete ALL inventory products for this business (hard delete, not archive)
+    await tx
+      .delete(inventoryProducts)
+      .where(eq(inventoryProducts.businessId, params.businessId));
+
+    // 3b. Explicitly delete inventory offers and reservations for this business
+    // (cascade from inventoryProducts should handle this, but explicit is safer)
+    await tx
+      .delete(inventoryProductOffers)
+      .where(eq(inventoryProductOffers.businessId, params.businessId));
+    await tx
+      .delete(inventoryReservations)
+      .where(eq(inventoryReservations.businessId, params.businessId));
+
+    // 4. Delete ALL commerce products that came from inventory bridge for this business
+    if (existingIds.length > 0) {
+      await tx.execute(sql`
+        DELETE FROM commerce_products
+        WHERE business_id = ${params.businessId}
+          AND metadata->>'bridge' = 'inventory'
+      `);
+      
+      // 5. Delete commerce stock balances for these products
+      await tx.execute(sql`
+        DELETE FROM commerce_stock_balances
+        WHERE business_id = ${params.businessId}
+      `);
+      
+      // 6. Delete commerce stock movements for these products
+      await tx.execute(sql`
+        DELETE FROM commerce_stock_movements
+        WHERE business_id = ${params.businessId}
+      `);
+
+      // 7. Delete commerce product prices for these products
+      await tx.execute(sql`
+        DELETE FROM commerce_product_prices
+        WHERE business_id = ${params.businessId}
+      `);
+    }
+
+    // 8. CLEAR saved column mappings in businesses.settings
+    // When a new inventory document is uploaded, old mappings are wiped
+    const [biz] = await tx
+      .select({ settings: businesses.settings })
+      .from(businesses)
+      .where(eq(businesses.id, params.businessId))
+      .limit(1);
+    
+    if (biz) {
+      const currentSettings = biz.settings as Record<string, unknown> || {};
+      const nextSettings = {
+        ...currentSettings,
+        stock: {
+          schemaVersion: 1,
+          columnMapping: [],
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      await tx
+        .update(businesses)
+        .set({ settings: nextSettings, updatedAt: new Date() })
+        .where(eq(businesses.id, params.businessId));
+      
+      // Also update commerce settings to clear column mapping
+      await tx.execute(sql`
+        UPDATE commerce_settings
+        SET column_mapping = '[]'::jsonb,
+            updated_at = now()
+        WHERE business_id = ${params.businessId}
+      `);
+    }
+
+    // ============================================================
+    // INSERT FRESH: Insert new products from the new document
+    // ============================================================
+    const now = new Date();
 
     for (const row of rows) {
       const derived = deriveInventoryProductFromFields(row.fields || {}, stockSettings);
@@ -186,25 +232,9 @@ export async function replaceInventoryProductsForRows(params: {
         row,
         stockSettings,
       });
-      const duplicateIndex = (sourceRowKeyCounts.get(sourceRowKeyBase) ?? 0) + 1;
-      sourceRowKeyCounts.set(sourceRowKeyBase, duplicateIndex);
-      const sourceRowKey = duplicateIndex === 1 ? sourceRowKeyBase : `${sourceRowKeyBase}:${duplicateIndex}`;
+      const sourceRowKey = sourceRowKeyBase;
       const legacyKey = legacySourceRowKey({ source: params.source, sheetName: row.sheetName, rowNumber: row.rowNumber });
       const itemCodeKey = normalizeIdentity(derived.itemCode);
-      const identityKey = productIdentityBaseKey({
-        itemCode: derived.itemCode,
-        name,
-        specification: derived.specification,
-        description: derived.description,
-        model: derived.model,
-      });
-      const now = new Date();
-
-      const existing =
-        firstUnused(existingBySourceRowKey, sourceRowKey, usedProductIds)
-        || firstUnused(existingByItemCode, itemCodeKey, usedProductIds)
-        || firstUnused(existingByIdentity, identityKey, usedProductIds)
-        || firstUnused(existingByLegacySourceRowKey, legacyKey, usedProductIds);
 
       const productValues = {
         trainingDocumentId: params.trainingDocumentId || null,
@@ -233,30 +263,19 @@ export async function replaceInventoryProductsForRows(params: {
         updatedAt: now,
       };
 
-      const [product] = existing
-        ? await tx
-            .update(inventoryProducts)
-            .set(productValues)
-            .where(eq(inventoryProducts.id, existing.id))
-            .returning()
-        : await tx
-            .insert(inventoryProducts)
-            .values({
-              businessId: params.businessId,
-              ...productValues,
-              createdAt: now,
-            })
-            .returning();
+      const [product] = await tx
+        .insert(inventoryProducts)
+        .values({
+          businessId: params.businessId,
+          ...productValues,
+          createdAt: now,
+        })
+        .returning();
 
       if (!product) continue;
-      usedProductIds.add(product.id);
-      activeProductIds.add(product.id);
       refs.set(sourceRowKey, { productId: product.id, sourceRowKey });
 
-      await tx
-        .delete(inventoryProductPriceOptions)
-        .where(eq(inventoryProductPriceOptions.productId, product.id));
-
+      // Insert price options
       for (const field of derived.priceFields) {
         await tx.insert(inventoryProductPriceOptions).values({
           businessId: params.businessId,
@@ -272,6 +291,7 @@ export async function replaceInventoryProductsForRows(params: {
         });
       }
 
+      // Upsert commerce product from inventory
       await upsertCommerceProductFromInventory(tx, {
         businessId: params.businessId,
         productId: product.id,
@@ -288,22 +308,7 @@ export async function replaceInventoryProductsForRows(params: {
       });
     }
 
-    const activeIds = Array.from(activeProductIds);
-    if (activeIds.length === 0) {
-      console.warn(
-        `[rag:inventory] skipped archive for businessId=${params.businessId} source=${params.source} because no valid inventory products were derived from ${rows.length} structured rows`,
-      );
-      return;
-    }
-    await tx
-      .update(inventoryProducts)
-      .set({ status: "archived", updatedAt: new Date() })
-      .where(and(scopeWhere, notInArray(inventoryProducts.id, activeIds)));
-    await archiveCommerceProductsMissingFromInventoryScope(tx, {
-      businessId: params.businessId,
-      activeProductIds: activeIds,
-      inventoryBridgeOnly: true,
-    });
+    console.log(`[rag:inventory] Complete refresh: deleted ${existingIds.length} old products, inserted ${refs.size} new products for businessId=${params.businessId}`);
   });
 
   return refs;
