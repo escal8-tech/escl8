@@ -68,6 +68,13 @@ function cleanText(value: unknown, limit = 500): string {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, limit);
 }
 
+function sanitizePdfText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[\u2066-\u2069\u200E\u200F]/g, "") // Remove directional formatting chars
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function escapeHtml(value: string): string {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -314,8 +321,8 @@ async function buildOrderInvoicePdf(input: {
         height: logoHeight,
       });
     }
-    page.drawText(customization.businessName, { x: brandTextX, y: height - 70, size: logo ? 22 : 20, font: fontBold, color: text });
-    const contact = [customization.address, customization.phone, customization.email, customization.website].filter(Boolean).join(" | ");
+    page.drawText(sanitizePdfText(customization.businessName), { x: brandTextX, y: height - 70, size: logo ? 22 : 20, font: fontBold, color: text });
+    const contact = [sanitizePdfText(customization.address), sanitizePdfText(customization.phone), sanitizePdfText(customization.email), sanitizePdfText(customization.website)].filter(Boolean).join(" | ");
     if (contact) {
       drawWrappedText({ page, text: contact, x: brandTextX, y: height - 91, maxWidth: logo ? 270 : 300, font, size: 8.5, color: muted, maxLines: 2 });
     }
@@ -334,8 +341,8 @@ async function buildOrderInvoicePdf(input: {
     const width = page.getWidth();
     page.drawRectangle({ x: 0, y: 28, width, height: 52, color: primary });
     page.drawRectangle({ x: width * 0.72, y: 28, width: width * 0.28, height: 52, color: secondary });
-    page.drawText(customization.businessName, { x: 36, y: 59, size: 9, font: fontBold, color: rgb(1, 1, 1) });
-    page.drawText(customization.footerNote.slice(0, 96), { x: 36, y: 43, size: 7.5, font, color: rgb(1, 1, 1) });
+    page.drawText(sanitizePdfText(customization.businessName), { x: 36, y: 59, size: 9, font: fontBold, color: rgb(1, 1, 1) });
+    page.drawText(sanitizePdfText(customization.footerNote).slice(0, 96), { x: 36, y: 43, size: 7.5, font, color: rgb(1, 1, 1) });
   }
 
   function ensureSpace(minY = 118) {
@@ -347,11 +354,11 @@ async function buildOrderInvoicePdf(input: {
 
   drawHeader();
   const width = page.getWidth();
-  const customer = cleanText(input.order.recipientName || input.order.customerName || "WhatsApp Customer", 120) || "WhatsApp Customer";
-  const customerContact = cleanText(input.order.recipientPhone || input.order.customerPhone || input.order.customerEmail, 160);
-  const deliveryArea = cleanText(input.order.deliveryArea, 180);
-  const shippingAddress = cleanText(input.order.shippingAddress, 500);
-  const deliveryNotes = cleanText(input.order.deliveryNotes, 500);
+  const customer = sanitizePdfText(input.order.recipientName || input.order.customerName || "WhatsApp Customer") || "WhatsApp Customer";
+  const customerContact = sanitizePdfText(input.order.recipientPhone || input.order.customerPhone || input.order.customerEmail);
+  const deliveryArea = sanitizePdfText(input.order.deliveryArea);
+  const shippingAddress = sanitizePdfText(input.order.shippingAddress);
+  const deliveryNotes = sanitizePdfText(input.order.deliveryNotes);
   const fulfillmentLines = [
     shippingAddress && shippingAddress.toLowerCase() !== "pickup" ? shippingAddress : "",
     deliveryArea && deliveryArea.toLowerCase() !== "pickup" ? deliveryArea : "",
@@ -360,8 +367,8 @@ async function buildOrderInvoicePdf(input: {
   const isPickup = shippingAddress.toLowerCase() === "pickup"
     || deliveryArea.toLowerCase() === "pickup"
     || deliveryNotes.toLowerCase().includes("[pickup]");
-  const orderRef = cleanText(input.order.id.slice(0, 8).toUpperCase(), 30);
-  const paymentRef = cleanText(input.order.paymentReference, 120) || "-";
+  const orderRef = sanitizePdfText(input.order.id.slice(0, 8).toUpperCase());
+  const paymentRef = sanitizePdfText(input.order.paymentReference) || "-";
   const trackingUrl = cleanText(input.trackingUrl, 2000);
 
   page.drawText("Invoice To", { x: 36, y, size: 9, font: fontBold, color: muted });
@@ -416,7 +423,7 @@ async function buildOrderInvoicePdf(input: {
     const unitPrice = moneyNumber(item.unitPrice);
     const lineTotal = lineItemAmount(item);
     const itemY = y;
-    const label = `${index + 1}. ${cleanText(item.item, 220)}`;
+    const label = `${index + 1}. ${sanitizePdfText(item.item)}`;
     const nextY = drawWrappedText({ page, text: label, x: 48, y: itemY, maxWidth: 290, font, size: 9.5, color: text, maxLines: 3 });
     page.drawText(String(quantity), { x: width - 210, y: itemY, size: 9, font, color: text });
     page.drawText(formatMoney(currency, unitPrice), { x: width - 166, y: itemY, size: 9, font, color: text });
