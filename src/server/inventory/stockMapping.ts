@@ -404,20 +404,11 @@ export async function rebaseInventoryFromTrainingDocument(params: {
         AND status = 'active'
         AND metadata->>'bridge' = 'inventory'
         AND metadata->>'trainingDocumentId' IS DISTINCT FROM ${params.trainingDocumentId}
+      RETURNING id
     `);
 
-    // Count archived
-    const archivedProducts = await tx
-      .select({ id: commerceProducts.id })
-      .from(commerceProducts)
-      .where(
-        and(
-          eq(commerceProducts.businessId, params.businessId),
-          eq(commerceProducts.status, "archived"),
-          sql`metadata->>'bridge' = 'inventory'`
-        )
-      );
-    deleted = archivedProducts.length;
+    // Count only the products archived by the UPDATE above (not pre-existing archives)
+    deleted = archiveResult.rows?.length ?? 0;
 
     // 2. Insert fresh products from the new training document
     const { replaceInventoryProductsForRows } = await import("../rag/productCatalog");
