@@ -1,5 +1,6 @@
 import { and, desc, eq, getTableColumns, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
+import { withStatsCache } from "@/server/lib/statsCache";
 import { orders, supportTicketTypes, supportTickets, threadMessages } from "@/../drizzle/schema";
 import { whatsappWindowState } from "@/server/services/orderWorkflowSupport";
 import { ensureDefaultTicketTypes } from "@/server/services/ticketDefaults";
@@ -179,6 +180,8 @@ export async function getTicketPerformanceForBusiness(args: {
   typeKey?: string;
   windowDays?: number;
 }) {
+  const cacheKey = `ticket:performance:${args.businessId}:${args.typeKey ?? "all"}:${args.windowDays ?? "all"}`;
+  return withStatsCache(cacheKey, 60, async () => {
   const whereChunks = [sql`${supportTickets.businessId} = ${args.businessId}`];
   if (args.typeKey) whereChunks.push(sql`${supportTickets.ticketTypeKey} = ${normalizeKey(args.typeKey)}`);
   if (args.windowDays) whereChunks.push(sql`${supportTickets.createdAt} >= now() - (${args.windowDays} * interval '1 day')`);
@@ -245,4 +248,5 @@ export async function getTicketPerformanceForBusiness(args: {
     conversionRate: closedDeals > 0 ? Number(((won / closedDeals) * 100).toFixed(1)) : 0,
     slaOnTimeRate: resolvedTotal > 0 ? Number(((resolvedOnTime / resolvedTotal) * 100).toFixed(1)) : 0,
   };
+  });
 }
