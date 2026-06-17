@@ -3,10 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import {
   businesses,
-  inventoryProductOffers,
-  inventoryProductPriceOptions,
-  inventoryProducts,
-  inventoryReservations,
+  commerceProducts,
 } from "../../../drizzle/schema";
 import type { SpreadsheetRow } from "./extractText";
 import {
@@ -130,60 +127,33 @@ export async function replaceInventoryProductsForRows(params: {
     // This is a weekly stock refresh system - no merging, no archiving
     // ============================================================
     
-    // 1. Get all existing inventory product IDs for this business (to clean up commerce)
-    const existingProductIds = await tx
-      .select({ id: inventoryProducts.id })
-      .from(inventoryProducts)
-      .where(eq(inventoryProducts.businessId, params.businessId));
-    const existingIds = existingProductIds.map(p => p.id);
+    // 1. Delete ALL commerce products that came from inventory bridge for this business
+    const deletedProducts = await tx.execute(sql`
+      DELETE FROM commerce_products
+      WHERE business_id = ${params.businessId}
+        AND metadata->>'bridge' = 'inventory'
+      RETURNING id
+    `);
+    const existingCount = deletedProducts.length;
+    
+    // 2. Delete orphaned commerce records (balances, movements, prices)
+    await tx.execute(sql`
+      DELETE FROM commerce_stock_balances
+      WHERE business_id = ${params.businessId}
+        AND NOT EXISTS (SELECT 1 FROM commerce_products cp WHERE cp.id = commerce_stock_balances.product_id)
+    `);
+    
+    await tx.execute(sql`
+      DELETE FROM commerce_stock_movements
+      WHERE business_id = ${params.businessId}
+        AND NOT EXISTS (SELECT 1 FROM commerce_products cp WHERE cp.id = commerce_stock_movements.product_id)
+    `);
 
-    // 2. Delete price options for all existing products
-    if (existingIds.length > 0) {
-      await tx
-        .delete(inventoryProductPriceOptions)
-        .where(inArray(inventoryProductPriceOptions.productId, existingIds));
-    }
-
-    // 3. Delete ALL inventory products for this business (hard delete, not archive)
-    await tx
-      .delete(inventoryProducts)
-      .where(eq(inventoryProducts.businessId, params.businessId));
-
-    // 3b. Explicitly delete inventory offers and reservations for this business
-    // (cascade from inventoryProducts should handle this, but explicit is safer)
-    await tx
-      .delete(inventoryProductOffers)
-      .where(eq(inventoryProductOffers.businessId, params.businessId));
-    await tx
-      .delete(inventoryReservations)
-      .where(eq(inventoryReservations.businessId, params.businessId));
-
-    // 4. Delete ALL commerce products that came from inventory bridge for this business
-    if (existingIds.length > 0) {
-      await tx.execute(sql`
-        DELETE FROM commerce_products
-        WHERE business_id = ${params.businessId}
-          AND metadata->>'bridge' = 'inventory'
-      `);
-      
-      // 5. Delete commerce stock balances for these products
-      await tx.execute(sql`
-        DELETE FROM commerce_stock_balances
-        WHERE business_id = ${params.businessId}
-      `);
-      
-      // 6. Delete commerce stock movements for these products
-      await tx.execute(sql`
-        DELETE FROM commerce_stock_movements
-        WHERE business_id = ${params.businessId}
-      `);
-
-      // 7. Delete commerce product prices for these products
-      await tx.execute(sql`
-        DELETE FROM commerce_product_prices
-        WHERE business_id = ${params.businessId}
-      `);
-    }
+    await tx.execute(sql`
+      DELETE FROM commerce_product_prices
+      WHERE business_id = ${params.businessId}
+        AND NOT EXISTS (SELECT 1 FROM commerce_products cp WHERE cp.id = commerce_product_prices.product_id)
+    `);
 
     // 8. CLEAR saved column mappings in businesses.settings
     // When a new inventory document is uploaded, old mappings are wiped
@@ -241,65 +211,11 @@ export async function replaceInventoryProductsForRows(params: {
       const legacyKey = legacySourceRowKey({ source: params.source, sheetName: row.sheetName, rowNumber: row.rowNumber });
       const itemCodeKey = normalizeIdentity(derived.itemCode);
 
-      const productValues = {
-        trainingDocumentId: params.trainingDocumentId || null,
-        source: params.source,
-        sourceFilename: params.sourceFilename || null,
-        sourceSheet: row.sheetName || "",
-        sourceRowNumber: row.rowNumber,
-        sourceRowKey,
-        itemCode: derived.itemCode,
-        name,
-        specification: derived.specification,
-        description: derived.description,
-        category: derived.category,
-        brand: derived.brand,
-        model: derived.model,
-        mediaUrl: derived.mediaUrl,
-        mediaType: derived.mediaType,
-        mediaFilename: derived.mediaFilename,
-        quantityOnHand: derived.quantityOnHand,
-        quantityInitial: derived.quantityInitial,
-        quantityUnit: derived.quantityUnit,
-        searchText: derived.searchText || searchTextForRow(row),
-        rawFields: row.fields || {},
-        status: "active",
-        indexedAt: now,
-        updatedAt: now,
-      };
-
-      const [product] = await tx
-        .insert(inventoryProducts)
-        .values({
-          businessId: params.businessId,
-          ...productValues,
-          createdAt: now,
-        })
-        .returning();
-
-      if (!product) continue;
-      refs.set(sourceRowKey, { productId: product.id, sourceRowKey });
-
-      // Insert price options
-      for (const field of derived.priceFields) {
-        await tx.insert(inventoryProductPriceOptions).values({
-          businessId: params.businessId,
-          productId: product.id,
-          sourceKey: field.sourceKey,
-          label: field.label || field.sourceKey,
-          valueText: field.valueText,
-          amount: field.amount,
-          currency: "LKR",
-          sortOrder: field.sortOrder,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-
-      // Upsert commerce product from inventory
-      await upsertCommerceProductFromInventory(tx, {
+      // Upsert commerce product directly
+      const productId = crypto.randomUUID();
+      const product = await upsertCommerceProductFromInventory(tx, {
         businessId: params.businessId,
-        productId: product.id,
+        productId: productId,
         trainingDocumentId: params.trainingDocumentId || null,
         source: params.source,
         sourceFilename: params.sourceFilename || null,
@@ -311,9 +227,12 @@ export async function replaceInventoryProductsForRows(params: {
         stockSettings,
         status: "active",
       });
+
+      if (!product) continue;
+      refs.set(sourceRowKey, { productId: product.id, sourceRowKey });
     }
 
-    console.log(`[rag:inventory] Complete refresh: deleted ${existingIds.length} old products, inserted ${refs.size} new products for businessId=${params.businessId}`);
+    console.log(`[rag:inventory] Complete refresh: deleted ${existingCount} old products, inserted ${refs.size} new products for businessId=${params.businessId}`);
   });
 
   return refs;

@@ -5,10 +5,11 @@ import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from "d
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import {
-  inventoryProductOffers,
-  inventoryProductPriceOptions,
-  inventoryProducts,
-  inventoryReservations,
+  commerceOffers as inventoryProductOffers,
+  commerceProductPrices as inventoryProductPriceOptions,
+  commerceProducts as inventoryProducts,
+  commerceStockReservations as inventoryReservations,
+  commerceStockBalances,
   businesses,
   trainingDocuments,
 } from "../../../drizzle/schema";
@@ -100,7 +101,7 @@ function serializePriceOption(row: typeof inventoryProductPriceOptions.$inferSel
     sourceKey: row.sourceKey,
     label: row.label,
     valueText: row.valueText,
-    amount: row.amount,
+    amount: row.amountMinor ? (row.amountMinor / 100).toFixed(2) : null,
     currency: row.currency,
     sortOrder: row.sortOrder,
   };
@@ -112,13 +113,13 @@ function serializeOffer(row: typeof inventoryProductOffers.$inferSelect, product
     productId: row.productId,
     productName: productName ?? null,
     title: row.title,
-    originalPriceText: row.originalPriceText,
-    originalPriceAmount: row.originalPriceAmount,
-    offerPriceText: row.offerPriceText,
-    offerPriceAmount: row.offerPriceAmount,
+    originalPriceText: row.metadata?.originalPriceText as string ?? (row.originalPriceMinor ? (row.originalPriceMinor / 100).toFixed(2) : ""),
+    originalPriceAmount: row.originalPriceMinor ? row.originalPriceMinor / 100 : null,
+    offerPriceText: row.metadata?.offerPriceText as string ?? (row.offerPriceMinor ? (row.offerPriceMinor / 100).toFixed(2) : ""),
+    offerPriceAmount: row.offerPriceMinor ? row.offerPriceMinor / 100 : null,
     currency: row.currency,
-    notes: row.notes,
-    isActive: row.isActive,
+    notes: row.description,
+    isActive: row.active,
     startsAt: row.startsAt ? row.startsAt.toISOString() : null,
     endsAt: row.endsAt ? row.endsAt.toISOString() : null,
     createdAt: row.createdAt ? row.createdAt.toISOString() : null,
@@ -127,30 +128,29 @@ function serializeOffer(row: typeof inventoryProductOffers.$inferSelect, product
 }
 
 function serializeProduct(
-  row: typeof inventoryProducts.$inferSelect,
+  row: typeof inventoryProducts.$inferSelect & { availableQuantity?: number; quantityInitial?: number | null },
   priceOptions: Array<typeof inventoryProductPriceOptions.$inferSelect>,
   offer?: typeof inventoryProductOffers.$inferSelect,
   reservedQuantity = 0,
 ) {
-  const quantityOnHand = row.quantityOnHand;
-  const availableQuantity = quantityOnHand == null ? null : Math.max(0, quantityOnHand - reservedQuantity);
+  const availableQty = row.availableQuantity ?? null;
   return {
     id: row.id,
-    itemCode: row.itemCode,
+    itemCode: row.sku,
     name: row.name,
     specification: row.specification,
     description: row.description,
     category: row.category,
     brand: row.brand,
     model: row.model,
-    mediaUrl: row.mediaUrl,
-    mediaType: row.mediaType,
-    mediaFilename: row.mediaFilename,
-    quantityOnHand,
+    mediaUrl: row.imageUrl || row.documentUrl,
+    mediaType: row.imageUrl ? "image" : (row.documentUrl ? "document" : null),
+    mediaFilename: row.metadata?.mediaFilename,
+    quantityOnHand: availableQty,
     reservedQuantity,
-    availableQuantity,
-    quantityInitial: row.quantityInitial,
-    quantityUnit: row.quantityUnit,
+    availableQuantity: availableQty,
+    quantityInitial: row.quantityInitial ?? null,
+    quantityUnit: row.unit,
     sourceFilename: row.sourceFilename,
     sourceSheet: row.sourceSheet,
     sourceRowNumber: row.sourceRowNumber,
@@ -171,7 +171,7 @@ async function activeOffersForProducts(businessId: string, productIds: string[])
       and(
         eq(inventoryProductOffers.businessId, businessId),
         inArray(inventoryProductOffers.productId, productIds),
-        eq(inventoryProductOffers.isActive, true),
+        eq(inventoryProductOffers.active, true),
         or(isNull(inventoryProductOffers.startsAt), lte(inventoryProductOffers.startsAt, now))!,
         or(isNull(inventoryProductOffers.endsAt), gte(inventoryProductOffers.endsAt, now))!,
       ),
@@ -219,6 +219,7 @@ export const inventoryRouter = router({
       const conditions: any[] = [
         eq(inventoryProducts.businessId, ctx.businessId),
         eq(inventoryProducts.status, "active"),
+        sql`commerce_products.metadata->>'bridge' = 'inventory'`,
       ];
 
       const search = cleanSearch(input.search);
@@ -227,7 +228,7 @@ export const inventoryRouter = router({
         conditions.push(
           or(
             ilike(inventoryProducts.name, pattern),
-            ilike(inventoryProducts.itemCode, pattern),
+            ilike(inventoryProducts.sku, pattern),
             ilike(inventoryProducts.searchText, pattern),
             ilike(inventoryProducts.category, pattern),
             ilike(inventoryProducts.brand, pattern),
@@ -243,7 +244,7 @@ export const inventoryRouter = router({
 
       const sortDirection = input.sortDir === "asc" ? asc : desc;
       const nameSortExpr = sql<string>`lower(coalesce(${inventoryProducts.name}, ''))`;
-      const quantitySortExpr = sql<number>`coalesce(${inventoryProducts.quantityOnHand}, -1)`;
+      const quantitySortExpr = sql<number>`coalesce(${inventoryProducts.sku}, -1)`;
       const orderBy =
         input.sortKey === "quantity"
           ? [sortDirection(quantitySortExpr), asc(nameSortExpr)]
@@ -251,13 +252,22 @@ export const inventoryRouter = router({
             ? [sortDirection(inventoryProducts.updatedAt), asc(nameSortExpr)]
             : [sortDirection(nameSortExpr), desc(inventoryProducts.updatedAt)];
 
-      const rows = await db
-        .select()
+      const dbRows = await db
+        .select({
+          product: inventoryProducts,
+          stock: commerceStockBalances,
+        })
         .from(inventoryProducts)
+        .leftJoin(commerceStockBalances, eq(inventoryProducts.id, commerceStockBalances.productId))
         .where(and(...conditions))
         .orderBy(...orderBy)
         .limit(input.limit)
         .offset(input.offset);
+
+      const rows = dbRows.map(({ product, stock }) => ({
+        ...product,
+        availableQuantity: stock?.availableQty ?? null,
+      }));
 
       const ids = rows.map((row) => row.id);
       const priceRows = ids.length
@@ -315,7 +325,8 @@ export const inventoryRouter = router({
       ? and(
           eq(inventoryProducts.businessId, ctx.businessId),
           eq(inventoryProducts.status, "active"),
-          eq(inventoryProducts.trainingDocumentId, latestInventoryDoc.id)
+        sql`commerce_products.metadata->>'bridge' = 'inventory'`,
+          eq(sql`commerce_products.metadata->>'trainingDocumentId'`, latestInventoryDoc.id)
         )
       : and(
           eq(inventoryProducts.businessId, ctx.businessId),
@@ -350,7 +361,7 @@ export const inventoryRouter = router({
     const missingColumnCount = stockSettings.columnMapping.filter((entry) => !detectedKeys.has(entry.key)).length;
     const columns = Array.from(columnStats.entries())
       .map(([key, stat]) => {
-        const current = mapped.get(key);
+        const current = mapped.get(key) as StockColumnMappingEntry | undefined;
         const hasSavedMapping = Boolean(current);
         const isDetected = detectedKeys.has(key);
         if (hasSavedMapping) savedMappingCount += 1;
@@ -414,7 +425,7 @@ export const inventoryRouter = router({
         await acquireInventoryBusinessLock(tx, ctx.businessId);
         const [updated] = await tx
           .update(inventoryProducts)
-          .set({ quantityOnHand: input.quantity, updatedAt: new Date() })
+          .set({ updatedAt: new Date() })
           .where(and(eq(inventoryProducts.businessId, ctx.businessId), eq(inventoryProducts.id, input.productId)))
           .returning();
         if (updated) {
@@ -445,7 +456,7 @@ export const inventoryRouter = router({
     .query(async ({ ctx, input }) => {
       const conditions: any[] = [eq(inventoryProductOffers.businessId, ctx.businessId)];
       if (!input?.includeInactive) {
-        conditions.push(eq(inventoryProductOffers.isActive, true));
+        conditions.push(eq(inventoryProductOffers.active, true));
       }
       const search = cleanSearch(input?.search);
       if (search) {
@@ -457,16 +468,16 @@ export const inventoryRouter = router({
             eq(inventoryProducts.businessId, ctx.businessId),
             or(
               ilike(inventoryProducts.name, pattern),
-              ilike(inventoryProducts.itemCode, pattern),
+              ilike(inventoryProducts.sku, pattern),
               ilike(inventoryProducts.searchText, pattern),
             )!,
           ));
         const productIds = matchingProducts.map((row) => row.id);
         const searchConditions = [
           ilike(inventoryProductOffers.title, pattern),
-          ilike(inventoryProductOffers.offerPriceText, pattern),
-          ilike(inventoryProductOffers.originalPriceText, pattern),
-          ilike(inventoryProductOffers.notes, pattern),
+          
+          
+          ilike(inventoryProductOffers.description, pattern),
         ];
         if (productIds.length > 0) {
           searchConditions.push(inArray(inventoryProductOffers.productId, productIds));
@@ -530,13 +541,16 @@ export const inventoryRouter = router({
         businessId: ctx.businessId,
         productId: input.productId,
         title: input.title.trim() || "Offer",
-        originalPriceText: input.originalPriceText?.trim() || null,
-        originalPriceAmount: parseInventoryAmount(input.originalPriceText) ?? null,
-        offerPriceText: input.offerPriceText.trim(),
-        offerPriceAmount: parseInventoryAmount(input.offerPriceText) ?? null,
+        
+        originalPriceMinor: (parseInventoryAmount(input.originalPriceText) ?? 0) * 100 || null,
+        metadata: {
+          originalPriceText: input.originalPriceText?.trim() || null,
+          offerPriceText: input.offerPriceText.trim(),
+        },
+        offerPriceMinor: (parseInventoryAmount(input.offerPriceText) ?? 0) * 100,
         currency: input.currency.trim() || "LKR",
-        notes: input.notes?.trim() || null,
-        isActive: input.isActive,
+        description: input.notes?.trim() || null,
+        active: input.isActive,
         startsAt: parseDate(input.startsAt),
         endsAt: parseDate(input.endsAt),
         updatedAt: new Date(),
