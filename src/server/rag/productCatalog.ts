@@ -134,7 +134,7 @@ export async function replaceInventoryProductsForRows(params: {
         AND metadata->>'bridge' = 'inventory'
       RETURNING id
     `);
-    const existingCount = deletedProducts.length;
+    const existingCount = deletedProducts.rows?.length ?? 0;
     
     // 2. Delete orphaned commerce records (balances, movements, prices)
     await tx.execute(sql`

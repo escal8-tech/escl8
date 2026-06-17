@@ -244,7 +244,7 @@ export const inventoryRouter = router({
 
       const sortDirection = input.sortDir === "asc" ? asc : desc;
       const nameSortExpr = sql<string>`lower(coalesce(${inventoryProducts.name}, ''))`;
-      const quantitySortExpr = sql<number>`coalesce(${inventoryProducts.sku}, -1)`;
+      const quantitySortExpr = sql<number>`coalesce(${commerceStockBalances.availableQty}, -1)`;
       const orderBy =
         input.sortKey === "quantity"
           ? [sortDirection(quantitySortExpr), asc(nameSortExpr)]
