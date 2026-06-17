@@ -538,9 +538,9 @@ export const inventoryRouter = router({
       }
 
       const parsedOriginal = input.originalPriceText ? parseInventoryAmount(input.originalPriceText) : null;
-      const originalPriceMinor = parsedOriginal != null ? Math.round(parsedOriginal * 100) : null;
+      const originalPriceMinor = parsedOriginal != null ? Math.round(Number(parsedOriginal) * 100) : null;
       const parsedOffer = parseInventoryAmount(input.offerPriceText);
-      const offerPriceMinor = parsedOffer != null ? Math.round(parsedOffer * 100) : 0;
+      const offerPriceMinor = parsedOffer != null ? Math.round(Number(parsedOffer) * 100) : 0;
 
       const values = {
         businessId: ctx.businessId,
