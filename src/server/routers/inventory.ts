@@ -128,7 +128,7 @@ function serializeOffer(row: typeof inventoryProductOffers.$inferSelect, product
 }
 
 function serializeProduct(
-  row: typeof inventoryProducts.$inferSelect & { availableQuantity?: number; quantityInitial?: number | null },
+  row: typeof inventoryProducts.$inferSelect & { availableQuantity?: number | null; quantityInitial?: number | null },
   priceOptions: Array<typeof inventoryProductPriceOptions.$inferSelect>,
   offer?: typeof inventoryProductOffers.$inferSelect,
   reservedQuantity = 0,
@@ -537,17 +537,21 @@ export const inventoryRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Item not found" });
       }
 
+      const parsedOriginal = input.originalPriceText ? parseInventoryAmount(input.originalPriceText) : null;
+      const originalPriceMinor = parsedOriginal != null ? Math.round(parsedOriginal * 100) : null;
+      const parsedOffer = parseInventoryAmount(input.offerPriceText);
+      const offerPriceMinor = parsedOffer != null ? Math.round(parsedOffer * 100) : 0;
+
       const values = {
         businessId: ctx.businessId,
         productId: input.productId,
         title: input.title.trim() || "Offer",
-        
-        originalPriceMinor: (parseInventoryAmount(input.originalPriceText) ?? 0) * 100 || null,
+        originalPriceMinor,
         metadata: {
           originalPriceText: input.originalPriceText?.trim() || null,
           offerPriceText: input.offerPriceText.trim(),
         },
-        offerPriceMinor: (parseInventoryAmount(input.offerPriceText) ?? 0) * 100,
+        offerPriceMinor,
         currency: input.currency.trim() || "LKR",
         description: input.notes?.trim() || null,
         active: input.isActive,
