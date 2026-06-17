@@ -2,8 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import {
   businesses,
-  inventoryProductPriceOptions,
-  inventoryProducts,
+  commerceProducts,
 } from "../../../drizzle/schema";
 import {
   friendlyStockColumnLabel,
@@ -300,12 +299,22 @@ export async function applyStockColumnMappingForBusiness(params: {
   const settings = params.settings ?? await getBusinessStockSettings(params.businessId);
   const rows = await db
     .select({
-      id: inventoryProducts.id,
-      rawFields: inventoryProducts.rawFields,
-      trainingDocumentId: inventoryProducts.trainingDocumentId,
+      id: commerceProducts.id,
+      rawFields: commerceProducts.rawFields,
+      trainingDocumentId: sql<string>`metadata->>'trainingDocumentId'`,
+      status: commerceProducts.status,
+      source: commerceProducts.source,
+      sourceFilename: commerceProducts.sourceFilename,
+      sourceSheet: commerceProducts.sourceSheet,
+      sourceRowNumber: commerceProducts.sourceRowNumber,
+      sourceRowKey: commerceProducts.sourceRowKey,
     })
-    .from(inventoryProducts)
-    .where(and(eq(inventoryProducts.businessId, params.businessId), eq(inventoryProducts.status, "active")));
+    .from(commerceProducts)
+    .where(and(
+      eq(commerceProducts.businessId, params.businessId), 
+      eq(commerceProducts.status, "active"),
+      sql`metadata->>'bridge' = 'inventory'`
+    ));
 
   let applied = 0;
   await db.transaction(async (tx) => {
@@ -319,62 +328,20 @@ export async function applyStockColumnMappingForBusiness(params: {
       const mapped = deriveInventoryProductFromFields(rawFields as Record<string, string>, settings);
       if (!mapped.name) continue;
 
-      const [updatedProduct] = await tx
-        .update(inventoryProducts)
-        .set({
-          itemCode: mapped.itemCode,
-          name: mapped.name,
-          specification: mapped.specification,
-          description: mapped.description,
-          category: mapped.category,
-          brand: mapped.brand,
-          model: mapped.model,
-          mediaUrl: mapped.mediaUrl,
-          mediaType: mapped.mediaType,
-          mediaFilename: mapped.mediaFilename,
-          quantityOnHand: mapped.quantityOnHand,
-          quantityInitial: mapped.quantityInitial,
-          quantityUnit: mapped.quantityUnit,
-          searchText: mapped.searchText,
-          updatedAt: new Date(),
-        })
-        .where(eq(inventoryProducts.id, row.id))
-        .returning();
-
-      await tx
-        .delete(inventoryProductPriceOptions)
-        .where(eq(inventoryProductPriceOptions.productId, row.id));
-
-      for (const field of mapped.priceFields) {
-        await tx.insert(inventoryProductPriceOptions).values({
-          businessId: params.businessId,
-          productId: row.id,
-          sourceKey: field.sourceKey,
-          label: field.label,
-          valueText: field.valueText,
-          amount: field.amount,
-          currency: "LKR",
-          sortOrder: field.sortOrder,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      }
-      if (updatedProduct) {
-        await upsertCommerceProductFromInventory(tx, {
-          businessId: params.businessId,
-          productId: updatedProduct.id,
-          trainingDocumentId: updatedProduct.trainingDocumentId,
-          source: updatedProduct.source,
-          sourceFilename: updatedProduct.sourceFilename,
-          sourceSheet: updatedProduct.sourceSheet,
-          sourceRowNumber: updatedProduct.sourceRowNumber,
-          sourceRowKey: updatedProduct.sourceRowKey,
-          derived: mapped,
-          rawFields: rawFields as Record<string, string>,
-          stockSettings: settings,
-          status: updatedProduct.status === "archived" ? "archived" : "active",
-        });
-      }
+      const updatedProduct = await upsertCommerceProductFromInventory(tx, {
+        businessId: params.businessId,
+        productId: row.id,
+        trainingDocumentId: row.trainingDocumentId,
+        source: row.source,
+        sourceFilename: row.sourceFilename,
+        sourceSheet: row.sourceSheet,
+        sourceRowNumber: row.sourceRowNumber,
+        sourceRowKey: row.sourceRowKey,
+        derived: mapped,
+        rawFields: rawFields as Record<string, string>,
+        stockSettings: settings,
+        status: row.status === "archived" ? "archived" : "active",
+      });
       applied += 1;
     }
   });
@@ -431,24 +398,17 @@ export async function rebaseInventoryFromTrainingDocument(params: {
     // 1. Archive all products NOT from this training document
     // Use raw SQL for IS DISTINCT FROM (handles null trainingDocumentId correctly)
     const archiveResult = await tx.execute(sql`
-      UPDATE inventory_products
+      UPDATE commerce_products
       SET status = 'archived', updated_at = now()
       WHERE business_id = ${params.businessId}
         AND status = 'active'
-        AND training_document_id IS DISTINCT FROM ${params.trainingDocumentId}
+        AND metadata->>'bridge' = 'inventory'
+        AND metadata->>'trainingDocumentId' IS DISTINCT FROM ${params.trainingDocumentId}
+      RETURNING id
     `);
 
-    // Count archived
-    const archivedProducts = await tx
-      .select({ id: inventoryProducts.id })
-      .from(inventoryProducts)
-      .where(
-        and(
-          eq(inventoryProducts.businessId, params.businessId),
-          eq(inventoryProducts.status, "archived"),
-        )
-      );
-    deleted = archivedProducts.length;
+    // Count only the products archived by the UPDATE above (not pre-existing archives)
+    deleted = archiveResult.rows?.length ?? 0;
 
     // 2. Insert fresh products from the new training document
     const { replaceInventoryProductsForRows } = await import("../rag/productCatalog");
