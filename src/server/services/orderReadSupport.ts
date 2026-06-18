@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import { withStatsCache } from "@/server/lib/statsCache";
-import { orderEvents, orderPayments, orders, threadMessages, whatsappIdentities } from "@/../drizzle/schema";
+import { orderEvents, orderPayments, orders, threadMessages, channelIdentities, whatsappIdentityDetails } from "@/../drizzle/schema";
 import {
   ORDER_WORKSPACE_MODES,
   buildWorkspaceConditions,
@@ -57,17 +57,19 @@ export async function listOrdersForBusiness(args: {
     if (!latestInboundByThread.has(row.threadId)) latestInboundByThread.set(row.threadId, row.createdAt);
   }
 
-  const identityIds = [...new Set(orderRows.map((row) => String(row.whatsappIdentityId || "").trim()).filter(Boolean))];
+  const identityIds = [...new Set(orderRows.map((row) => String(row.channelIdentityId || "").trim()).filter(Boolean))];
   const identityRows = identityIds.length
     ? await db
         .select({
-          phoneNumberId: whatsappIdentities.phoneNumberId,
-          displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
+          channelIdentityId: channelIdentities.id,
+          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
         })
-        .from(whatsappIdentities)
-        .where(inArray(whatsappIdentities.phoneNumberId, identityIds))
+        .from(channelIdentities)
+        .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
+        .where(inArray(channelIdentities.id, identityIds))
     : [];
-  const displayPhoneByIdentity = new Map(identityRows.map((row) => [row.phoneNumberId, row.displayPhoneNumber ?? null]));
+  const displayPhoneByIdentity = new Map(identityRows.map((row) => [row.channelIdentityId, row.displayPhoneNumber ?? null]));
 
   return {
     settings,
@@ -77,7 +79,7 @@ export async function listOrdersForBusiness(args: {
       return {
         ...row,
         latestPayment,
-        botDisplayPhoneNumber: row.whatsappIdentityId ? displayPhoneByIdentity.get(row.whatsappIdentityId) ?? null : null,
+        botDisplayPhoneNumber: row.channelIdentityId ? displayPhoneByIdentity.get(row.channelIdentityId) ?? null : null,
         ...windowState,
       };
     }),

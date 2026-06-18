@@ -27,7 +27,7 @@ interface Props {
   onPageChange: (page: number) => void;
   onSelect: (id: string) => void;
   pageInput: {
-    whatsappIdentityId?: string;
+    channelIdentityId?: string;
     limit: number;
     offset: number;
     search?: string;
@@ -35,7 +35,7 @@ interface Props {
     sortKey: "source" | "name" | "lastMessageAt";
     sortDir: "asc" | "desc";
   };
-  countsInput?: { whatsappIdentityId?: string };
+  countsInput?: { channelIdentityId?: string };
 }
 
 function SourceBadge({ source }: { source: Source }) {

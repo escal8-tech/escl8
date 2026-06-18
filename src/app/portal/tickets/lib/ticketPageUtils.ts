@@ -37,7 +37,7 @@ export type TicketRow = {
   ticketTypeKey?: string | null;
   ticketTypeId?: string | null;
   businessId?: string | null;
-  whatsappIdentityId?: string | null;
+  channelIdentityId?: string | null;
   fields?: Record<string, unknown> | null;
   createdBy?: string | null;
   resolvedAt?: Date | string | null;

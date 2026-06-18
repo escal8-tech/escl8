@@ -525,14 +525,14 @@ export async function sendPaymentDetails(ctx: any, input: { orderId: string }) {
       businessId: ctx.businessId,
       customerId: effectiveOrderRow.customerId ?? null,
       threadId: effectiveOrderRow.threadId ?? null,
-      whatsappIdentityId: effectiveOrderRow.whatsappIdentityId ?? null,
+      channelIdentityId: effectiveOrderRow.channelIdentityId ?? null,
       customerName: effectiveOrderRow.customerName ?? null,
       customerEmail: effectiveOrderRow.customerEmail ?? null,
       customerPhone: effectiveOrderRow.customerPhone ?? null,
     });
     const shouldSendViaWhatsapp = windowState.whatsappWindowOpen;
     const recipient = sanitizePhoneDigits(contactContext.approvalRecipient);
-    if (shouldSendViaWhatsapp && (!contactContext.whatsappIdentityId || !recipient)) {
+    if (shouldSendViaWhatsapp && (!contactContext.channelIdentityId || !recipient)) {
       throw new TRPCError({ code: "BAD_REQUEST", message: "This order is missing WhatsApp routing details." });
     }
     if (!shouldSendViaWhatsapp && !contactContext.customerEmail) {
@@ -567,7 +567,7 @@ export async function sendPaymentDetails(ctx: any, input: { orderId: string }) {
           entityId: effectiveOrderRow.id,
           customerId: effectiveOrderRow.customerId ?? null,
           threadId: contactContext.threadId ?? null,
-          whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
+          channelIdentityId: contactContext.channelIdentityId ?? null,
           recipient: contactContext.approvalRecipient,
           recipientSource: contactContext.recipientSource,
           whatsappIdentitySource: contactContext.whatsappIdentitySource,
@@ -606,7 +606,7 @@ export async function sendPaymentDetails(ctx: any, input: { orderId: string }) {
       emailNotification,
       deliveryChannel,
       windowState,
-      botDisplayPhoneNumber: contactContext.whatsappIdentityId,
+      botDisplayPhoneNumber: contactContext.channelIdentityId,
     };
   });
 
@@ -821,7 +821,7 @@ export async function reviewPayment(
       businessId: ctx.businessId,
       customerId: finalizedOrder.customerId ?? null,
       threadId: finalizedOrder.threadId ?? null,
-      whatsappIdentityId: finalizedOrder.whatsappIdentityId ?? null,
+      channelIdentityId: finalizedOrder.channelIdentityId ?? null,
       customerName: finalizedOrder.customerName ?? null,
       customerEmail: finalizedOrder.customerEmail ?? null,
       customerPhone: finalizedOrder.customerPhone ?? null,
@@ -849,7 +849,7 @@ export async function reviewPayment(
       }
     }
     const windowState = await getThreadWhatsappWindowState(tx, finalizedOrder.threadId);
-    const hasWhatsappRoute = Boolean(contactContext.whatsappIdentityId && sanitizePhoneDigits(contactContext.approvalRecipient));
+    const hasWhatsappRoute = Boolean(contactContext.channelIdentityId && sanitizePhoneDigits(contactContext.approvalRecipient));
     const hasEmailRoute = Boolean(contactContext.customerEmail);
     const deliveryChannel: "whatsapp" | "email" | "none" =
       input.action === "approve"
@@ -873,7 +873,7 @@ export async function reviewPayment(
           entityId: finalizedOrder.id,
           customerId: finalizedOrder.customerId ?? null,
           threadId: contactContext.threadId ?? null,
-          whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
+          channelIdentityId: contactContext.channelIdentityId ?? null,
           recipient: contactContext.approvalRecipient,
           recipientSource: contactContext.recipientSource,
           whatsappIdentitySource: contactContext.whatsappIdentitySource,
@@ -1452,7 +1452,7 @@ export async function captureManualPayment(
         orderId: orderRow.id,
         customerId: orderRow.customerId,
         threadId: orderRow.threadId,
-        whatsappIdentityId: orderRow.whatsappIdentityId,
+        channelIdentityId: orderRow.channelIdentityId,
         paymentMethod: orderRow.paymentMethod,
         status: "approved_manual",
         currency: orderRow.currency,
@@ -1495,13 +1495,13 @@ export async function captureManualPayment(
       businessId: ctx.businessId,
       customerId: currentOrder.customerId ?? null,
       threadId: currentOrder.threadId ?? null,
-      whatsappIdentityId: currentOrder.whatsappIdentityId ?? null,
+      channelIdentityId: currentOrder.channelIdentityId ?? null,
       customerName: currentOrder.customerName ?? null,
       customerEmail: currentOrder.customerEmail ?? null,
       customerPhone: currentOrder.customerPhone ?? null,
     });
     const windowState = await getThreadWhatsappWindowState(tx, currentOrder.threadId);
-    const hasWhatsappRoute = Boolean(contactContext.whatsappIdentityId && sanitizePhoneDigits(contactContext.approvalRecipient));
+    const hasWhatsappRoute = Boolean(contactContext.channelIdentityId && sanitizePhoneDigits(contactContext.approvalRecipient));
     const hasEmailRoute = Boolean(contactContext.customerEmail);
     const deliveryChannel: "whatsapp" | "email" | "none" =
       suppressCustomerNotifications
@@ -1525,7 +1525,7 @@ export async function captureManualPayment(
           entityId: currentOrder.id,
           customerId: currentOrder.customerId ?? null,
           threadId: contactContext.threadId ?? null,
-          whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
+          channelIdentityId: contactContext.channelIdentityId ?? null,
           recipient: contactContext.approvalRecipient,
           recipientSource: contactContext.recipientSource,
           whatsappIdentitySource: contactContext.whatsappIdentitySource,
@@ -1791,7 +1791,7 @@ export async function denyPendingPaymentOrder(
           orderId: orderRow.id,
           customerId: orderRow.customerId,
           threadId: orderRow.threadId,
-          whatsappIdentityId: orderRow.whatsappIdentityId,
+          channelIdentityId: orderRow.channelIdentityId,
           paymentMethod: orderRow.paymentMethod,
           status: "rejected",
           currency: orderRow.currency,
@@ -1837,13 +1837,13 @@ export async function denyPendingPaymentOrder(
       businessId: ctx.businessId,
       customerId: updatedOrder.customerId ?? null,
       threadId: updatedOrder.threadId ?? null,
-      whatsappIdentityId: updatedOrder.whatsappIdentityId ?? null,
+      channelIdentityId: updatedOrder.channelIdentityId ?? null,
       customerName: updatedOrder.customerName ?? null,
       customerEmail: updatedOrder.customerEmail ?? null,
       customerPhone: updatedOrder.customerPhone ?? null,
     });
     const windowState = await getThreadWhatsappWindowState(tx, updatedOrder.threadId);
-    const hasWhatsappRoute = Boolean(contactContext.whatsappIdentityId && sanitizePhoneDigits(contactContext.approvalRecipient));
+    const hasWhatsappRoute = Boolean(contactContext.channelIdentityId && sanitizePhoneDigits(contactContext.approvalRecipient));
     const hasEmailRoute = Boolean(contactContext.customerEmail);
     const deliveryChannel: "whatsapp" | "email" =
       windowState.whatsappWindowOpen && hasWhatsappRoute
@@ -1865,7 +1865,7 @@ export async function denyPendingPaymentOrder(
           entityId: updatedOrder.id,
           customerId: updatedOrder.customerId ?? null,
           threadId: contactContext.threadId ?? null,
-          whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
+          channelIdentityId: contactContext.channelIdentityId ?? null,
           recipient: contactContext.approvalRecipient,
           recipientSource: contactContext.recipientSource,
           whatsappIdentitySource: contactContext.whatsappIdentitySource,
@@ -2160,7 +2160,7 @@ export async function updateRefundStatus(
       businessId: ctx.businessId,
       customerId: updatedOrder.customerId ?? null,
       threadId: updatedOrder.threadId ?? null,
-      whatsappIdentityId: updatedOrder.whatsappIdentityId ?? null,
+      channelIdentityId: updatedOrder.channelIdentityId ?? null,
       customerName: updatedOrder.customerName ?? null,
       customerEmail: updatedOrder.customerEmail ?? null,
       customerPhone: updatedOrder.customerPhone ?? null,
@@ -2171,7 +2171,7 @@ export async function updateRefundStatus(
       entityId: updatedOrder.id,
       customerId: updatedOrder.customerId ?? null,
       threadId: contactContext.threadId ?? null,
-      whatsappIdentityId: contactContext.whatsappIdentityId ?? null,
+      channelIdentityId: contactContext.channelIdentityId ?? null,
       recipient: contactContext.approvalRecipient,
       recipientSource: contactContext.recipientSource,
       whatsappIdentitySource: contactContext.whatsappIdentitySource,

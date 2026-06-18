@@ -4,7 +4,7 @@ import { aiUsageEvents } from "@/../drizzle/schema";
 
 export async function recordAiUsageEvent(input: {
   businessId: string;
-  whatsappIdentityId?: string | null;
+  channelIdentityId?: string | null;
   customerId?: string | null;
   threadId?: string | null;
   eventType: string;
@@ -14,7 +14,7 @@ export async function recordAiUsageEvent(input: {
 }) {
   await db.insert(aiUsageEvents).values({
     businessId: input.businessId,
-    whatsappIdentityId: input.whatsappIdentityId ?? null,
+    channelIdentityId: input.channelIdentityId ?? null,
     customerId: input.customerId ?? null,
     threadId: input.threadId ?? null,
     eventType: input.eventType,

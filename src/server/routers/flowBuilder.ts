@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { businesses, whatsappIdentities } from "@/../drizzle/schema";
+import { businesses, channelIdentities, whatsappIdentityDetails } from "@/../drizzle/schema";
 import { cloneFlowModules, flowBuilderAgents, type FlowAgentManifest } from "@/lib/flow-builder/registry";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { db } from "../db/client";
@@ -135,14 +135,15 @@ export const flowBuilderRouter = router({
     .query(async ({ ctx, input }) => {
       const identities = await db
         .select({
-          phoneNumberId: whatsappIdentities.phoneNumberId,
-          displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
-          botType: whatsappIdentities.botType,
-          connectedAt: whatsappIdentities.connectedAt,
+          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
+          botType: channelIdentities.botType,
+          connectedAt: channelIdentities.connectedAt,
         })
-        .from(whatsappIdentities)
-        .where(and(eq(whatsappIdentities.businessId, ctx.businessId), eq(whatsappIdentities.isActive, true)))
-        .orderBy(whatsappIdentities.connectedAt);
+        .from(channelIdentities)
+        .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
+        .where(and(eq(channelIdentities.businessId, ctx.businessId), eq(channelIdentities.isActive, true), eq(channelIdentities.provider, "whatsapp")))
+        .orderBy(channelIdentities.connectedAt);
 
       if (!identities.length) {
         return {
@@ -198,15 +199,17 @@ export const flowBuilderRouter = router({
     .mutation(async ({ ctx, input }) => {
       const [identity] = await db
         .select({
-          phoneNumberId: whatsappIdentities.phoneNumberId,
-          displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
-          botType: whatsappIdentities.botType,
+          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
+          botType: channelIdentities.botType,
         })
-        .from(whatsappIdentities)
+        .from(channelIdentities)
+        .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
         .where(and(
-          eq(whatsappIdentities.businessId, ctx.businessId),
-          eq(whatsappIdentities.phoneNumberId, input.phoneNumberId),
-          eq(whatsappIdentities.isActive, true),
+          eq(channelIdentities.businessId, ctx.businessId),
+          eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
+          eq(channelIdentities.isActive, true),
+          eq(channelIdentities.provider, "whatsapp")
         ))
         .limit(1);
       if (!identity) {

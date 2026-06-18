@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/server/db/client";
-import { businesses, whatsappIdentities } from "../../../../../../drizzle/schema";
+import { businesses, channelIdentities, whatsappIdentityDetails } from "../../../../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 // decryptSecret removed — prefer plaintext storage
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
@@ -79,8 +79,9 @@ export async function POST(req: Request) {
 
     const identity = await db
       .select()
-      .from(whatsappIdentities)
-      .where(and(eq(whatsappIdentities.phoneNumberId, trimmedPhoneNumberId), eq(whatsappIdentities.businessId, user.businessId)))
+      .from(channelIdentities)
+      .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
+      .where(and(eq(whatsappIdentityDetails.phoneNumberId, trimmedPhoneNumberId), eq(channelIdentities.businessId, user.businessId)))
       .then((r) => r[0] ?? null);
 
     if (!identity) {

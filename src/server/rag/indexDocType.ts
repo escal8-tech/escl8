@@ -401,10 +401,12 @@ export async function indexSingleDocType(params: {
   filename: string;
   contentType?: string;
   trainingDocumentId?: string | null;
+  agentId?: string | null;
 }): Promise<{ chunkCount: number; sha256: string }>
 {
-  const { businessId, docType, blobPath, filename } = params;
-  console.log(`[rag:index] begin businessId=${businessId} docType=${docType} blobPath=${blobPath}`);
+  const { businessId, docType, blobPath, filename, agentId } = params;
+  const targetNamespace = agentId || businessId;
+  console.log(`[rag:index] begin businessId=${businessId} agentId=${agentId} docType=${docType} blobPath=${blobPath}`);
 
   const blob = await downloadBlobToBuffer(blobPath);
   const hash = sha256Hex(blob.buffer);
@@ -482,8 +484,8 @@ export async function indexSingleDocType(params: {
 
   const index = getPineconeIndex();
 
-  // Delete only this docType for this business namespace
-  await deleteExistingVectorsForDocType({ index, namespace: businessId, docType });
+  // Delete only this docType for this agent namespace
+  await deleteExistingVectorsForDocType({ index, namespace: targetNamespace, docType });
 
   const batchSize = Number(process.env.RAG_EMBED_BATCH_SIZE || 64);
   let upserted = 0;
@@ -516,6 +518,7 @@ export async function indexSingleDocType(params: {
         values,
         metadata: {
           businessId,
+          agentId: agentId || businessId,
           docType,
           chunkType: chunk.chunkType,                        // Chunk classification (pricing, policy, faq, etc.)
           headingContext: truncate(chunk.headingContext, 200),
@@ -551,7 +554,7 @@ export async function indexSingleDocType(params: {
       };
     });
 
-    await index.namespace(businessId).upsert(records);
+    await index.namespace(targetNamespace).upsert(records);
     upserted += records.length;
     console.log(`[rag:index] pinecone upserted=${upserted}/${smartChunks.length}`);
   }

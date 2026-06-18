@@ -251,106 +251,109 @@ export const businessUserInvites = pgTable(
   }),
 );
 
-/**
- * WHATSAPP IDENTITIES = strict routing table for Option A.
- *
- * Hard rule: phoneNumberId is unique (PK) => routing can never be ambiguous.
- * Rules you requested:
- * - 1 phoneNumberId => 1 businessId (strict)
- * - a business can have many phoneNumberIds
- * - many users belong to the business and share the dashboard
- *
- * IMPORTANT: we do NOT bind the identity to a single user.
- * If you want audit ("who connected it"), use connectedByUserId (nullable).
- */
-export const whatsappIdentities = pgTable(
-  "whatsapp_identities",
+export const agents = pgTable(
+  "agents",
   {
-    // Meta WhatsApp Cloud API phone number id (routing key from webhook metadata)
-    phoneNumberId: text("phone_number_id").primaryKey().notNull(),
-
-    // Tenant/bot brain
+    id: text("id").primaryKey().notNull().$defaultFn(() => crypto.randomUUID()),
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    name: text("name").notNull().default("Default Agent"),
+    botType: text("bot_type").notNull().default("AGENT"), // AGENT, ORDER2, RESERVATION2, etc.
+    promptOverride: text("prompt_override"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    agentsBizIdx: index("agents_business_id_idx").on(t.businessId),
+  })
+);
 
-    // Optional audit field only (NOT ownership, NOT routing)
-    connectedByUserId: text("connected_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-      onUpdate: "cascade",
-    }),
+export type AgentRow = typeof agents.$inferSelect;
+export type NewAgent = typeof agents.$inferInsert;
 
-    // Which bot type this number is connected to (default to AGENT for existing rows).
-    botType: text("bot_type").notNull().default("AGENT"),
+/**
+ * CHANNEL IDENTITIES = Unified routing table for all channels (WhatsApp, Instagram, etc.).
+ */
+export const channelIdentities = pgTable(
+  "channel_identities",
+  {
+    id: text("id").primaryKey().notNull().$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    provider: text("provider").notNull(), // whatsapp, instagram, facebook, telegram
+    externalAccountId: text("external_account_id").notNull(), // phone_number_id, instagram_business_account_id
+    displayName: text("display_name"),
+    displayHandle: text("display_handle"),
+    
+    agentId: text("agent_id").references(() => agents.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    status: text("status").notNull().default("connected"),
+    isActive: boolean("is_active").notNull().default(true),
 
-    // Optional debug/admin fields
-    wabaId: text("waba_id"),
-    displayPhoneNumber: text("display_phone_number"),
+    aiEnabled: boolean("ai_enabled").notNull().default(true),
     autoReplyPaused: boolean("auto_reply_paused").notNull().default(false),
-    aiDisabled: boolean("ai_disabled").notNull().default(false),
-
-    // Phone number two-step verification PIN used for /register (plaintext).
-    twoStepPin: text("two_step_pin"),
-
-    webhookSubscribedAt: timestamp("webhook_subscribed_at", { withTimezone: true }),
-    registeredAt: timestamp("registered_at", { withTimezone: true }),
-
-    // Solution Partner: credit line sharing state
-    creditLineSharedAt: timestamp("credit_line_shared_at", { withTimezone: true }),
-    creditLineAllocationConfigId: text("credit_line_allocation_config_id"),
-    wabaCurrency: text("waba_currency"),
-
-    // Credit system columns
+    
     monthlyCreditLimit: integer("monthly_credit_limit").notNull().default(0),
+    useSharedPool: boolean("use_shared_pool").notNull().default(true),
     creditBalance: integer("credit_balance").notNull().default(0),
     creditResetAt: timestamp("credit_reset_at", { withTimezone: true }),
     totalCreditsConsumed: integer("total_credits_consumed").notNull().default(0),
     totalCreditsToppedUp: integer("total_credits_topped_up").notNull().default(0),
 
-    isActive: boolean("is_active").notNull().default(true),
-    connectedAt: timestamp("connected_at", { withTimezone: true }),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+    
+    connectedByUserId: text("connected_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    connectedAt: timestamp("connected_at", { withTimezone: true }).defaultNow(),
     disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
-
+    
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // indexes for admin / audits
-    waIdentitiesBusinessIdx: index("wa_identities_business_id_idx").on(t.businessId),
-    waIdentitiesActiveIdx: index("wa_identities_is_active_idx").on(t.isActive),
-    waIdentitiesConnectedByIdx: index("wa_identities_connected_by_user_id_idx").on(t.connectedByUserId),
+    ciBusinessIdx: index("ci_business_id_idx").on(t.businessId),
+    ciProviderIdx: index("ci_provider_idx").on(t.provider),
+    ciExternalAccIdx: index("ci_external_acc_idx").on(t.externalAccountId),
+    ciBusinessProviderExternalUx: uniqueIndex("ci_bus_prov_ext_ux").on(t.businessId, t.provider, t.externalAccountId),
+  })
+);
 
-    // Optional strict uniqueness (recommended if you store these reliably):
-    // A WABA should not appear across multiple tenants (usually true in practice).
-    waIdentitiesWabaUx: uniqueIndex("wa_identities_waba_id_ux")
-      .on(t.wabaId)
-      .where(sql`${t.wabaId} is not null`),
+export const whatsappIdentityDetails = pgTable(
+  "whatsapp_identity_details",
+  {
+    channelIdentityId: text("channel_identity_id").primaryKey().references(() => channelIdentities.id, { onDelete: "cascade" }),
+    phoneNumberId: text("phone_number_id").notNull(),
+    wabaId: text("waba_id"),
+    displayPhoneNumber: text("display_phone_number"),
+    twoStepPin: text("two_step_pin"),
+    webhookSubscribedAt: timestamp("webhook_subscribed_at", { withTimezone: true }),
+    registeredAt: timestamp("registered_at", { withTimezone: true }),
+    creditLineSharedAt: timestamp("credit_line_shared_at", { withTimezone: true }),
+    creditLineAllocationConfigId: text("credit_line_allocation_config_id"),
+    wabaCurrency: text("waba_currency"),
+  },
+  (t) => ({
+    waDetailsPhoneIdUx: uniqueIndex("wa_details_phone_id_ux").on(t.phoneNumberId),
+  })
+);
 
-    // The E.164 display number should not be reused across identities (usually true).
-    waIdentitiesDisplayPhoneUx: uniqueIndex("wa_identities_display_phone_ux")
-      .on(t.displayPhoneNumber)
-      .where(sql`${t.displayPhoneNumber} is not null`),
-
-    // strict non-empty routing ids
-    waIdentitiesPhoneNumberIdNonEmpty: check(
-      "wa_identities_phone_number_id_nonempty",
-      sql`length(btrim(${t.phoneNumberId})) > 0`,
-    ),
-    waIdentitiesBusinessIdNonEmpty: check(
-      "wa_identities_business_id_nonempty",
-      sql`length(btrim(${t.businessId})) > 0`,
-    ),
-    waIdentitiesBotTypeValid: check(
-      "wa_identities_bot_type_valid",
-      sql`${t.botType} in ('AGENT', 'CONCIERGE', 'ORDER', 'ORDER2', 'RESERVATION')`,
-    ),
-
-    // lifecycle sanity (optional): if disconnectedAt exists, isActive should typically be false
-    waIdentitiesDisconnectSanity: check(
-      "wa_identities_disconnect_sanity",
-      sql`${t.disconnectedAt} is null OR ${t.isActive} = false`,
-    ),
-  }),
+export const instagramIdentityDetails = pgTable(
+  "instagram_identity_details",
+  {
+    channelIdentityId: text("channel_identity_id").primaryKey().references(() => channelIdentities.id, { onDelete: "cascade" }),
+    instagramBusinessAccountId: text("instagram_business_account_id").notNull(),
+    username: text("username"),
+    pageId: text("page_id"),
+    accessTokenRef: text("access_token_ref"),
+    webhookSubscribedAt: timestamp("webhook_subscribed_at", { withTimezone: true }),
+  },
+  (t) => ({
+    igDetailsBusinessAccIdUx: uniqueIndex("ig_details_bus_acc_id_ux").on(t.instagramBusinessAccountId),
+  })
 );
 
 /** Relations (optional but nice) */
@@ -363,7 +366,7 @@ export const usersRelations = relations(users, ({ one }) => ({
 
 export const businessesRelations = relations(businesses, ({ many }) => ({
   users: many(users),
-  whatsappIdentities: many(whatsappIdentities),
+  channelIdentities: many(channelIdentities),
   customers: many(customers),
   messageThreads: many(messageThreads),
   requests: many(requests),
@@ -377,13 +380,26 @@ export const businessesRelations = relations(businesses, ({ many }) => ({
   inventoryProductOffers: many(inventoryProductOffers),
 }));
 
-export const whatsappIdentitiesRelations = relations(whatsappIdentities, ({ one }) => ({
+export const agentsRelations = relations(agents, ({ one, many }) => ({
   business: one(businesses, {
-    fields: [whatsappIdentities.businessId],
+    fields: [agents.businessId],
     references: [businesses.id],
   }),
+  channels: many(channelIdentities),
+  documents: many(trainingDocuments),
+}));
+
+export const channelIdentitiesRelations = relations(channelIdentities, ({ one }) => ({
+  business: one(businesses, {
+    fields: [channelIdentities.businessId],
+    references: [businesses.id],
+  }),
+  agent: one(agents, {
+    fields: [channelIdentities.agentId],
+    references: [agents.id],
+  }),
   connectedByUser: one(users, {
-    fields: [whatsappIdentities.connectedByUserId],
+    fields: [channelIdentities.connectedByUserId],
     references: [users.id],
   }),
 }));
@@ -432,7 +448,7 @@ export const customers = pgTable(
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
 
     // Which phone number / WhatsApp identity this customer contacted (nullable for non-WhatsApp sources)
-    whatsappIdentityId: text("whatsapp_identity_id"),
+    channelIdentityId: text("channel_identity_id"),
     
     // Source/channel this customer came from
     source: text("source").notNull().default("whatsapp"), // whatsapp | instagram | facebook | telegram | etc.
@@ -484,13 +500,13 @@ export const customers = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // Unique constraint: business + source + externalId + whatsappIdentityId (one customer per channel per phone number)
+    // Unique constraint: business + source + externalId + channelIdentityId (one customer per channel per phone number)
     // For WhatsApp: same person messaging 2 different business phone numbers = 2 customer rows
-    customersCompositeUx: uniqueIndex("customers_composite_ux").on(t.businessId, t.source, t.externalId, t.whatsappIdentityId),
+    customersCompositeUx: uniqueIndex("customers_composite_ux").on(t.businessId, t.source, t.externalId, t.channelIdentityId),
     
     // Fast lookups
     customersBusinessIdx: index("customers_business_id_idx").on(t.businessId),
-    customersWhatsappIdentityIdx: index("customers_whatsapp_identity_id_idx").on(t.whatsappIdentityId),
+    customersWhatsappIdentityIdx: index("customers_channel_identity_id_idx").on(t.channelIdentityId),
     customersSourceIdx: index("customers_source_idx").on(t.source),
     customersBusinessSourceIdx: index("customers_business_source_idx").on(t.businessId, t.source),
     customersExternalIdIdx: index("customers_external_id_idx").on(t.externalId),
@@ -502,9 +518,9 @@ export const customers = pgTable(
     // Soft delete filter
     customersDeletedAtIdx: index("customers_deleted_at_idx").on(t.deletedAt),
     customersWhatsappIdentityFk: foreignKey({
-      name: "customers_whatsapp_identity_fk",
-      columns: [t.whatsappIdentityId],
-      foreignColumns: [whatsappIdentities.phoneNumberId],
+      name: "customers_channel_identity_fk",
+      columns: [t.channelIdentityId],
+      foreignColumns: [channelIdentities.id],
     }).onDelete("set null").onUpdate("cascade"),
 
     // Sanity checks
@@ -548,9 +564,9 @@ export const messageThreads = pgTable(
       .references(() => customers.id, { onDelete: "cascade", onUpdate: "cascade" }),
 
     // Which phone number / WhatsApp identity this thread is for
-    whatsappIdentityId: text("whatsapp_identity_id"),
+    channelIdentityId: text("channel_identity_id"),
 
-    // one thread per (business, customer, whatsappIdentityId) - allows same customer to have threads with different phone numbers
+    // one thread per (business, customer, channelIdentityId) - allows same customer to have threads with different phone numbers
     status: text("status").notNull().default("open"),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     // Denormalized from thread_messages.direction so the thread list can show waiting customers without per-row latest-message lookups.
@@ -568,23 +584,23 @@ export const messageThreads = pgTable(
     messageThreadsBusinessCustomerIdentityUx: uniqueIndex("message_threads_business_customer_identity_ux").on(
       t.businessId,
       t.customerId,
-      t.whatsappIdentityId,
+      t.channelIdentityId,
     ),
     messageThreadsBusinessIdx: index("message_threads_business_id_idx").on(t.businessId),
     messageThreadsCustomerIdx: index("message_threads_customer_id_idx").on(t.customerId),
-    messageThreadsWhatsappIdentityIdx: index("message_threads_whatsapp_identity_id_idx").on(t.whatsappIdentityId),
+    messageThreadsWhatsappIdentityIdx: index("message_threads_channel_identity_id_idx").on(t.channelIdentityId),
     messageThreadsLastMessageIdx: index("message_threads_last_message_at_idx").on(t.lastMessageAt),
     messageThreadsBusinessActiveLastMessageIdx: index("message_threads_business_active_last_message_idx")
       .on(t.businessId, t.lastMessageAt, t.id)
       .where(sql`${t.deletedAt} is null`),
     messageThreadsBusinessIdentityActiveLastMessageIdx: index("message_threads_business_identity_active_last_message_idx")
-      .on(t.businessId, t.whatsappIdentityId, t.lastMessageAt, t.id)
+      .on(t.businessId, t.channelIdentityId, t.lastMessageAt, t.id)
       .where(sql`${t.deletedAt} is null`),
     messageThreadsDeletedAtIdx: index("message_threads_deleted_at_idx").on(t.deletedAt),
     messageThreadsWhatsappIdentityFk: foreignKey({
-      name: "message_threads_whatsapp_identity_fk",
-      columns: [t.whatsappIdentityId],
-      foreignColumns: [whatsappIdentities.phoneNumberId],
+      name: "message_threads_channel_identity_fk",
+      columns: [t.channelIdentityId],
+      foreignColumns: [channelIdentities.id],
     }).onDelete("set null").onUpdate("cascade"),
   }),
 );
@@ -638,9 +654,9 @@ export const messageThreadsRelations = relations(messageThreads, ({ one, many })
     fields: [messageThreads.customerId],
     references: [customers.id],
   }),
-  whatsappIdentity: one(whatsappIdentities, {
-    fields: [messageThreads.whatsappIdentityId],
-    references: [whatsappIdentities.phoneNumberId],
+  channelIdentity: one(channelIdentities, {
+    fields: [messageThreads.channelIdentityId],
+    references: [channelIdentities.id],
   }),
   messages: many(threadMessages),
   supportTickets: many(supportTickets),
@@ -665,7 +681,7 @@ export const aiUsageEvents = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
-    whatsappIdentityId: text("whatsapp_identity_id"),
+    channelIdentityId: text("channel_identity_id"),
     customerId: text("customer_id").references(() => customers.id, {
       onDelete: "set null",
       onUpdate: "cascade",
@@ -682,11 +698,11 @@ export const aiUsageEvents = pgTable(
   },
   (t) => ({
     aiUsageEventsBusinessIdx: index("ai_usage_events_business_id_idx").on(t.businessId, t.createdAt),
-    aiUsageEventsIdentityIdx: index("ai_usage_events_identity_id_idx").on(t.whatsappIdentityId, t.createdAt),
+    aiUsageEventsIdentityIdx: index("ai_usage_events_identity_id_idx").on(t.channelIdentityId, t.createdAt),
     aiUsageEventsWhatsappIdentityFk: foreignKey({
-      name: "ai_usage_events_whatsapp_identity_id_whatsapp_identities_phone_",
-      columns: [t.whatsappIdentityId],
-      foreignColumns: [whatsappIdentities.phoneNumberId],
+      name: "ai_usage_events_channel_identity_id_whatsapp_identities_phone_",
+      columns: [t.channelIdentityId],
+      foreignColumns: [channelIdentities.id],
     }).onDelete("set null").onUpdate("cascade"),
   }),
 );
@@ -696,9 +712,9 @@ export const aiUsageEventsRelations = relations(aiUsageEvents, ({ one }) => ({
     fields: [aiUsageEvents.businessId],
     references: [businesses.id],
   }),
-  whatsappIdentity: one(whatsappIdentities, {
-    fields: [aiUsageEvents.whatsappIdentityId],
-    references: [whatsappIdentities.phoneNumberId],
+  channelIdentity: one(channelIdentities, {
+    fields: [aiUsageEvents.channelIdentityId],
+    references: [channelIdentities.id],
   }),
   customer: one(customers, {
     fields: [aiUsageEvents.customerId],
@@ -715,9 +731,9 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
     fields: [customers.businessId],
     references: [businesses.id],
   }),
-  whatsappIdentity: one(whatsappIdentities, {
-    fields: [customers.whatsappIdentityId],
-    references: [whatsappIdentities.phoneNumberId],
+  channelIdentity: one(channelIdentities, {
+    fields: [customers.channelIdentityId],
+    references: [channelIdentities.id],
   }),
   assignedTo: one(users, {
     fields: [customers.assignedToUserId],
@@ -805,7 +821,7 @@ export const supportTickets = pgTable(
       onDelete: "set null",
       onUpdate: "cascade",
     }),
-    whatsappIdentityId: text("whatsapp_identity_id"),
+    channelIdentityId: text("channel_identity_id"),
     customerName: text("customer_name"),
     customerPhone: text("customer_phone"),
     idempotencyKey: text("idempotency_key"),
@@ -835,9 +851,9 @@ export const supportTickets = pgTable(
       .on(t.businessId, t.idempotencyKey)
       .where(sql`${t.idempotencyKey} is not null`),
     supportTicketsWhatsappIdentityFk: foreignKey({
-      name: "support_tickets_whatsapp_identity_fk",
-      columns: [t.whatsappIdentityId],
-      foreignColumns: [whatsappIdentities.phoneNumberId],
+      name: "support_tickets_channel_identity_fk",
+      columns: [t.channelIdentityId],
+      foreignColumns: [channelIdentities.id],
     }).onDelete("set null").onUpdate("cascade"),
   }),
 );
@@ -862,7 +878,7 @@ export const messageOutbox = pgTable(
       onDelete: "set null",
       onUpdate: "cascade",
     }),
-    whatsappIdentityId: text("whatsapp_identity_id"),
+    channelIdentityId: text("channel_identity_id"),
     recipient: text("recipient"),
     channel: text("channel").notNull().default("whatsapp"),
     source: text("source").notNull().default("system"),
@@ -885,9 +901,9 @@ export const messageOutbox = pgTable(
     messageOutboxThreadIdx: index("message_outbox_thread_idx").on(t.threadId, t.createdAt),
     messageOutboxIdempotencyUx: uniqueIndex("message_outbox_business_idempotency_uk").on(t.businessId, t.idempotencyKey),
     messageOutboxWhatsappIdentityFk: foreignKey({
-      name: "message_outbox_whatsapp_identity_fk",
-      columns: [t.whatsappIdentityId],
-      foreignColumns: [whatsappIdentities.phoneNumberId],
+      name: "message_outbox_channel_identity_fk",
+      columns: [t.channelIdentityId],
+      foreignColumns: [channelIdentities.id],
     }).onDelete("set null").onUpdate("cascade"),
   }),
 );
@@ -934,7 +950,7 @@ export const orders = pgTable(
       onDelete: "set null",
       onUpdate: "cascade",
     }),
-    whatsappIdentityId: text("whatsapp_identity_id"),
+    channelIdentityId: text("channel_identity_id"),
     customerName: text("customer_name"),
     customerPhone: text("customer_phone"),
     customerEmail: text("customer_email"),
@@ -996,8 +1012,8 @@ export const orders = pgTable(
     ordersTicketUx: uniqueIndex("orders_support_ticket_id_ux").on(t.supportTicketId).where(sql`${t.supportTicketId} is not null`),
     ordersWhatsappIdentityFk: foreignKey({
       name: "orders_whatsapp_identity_fk",
-      columns: [t.whatsappIdentityId],
-      foreignColumns: [whatsappIdentities.phoneNumberId],
+      columns: [t.channelIdentityId],
+      foreignColumns: [channelIdentities.id],
     }).onDelete("set null").onUpdate("cascade"),
   }),
 );
@@ -1023,7 +1039,7 @@ export const orderPayments = pgTable(
       onDelete: "set null",
       onUpdate: "cascade",
     }),
-    whatsappIdentityId: text("whatsapp_identity_id"),
+    channelIdentityId: text("channel_identity_id"),
     paymentMethod: text("payment_method").notNull().default("bank_qr"),
     status: text("status").notNull().default("submitted"),
     currency: text("currency").notNull().default("LKR"),
@@ -1046,8 +1062,8 @@ export const orderPayments = pgTable(
     orderPaymentsBusinessOrderCreatedIdx: index("order_payments_business_order_created_idx").on(t.businessId, t.orderId, t.createdAt),
     orderPaymentsWhatsappIdentityFk: foreignKey({
       name: "order_payments_whatsapp_identity_fk",
-      columns: [t.whatsappIdentityId],
-      foreignColumns: [whatsappIdentities.phoneNumberId],
+      columns: [t.channelIdentityId],
+      foreignColumns: [channelIdentities.id],
     }).onDelete("set null").onUpdate("cascade"),
   }),
 );
@@ -1131,9 +1147,9 @@ export const supportTicketsRelations = relations(supportTickets, ({ one, many })
     fields: [supportTickets.threadId],
     references: [messageThreads.id],
   }),
-  whatsappIdentity: one(whatsappIdentities, {
-    fields: [supportTickets.whatsappIdentityId],
-    references: [whatsappIdentities.phoneNumberId],
+  channelIdentity: one(channelIdentities, {
+    fields: [supportTickets.channelIdentityId],
+    references: [channelIdentities.id],
   }),
   events: many(supportTicketEvents),
   orders: many(orders),
@@ -1167,9 +1183,9 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     fields: [orders.threadId],
     references: [messageThreads.id],
   }),
-  whatsappIdentity: one(whatsappIdentities, {
-    fields: [orders.whatsappIdentityId],
-    references: [whatsappIdentities.phoneNumberId],
+  channelIdentity: one(channelIdentities, {
+    fields: [orders.channelIdentityId],
+    references: [channelIdentities.id],
   }),
   payments: many(orderPayments),
   events: many(orderEvents),
@@ -1192,9 +1208,9 @@ export const orderPaymentsRelations = relations(orderPayments, ({ one }) => ({
     fields: [orderPayments.threadId],
     references: [messageThreads.id],
   }),
-  whatsappIdentity: one(whatsappIdentities, {
-    fields: [orderPayments.whatsappIdentityId],
-    references: [whatsappIdentities.phoneNumberId],
+  channelIdentity: one(channelIdentities, {
+    fields: [orderPayments.channelIdentityId],
+    references: [channelIdentities.id],
   }),
 }));
 
@@ -1235,7 +1251,7 @@ export const requests = pgTable(
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
 
-    // FK to customer (UUID) - whatsappIdentityId is available through customer relation
+    // FK to customer (UUID) - channelIdentityId is available through customer relation
     customerId: text("customer_id").references(() => customers.id, {
       onDelete: "set null",
       onUpdate: "cascade",
@@ -2189,6 +2205,9 @@ export const trainingDocuments = pgTable(
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
 
+    agentId: text("agent_id")
+      .references(() => agents.id, { onDelete: "cascade", onUpdate: "cascade" }),
+
     // One of the 5 portal doc slots
     docType: text("doc_type").notNull(),
 
@@ -2215,7 +2234,7 @@ export const trainingDocuments = pgTable(
   },
   (t) => ({
     trainingDocsBizIdx: index("training_documents_business_id_idx").on(t.businessId),
-    trainingDocsBizTypeUx: uniqueIndex("training_documents_business_doc_type_ux").on(t.businessId, t.docType),
+    trainingDocsBizTypeUx: uniqueIndex("training_documents_agent_id_doc_type_ux").on(t.agentId, t.docType),
   }),
 );
 
@@ -2271,8 +2290,8 @@ export const creditTopups = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
-    whatsappIdentityId: text("whatsapp_identity_id").references(
-      () => whatsappIdentities.phoneNumberId,
+    channelIdentityId: text("channel_identity_id").references(
+      () => channelIdentities.id,
       { onDelete: "set null", onUpdate: "cascade" }
     ),
     amount: integer("amount").notNull(),
@@ -2289,7 +2308,7 @@ export const creditTopups = pgTable(
   },
   (t) => ({
     creditTopupsBusinessIdx: index("credit_topups_business_idx").on(t.businessId),
-    creditTopupsWhatsappIdentityIdx: index("credit_topups_whatsapp_identity_idx").on(t.whatsappIdentityId),
+    creditTopupsWhatsappIdentityIdx: index("credit_topups_channel_identity_idx").on(t.channelIdentityId),
     creditTopupsStatusIdx: index("credit_topups_status_idx").on(t.status),
     creditTopupsCreatedAtIdx: index("credit_topups_created_at_idx").on(t.createdAt),
   }),
@@ -2308,8 +2327,8 @@ export const creditConsumptionEvents = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
-    whatsappIdentityId: text("whatsapp_identity_id").references(
-      () => whatsappIdentities.phoneNumberId,
+    channelIdentityId: text("channel_identity_id").references(
+      () => channelIdentities.id,
       { onDelete: "set null", onUpdate: "cascade" }
     ),
     creditsConsumed: integer("credits_consumed").notNull().default(1),
@@ -2319,6 +2338,6 @@ export const creditConsumptionEvents = pgTable(
   },
   (t) => ({
     creditConsumptionBusinessIdx: index("credit_consumption_business_idx").on(t.businessId, t.createdAt),
-    creditConsumptionWhatsappIdx: index("credit_consumption_whatsapp_idx").on(t.whatsappIdentityId, t.createdAt),
+    creditConsumptionWhatsappIdx: index("credit_consumption_whatsapp_idx").on(t.channelIdentityId, t.createdAt),
   }),
 );

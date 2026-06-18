@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { db } from "../db/client";
-import { messageOutbox, whatsappIdentities } from "../../../drizzle/schema";
+import { messageOutbox, channelIdentities, whatsappIdentityDetails } from "../../../drizzle/schema";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { captureSentryException } from "@/lib/sentry-monitoring";
 import { observeAssistantMessageViaBot, sendWhatsAppMessagesViaBot, type BotSendMessage } from "./botApi";
@@ -118,7 +118,7 @@ export async function enqueueWhatsAppOutboxMessages(
     entityId: string;
     customerId?: string | null;
     threadId?: string | null;
-    whatsappIdentityId?: string | null;
+    channelIdentityId?: string | null;
     recipient?: string | null;
     source: string;
     messages: BotSendMessage[];
@@ -138,7 +138,7 @@ export async function enqueueWhatsAppOutboxMessages(
   }
 
   const recipient = sanitizePhoneDigits(input.recipient);
-  if (!input.whatsappIdentityId || !recipient) {
+  if (!input.channelIdentityId || !recipient) {
     return {
       ok: false as const,
       error: "Customer notification is missing WhatsApp routing details.",
@@ -155,7 +155,7 @@ export async function enqueueWhatsAppOutboxMessages(
     entityId: input.entityId,
     customerId: input.customerId ?? null,
     threadId: input.threadId ?? null,
-    whatsappIdentityId: input.whatsappIdentityId ?? null,
+    channelIdentityId: input.channelIdentityId ?? null,
     recipient,
     channel: "whatsapp",
     source: input.source,
@@ -344,7 +344,7 @@ export async function drainBusinessOutbox(input: {
           .where(eq(messageOutbox.id, claimed.id));
       } else {
         const message = normalizeOutboxMessage(claimed.payload);
-        if (!message || !claimed.whatsappIdentityId || !claimed.recipient) {
+        if (!message || !claimed.channelIdentityId || !claimed.recipient) {
           failedCount += 1;
           firstError = firstError ?? "Outbox row is missing a valid message payload or routing details.";
           await markOutboxFailure(claimed.id, firstError);
@@ -353,7 +353,7 @@ export async function drainBusinessOutbox(input: {
 
         const [result] = await sendWhatsAppMessagesViaBot({
           businessId: claimed.businessId,
-          phoneNumberId: claimed.whatsappIdentityId,
+          phoneNumberId: claimed.channelIdentityId,
           to: claimed.recipient,
           messages: [message],
           idempotencyKey: claimed.idempotencyKey,
@@ -366,7 +366,7 @@ export async function drainBusinessOutbox(input: {
             entityId: claimed.entityId,
             idempotencyKey: claimed.idempotencyKey,
             providerResponse: result?.providerResponse ?? null,
-            whatsappIdentityId: claimed.whatsappIdentityId,
+            channelIdentityId: claimed.channelIdentityId,
             recipient: claimed.recipient,
           };
           if (message.type === "image") {
@@ -397,30 +397,31 @@ export async function drainBusinessOutbox(input: {
             source: String(claimed.source || ""),
             message,
           });
-          const identityKey = String(claimed.whatsappIdentityId || "").trim();
+          const identityKey = String(claimed.channelIdentityId || "").trim();
           let aiDisabled = false;
           if (identityKey) {
             if (identityAiDisabledCache.has(identityKey)) {
               aiDisabled = Boolean(identityAiDisabledCache.get(identityKey));
             } else {
               const [identityRow] = await db
-                .select({ aiDisabled: whatsappIdentities.aiDisabled })
-                .from(whatsappIdentities)
+                .select({ aiEnabled: channelIdentities.aiEnabled })
+                .from(channelIdentities)
+                .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
                 .where(
                   and(
-                    eq(whatsappIdentities.businessId, claimed.businessId),
-                    eq(whatsappIdentities.phoneNumberId, identityKey),
+                    eq(channelIdentities.businessId, claimed.businessId),
+                    eq(whatsappIdentityDetails.phoneNumberId, identityKey),
                   ),
                 )
                 .limit(1);
-              aiDisabled = Boolean(identityRow?.aiDisabled);
+              aiDisabled = identityRow ? !identityRow.aiEnabled : false;
               identityAiDisabledCache.set(identityKey, aiDisabled);
             }
           }
-          if (observation && claimed.whatsappIdentityId && claimed.recipient && !aiDisabled) {
+          if (observation && claimed.channelIdentityId && claimed.recipient && !aiDisabled) {
             await observeAssistantMessageViaBot({
               businessId: claimed.businessId,
-              phoneNumberId: claimed.whatsappIdentityId,
+              phoneNumberId: claimed.channelIdentityId,
               to: claimed.recipient,
               text: observation.text,
               intent: observation.intent,
@@ -439,7 +440,7 @@ export async function drainBusinessOutbox(input: {
             status: "assistant_observe_failed",
             attributes: {
               idempotency_key: claimed.idempotencyKey,
-              whatsapp_identity_id: claimed.whatsappIdentityId ?? undefined,
+              channel_identity_id: claimed.channelIdentityId ?? undefined,
               source: claimed.source,
             },
           });
@@ -475,7 +476,7 @@ export async function drainBusinessOutbox(input: {
           attempts: claimed.attempts,
           error_message: messageText,
           error_name: error instanceof Error ? error.name : undefined,
-          whatsapp_identity_id: claimed.whatsappIdentityId ?? undefined,
+          channel_identity_id: claimed.channelIdentityId ?? undefined,
         },
       });
       captureSentryException(error, {
@@ -486,7 +487,7 @@ export async function drainBusinessOutbox(input: {
           business_id: claimed.businessId,
           channel: claimed.channel,
           entity_type: claimed.entityType,
-          whatsapp_identity_id: claimed.whatsappIdentityId ?? undefined,
+          channel_identity_id: claimed.channelIdentityId ?? undefined,
         },
         contexts: {
           outbox: {
@@ -495,7 +496,7 @@ export async function drainBusinessOutbox(input: {
             attempts: claimed.attempts,
             errorMessage: messageText,
             errorName: error instanceof Error ? error.name : null,
-            whatsappIdentityId: claimed.whatsappIdentityId ?? null,
+            channelIdentityId: claimed.channelIdentityId ?? null,
           },
         },
       });

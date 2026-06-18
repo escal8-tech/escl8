@@ -123,6 +123,8 @@ const navItems = [
   { href: "/offers", label: "Offers", icon: "offers" },
   { href: "/messages", label: "Messages", icon: "messages" },
   { href: "/bookings", label: "Bookings", icon: "calendar" },
+  { id: "agents", href: "/agents", label: "Agents", icon: "upload" },
+  { href: "/connections", label: "Connections", icon: "sync" },
 ];
 interface SidebarProps {
   collapsed: boolean;

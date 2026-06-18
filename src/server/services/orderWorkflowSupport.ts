@@ -18,7 +18,8 @@ import {
   orderPayments,
   orders,
   threadMessages,
-  whatsappIdentities,
+  channelIdentities,
+  whatsappIdentityDetails,
 } from "../../../drizzle/schema";
 import { type BotSendMessage } from "@/server/services/botApi";
 import type { OrderEmailMessage } from "@/server/services/orderFlow";
@@ -456,17 +457,19 @@ export async function hydrateOrderRows(businessId: string, orderRows: Array<type
     }
   }
 
-  const identityIds = [...new Set(orderRows.map((row) => String(row.whatsappIdentityId || "").trim()).filter(Boolean))];
+  const identityIds = [...new Set(orderRows.map((row) => String(row.channelIdentityId || "").trim()).filter(Boolean))];
   const identityRows = identityIds.length
     ? await db
         .select({
-          phoneNumberId: whatsappIdentities.phoneNumberId,
-          displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
+          channelIdentityId: channelIdentities.id,
+          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
         })
-        .from(whatsappIdentities)
-        .where(inArray(whatsappIdentities.phoneNumberId, identityIds))
+        .from(channelIdentities)
+        .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
+        .where(inArray(channelIdentities.id, identityIds))
     : [];
-  const displayPhoneByIdentity = new Map(identityRows.map((row) => [row.phoneNumberId, row.displayPhoneNumber ?? null]));
+  const displayPhoneByIdentity = new Map(identityRows.map((row) => [row.channelIdentityId, row.displayPhoneNumber ?? null]));
 
   return orderRows.map((row) => {
     const latestPayment = latestPaymentByOrder.get(row.id) ?? null;
@@ -480,7 +483,7 @@ export async function hydrateOrderRows(businessId: string, orderRows: Array<type
             proofUrl: refreshOrderPaymentProofUrl(latestPayment),
           }
         : null,
-      botDisplayPhoneNumber: row.whatsappIdentityId ? displayPhoneByIdentity.get(row.whatsappIdentityId) ?? null : null,
+      botDisplayPhoneNumber: row.channelIdentityId ? displayPhoneByIdentity.get(row.channelIdentityId) ?? null : null,
       ...windowState,
     };
   });
@@ -576,12 +579,12 @@ type OrderCustomerContext = {
   phone: string | null;
   externalId: string | null;
   source: string | null;
-  whatsappIdentityId: string | null;
+  channelIdentityId: string | null;
 };
 
 type OrderThreadContext = {
   threadId: string;
-  whatsappIdentityId: string | null;
+  channelIdentityId: string | null;
   customerId: string;
   customerName: string | null;
   customerPhone: string | null;
@@ -647,7 +650,7 @@ async function getOrderCustomerContext(businessId: string, customerId: string | 
       phone: customers.phone,
       externalId: customers.externalId,
       source: customers.source,
-      whatsappIdentityId: customers.whatsappIdentityId,
+      channelIdentityId: customers.channelIdentityId,
     })
     .from(customers)
     .where(and(eq(customers.businessId, businessId), eq(customers.id, normalizedCustomerId)))
@@ -661,7 +664,7 @@ async function getOrderThreadContext(businessId: string, threadId: string | null
   const [row] = await db
     .select({
       threadId: messageThreads.id,
-      whatsappIdentityId: messageThreads.whatsappIdentityId,
+      channelIdentityId: messageThreads.channelIdentityId,
       customerId: customers.id,
       customerName: customers.name,
       customerPhone: customers.phone,
@@ -679,7 +682,7 @@ export async function resolveOrderNotificationContext(params: {
   businessId: string;
   customerId?: string | null;
   threadId?: string | null;
-  whatsappIdentityId?: string | null;
+  channelIdentityId?: string | null;
   customerName?: string | null;
   customerEmail?: string | null;
   customerPhone?: string | null;
@@ -702,10 +705,10 @@ export async function resolveOrderNotificationContext(params: {
     threadContext?.customerPhone ?? null,
     (directCustomer?.source ?? "").toLowerCase() === "whatsapp" ? directCustomer?.externalId ?? null : null,
   );
-  const whatsappIdentityId = coalesceText(
-    params.whatsappIdentityId,
-    directCustomer?.whatsappIdentityId ?? null,
-    threadContext?.whatsappIdentityId ?? null,
+  const channelIdentityId = coalesceText(
+    params.channelIdentityId,
+    directCustomer?.channelIdentityId ?? null,
+    threadContext?.channelIdentityId ?? null,
   );
   const recipient =
     preferredWhatsAppNumber("whatsapp", customerPhone) ??
@@ -716,7 +719,7 @@ export async function resolveOrderNotificationContext(params: {
     customerName,
     customerEmail,
     threadId: coalesceText(params.threadId, threadContext?.threadId ?? null),
-    whatsappIdentityId,
+    channelIdentityId,
     approvalRecipient: recipient ?? "",
     recipientSource:
       preferredWhatsAppNumber("whatsapp", customerPhone) != null
@@ -730,12 +733,12 @@ export async function resolveOrderNotificationContext(params: {
               : preferredWhatsAppNumber(threadContext?.customerSource, threadContext?.customerExternalId) != null
                 ? "thread.customer.external_id"
                 : null,
-    whatsappIdentitySource: coalesceText(params.whatsappIdentityId)
-      ? "order.whatsapp_identity_id"
-      : coalesceText(directCustomer?.whatsappIdentityId ?? null)
-        ? "customer.whatsapp_identity_id"
-        : coalesceText(threadContext?.whatsappIdentityId ?? null)
-          ? "thread.whatsapp_identity_id"
+    whatsappIdentitySource: coalesceText(params.channelIdentityId)
+      ? "order.channel_identity_id"
+      : coalesceText(directCustomer?.channelIdentityId ?? null)
+        ? "customer.channel_identity_id"
+        : coalesceText(threadContext?.channelIdentityId ?? null)
+          ? "thread.channel_identity_id"
           : null,
   };
 }

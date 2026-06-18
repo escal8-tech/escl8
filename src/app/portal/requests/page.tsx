@@ -90,7 +90,7 @@ export default function RequestsPage() {
       status: statusFilter !== "all" ? statusFilter : undefined,
       sortKey,
       sortDir,
-      ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
+      ...(selectedPhoneNumberId ? { channelIdentityId: selectedPhoneNumberId } : {}),
     }),
     [page, searchQuery, selectedPhoneNumberId, sortDir, sortKey, statusFilter],
   );

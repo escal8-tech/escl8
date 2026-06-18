@@ -10,8 +10,12 @@ import { ticketsRouter } from "./tickets";
 import { ordersRouter } from "./orders";
 import { flowBuilderRouter } from "./flowBuilder";
 import { inventoryRouter } from "./inventory";
+import { channelsRouter } from "./channels";
+import { agentsRouter } from "./agents";
 
 export const appRouter = router({
+  agents: agentsRouter,
+  channels: channelsRouter,
   user: userRouter,
   requests: requestsRouter,
   bookings: bookingsRouter,

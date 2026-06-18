@@ -247,12 +247,12 @@ type CustomerContext = {
   phone: string | null;
   externalId: string | null;
   source: string | null;
-  whatsappIdentityId: string | null;
+  channelIdentityId: string | null;
 };
 
 type ThreadContext = {
   threadId: string;
-  whatsappIdentityId: string | null;
+  channelIdentityId: string | null;
   customerId: string;
   customerName: string | null;
   customerPhone: string | null;
@@ -271,7 +271,7 @@ async function getCustomerContext(businessId: string, customerId: string | null 
       phone: customers.phone,
       externalId: customers.externalId,
       source: customers.source,
-      whatsappIdentityId: customers.whatsappIdentityId,
+      channelIdentityId: customers.channelIdentityId,
     })
     .from(customers)
     .where(and(eq(customers.businessId, businessId), eq(customers.id, normalizedCustomerId)))
@@ -295,7 +295,7 @@ async function getThreadContext(businessId: string, threadId: string | null | un
   const [row] = await db
     .select({
       threadId: messageThreads.id,
-      whatsappIdentityId: messageThreads.whatsappIdentityId,
+      channelIdentityId: messageThreads.channelIdentityId,
       customerId: customers.id,
       customerName: customers.name,
       customerPhone: customers.phone,
@@ -313,7 +313,7 @@ export async function resolveTicketContactContext(params: {
   businessId: string;
   customerId?: string | null;
   threadId?: string | null;
-  whatsappIdentityId?: string | null;
+  channelIdentityId?: string | null;
   customerName?: string | null;
   customerPhone?: string | null;
   customerExternalId?: string | null;
@@ -349,10 +349,10 @@ export async function resolveTicketContactContext(params: {
     threadContext?.customerPhone ?? null,
     customerSource?.toLowerCase() === "whatsapp" ? customerExternalId : null,
   );
-  const whatsappIdentityId = coalesceText(
-    params.whatsappIdentityId,
-    directCustomer?.whatsappIdentityId ?? null,
-    threadContext?.whatsappIdentityId ?? null,
+  const channelIdentityId = coalesceText(
+    params.channelIdentityId,
+    directCustomer?.channelIdentityId ?? null,
+    threadContext?.channelIdentityId ?? null,
   );
 
   const recipient =
@@ -377,12 +377,12 @@ export async function resolveTicketContactContext(params: {
               ? "thread.customer.external_id"
               : null;
 
-  const whatsappIdentitySource = coalesceText(params.whatsappIdentityId)
-    ? "ticket.whatsapp_identity_id"
-    : coalesceText(directCustomer?.whatsappIdentityId ?? null)
-      ? "customer.whatsapp_identity_id"
-      : coalesceText(threadContext?.whatsappIdentityId ?? null)
-        ? "thread.whatsapp_identity_id"
+  const whatsappIdentitySource = coalesceText(params.channelIdentityId)
+    ? "ticket.channel_identity_id"
+    : coalesceText(directCustomer?.channelIdentityId ?? null)
+      ? "customer.channel_identity_id"
+      : coalesceText(threadContext?.channelIdentityId ?? null)
+        ? "thread.channel_identity_id"
         : null;
 
   return {
@@ -393,7 +393,7 @@ export async function resolveTicketContactContext(params: {
     customerExternalId,
     customerSource,
     threadId: coalesceText(params.threadId, threadContext?.threadId ?? null),
-    whatsappIdentityId,
+    channelIdentityId,
     approvalRecipient: recipient ?? "",
     recipientSource,
     whatsappIdentitySource,

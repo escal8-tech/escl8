@@ -9,7 +9,7 @@ import { captureSentryException } from "@/lib/sentry-monitoring";
 import { trpc } from "@/utils/trpc";
 
 type MaybePhoneFilter = {
-  whatsappIdentityId?: string | null;
+  channelIdentityId?: string | null;
   limit?: number;
   cursorUpdatedAt?: string;
   cursorId?: string;
@@ -23,13 +23,13 @@ type RequestPageInput = {
   source?: string;
   sortKey?: "customer" | "status" | "type" | "sentiment" | "created" | "bot";
   sortDir?: "asc" | "desc";
-  whatsappIdentityId?: string | null;
+  channelIdentityId?: string | null;
 };
 
 type CustomerPageInput = {
   source?: string;
   includeDeleted?: boolean;
-  whatsappIdentityId?: string | null;
+  channelIdentityId?: string | null;
   limit?: number;
   offset?: number;
   search?: string;
@@ -39,7 +39,7 @@ type CustomerPageInput = {
 
 type ThreadListInput = {
   limit?: number;
-  whatsappIdentityId?: string;
+  channelIdentityId?: string;
 };
 
 type TicketListInput = {
@@ -98,10 +98,10 @@ type MessageRow = {
 };
 
 type LiveSyncOptions = {
-  requestListInput?: { limit?: number; whatsappIdentityId?: string };
+  requestListInput?: { limit?: number; channelIdentityId?: string };
   requestPageInput?: RequestPageInput;
   requestStatsInput?: MaybePhoneFilter;
-  requestActivityInput?: { days?: number; whatsappIdentityId?: string };
+  requestActivityInput?: { days?: number; channelIdentityId?: string };
   customerListInput?: MaybePhoneFilter;
   customerPageInput?: CustomerPageInput;
   messagesThreadListInput?: ThreadListInput;
@@ -370,17 +370,17 @@ function computeCustomerStats(rows: Array<Record<string, unknown>>) {
 function eventPhoneIdentity(payload: Record<string, unknown>): string | null {
   const customer = payload.customer as Record<string, unknown> | undefined;
   if (customer) {
-    const value = customer.whatsappIdentityId ?? customer.whatsapp_identity_id;
+    const value = customer.channelIdentityId ?? customer.channel_identity_id;
     if (typeof value === "string" && value) return value;
   }
 
   const thread = payload.thread as Record<string, unknown> | undefined;
   if (thread) {
-    const value = thread.whatsappIdentityId ?? thread.whatsapp_identity_id;
+    const value = thread.channelIdentityId ?? thread.channel_identity_id;
     if (typeof value === "string" && value) return value;
   }
 
-  const direct = payload.whatsappIdentityId ?? payload.whatsapp_identity_id;
+  const direct = payload.channelIdentityId ?? payload.channel_identity_id;
   if (typeof direct === "string" && direct) return direct;
 
   return null;
@@ -608,12 +608,12 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       const phoneIdentityId = eventPhoneIdentity(payload);
 
       const customerFilter =
-        currentOptions.customerListInput?.whatsappIdentityId
-        ?? currentOptions.customerPageInput?.whatsappIdentityId;
+        currentOptions.customerListInput?.channelIdentityId
+        ?? currentOptions.customerPageInput?.channelIdentityId;
       const requestFilter =
-        currentOptions.requestListInput?.whatsappIdentityId
-        ?? currentOptions.requestPageInput?.whatsappIdentityId;
-      const threadFilter = currentOptions.messagesThreadListInput?.whatsappIdentityId;
+        currentOptions.requestListInput?.channelIdentityId
+        ?? currentOptions.requestPageInput?.channelIdentityId;
+      const threadFilter = currentOptions.messagesThreadListInput?.channelIdentityId;
       const wantsCustomerCache =
         Object.prototype.hasOwnProperty.call(currentOptions, "customerListInput") ||
         currentOptions.customerPageInput !== undefined;

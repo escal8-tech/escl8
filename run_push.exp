@@ -1,0 +1,8 @@
+#!/usr/bin/expect -f
+set timeout -1
+spawn npx drizzle-kit push
+expect "Is channel_identities table created or renamed from another table?"
+send "\r"
+expect "Are you sure you want to execute destructive statements?"
+send "y\r"
+expect eof
