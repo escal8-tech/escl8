@@ -40,7 +40,7 @@ async function listCurrent(businessId: string, agentId?: string) {
     uploadedAt: string | null;
   } | null>(() => null);
 
-  let query = db.select().from(trainingDocuments).where(eq(trainingDocuments.businessId, businessId));
+  const query = db.select().from(trainingDocuments).where(eq(trainingDocuments.businessId, businessId));
   const rows = await query;
 
   for (const row of rows) {

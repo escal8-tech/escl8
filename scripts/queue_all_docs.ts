@@ -34,8 +34,8 @@ async function main() {
     try {
       await enqueueRagJobMessage(job.id);
       console.log(`  -> Queued job ${job.id}`);
-    } catch (err: any) {
-      console.error(`  -> Failed to enqueue job ${job.id}:`, err);
+    } catch (e: unknown) {
+      console.error(`  -> Failed to enqueue job ${job.id}:`, e);
     }
   }
 

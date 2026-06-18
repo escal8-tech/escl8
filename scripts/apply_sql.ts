@@ -2,7 +2,7 @@ import "dotenv/config";
 import { db } from "../src/server/db/client";
 
 async function main() {
-  const pool = (db as any).session.client;
+  const pool = (db as unknown as { session: { client: { query: (q: string) => Promise<unknown> } } }).session.client;
   
   console.log("Applying SQL migration manually...");
   
@@ -30,25 +30,25 @@ async function main() {
     try {
       await pool.query(`ALTER TABLE "training_documents" ADD CONSTRAINT "training_documents_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE cascade;`);
       console.log("Added foreign key for training_documents");
-    } catch(e: any) { console.log(e.message) }
+    } catch(e: unknown) { console.log((e as Error).message) }
 
     try {
       await pool.query(`ALTER TABLE "channel_identities" ADD CONSTRAINT "channel_identities_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE restrict ON UPDATE cascade;`);
       console.log("Added foreign key for channel_identities");
-    } catch(e: any) { console.log(e.message) }
+    } catch(e: unknown) { console.log((e as Error).message) }
 
     try {
       await pool.query(`DROP INDEX IF EXISTS "training_documents_business_doc_type_ux";`);
       await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS "training_documents_agent_id_doc_type_ux" ON "training_documents" USING btree ("agent_id","doc_type");`);
       console.log("Updated unique index for training_documents");
-    } catch(e: any) { console.log(e.message) }
+    } catch(e: unknown) { console.log((e as Error).message) }
 
     try {
       await pool.query(`ALTER TABLE "agents" DROP COLUMN IF EXISTS "agent_id";`);
       await pool.query(`ALTER TABLE "channel_identities" DROP COLUMN IF EXISTS "bot_type";`);
       await pool.query(`ALTER TABLE "users" DROP COLUMN IF EXISTS "agent_id";`);
       console.log("Dropped old columns");
-    } catch(e: any) { console.log(e.message) }
+    } catch(e: unknown) { console.log((e as Error).message) }
     
   } catch(e) {
     console.error("Migration failed:", e);
