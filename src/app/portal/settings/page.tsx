@@ -943,7 +943,7 @@ function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onC
 /* ─────────────────────────────────────────────────────────────────────────────
    SETTINGS PAGE TABS
 ───────────────────────────────────────────────────────────────────────────── */
-type SettingsTab = "profile" | "booking" | "payments" | "customization" | "integrations" | "documents" | "stock" | "users" | "flowbuilder" | "subscription";
+type SettingsTab = "profile" | "booking" | "payments" | "customization" | "integrations" | "agents" | "documents" | "stock" | "users" | "flowbuilder" | "subscription";
 type ActiveSettingsView = SettingsTab | "overview";
 
 const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
@@ -982,6 +982,7 @@ const settingsTabDescriptions: Record<SettingsTab, string> = {
   stock: "Column mapping for uploaded item sheets so inventory, prices, and product fields stay structured.",
   users: "Invite teammates, manage roles, and remove users from this business workspace.",
   flowbuilder: "Conversation routing, automation rules, message flows, and AI handoff logic.",
+  agents: "Manage and configure autonomous AI agents that handle reservations, customer support, and sales inquiries.",
   subscription: "View subscription status, plan details, credits usage, billing history, and manage upgrades.",
 };
 
@@ -995,6 +996,7 @@ const settingsTabPoints: Record<SettingsTab, string[]> = {
   stock: ["Product sheet upload mapping", "Inventory and price columns", "Structured stock controls"],
   users: ["Invite teammates", "Roles and permissions", "Remove workspace access"],
   flowbuilder: ["Routing rules and handoffs", "Message flow automation", "AI control logic"],
+  agents: ["Create AI agents", "Configure personalities and roles", "Connect channels to agents"],
   subscription: ["Current plan and billing cycle", "Monthly credits and usage", "Next payment date and history", "Upgrade or change plans"],
 };
 
