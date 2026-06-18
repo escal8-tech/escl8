@@ -37,6 +37,37 @@ type AuthenticatedFetchOptions = ClientAuthOperationOptions & {
   requestFailureEvent?: string;
 };
 
+let escal8RefreshPromise: Promise<Response> | null = null;
+
+function getClientBaseUrl(): string {
+  return typeof window === "undefined" ? process.env.NEXT_PUBLIC_APP_URL || "" : "";
+}
+
+function isLoginPath(): boolean {
+  return typeof window !== "undefined" && window.location.pathname.startsWith("/auth/login");
+}
+
+async function refreshEscal8Session(): Promise<Response> {
+  if (!escal8RefreshPromise) {
+    escal8RefreshPromise = fetch(`${getClientBaseUrl()}/api/auth/refresh`, {
+      method: "PUT",
+      credentials: "include",
+      cache: "no-store",
+    }).finally(() => {
+      escal8RefreshPromise = null;
+    });
+  }
+  return escal8RefreshPromise;
+}
+
+async function redirectToLogin(route: string | null): Promise<never> {
+  if (typeof window !== "undefined" && !isLoginPath()) {
+    const redirect = route || window.location.pathname;
+    window.location.href = `/auth/login?redirect=${encodeURIComponent(redirect)}`;
+  }
+  return new Promise(() => {});
+}
+
 function sanitizeErrorDetail(value: string): string {
   return value
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+\b/gi, "Bearer [redacted]")
@@ -211,10 +242,23 @@ export async function fetchWithFirebaseAuth(
       headers.set("authorization", `Bearer ${token}`);
     }
 
-    return await fetch(input, {
+    const requestInit: RequestInit = {
       ...init,
       headers,
-    });
+      credentials: init?.credentials ?? "include",
+    };
+
+    let response = await fetch(input, requestInit);
+    if (response.status === 401) {
+      const refreshResponse = await refreshEscal8Session();
+      if (refreshResponse.ok) {
+        response = await fetch(input, requestInit);
+      } else if (!isLoginPath()) {
+        await redirectToLogin(route);
+      }
+    }
+
+    return response;
   } catch (error) {
     if (!isClientErrorReported(error)) {
       reportClientFailure(error, {

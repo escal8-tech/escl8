@@ -6,6 +6,7 @@ import { usePortalTheme } from "@/app/portal/components/PortalThemeProvider";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useIsMobileViewport } from "@/app/portal/hooks/useIsMobileViewport";
+import Breadcrumbs from "@/app/portal/components/Breadcrumbs";
 import {
   Sparkles,
   CheckCircle2,
@@ -170,19 +171,7 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: { sidebarWidt
             </svg>
           </button>
 
-          <nav className="topbar-breadcrumbs">
-            <ol style={{ display: "flex", alignItems: "center", gap: 6, listStyle: "none", margin: 0, padding: 0 }}>
-              <li style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <a href="/portal" style={{ textDecoration: "none", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)" }}>PORTAL</a>
-              </li>
-              <li style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--muted)" }}>
-                <svg width="3.5" height="3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="m9 18 6-6-6-6" />
-                </svg>
-                <span style={{ fontSize: 12, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>MENU</span>
-              </li>
-            </ol>
-          </nav>
+          <Breadcrumbs />
 
           <div className="topbar-mobile-inline">
             <div className="portal-time-chip" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--foreground)" }}>

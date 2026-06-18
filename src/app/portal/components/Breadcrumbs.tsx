@@ -34,11 +34,11 @@ export default function Breadcrumbs() {
     || appPath === "/tickets"
     || appPath.startsWith("/tickets/");
 
-  const sectionLabel = isTicketPage ? "Tickets" : "Menu";
   const ticketType = (searchParams?.get("type") || "").toLowerCase();
   const currentTitle = isTicketPage
     ? getPortalTicketTypeLabel(ticketType)
     : routeLabels[segments[0] || leaf] || routeLabels[leaf] || leaf.charAt(0).toUpperCase() + leaf.slice(1);
+  const sectionLabel = currentTitle;
 
   return (
     <nav className="breadcrumbs" aria-label="Breadcrumb">
