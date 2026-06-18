@@ -2,7 +2,7 @@ import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
-import { businesses, users, channelIdentities, whatsappIdentityDetails } from "../../../drizzle/schema";
+import { businesses, users, channelIdentities, whatsappIdentityDetails, agents } from "../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
@@ -41,7 +41,7 @@ export const businessRouter = router({
       .select({
         phoneNumberId: whatsappIdentityDetails.phoneNumberId,
         displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-        botType: channelIdentities.botType,
+        botType: agents.botType,
         isActive: channelIdentities.isActive,
         autoReplyPaused: channelIdentities.autoReplyPaused,
         aiEnabled: channelIdentities.aiEnabled,
@@ -49,6 +49,7 @@ export const businessRouter = router({
       })
       .from(channelIdentities)
       .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
+      .innerJoin(agents, eq(channelIdentities.agentId, agents.id))
       .where(
         and(
           eq(channelIdentities.businessId, ctx.businessId),

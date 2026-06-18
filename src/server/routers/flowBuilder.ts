@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { businesses, channelIdentities, whatsappIdentityDetails } from "@/../drizzle/schema";
+import { businesses, channelIdentities, whatsappIdentityDetails, agents } from "@/../drizzle/schema";
 import { cloneFlowModules, flowBuilderAgents, type FlowAgentManifest } from "@/lib/flow-builder/registry";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { db } from "../db/client";
@@ -137,11 +137,12 @@ export const flowBuilderRouter = router({
         .select({
           phoneNumberId: whatsappIdentityDetails.phoneNumberId,
           displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-          botType: channelIdentities.botType,
+          botType: agents.botType,
           connectedAt: channelIdentities.connectedAt,
         })
         .from(channelIdentities)
         .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
+        .innerJoin(agents, eq(channelIdentities.agentId, agents.id))
         .where(and(eq(channelIdentities.businessId, ctx.businessId), eq(channelIdentities.isActive, true), eq(channelIdentities.provider, "whatsapp")))
         .orderBy(channelIdentities.connectedAt);
 
@@ -201,10 +202,11 @@ export const flowBuilderRouter = router({
         .select({
           phoneNumberId: whatsappIdentityDetails.phoneNumberId,
           displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-          botType: channelIdentities.botType,
+          botType: agents.botType,
         })
         .from(channelIdentities)
         .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
+        .innerJoin(agents, eq(channelIdentities.agentId, agents.id))
         .where(and(
           eq(channelIdentities.businessId, ctx.businessId),
           eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
