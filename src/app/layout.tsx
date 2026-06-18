@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { Montserrat, Catamaran, Inter } from "next/font/google";
-import TopNavSwitcher from "../components/TopNavSwitcher";
-import FooterSwitcher from "@/components/FooterSwitcher";
-import SentryTestButton from "@/components/SentryTestButton";
 import { TRPCProvider } from "@/utils/trpc";
+import SentryTestButton from "@/components/SentryTestButton";
 import { ToastProvider } from "@/components/ToastProvider";
 import { AuthSubscriptionProvider } from "@/contexts/AuthSubscriptionContext";
 import { absoluteUrl, conciergeSeo } from "@/lib/seo";
@@ -90,9 +88,7 @@ export default function RootLayout({
         <TRPCProvider>
           <ToastProvider>
             <AuthSubscriptionProvider>
-              <TopNavSwitcher />
               <main className="site-main">{children}</main>
-              <FooterSwitcher />
               <SentryTestButton />
             </AuthSubscriptionProvider>
           </ToastProvider>
