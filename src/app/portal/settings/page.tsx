@@ -22,6 +22,8 @@ import { StockSettingsPanel } from "@/app/portal/settings/components/StockSettin
 import { usePortalTheme } from "@/app/portal/components/PortalThemeProvider";
 import UsersPermissionsPanel from "@/app/portal/settings/components/UsersPermissionsPanel";
 import { SubscriptionContent } from "@/components/subscription/SubscriptionContent";
+import { ConnectionsTab } from "@/app/portal/settings/components/ConnectionsTab";
+import { AgentsTab } from "@/app/portal/settings/components/AgentsTab";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ICONS (inline SVGs for clean dependency-free icons)
@@ -943,7 +945,7 @@ function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onC
 /* ─────────────────────────────────────────────────────────────────────────────
    SETTINGS PAGE TABS
 ───────────────────────────────────────────────────────────────────────────── */
-type SettingsTab = "profile" | "booking" | "payments" | "customization" | "integrations" | "agents" | "documents" | "stock" | "users" | "flowbuilder" | "subscription";
+type SettingsTab = "profile" | "booking" | "payments" | "customization" | "connections" | "agents" | "documents" | "stock" | "users" | "flowbuilder" | "subscription";
 type ActiveSettingsView = SettingsTab | "overview";
 
 const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
@@ -951,7 +953,7 @@ const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "booking", label: "Booking", icon: Icons.calendar },
   { id: "payments", label: "Payments", icon: Icons.ticket },
   { id: "customization", label: "Customization", icon: Icons.building },
-  { id: "integrations", label: "Integrations", icon: Icons.whatsapp },
+  { id: "connections", label: "Connections", icon: Icons.whatsapp },
   { id: "agents", label: "Agents", icon: Icons.upload },
   { id: "stock", label: "Stock", icon: Icons.stock },
   { id: "users", label: "Users & Permissions", icon: Icons.user },
@@ -964,7 +966,7 @@ const settingsTabFeatureMap: Partial<Record<SettingsTab, string>> = {
   booking: "agent.settings.basic",
   payments: "agent.settings.basic",
   customization: "agent.settings.basic",
-  integrations: "agent.whatsapp.connect",
+  connections: "agent.whatsapp.connect",
   agents: "agent.settings.basic",
   stock: "agent.settings.basic",
   users: "agent.settings.basic",
@@ -977,7 +979,7 @@ const settingsTabDescriptions: Record<SettingsTab, string> = {
   booking: "Customer booking availability, operating hours, slot capacity, and appointment timing.",
   payments: "Order payment collection, bank QR, payment slips, delivery charge, and currency settings.",
   customization: "Invoice branding, business logo, colors, address, and customer-facing footer notes.",
-  integrations: "WhatsApp numbers, Gmail connection, embedded signup, and automation controls.",
+  connections: "WhatsApp numbers, embedded signup, and automation controls.",
   documents: "AI training documents for policies, product knowledge, conversations, and stock lists.",
   stock: "Column mapping for uploaded item sheets so inventory, prices, and product fields stay structured.",
   users: "Invite teammates, manage roles, and remove users from this business workspace.",
@@ -991,7 +993,7 @@ const settingsTabPoints: Record<SettingsTab, string[]> = {
   booking: ["Availability and operating hours", "Slot capacity and timing", "Appointment intake defaults"],
   payments: ["Payment method and currency", "Bank QR and transfer details", "Slip checks and delivery charge"],
   customization: ["Invoice branding and logo", "Business colors and footer", "Customer-facing contact details"],
-  integrations: ["WhatsApp number connection", "Gmail and embedded signup", "Automation connection health"],
+  connections: ["WhatsApp number connection", "Embedded signup", "Automation connection health"],
   documents: ["Policy and product documents", "AI training knowledge", "Conversation support material"],
   stock: ["Product sheet upload mapping", "Inventory and price columns", "Structured stock controls"],
   users: ["Invite teammates", "Roles and permissions", "Remove workspace access"],
@@ -1614,7 +1616,15 @@ export default function SettingsPage() {
     ?.websiteWidgetSettings ?? normalizeWebsiteWidgetSettings(businessQuery.data?.settings);
   const whatsappConnected = (phoneNumbersQuery.data?.length ?? 0) > 0;
   const fmtInt = (value: number) => value.toLocaleString("en-US");
-
+  
+  const accessStatus = accessStatusQuery.data;
+  const gmailConnected = Boolean(businessQuery.data?.gmailConnected);
+  const gmailAddress = String(businessQuery.data?.gmailEmail || "").trim();
+  const gmailError = describeCompanyGmailError(businessQuery.data?.gmailError);
+  const whatsappConnectBlocked = Boolean(accessStatus && !accessStatus.canConnectWhatsapp);
+  const whatsappConnectReason = whatsappConnectBlocked
+    ? "WhatsApp connection is blocked until this tenant has an active paid plan, demo grant, or partner grant."
+    : null;
   const renderProfileTab = () => (
     <div style={styles.section}>
       <div style={styles.card}>
@@ -1728,6 +1738,58 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+
+      <div style={styles.card}>
+          <div style={styles.cardHeader}>
+            <div style={{ ...styles.cardIcon, background: "linear-gradient(135deg, #ea4335, #fbbc05)" }}>
+              {Icons.bell}
+            </div>
+            <div>
+              <h3 style={styles.cardTitle}>Order Email Updates</h3>
+              <p style={styles.cardDescription}>Send the payment-approved email from a company Gmail account after staff manually verify the payment.</p>
+            </div>
+          </div>
+          <div style={styles.cardBody}>
+            <div style={styles.statusCard}>
+              <div style={{ ...styles.statusIcon, ...(gmailConnected ? styles.statusConnected : styles.statusDisconnected) }}>
+                {gmailConnected ? Icons.check : Icons.bell}
+              </div>
+              <div style={styles.statusInfo}>
+                <span style={styles.statusTitle}>
+                  {gmailConnected ? "Company Gmail Connected" : "Company Gmail Not Connected"}
+                </span>
+                <span style={styles.statusDescription}>
+                  {gmailConnected
+                    ? `Order updates are sent from ${gmailAddress || "the connected Gmail account"}.`
+                    : "Connect a Gmail account so all order updates can continue by email after the WhatsApp 24-hour window closes."}
+                </span>
+                {gmailError ? (
+                  <span style={{ ...styles.statusDescription, color: "var(--danger)" }}>
+                    {gmailError}
+                  </span>
+                ) : null}
+              </div>
+              {gmailConnected ? (
+                <button
+                  style={styles.btnSecondary}
+                  onClick={() => void handleDisconnectGmail()}
+                  disabled={disconnectGmail.isPending}
+                >
+                  {disconnectGmail.isPending ? "Disconnecting..." : "Disconnect"}
+                </button>
+              ) : (
+                <button
+                  style={styles.btnPrimary}
+                  onClick={() => void handleConnectGmail()}
+                  disabled={gmailConnectPending}
+                >
+                  {gmailConnectPending ? "Connecting..." : "Connect Gmail"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
 
       <div style={styles.card}>
         <div style={styles.cardHeader}>
@@ -2182,298 +2244,7 @@ export default function SettingsPage() {
     </div>
   );
 
-  const renderIntegrationsTab = () => {
-    const phoneNumbers = phoneNumbersQuery.data ?? [];
-    const accessStatus = accessStatusQuery.data;
-    const gmailConnected = Boolean(businessQuery.data?.gmailConnected);
-    const gmailAddress = String(businessQuery.data?.gmailEmail || "").trim();
-    const gmailError = describeCompanyGmailError(businessQuery.data?.gmailError);
-    const whatsappConnectBlocked = Boolean(accessStatus && !accessStatus.canConnectWhatsapp);
-    const whatsappConnectReason = whatsappConnectBlocked
-      ? "WhatsApp connection is blocked until this tenant has an active paid plan, demo grant, or partner grant."
-      : null;
-    const integrationCards = [
-      {
-        key: "whatsapp",
-        title: "WhatsApp",
-        description: "Connect WhatsApp Business so the bot can receive and reply in the main staff workflow.",
-        accent: "linear-gradient(135deg, #22c55e, #128c7e)",
-        connected: whatsappConnected,
-      },
-      {
-        key: "website",
-        title: "Website Widget",
-        description: "Generate the one-line widget snippet for your site or Wix custom code block.",
-        accent: "linear-gradient(135deg, #2563eb, #0ea5e9)",
-        connected: Boolean(websiteWidget.key),
-      },
-      {
-        key: "telegram",
-        title: "Telegram",
-        description: "Telegram inbox syncing will be added here next.",
-        accent: "linear-gradient(135deg, #229ed9, #38bdf8)",
-        connected: false,
-      },
-      {
-        key: "shopee",
-        title: "Shopee",
-        description: "Shopee order and catalog syncing will land here when ready.",
-        accent: "linear-gradient(135deg, #f97316, #fb923c)",
-        connected: false,
-      },
-      {
-        key: "lazada",
-        title: "Lazada",
-        description: "Lazada order syncing will be managed from the same integrations area.",
-        accent: "linear-gradient(135deg, #7c3aed, #a855f7)",
-        connected: false,
-      },
-      {
-        key: "tiktok",
-        title: "TikTok Shop",
-        description: "TikTok Shop operations will be plugged in here later.",
-        accent: "linear-gradient(135deg, #111827, #ec4899)",
-        connected: false,
-      },
-      {
-        key: "instagram",
-        title: "Instagram",
-        description: "Instagram messaging support will appear here once available.",
-        accent: "linear-gradient(135deg, #f97316, #ec4899)",
-        connected: false,
-      },
-    ] as const;
-
-    return (
-      <div style={styles.section}>
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <div style={{ ...styles.cardIcon, background: "linear-gradient(135deg, #22c55e, #128c7e)" }}>{Icons.link}</div>
-            <div>
-              <h3 style={styles.cardTitle}>Integrations</h3>
-              <p style={styles.cardDescription}>Connection setup, sync entry points, and channel controls now live in one place.</p>
-            </div>
-          </div>
-          <div style={styles.cardBody}>
-            <div style={styles.integrationGrid}>
-              {integrationCards.map((card) => (
-                <div key={card.key} style={styles.integrationTile}>
-                  <div style={styles.integrationTileHeader}>
-                    <div style={{ ...styles.integrationTileIcon, background: card.accent }}>
-                      {card.key === "whatsapp" ? "WA" : card.key === "website" ? "</>" : card.title.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div style={styles.integrationTileBody}>
-                      <div style={styles.integrationTileTitleRow}>
-                        <h4 style={styles.integrationTileTitle}>{card.title}</h4>
-                        <span
-                          style={{
-                            ...styles.integrationBadge,
-                            ...(card.connected
-                              ? {
-                                  color: "#34d399",
-                                  border: "1px solid rgba(16, 185, 129, 0.24)",
-                                  background: "rgba(16, 185, 129, 0.12)",
-                                }
-                              : {}),
-                          }}
-                        >
-                          {card.connected ? "Connected" : card.key === "whatsapp" || card.key === "website" ? "Ready" : "Coming Soon"}
-                        </span>
-                      </div>
-                      <p style={styles.integrationTileDescription}>{card.description}</p>
-                    </div>
-                  </div>
-                  <div style={styles.integrationTileFooter}>
-                    {card.key === "whatsapp" ? (
-                      <WhatsAppEmbeddedSignupButton
-                        email={email ?? undefined}
-                        connected={whatsappConnected}
-                        disabled={whatsappConnectBlocked}
-                        disabledReason={whatsappConnectReason}
-                        onConnected={() => {
-                          void phoneNumbersQuery.refetch();
-                        }}
-                        label="Connect"
-                        syncedLabel="Connected"
-                        className="btn"
-                        style={{
-                          ...styles.btnPrimary,
-                          ...(whatsappConnected ? styles.btnSecondary : {}),
-                        }}
-                      />
-                    ) : card.key === "website" ? (
-                      <button
-                        type="button"
-                        style={websiteWidget.key ? styles.btnSecondary : styles.btnPrimary}
-                        onClick={() => {
-                          void openWebsiteWidgetModal();
-                        }}
-                        disabled={ensureWebsiteWidget.isPending}
-                      >
-                        {ensureWebsiteWidget.isPending ? "Preparing..." : websiteWidget.key ? "View Snippet" : "Generate Snippet"}
-                      </button>
-                    ) : (
-                      <button type="button" style={styles.btnSecondary} disabled>
-                        Coming Soon
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {whatsappConnectBlocked ? (
-              <div
-                style={{
-                  marginTop: 14,
-                  borderRadius: 18,
-                  border: "1px solid rgba(245, 158, 11, 0.18)",
-                  background: "rgba(245, 158, 11, 0.08)",
-                  padding: "12px 14px",
-                  color: "var(--text-secondary)",
-                  fontSize: 13,
-                  lineHeight: 1.6,
-                }}
-              >
-                {whatsappConnectReason}
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        {phoneNumbers.length ? (
-          <div style={styles.card}>
-            <div style={styles.cardHeader}>
-              <div style={{ ...styles.cardIcon, background: "linear-gradient(135deg, #25D366, #128C7E)" }}>
-                {Icons.whatsapp}
-              </div>
-              <div>
-                <h3 style={styles.cardTitle}>WhatsApp Number Controls</h3>
-                <p style={styles.cardDescription}>Control automation behavior per connected WhatsApp number.</p>
-              </div>
-            </div>
-            <div style={styles.cardBody}>
-              <div style={{ display: "grid", gap: 12 }}>
-                {phoneNumbers.map((phone) => (
-                  <div
-                    key={phone.phoneNumberId}
-                    style={{
-                      ...styles.toggleRow,
-                      border: "1px solid var(--border)",
-                      borderRadius: 14,
-                      padding: "14px 16px",
-                    }}
-                  >
-                    <div style={styles.toggleInfo}>
-                      <span style={styles.toggleLabel}>
-                        {phone.displayPhoneNumber || phone.phoneNumberId}
-                      </span>
-                      <span style={styles.toggleDescription}>
-                        {phone.aiDisabled
-                          ? "AI is fully disabled for this number. Incoming messages are not processed by the bot."
-                          : phone.autoReplyPaused
-                            ? "Auto replies are paused for this number. Staff can reply manually while the bot keeps tracking context."
-                            : "Auto replies are active for this number."}
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
-                        <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                          Auto Reply
-                        </span>
-                        <Toggle
-                          checked={!phone.autoReplyPaused}
-                          onChange={(checked) => {
-                            void setWhatsappIdentityAutoReplyPaused.mutateAsync({
-                              phoneNumberId: phone.phoneNumberId,
-                              autoReplyPaused: !checked,
-                            });
-                          }}
-                          disabled={Boolean(phone.aiDisabled)}
-                        />
-                      </div>
-                      <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
-                        <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                          AI Enabled
-                        </span>
-                        <Toggle
-                          checked={!phone.aiDisabled}
-                          onChange={(checked) => {
-                            void setWhatsappIdentityAiDisabled.mutateAsync({
-                              phoneNumberId: phone.phoneNumberId,
-                              aiDisabled: !checked,
-                            });
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <div style={{ ...styles.cardIcon, background: "linear-gradient(135deg, #ea4335, #fbbc05)" }}>
-              {Icons.bell}
-            </div>
-            <div>
-              <h3 style={styles.cardTitle}>Order Email Updates</h3>
-              <p style={styles.cardDescription}>Send the payment-approved email from a company Gmail account after staff manually verify the payment.</p>
-            </div>
-          </div>
-          <div style={styles.cardBody}>
-            <div style={styles.statusCard}>
-              <div style={{ ...styles.statusIcon, ...(gmailConnected ? styles.statusConnected : styles.statusDisconnected) }}>
-                {gmailConnected ? Icons.check : Icons.bell}
-              </div>
-              <div style={styles.statusInfo}>
-                <span style={styles.statusTitle}>
-                  {gmailConnected ? "Company Gmail Connected" : "Company Gmail Not Connected"}
-                </span>
-                <span style={styles.statusDescription}>
-                  {gmailConnected
-                    ? `Order updates are sent from ${gmailAddress || "the connected Gmail account"}.`
-                    : "Connect a Gmail account so all order updates can continue by email after the WhatsApp 24-hour window closes."}
-                </span>
-                {gmailError ? (
-                  <span style={{ ...styles.statusDescription, color: "var(--danger)" }}>
-                    {gmailError}
-                  </span>
-                ) : null}
-              </div>
-              {gmailConnected ? (
-                <button
-                  style={styles.btnSecondary}
-                  onClick={() => void handleDisconnectGmail()}
-                  disabled={disconnectGmail.isPending}
-                >
-                  {disconnectGmail.isPending ? "Disconnecting..." : "Disconnect"}
-                </button>
-              ) : (
-                <button
-                  style={styles.btnPrimary}
-                  onClick={() => void handleConnectGmail()}
-                  disabled={gmailConnectPending}
-                >
-                  {gmailConnectPending ? "Connecting..." : "Connect Gmail"}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderAgentsTab = () => {
-    // If the user navigates here via tab, we can redirect them to the new page or show a link
-    if (typeof window !== "undefined") {
-      window.location.href = "/portal/agents";
-    }
-    return <div style={{ padding: 24 }}>Redirecting to Agents...</div>;
-  };
+    const renderAgentsTab = () => <AgentsTab />;
   const renderStockTab = () => <StockSettingsPanel />;
 
   const renderCustomizationTab = () => (
@@ -2740,8 +2511,18 @@ export default function SettingsPage() {
         return renderPaymentsTab();
       case "customization":
         return renderCustomizationTab();
-      case "integrations":
-        return renderIntegrationsTab();
+      case "connections":
+        return <ConnectionsTab
+          businessQuery={businessQuery}
+          email={email}
+          whatsappConnected={whatsappConnected}
+          whatsappConnectBlocked={whatsappConnectBlocked}
+          whatsappConnectReason={whatsappConnectReason}
+          phoneNumbersQuery={phoneNumbersQuery}
+          openWebsiteWidgetModal={openWebsiteWidgetModal}
+          websiteWidget={websiteWidget}
+          ensureWebsiteWidget={ensureWebsiteWidget}
+        />;
       case "agents":
         return renderAgentsTab();
       case "stock":

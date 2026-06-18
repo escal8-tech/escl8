@@ -13,7 +13,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 32,
     background: "var(--background)",
-    minHeight: "100vh",
+    
   },
   header: {
     display: "flex",
@@ -176,7 +176,20 @@ const styles: Record<string, React.CSSProperties> = {
   }
 };
 
-export default function ConnectionsPage() {
+import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
+
+export function ConnectionsTab(props: any) {
+  const {
+    businessQuery,
+    email,
+    whatsappConnected,
+    whatsappConnectBlocked,
+    whatsappConnectReason,
+    phoneNumbersQuery,
+    openWebsiteWidgetModal,
+    websiteWidget,
+    ensureWebsiteWidget
+  } = props;
   const toast = useToast();
   const channelsQuery = trpc.channels.listChannels.useQuery();
   const agentsQuery = trpc.agents.listAgents.useQuery();
@@ -238,6 +251,59 @@ export default function ConnectionsPage() {
   const businessCreditPool = channelsQuery.data?.businessCreditPool || 0;
   const totalAllocated = channels.reduce((sum, ch) => sum + (ch.useSharedPool ? 0 : (ch.monthlyCreditLimit || 0)), 0);
 
+  const integrationCards = [
+    {
+      key: "whatsapp",
+      title: "WhatsApp",
+      description: "Connect WhatsApp Business so the bot can receive and reply in the main staff workflow.",
+      accent: "linear-gradient(135deg, #22c55e, #128c7e)",
+      connected: whatsappConnected,
+    },
+    {
+      key: "website",
+      title: "Website Widget",
+      description: "Generate the one-line widget snippet for your site or Wix custom code block.",
+      accent: "linear-gradient(135deg, #2563eb, #0ea5e9)",
+      connected: Boolean(websiteWidget?.key),
+    },
+    {
+      key: "telegram",
+      title: "Telegram",
+      description: "Telegram inbox syncing will be added here next.",
+      accent: "linear-gradient(135deg, #229ed9, #38bdf8)",
+      connected: false,
+    },
+    {
+      key: "shopee",
+      title: "Shopee",
+      description: "Shopee order and catalog syncing will land here when ready.",
+      accent: "linear-gradient(135deg, #f97316, #fb923c)",
+      connected: false,
+    },
+    {
+      key: "lazada",
+      title: "Lazada",
+      description: "Lazada order syncing will be managed from the same integrations area.",
+      accent: "linear-gradient(135deg, #7c3aed, #a855f7)",
+      connected: false,
+    },
+    {
+      key: "tiktok",
+      title: "TikTok Shop",
+      description: "TikTok Shop operations will be plugged in here later.",
+      accent: "linear-gradient(135deg, #111827, #ec4899)",
+      connected: false,
+    },
+    {
+      key: "instagram",
+      title: "Instagram",
+      description: "Instagram messaging support will appear here once available.",
+      accent: "linear-gradient(135deg, #f97316, #ec4899)",
+      connected: false,
+    },
+  ] as const;
+
+
   return (
     <div style={styles.page}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -254,6 +320,89 @@ export default function ConnectionsPage() {
           </span>
           <span style={{ fontSize: 13, color: "var(--muted)" }}>credits allocated</span>
         </div>
+      </div>
+
+      <div style={{ marginTop: 24, marginBottom: 48 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>Add New Connection</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+          {integrationCards.map((card) => (
+            <div key={card.key} style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div style={{ padding: 20, flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 12, background: card.accent, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 700, fontSize: 14 }}>
+                    {card.key === "whatsapp" ? "WA" : card.key === "website" ? "</>" : card.title.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{card.title}</h4>
+                    <span style={{ fontSize: 12, color: card.connected ? "#10b981" : "var(--muted)", fontWeight: 500 }}>
+                      {card.connected ? "Connected" : card.key === "whatsapp" || card.key === "website" ? "Ready" : "Coming Soon"}
+                    </span>
+                  </div>
+                </div>
+                <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>{card.description}</p>
+              </div>
+              <div style={{ padding: "12px 20px", background: "rgba(0,0,0,0.02)", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end" }}>
+                {card.key === "whatsapp" ? (
+                  <WhatsAppEmbeddedSignupButton
+                    email={email ?? undefined}
+                    connected={whatsappConnected}
+                    disabled={whatsappConnectBlocked}
+                    disabledReason={whatsappConnectReason}
+                    onConnected={() => {
+                      void phoneNumbersQuery.refetch();
+                      channelsQuery.refetch();
+                    }}
+                    label="Connect WhatsApp"
+                    syncedLabel="Connected"
+                    className="btn"
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: 8,
+                      background: whatsappConnected ? "transparent" : "var(--primary)",
+                      color: whatsappConnected ? "var(--foreground)" : "white",
+                      border: whatsappConnected ? "1px solid var(--border)" : "none",
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  />
+                ) : card.key === "website" ? (
+                  <button
+                    type="button"
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: 8,
+                      background: websiteWidget?.key ? "transparent" : "var(--primary)",
+                      color: websiteWidget?.key ? "var(--foreground)" : "white",
+                      border: websiteWidget?.key ? "1px solid var(--border)" : "none",
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                    onClick={() => {
+                      void openWebsiteWidgetModal();
+                    }}
+                    disabled={ensureWebsiteWidget?.isPending}
+                  >
+                    {ensureWebsiteWidget?.isPending ? "Preparing..." : websiteWidget?.key ? "View Snippet" : "Generate Snippet"}
+                  </button>
+                ) : (
+                  <button type="button" style={{ padding: "8px 16px", borderRadius: 8, background: "transparent", border: "1px solid var(--border)", color: "var(--muted)", fontWeight: 500 }} disabled>
+                    Coming Soon
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        {whatsappConnectBlocked && (
+          <div style={{ marginTop: 16, padding: 12, borderRadius: 8, background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.2)", color: "var(--text-secondary)", fontSize: 13 }}>
+            {whatsappConnectReason}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Active Connections</h2>
+        <p style={{ color: "var(--muted)", fontSize: 14, margin: 0 }}>Configure settings and assign AI agents to your connected channels.</p>
       </div>
 
       {channelsQuery.isLoading ? (
