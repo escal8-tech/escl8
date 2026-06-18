@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { router, businessProcedure } from "../trpc";
@@ -7,7 +6,6 @@ import {
   supportTicketEvents,
 } from "../../../drizzle/schema";
 import { TRPCError } from "@trpc/server";
-import { resolveInitialFulfillmentStatus } from "@/lib/order-operations";
 import { normalizeKey } from "@/server/services/ticketWorkflowSupport";
 import {
   getHydratedTicketByIdForBusiness,
