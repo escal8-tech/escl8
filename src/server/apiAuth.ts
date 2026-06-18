@@ -10,38 +10,28 @@ export function readBearerToken(request: Request): string | null {
 }
 
 export async function getAuthedUserFromRequest(request: Request) {
-  const idToken = readBearerToken(request);
-  if (!idToken) return null;
+  const firebaseUid = request.headers.get("x-firebase-uid");
+  const email = request.headers.get("x-user-email");
+  const businessId = request.headers.get("x-business-id");
+  const userId = request.headers.get("x-user-id");
 
-  try {
-    const decoded = await verifyFirebaseIdToken(idToken);
-    const email = decoded.email || null;
-    const firebaseUid = decoded.uid || null;
-    if (!email || !firebaseUid) return null;
-
-    let user = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid)).then((rows) => rows[0] ?? null);
-    if (!user) {
-      user = await db.select().from(users).where(eq(users.email, email)).then((rows) => rows[0] ?? null);
-      if (user && !user.firebaseUid) {
-        const repaired = await db
-          .update(users)
-          .set({ firebaseUid, updatedAt: new Date() })
-          .where(and(eq(users.id, user.id), eq(users.email, email)))
-          .returning();
-        user = repaired[0] ?? user;
-      }
-    }
-
-    if (!user) return null;
-
-    return {
-      user,
-      decoded,
-      firebaseUid,
-      email,
-      businessId: String(user.businessId || ""),
-    };
-  } catch {
+  if (!firebaseUid || !email) {
     return null;
   }
+
+  return {
+    user: {
+      id: userId || "",
+      firebaseUid,
+      email,
+      businessId: businessId || "",
+    },
+    decoded: {
+      uid: firebaseUid,
+      email,
+    },
+    firebaseUid,
+    email,
+    businessId: businessId || "",
+  };
 }

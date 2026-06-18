@@ -199,7 +199,8 @@ jobs:
               bot-internal-api-key="$ACA_BOT_INTERNAL_API_KEY" \
               otel-exporter-otlp-headers="$ACA_OTEL_EXPORTER_OTLP_HEADERS" \
               grafana-logs-user="$GRAFANA_LOGS_USER" \
-              grafana-logs-api-key="$GRAFANA_LOGS_API_KEY"
+              grafana-logs-api-key="$GRAFANA_LOGS_API_KEY" \
+              jwt-secret="${{ secrets.JWT_SECRET }}"
 
       - name: Update Worker Container App secrets
         shell: bash
@@ -219,7 +220,8 @@ jobs:
               azure-queue-connection-string="$ACA_AZURE_QUEUE_CONNECTION_STRING" \
               otel-exporter-otlp-headers="$ACA_OTEL_EXPORTER_OTLP_HEADERS" \
               grafana-logs-user="$GRAFANA_LOGS_USER" \
-              grafana-logs-api-key="$GRAFANA_LOGS_API_KEY"
+              grafana-logs-api-key="$GRAFANA_LOGS_API_KEY" \
+              jwt-secret="${{ secrets.JWT_SECRET }}"
 
       - name: Update Job secrets
         shell: bash
@@ -263,6 +265,10 @@ jobs:
               OTEL_EXPORTER_OTLP_HEADERS=secretref:otel-exporter-otlp-headers \
               GRAFANA_LOGS_USER=secretref:grafana-logs-user \
               GRAFANA_LOGS_API_KEY=secretref:grafana-logs-api-key \
+              JWT_SECRET=secretref:jwt-secret \
+              REDIS_HOST=secretref:redis-host \
+              REDIS_PORT=secretref:redis-port \
+              REDIS_PASSWORD=secretref:redis-password \
               SENTRY_ORG="${{ secrets.PRODUCTION_SENTRY_ORG }}" \
               SENTRY_PROJECT="${{ secrets.PRODUCTION_SENTRY_PROJECT }}" \
               NEXT_PUBLIC_SENTRY_ENVIRONMENT=production \
@@ -293,6 +299,10 @@ jobs:
               OTEL_EXPORTER_OTLP_HEADERS=secretref:otel-exporter-otlp-headers \
               GRAFANA_LOGS_USER=secretref:grafana-logs-user \
               GRAFANA_LOGS_API_KEY=secretref:grafana-logs-api-key \
+              JWT_SECRET=secretref:jwt-secret \
+              REDIS_HOST=secretref:redis-host \
+              REDIS_PORT=secretref:redis-port \
+              REDIS_PASSWORD=secretref:redis-password \
               RAG_WORKER_MODE=queue \
               RAG_WORKER_POLL_MS=1500
 
