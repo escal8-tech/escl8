@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { refreshAccessToken } from '@/lib/jwt-auth';
-import { rateLimiter, RATE_LIMITS } from '@/lib/rate-limiter';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
 import { setAuthCookies } from '@/lib/auth-cookies';
 import { checkRateLimit } from '@/lib/auth-rate-limit';
 
@@ -31,7 +31,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'refreshToken is required (cookie or body)' }, { status: 400 });
     }
 
-    const tokens = await refreshAccessToken(refreshToken, 'reservation');
+    const tokens = await refreshAccessToken(refreshToken, 'agent');
     if (!tokens) {
       return NextResponse.json({ error: 'Invalid or expired refresh token' }, { status: 401 });
     }
