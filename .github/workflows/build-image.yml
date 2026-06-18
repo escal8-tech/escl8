@@ -26,7 +26,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npx tsc --noEmit
+      - run: NODE_OPTIONS="--max_old_space_size=4096" npx tsc --noEmit
       - name: Run tests
         run: find src -name '*.test.ts' -print0 | xargs -0 npx tsx --test
       - run: npm run lint
