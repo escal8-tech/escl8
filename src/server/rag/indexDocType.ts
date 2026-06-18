@@ -405,7 +405,7 @@ export async function indexSingleDocType(params: {
 }): Promise<{ chunkCount: number; sha256: string }>
 {
   const { businessId, docType, blobPath, filename, agentId } = params;
-  const targetNamespace = agentId || businessId;
+  const targetNamespace = businessId;
   console.log(`[rag:index] begin businessId=${businessId} agentId=${agentId} docType=${docType} blobPath=${blobPath}`);
 
   const blob = await downloadBlobToBuffer(blobPath);
