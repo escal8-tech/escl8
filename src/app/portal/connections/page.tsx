@@ -201,9 +201,18 @@ export default function ConnectionsPage() {
     }
   };
 
-  const handleCreditLimitChange = async (id: string, value: string) => {
+  const handleCreditLimitChange = async (id: string, value: string, oldLimit: number, totalAllocated: number, businessPool: number) => {
     const num = parseInt(value, 10);
     if (isNaN(num) || num < 0) return;
+    
+    // Check if new allocation exceeds business pool
+    if (totalAllocated - oldLimit + num > businessPool) {
+      showErrorToast(toast, { title: "Limit Exceeded", message: `Cannot exceed the business credit pool of ${businessPool}` });
+      // Force re-render to reset input to old value
+      channelsQuery.refetch();
+      return;
+    }
+
     try {
       await updateChannel.mutateAsync({ id, monthlyCreditLimit: num });
       showSuccessToast(toast, { title: "Success", message: "Credit limit updated" });
@@ -213,24 +222,37 @@ export default function ConnectionsPage() {
     }
   };
 
+  const channels = channelsQuery.data?.channels || [];
+  const businessCreditPool = channelsQuery.data?.businessCreditPool || 0;
+  const totalAllocated = channels.reduce((sum, ch) => sum + (ch.useSharedPool ? 0 : (ch.monthlyCreditLimit || 0)), 0);
+
   return (
     <div style={styles.page}>
-      <div style={styles.header}>
-        <h1 style={styles.title}>Connections</h1>
-        <p style={styles.subtitle}>
-          Manage all your connected channels, unified routing settings, and monthly AI credit allocations from a single place.
-        </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={styles.header}>
+          <h1 style={styles.title}>Connections</h1>
+          <p style={styles.subtitle}>
+            Manage all your connected channels, unified routing settings, and monthly AI credit allocations from a single place.
+          </p>
+        </div>
+        <div style={{ background: "var(--card)", padding: "12px 20px", borderRadius: 12, border: "1px solid var(--border)", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Business Pool</span>
+          <span style={{ fontSize: 24, fontWeight: 700, color: totalAllocated > businessCreditPool ? "#ef4444" : "var(--foreground)" }}>
+            {totalAllocated} / {businessCreditPool}
+          </span>
+          <span style={{ fontSize: 13, color: "var(--muted)" }}>credits allocated</span>
+        </div>
       </div>
 
       {channelsQuery.isLoading ? (
         <div>Loading connections...</div>
-      ) : channelsQuery.data?.length === 0 ? (
+      ) : channels.length === 0 ? (
         <div style={styles.emptyState}>
           No channels connected yet. Go to Settings &gt; Integrations to connect your first account.
         </div>
       ) : (
         <div style={styles.grid}>
-          {channelsQuery.data?.map(channel => {
+          {channels.map(channel => {
             const isWhatsapp = channel.provider === "whatsapp";
             const isInstagram = channel.provider === "instagram";
             const badgeStyle = isWhatsapp ? styles.whatsappBadge : isInstagram ? styles.instagramBadge : styles.defaultBadge;
@@ -283,20 +305,46 @@ export default function ConnectionsPage() {
 
                   <div style={styles.controlRow}>
                     <div style={styles.controlLabel}>
-                      <span style={styles.controlTitle}>Monthly AI Credit Cap</span>
-                      <span style={styles.controlHint}>Limit AI usage per channel (0 for unlimited)</span>
+                      <span style={styles.controlTitle}>Share Business Pool</span>
+                      <span style={styles.controlHint}>Draw credits directly from main pool</span>
                     </div>
-                    <input 
-                      type="number" 
-                      style={styles.input}
-                      defaultValue={channel.monthlyCreditLimit || 0}
-                      onBlur={(e) => {
-                        if (e.target.value !== String(channel.monthlyCreditLimit)) {
-                          handleCreditLimitChange(channel.id, e.target.value);
+                    <div 
+                      style={{ ...styles.toggle, background: channel.useSharedPool ? "var(--primary)" : "var(--border)" }}
+                      onClick={async () => {
+                        try {
+                          await updateChannel.mutateAsync({ id: channel.id, useSharedPool: !channel.useSharedPool });
+                          showSuccessToast(toast, { title: "Success", message: "Shared pool setting updated" });
+                          channelsQuery.refetch();
+                        } catch (e) {
+                          showErrorToast(toast, { title: "Error", message: "Failed to update setting" });
                         }
                       }}
-                    />
+                    >
+                      <div style={{ ...styles.toggleKnob, transform: channel.useSharedPool ? "translateX(20px)" : "translateX(0)" }} />
+                    </div>
                   </div>
+
+                  {!channel.useSharedPool && (
+                    <div style={styles.controlRow}>
+                      <div style={styles.controlLabel}>
+                        <span style={styles.controlTitle}>Monthly AI Credit Cap</span>
+                        <span style={styles.controlHint}>
+                          Used: {channel.totalCreditsConsumed || 0} / {channel.monthlyCreditLimit || 0}
+                        </span>
+                      </div>
+                      <input 
+                        type="number" 
+                        style={styles.input}
+                        defaultValue={channel.monthlyCreditLimit || 0}
+                        key={`${channel.id}-${channel.monthlyCreditLimit}`} // Force re-render if reset
+                        onBlur={(e) => {
+                          if (e.target.value !== String(channel.monthlyCreditLimit)) {
+                            handleCreditLimitChange(channel.id, e.target.value, channel.monthlyCreditLimit || 0, totalAllocated, businessCreditPool);
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             );

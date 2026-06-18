@@ -274,6 +274,7 @@ export const channelIdentities = pgTable(
     autoReplyPaused: boolean("auto_reply_paused").notNull().default(false),
     
     monthlyCreditLimit: integer("monthly_credit_limit").notNull().default(0),
+    useSharedPool: boolean("use_shared_pool").notNull().default(true),
     creditBalance: integer("credit_balance").notNull().default(0),
     creditResetAt: timestamp("credit_reset_at", { withTimezone: true }),
     totalCreditsConsumed: integer("total_credits_consumed").notNull().default(0),
