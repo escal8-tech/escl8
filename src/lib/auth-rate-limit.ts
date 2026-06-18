@@ -15,7 +15,7 @@ export function getClientIp(request: NextRequest): string {
  */
 export async function checkRateLimit(
   request: NextRequest,
-  config: typeof RATE_LIMITS.AUTH_TOKEN | typeof RATE_LIMITS.AUTH_REFRESH
+  config: typeof RATE_LIMITS.AUTH_TOKEN
 ): Promise<NextResponse | null> {
   const identifier = getClientIp(request);
   const result = await rateLimiter.checkLimitAsync(identifier, config);

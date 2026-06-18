@@ -36,6 +36,7 @@ export interface Escal8JWTAccessPayload extends Escal8JWTPayloadBase {
 
 export interface Escal8JWTRefreshPayload extends Escal8JWTPayloadBase {
   type: 'refresh';
+  subscription?: undefined;
 }
 
 export type Escal8JWTPayload = Escal8JWTAccessPayload | Escal8JWTRefreshPayload;
@@ -124,14 +125,14 @@ export async function validateAuthToken(request: Request): Promise<{
 /**
  * Check if token has specific feature
  */
-export function tokenHasFeature(payload: Escal8JWTPayload, featureKey: string): boolean {
+export function tokenHasFeature(payload: Escal8JWTAccessPayload, featureKey: string): boolean {
   return Boolean(payload.subscription?.features?.[featureKey]);
 }
 
 /**
  * Get limit from token
  */
-export function tokenGetLimit(payload: Escal8JWTPayload, limitKey: string): number | null {
+export function tokenGetLimit(payload: Escal8JWTAccessPayload, limitKey: string): number | null {
   const value = payload.subscription?.limits?.[limitKey];
   return typeof value === 'number' ? value : null;
 }
@@ -139,14 +140,14 @@ export function tokenGetLimit(payload: Escal8JWTPayload, limitKey: string): numb
 /**
  * Get workspace mode from token
  */
-export function tokenGetWorkspaceMode(payload: Escal8JWTPayload): 'full' | 'readonly' | 'blocked' {
+export function tokenGetWorkspaceMode(payload: Escal8JWTAccessPayload): 'full' | 'readonly' | 'blocked' {
   return payload.subscription?.workspaceMode ?? 'blocked';
 }
 
 /**
  * Check if token has module access
  */
-export function tokenHasModuleAccess(payload: Escal8JWTPayload, module: SuiteProductModule): boolean {
+export function tokenHasModuleAccess(payload: Escal8JWTAccessPayload, module: SuiteProductModule): boolean {
   if (module === 'agent') {
     return payload.subscription?.grantsAgent === true || payload.subscription?.isSpecialGrant === true;
   }
@@ -156,6 +157,6 @@ export function tokenHasModuleAccess(payload: Escal8JWTPayload, module: SuitePro
 /**
  * Get hotelId from token (for middleware)
  */
-export function tokenGetBusinessId(payload: Escal8JWTPayload): string | null {
+export function tokenGetBusinessId(payload: Escal8JWTAccessPayload): string | null {
   return payload.subscription?.businessId ?? null;
 }

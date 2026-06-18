@@ -166,6 +166,14 @@ export async function middleware(request: NextRequest) {
   }
 
   // JWT valid - extract all claims
+  if (payload.type !== 'access') {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'unauthorized', reason: 'invalid_token_type' }, { status: 401 })
+    }
+    const loginUrl = new URL('/auth/login', request.url)
+    return NextResponse.redirect(loginUrl)
+  }
+
   const { sub: firebaseUid, email, suiteTenantId, subscription, userId } = payload
 
   if (!firebaseUid || !email || !suiteTenantId || !subscription) {
