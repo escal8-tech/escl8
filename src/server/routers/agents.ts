@@ -46,7 +46,7 @@ export const agentsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...updates } = input;
       
-      const updateData: Record<string, any> = {};
+      const updateData: Record<string, unknown> = {};
       if (updates.name !== undefined) updateData.name = updates.name;
       if (updates.botType !== undefined) updateData.botType = updates.botType;
       if (updates.promptOverride !== undefined) updateData.promptOverride = updates.promptOverride;
