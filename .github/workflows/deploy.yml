@@ -200,8 +200,10 @@ jobs:
               otel-exporter-otlp-headers="$ACA_OTEL_EXPORTER_OTLP_HEADERS" \
               grafana-logs-user="$GRAFANA_LOGS_USER" \
               grafana-logs-api-key="$GRAFANA_LOGS_API_KEY" \
-              jwt-secret="${{ secrets.JWT_SECRET }}"
-
+              jwt-secret="${{ secrets.JWT_SECRET }}" \
+              redis-host="${{ secrets.REDIS_HOST }}" \
+              redis-port="${{ secrets.REDIS_PORT }}" \
+              redis-password="${{ secrets.REDIS_PASSWORD }}"
       - name: Update Worker Container App secrets
         shell: bash
         run: |
@@ -221,8 +223,10 @@ jobs:
               otel-exporter-otlp-headers="$ACA_OTEL_EXPORTER_OTLP_HEADERS" \
               grafana-logs-user="$GRAFANA_LOGS_USER" \
               grafana-logs-api-key="$GRAFANA_LOGS_API_KEY" \
-              jwt-secret="${{ secrets.JWT_SECRET }}"
-
+              jwt-secret="${{ secrets.JWT_SECRET }}" \
+              redis-host="${{ secrets.REDIS_HOST }}" \
+              redis-port="${{ secrets.REDIS_PORT }}" \
+              redis-password="${{ secrets.REDIS_PASSWORD }}"
       - name: Update Job secrets
         shell: bash
         run: |
