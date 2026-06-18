@@ -3,9 +3,24 @@ import {getTenantModuleAccess, type TenantModuleAccess, type SuiteProductModule}
 import {getRedisClient, getCached, setCached} from '@/lib/redis';
 import {REDIS_KEYS} from '@/lib/redis';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'dev-secret-change-in-production-min-32-chars!!'
-);
+const DEV_JWT_SECRET = 'dev-secret-change-in-production-min-32-chars!!';
+
+/**
+ * Resolve the JWT signing secret at call time (never at module load, so that
+ * `next build` - which imports these modules without runtime secrets - does not
+ * crash). Fails fast in production when the secret is missing instead of silently
+ * falling back to the predictable dev secret, which would let attackers forge tokens.
+ */
+function getJwtSecret(): Uint8Array {
+  const rawSecret = process.env.JWT_SECRET;
+  if (!rawSecret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET must be set in production');
+    }
+    return new TextEncoder().encode(DEV_JWT_SECRET);
+  }
+  return new TextEncoder().encode(rawSecret);
+}
 const JWT_ISSUER = 'escal8';
 const JWT_AUDIENCE = 'escal8-apps';
 const ACCESS_TOKEN_TTL = '15m'; // 15 minutes
@@ -15,8 +30,9 @@ const REFRESH_TOKEN_TTL = '7d'; // 7 days
 const HOTEL_ID_CACHE_KEY = 'suite_tenant_hotel_id:';
 const HOTEL_ID_CACHE_TTL = 3600; // 1 hour
 
-// Sentinel object to distinguish "cached null" from "cache miss"
-const NULL_HOTEL_ID = Symbol('NULL_HOTEL_ID');
+// Sentinel string to distinguish "cached null" from "cache miss".
+// Must be JSON-serializable since getCached/setCached round-trip through JSON.
+const NULL_HOTEL_ID_SENTINEL = '__NULL_HOTEL_ID__';
 
 export type {
   SubscriptionClaims,
@@ -32,11 +48,11 @@ import type { SubscriptionClaims, Escal8JWTPayload, TokenPair } from './jwt-edge
 async function getBusinessIdFromSuiteTenantId(suiteTenantId: string): Promise<string | null> {
   const cacheKey = `${HOTEL_ID_CACHE_KEY}${suiteTenantId}`;
 
-  // Try cache first
-  const cached = await getCached<string | typeof NULL_HOTEL_ID>(cacheKey);
-  if (cached !== undefined) {
+  // Try cache first. getCached returns null on a miss, so a non-null value is a hit.
+  const cached = await getCached<string>(cacheKey);
+  if (cached !== null) {
     // Cache hit - check if it's our sentinel for "no business found"
-    return cached === NULL_HOTEL_ID ? null : cached;
+    return cached === NULL_HOTEL_ID_SENTINEL ? null : cached;
   }
 
   // Look up from DB
@@ -51,12 +67,12 @@ async function getBusinessIdFromSuiteTenantId(suiteTenantId: string): Promise<st
     const businessId = rows[0]?.id ?? null;
 
     // Cache the result using sentinel for null
-    await setCached(cacheKey, businessId ?? NULL_HOTEL_ID, HOTEL_ID_CACHE_TTL);
+    await setCached(cacheKey, businessId ?? NULL_HOTEL_ID_SENTINEL, HOTEL_ID_CACHE_TTL);
 
     return businessId;
   } catch {
     // Cache null result to prevent repeated lookups
-    await setCached(cacheKey, NULL_HOTEL_ID, HOTEL_ID_CACHE_TTL);
+    await setCached(cacheKey, NULL_HOTEL_ID_SENTINEL, HOTEL_ID_CACHE_TTL);
     return null;
   }
 }
@@ -178,7 +194,7 @@ export async function generateAccessToken(
     .setIssuedAt()
     .setExpirationTime(ACCESS_TOKEN_TTL)
     .setSubject(firebaseUid)
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 /**
@@ -205,7 +221,7 @@ export async function generateRefreshToken(
     .setIssuedAt()
     .setExpirationTime(REFRESH_TOKEN_TTL)
     .setSubject(firebaseUid)
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 /**
@@ -245,10 +261,11 @@ export async function verifyAccessToken(token: string): Promise<Escal8JWTPayload
       }
     }
 
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jwtVerify(token, getJwtSecret(), {
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     });
+    if (payload.type !== 'access') return null;
     return payload as unknown as Escal8JWTPayload;
   } catch {
     return null;
@@ -268,7 +285,7 @@ export async function verifyRefreshToken(token: string): Promise<Escal8JWTPayloa
       }
     }
 
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jwtVerify(token, getJwtSecret(), {
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     });

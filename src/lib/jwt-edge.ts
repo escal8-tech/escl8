@@ -1,9 +1,23 @@
 import {jwtVerify, type JWTPayload} from 'jose';
 
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is missing');
+const DEV_JWT_SECRET = 'dev-secret-change-in-production-min-32-chars!!';
+
+/**
+ * Resolve the JWT signing secret at call time (never at module load, so that
+ * `next build` - which imports these modules without runtime secrets - does not
+ * crash). Fails fast in production when the secret is missing instead of silently
+ * falling back to the predictable dev secret, which would let attackers forge tokens.
+ */
+function getJwtSecret(): Uint8Array {
+  const rawSecret = process.env.JWT_SECRET;
+  if (!rawSecret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET must be set in production');
+    }
+    return new TextEncoder().encode(DEV_JWT_SECRET);
+  }
+  return new TextEncoder().encode(rawSecret);
 }
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 const JWT_ISSUER = 'escal8';
 const JWT_AUDIENCE = 'escal8-apps';
 
@@ -36,6 +50,10 @@ export interface Escal8JWTAccessPayload extends Escal8JWTPayloadBase {
 
 export interface Escal8JWTRefreshPayload extends Escal8JWTPayloadBase {
   type: 'refresh';
+  // Refresh tokens never carry subscription claims. Declaring it as optional-undefined
+  // keeps the discriminated union usable with optional chaining in the shared helpers
+  // below (which would otherwise fail to type-check against the refresh variant).
+  subscription?: undefined;
 }
 
 export type Escal8JWTPayload = Escal8JWTAccessPayload | Escal8JWTRefreshPayload;
@@ -53,7 +71,7 @@ export type SuiteProductModule = 'agent' | 'reservation';
  */
 export async function verifyAccessToken(token: string): Promise<Escal8JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jwtVerify(token, getJwtSecret(), {
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     });
@@ -73,7 +91,7 @@ export async function verifyAccessToken(token: string): Promise<Escal8JWTPayload
  */
 export async function verifyRefreshToken(token: string): Promise<Escal8JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jwtVerify(token, getJwtSecret(), {
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     });

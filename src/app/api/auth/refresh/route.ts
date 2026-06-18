@@ -31,7 +31,9 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'refreshToken is required (cookie or body)' }, { status: 400 });
     }
 
-    const tokens = await refreshAccessToken(refreshToken, 'reservation');
+    // This dashboard only issues agent-module tokens, so refreshed tokens must grant
+    // agent access. refreshAccessToken defaults the module to 'agent'.
+    const tokens = await refreshAccessToken(refreshToken);
     if (!tokens) {
       return NextResponse.json({ error: 'Invalid or expired refresh token' }, { status: 401 });
     }

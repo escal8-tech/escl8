@@ -27,6 +27,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { idToken, module = 'agent' } = body;
 
+    const VALID_MODULES = ['agent', 'reservation'] as const;
+    const validatedModule: 'agent' | 'reservation' = VALID_MODULES.includes(module) ? module : 'agent';
+
     if (!idToken) {
       return NextResponse.json({ error: 'idToken is required' }, { status: 400 });
     }
@@ -75,7 +78,7 @@ export async function POST(request: NextRequest) {
     const userBusinessId = userRows[0]?.businessId ?? null;
 
     // Generate token pair with user's businessId
-    const tokens = await generateTokenPair(firebaseUid, email, suiteTenantId, module as 'agent' | 'reservation', userBusinessId);
+    const tokens = await generateTokenPair(firebaseUid, email, suiteTenantId, validatedModule, userBusinessId);
 
     // Return response with httpOnly cookies set
     const response = NextResponse.json({ 
