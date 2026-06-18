@@ -74,7 +74,7 @@ const sentryProcedure = t.procedure.use(async (opts) => {
   const inputBusinessId = extractRawBusinessId(await opts.getRawInput());
   const scopedBusinessId = opts.ctx.businessId ?? null;
   const startedAt = Date.now();
-  const businessId = inputBusinessId ?? scopedBusinessId;
+  const businessId = scopedBusinessId ?? inputBusinessId;
   const shouldLogMutationSuccess = false;
 
   return Sentry.startSpan(
