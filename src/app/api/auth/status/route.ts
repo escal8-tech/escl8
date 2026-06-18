@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/server/db/client'
 import { businesses, users } from '@/../drizzle/schema'
-import { and, eq, isNull, or } from 'drizzle-orm'
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
 import { getTenantModuleAccess } from '@/server/control/access'
 import { controlDb } from '@/server/control/db'
 import { suiteTenantSubscriptions, suiteSubscriptionPlans } from '@/server/control/schema'
@@ -34,6 +34,16 @@ async function getSubscriptionDetails(suiteTenantId: string) {
       .orderBy(
         // Priority: active > partner/demo grants > past_due > pending_setup > others
         // This matches getLatestSubscriptionRow logic
+        desc(
+          sql`case
+            when ${suiteTenantSubscriptions.status} = 'active' then 5
+            when ${suiteSubscriptionPlans.grantKind} in ('partner', 'demo') then 4
+            when ${suiteTenantSubscriptions.status} = 'past_due' then 3
+            when ${suiteTenantSubscriptions.status} = 'pending_setup' then 2
+            else 1
+          end`,
+        ),
+        desc(suiteTenantSubscriptions.updatedAt),
       )
       .limit(1)
 
