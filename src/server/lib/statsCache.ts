@@ -3,6 +3,7 @@ type CacheEntry<T> = {
   expiresAt: number;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic cache requires heterogeneous value types
 const cache = new Map<string, CacheEntry<any>>();
 
 /**

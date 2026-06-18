@@ -1,12 +1,5 @@
 import { appRouter } from "@/server/routers";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
-import { db } from "@/server/db/client";
-import { businesses, users } from "@/../drizzle/schema";
-import { controlDb } from "@/server/control/db";
-import { suiteMemberships, suiteTenants, suiteUsers } from "@/server/control/schema";
-import { getTenantModuleAccess } from "@/server/control/access";
-import { and, eq, sql } from "drizzle-orm";
-import { syncFirebaseSuiteClaims, verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 import { checkRateLimit } from "@/server/rateLimit";
 import { NextResponse } from "next/server";
 
@@ -49,132 +42,17 @@ const handler = async (req: Request) => {
     req,
     router: appRouter,
     createContext: async () => {
-      const auth = req.headers.get("authorization") || "";
-      const m = auth.match(/^Bearer\s+(.+)$/i);
-      if (!m) return { userEmail: null, firebaseUid: null, userId: null, businessId: null };
+      const firebaseUid = req.headers.get("x-firebase-uid") || null;
+      const userEmail = req.headers.get("x-user-email") || null;
+      const userId = req.headers.get("x-user-id") || null;
+      const businessId = req.headers.get("x-business-id") || null;
 
-      try {
-        const decoded = await verifyFirebaseIdToken(m[1]);
-        const userEmail = decoded.email || null;
-        const firebaseUid = decoded.uid || null;
-        if (!userEmail || !firebaseUid) {
-          return { userEmail: null, firebaseUid: null, userId: null, businessId: null };
-        }
-
-        let user = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid)).then((r) => r[0] ?? null);
-
-        if (!user) {
-          user = await db.select().from(users).where(eq(users.email, userEmail)).then((r) => r[0] ?? null);
-          if (user && !user.firebaseUid) {
-            const repaired = await db
-              .update(users)
-              .set({ firebaseUid, updatedAt: new Date() })
-              .where(and(eq(users.id, user.id), eq(users.email, userEmail)))
-              .returning();
-            user = repaired[0] ?? user;
-          }
-        }
-        if (!user) {
-          return { userEmail, firebaseUid, userId: null, businessId: null };
-        }
-
-        const business = user?.businessId
-          ? await db.select().from(businesses).where(eq(businesses.id, user.businessId)).then((r) => r[0] ?? null)
-          : null;
-        if (!business) {
-          return { userEmail, firebaseUid, userId: (user?.id as string) ?? null, businessId: null };
-        }
-
-        let suiteUser = await controlDb.select().from(suiteUsers).where(eq(suiteUsers.firebaseUid, firebaseUid)).then((r) => r[0] ?? null);
-        if (!suiteUser) {
-          const createdSuiteUser = await controlDb
-            .insert(suiteUsers)
-            .values({ firebaseUid, email: userEmail, displayName: userEmail.split("@")[0] || "User" })
-            .returning();
-          suiteUser = createdSuiteUser[0] ?? null;
-        }
-        if (!suiteUser) {
-          return { userEmail: null, firebaseUid: null, userId: null, businessId: null };
-        }
-
-        if (!user.suiteUserId) {
-          const repaired = await db
-            .update(users)
-            .set({ suiteUserId: suiteUser.id, updatedAt: new Date() })
-            .where(eq(users.id, user.id))
-            .returning();
-          user = repaired[0] ?? user;
-        }
-
-        let suiteTenantId = business.suiteTenantId;
-        if (!suiteTenantId) {
-          const createdTenant = await controlDb
-            .insert(suiteTenants)
-            .values({
-              name: business.name || `Business ${business.id.slice(0, 8)}`,
-              metadata: { seededFrom: "agent.businesses", businessId: business.id }
-            })
-            .returning();
-          suiteTenantId = createdTenant[0]?.id ?? null;
-          if (!suiteTenantId) {
-            return { userEmail, firebaseUid, userId: null, businessId: null };
-          }
-          await db
-            .update(businesses)
-            .set({ suiteTenantId, updatedAt: new Date() })
-            .where(eq(businesses.id, business.id));
-        }
-
-        let membership = await controlDb
-          .select()
-          .from(suiteMemberships)
-          .where(and(eq(suiteMemberships.suiteTenantId, suiteTenantId), eq(suiteMemberships.suiteUserId, suiteUser.id)))
-          .then((r) => r[0] ?? null);
-        if (!membership) {
-          const existingMemberships = await controlDb
-            .select({ count: sql<number>`count(*)::int` })
-            .from(suiteMemberships)
-            .where(eq(suiteMemberships.suiteTenantId, suiteTenantId));
-          const isFirst = (existingMemberships[0]?.count ?? 0) === 0;
-          if (isFirst) {
-            const createdMembership = await controlDb
-              .insert(suiteMemberships)
-              .values({
-                suiteTenantId,
-                suiteUserId: suiteUser.id,
-                role: "owner",
-                isActive: true
-              })
-              .returning();
-            membership = createdMembership[0] ?? null;
-          }
-        }
-        if (!membership?.isActive) {
-          return { userEmail, firebaseUid, userId: null, businessId: null };
-        }
-
-        const access = await getTenantModuleAccess(suiteTenantId, "agent");
-        if (!access.allowed && !setupAccessBypass) {
-          return { userEmail, firebaseUid, userId: null, businessId: null };
-        }
-
-        if (access.allowed) {
-          void syncFirebaseSuiteClaims(firebaseUid, {
-            suiteTenantId,
-            suiteUserId: suiteUser.id,
-            modules: ["agent"],
-          }).catch(() => {});
-        }
-
-        return {
-          userEmail,
-          firebaseUid,
-          userId: (user?.id as string) ?? null,
-          businessId: (user?.businessId as string) ?? null,
-        };
-      } catch {
-        return { userEmail: null, firebaseUid: null, userId: null, businessId: null };
-      }
+      return {
+        firebaseUid,
+        userEmail,
+        userId,
+        businessId,
+      };
     },
   });
 
