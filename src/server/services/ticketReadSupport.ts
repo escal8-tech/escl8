@@ -182,71 +182,71 @@ export async function getTicketPerformanceForBusiness(args: {
 }) {
   const cacheKey = `ticket:performance:${args.businessId}:${args.typeKey ?? "all"}:${args.windowDays ?? "all"}`;
   return withStatsCache(cacheKey, 60, async () => {
-    const whereChunks = [sql`${supportTickets.businessId} = ${args.businessId}`];
-    if (args.typeKey) whereChunks.push(sql`${supportTickets.ticketTypeKey} = ${normalizeKey(args.typeKey)}`);
-    if (args.windowDays) whereChunks.push(sql`${supportTickets.createdAt} >= now() - (${args.windowDays} * interval '1 day')`);
+  const whereChunks = [sql`${supportTickets.businessId} = ${args.businessId}`];
+  if (args.typeKey) whereChunks.push(sql`${supportTickets.ticketTypeKey} = ${normalizeKey(args.typeKey)}`);
+  if (args.windowDays) whereChunks.push(sql`${supportTickets.createdAt} >= now() - (${args.windowDays} * interval '1 day')`);
 
-    const whereSql = sql.join(whereChunks, sql` AND `);
-    const result = await db.execute<{
-      total: number;
-      overdue_open: number;
-      resolved_total: number;
-      resolved_on_time: number;
-      resolved_late: number;
-      won_count: number;
-      lost_count: number;
-    }>(sql`
-      SELECT
-        count(*)::int AS total,
-        count(*) FILTER (
-          WHERE ${supportTickets.status} IN ('open','in_progress')
-          AND ${supportTickets.slaDueAt} IS NOT NULL
-          AND ${supportTickets.slaDueAt} < now()
-        )::int AS overdue_open,
-        count(*) FILTER (WHERE ${supportTickets.status} = 'resolved')::int AS resolved_total,
-        count(*) FILTER (
-          WHERE ${supportTickets.status} = 'resolved'
-          AND ${supportTickets.resolvedAt} IS NOT NULL
-          AND ${supportTickets.slaDueAt} IS NOT NULL
-          AND ${supportTickets.resolvedAt} <= ${supportTickets.slaDueAt}
-        )::int AS resolved_on_time,
-        count(*) FILTER (
-          WHERE ${supportTickets.status} = 'resolved'
-          AND ${supportTickets.resolvedAt} IS NOT NULL
-          AND ${supportTickets.slaDueAt} IS NOT NULL
-          AND ${supportTickets.resolvedAt} > ${supportTickets.slaDueAt}
-        )::int AS resolved_late,
-        count(*) FILTER (WHERE ${supportTickets.outcome} = 'won')::int AS won_count,
-        count(*) FILTER (WHERE ${supportTickets.outcome} = 'lost')::int AS lost_count
-      FROM ${supportTickets}
-      WHERE ${whereSql}
-    `);
+  const whereSql = sql.join(whereChunks, sql` AND `);
+  const result = await db.execute<{
+    total: number;
+    overdue_open: number;
+    resolved_total: number;
+    resolved_on_time: number;
+    resolved_late: number;
+    won_count: number;
+    lost_count: number;
+  }>(sql`
+    SELECT
+      count(*)::int AS total,
+      count(*) FILTER (
+        WHERE ${supportTickets.status} IN ('open','in_progress')
+        AND ${supportTickets.slaDueAt} IS NOT NULL
+        AND ${supportTickets.slaDueAt} < now()
+      )::int AS overdue_open,
+      count(*) FILTER (WHERE ${supportTickets.status} = 'resolved')::int AS resolved_total,
+      count(*) FILTER (
+        WHERE ${supportTickets.status} = 'resolved'
+        AND ${supportTickets.resolvedAt} IS NOT NULL
+        AND ${supportTickets.slaDueAt} IS NOT NULL
+        AND ${supportTickets.resolvedAt} <= ${supportTickets.slaDueAt}
+      )::int AS resolved_on_time,
+      count(*) FILTER (
+        WHERE ${supportTickets.status} = 'resolved'
+        AND ${supportTickets.resolvedAt} IS NOT NULL
+        AND ${supportTickets.slaDueAt} IS NOT NULL
+        AND ${supportTickets.resolvedAt} > ${supportTickets.slaDueAt}
+      )::int AS resolved_late,
+      count(*) FILTER (WHERE ${supportTickets.outcome} = 'won')::int AS won_count,
+      count(*) FILTER (WHERE ${supportTickets.outcome} = 'lost')::int AS lost_count
+    FROM ${supportTickets}
+    WHERE ${whereSql}
+  `);
 
-    const row = result.rows?.[0] ?? {
-      total: 0,
-      overdue_open: 0,
-      resolved_total: 0,
-      resolved_on_time: 0,
-      resolved_late: 0,
-      won_count: 0,
-      lost_count: 0,
-    };
-    const won = Number(row.won_count ?? 0);
-    const lost = Number(row.lost_count ?? 0);
-    const closedDeals = won + lost;
-    const resolvedTotal = Number(row.resolved_total ?? 0);
-    const resolvedOnTime = Number(row.resolved_on_time ?? 0);
+  const row = result.rows?.[0] ?? {
+    total: 0,
+    overdue_open: 0,
+    resolved_total: 0,
+    resolved_on_time: 0,
+    resolved_late: 0,
+    won_count: 0,
+    lost_count: 0,
+  };
+  const won = Number(row.won_count ?? 0);
+  const lost = Number(row.lost_count ?? 0);
+  const closedDeals = won + lost;
+  const resolvedTotal = Number(row.resolved_total ?? 0);
+  const resolvedOnTime = Number(row.resolved_on_time ?? 0);
 
-    return {
-      total: Number(row.total ?? 0),
-      overdueOpen: Number(row.overdue_open ?? 0),
-      resolvedTotal,
-      resolvedOnTime,
-      resolvedLate: Number(row.resolved_late ?? 0),
-      wonCount: won,
-      lostCount: lost,
-      conversionRate: closedDeals > 0 ? Number(((won / closedDeals) * 100).toFixed(1)) : 0,
-      slaOnTimeRate: resolvedTotal > 0 ? Number(((resolvedOnTime / resolvedTotal) * 100).toFixed(1)) : 0,
-    };
+  return {
+    total: Number(row.total ?? 0),
+    overdueOpen: Number(row.overdue_open ?? 0),
+    resolvedTotal,
+    resolvedOnTime,
+    resolvedLate: Number(row.resolved_late ?? 0),
+    wonCount: won,
+    lostCount: lost,
+    conversionRate: closedDeals > 0 ? Number(((won / closedDeals) * 100).toFixed(1)) : 0,
+    slaOnTimeRate: resolvedTotal > 0 ? Number(((resolvedOnTime / resolvedTotal) * 100).toFixed(1)) : 0,
+  };
   });
 }

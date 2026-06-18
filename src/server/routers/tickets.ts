@@ -7,6 +7,7 @@ import {
   supportTicketEvents,
 } from "../../../drizzle/schema";
 import { TRPCError } from "@trpc/server";
+import { resolveInitialFulfillmentStatus } from "@/lib/order-operations";
 import { normalizeKey } from "@/server/services/ticketWorkflowSupport";
 import {
   getHydratedTicketByIdForBusiness,
@@ -50,6 +51,7 @@ const orderStageSchema = z.enum([
   "refunded",
   "denied",
 ]);
+
 
 export const ticketsRouter = router({
   listTypes: businessProcedure

@@ -129,7 +129,7 @@ export function buildManualOrderFields(input: {
 }
 
 export async function upsertType(
-  ctx: Context,
+  ctx: any,
   input: {
     id: string;
     enabled?: boolean;
@@ -185,7 +185,7 @@ export async function upsertType(
 }
 
 export async function createTicket(
-  ctx: Context,
+  ctx: any,
   input: {
     ticketTypeKey: string;
     title?: string;
@@ -297,7 +297,7 @@ export async function createTicket(
 }
 
 export async function createManualOrderTicket(
-  ctx: Context,
+  ctx: any,
   input: {
     channel: "walkin" | "phone" | "website" | "other";
     customerName: string;
@@ -536,7 +536,7 @@ export async function createManualOrderTicket(
 }
 
 export async function updateTicket(
-  ctx: Context,
+  ctx: any,
   input: {
     id: string;
     expectedUpdatedAt?: Date;
@@ -709,7 +709,7 @@ export async function updateTicket(
 }
 
 export async function updateTicketStatus(
-  ctx: Context,
+  ctx: any,
   input: {
     id: string;
     expectedUpdatedAt?: Date;
@@ -800,7 +800,7 @@ export async function updateTicketStatus(
 }
 
 export async function updateTicketOutcome(
-  ctx: Context,
+  ctx: any,
   input: {
     id: string;
     expectedUpdatedAt?: Date;
@@ -896,7 +896,7 @@ export async function updateTicketOutcome(
 }
 
 export async function resolveSupportTicket(
-  ctx: Context,
+  ctx: any,
   input: {
     id: string;
     expectedUpdatedAt?: Date;
@@ -1014,7 +1014,7 @@ export async function resolveSupportTicket(
 }
 
 export async function updateTicketSlaDueAt(
-  ctx: Context,
+  ctx: any,
   input: {
     id: string;
     expectedUpdatedAt?: Date;
@@ -1092,7 +1092,7 @@ export async function updateTicketSlaDueAt(
 }
 
 export async function approveOrderTicket(
-  ctx: Context,
+  ctx: any,
   input: { id: string; expectedUpdatedAt?: Date }
 ) {
   const [biz] = await db
@@ -1628,7 +1628,7 @@ export async function approveOrderTicket(
 }
 
 export async function denyOrderTicket(
-  ctx: Context,
+  ctx: any,
   input: { id: string; expectedUpdatedAt?: Date; reason?: string }
 ) {
   const [biz] = await db

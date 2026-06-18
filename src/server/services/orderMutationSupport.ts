@@ -178,7 +178,7 @@ export async function emailManualOrderInvoice(input: {
 }
 
 export async function updateDraftOrder(
-  ctx: Context,
+  ctx: any,
   input: {
     orderId: string;
     expectedUpdatedAt?: Date;
@@ -369,7 +369,7 @@ export async function updateDraftOrder(
 }
 
 export async function updatePaymentSetup(
-  ctx: Context,
+  ctx: any,
   input: {
     orderId: string;
     expectedUpdatedAt?: Date;
@@ -447,7 +447,7 @@ export async function updatePaymentSetup(
   return updatedOrder;
 }
 
-export async function sendPaymentDetails(ctx: Context, input: { orderId: string }) {
+export async function sendPaymentDetails(ctx: any, input: { orderId: string }) {
   const settings = await getBusinessOrderSettings(ctx.businessId);
   if (!settings.ticketToOrderEnabled) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
@@ -702,7 +702,7 @@ export async function sendPaymentDetails(ctx: Context, input: { orderId: string 
 }
 
 export async function reviewPayment(
-  ctx: Context,
+  ctx: any,
   input: {
     paymentId: string;
     action: "approve" | "reject";
@@ -1116,7 +1116,7 @@ export async function reviewPayment(
 }
 
 export async function updateFulfillment(
-  ctx: Context,
+  ctx: any,
   input: {
     orderId: string;
     expectedUpdatedAt?: Date;
@@ -1413,7 +1413,7 @@ export async function updateFulfillment(
 }
 
 export async function captureManualPayment(
-  ctx: Context,
+  ctx: any,
   input: {
     orderId: string;
     amount?: string;
@@ -1735,7 +1735,7 @@ export async function captureManualPayment(
 }
 
 export async function denyPendingPaymentOrder(
-  ctx: Context,
+  ctx: any,
   input: {
     orderId: string;
     reason?: string;
@@ -1946,7 +1946,7 @@ export async function denyPendingPaymentOrder(
 }
 
 export async function reopenPaidOrderForPaymentReview(
-  ctx: Context,
+  ctx: any,
   input: {
     orderId: string;
     reason?: string;
@@ -2082,7 +2082,7 @@ export async function reopenPaidOrderForPaymentReview(
 }
 
 export async function updateRefundStatus(
-  ctx: Context,
+  ctx: any,
   input: {
     orderId: string;
     action: "mark_pending" | "mark_refunded" | "cancel";
