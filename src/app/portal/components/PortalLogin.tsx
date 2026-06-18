@@ -1,37 +1,113 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
 import { isClientErrorReported, recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
 import { getFirebaseAuth } from "@/lib/firebaseClient";
 import { APP_DEFAULT_AUTH_REDIRECT, APP_LOGIN_ROUTE } from "@/lib/app-routes";
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
+import { isSafeInternalRedirect } from "@/lib/safe-redirect";
 import { AuthLayout } from "./AuthLayout";
 import { LoginForm, LoginFormState } from "./LoginForm";
 
 export function PortalLogin() {
   const auth = getFirebaseAuth();
   const router = useRouter();
+  const redirectingRef = useRef(false);
   const [authChecked, setAuthChecked] = useState(!auth);
   const [state, setState] = useState<LoginFormState>({
     busy: false,
     error: auth ? null : "Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.",
   });
 
+  const getRedirectUrl = useCallback(() => {
+    if (typeof window === "undefined") return null;
+    const raw = new URLSearchParams(window.location.search).get("redirect");
+    return isSafeInternalRedirect(raw) ? raw : null;
+  }, []);
+
+  const establishEscal8Session = useCallback(async (idToken: string): Promise<void> => {
+    const tokenResponse = await fetch("/api/auth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken, module: "agent" }),
+      credentials: "include",
+    });
+
+    if (!tokenResponse.ok) {
+      const err = await tokenResponse.json().catch(() => ({}));
+      console.error("[PortalLogin] Token exchange failed:", tokenResponse.status, err);
+      throw new Error("Unable to finish sign-in. Please try again.");
+    }
+  }, []);
+
+  const completeFirebaseLogin = useCallback(async (input: {
+    action: string;
+    attributes?: Record<string, string | number | boolean | null | undefined>;
+    event: string;
+    freshToken?: boolean;
+  }) => {
+    if (redirectingRef.current) return true;
+    redirectingRef.current = true;
+
+    const idToken = await getFirebaseIdTokenOrThrow({
+      action: input.action,
+      area: "auth",
+      attributes: input.attributes,
+      freshToken: input.freshToken,
+      missingConfigEvent: input.event,
+      missingSessionEvent: input.event,
+      route: APP_LOGIN_ROUTE,
+      tokenFailureEvent: input.event,
+    });
+
+    await establishEscal8Session(idToken);
+
+    const nextPath = getRedirectUrl() ?? APP_DEFAULT_AUTH_REDIRECT;
+    router.replace(nextPath);
+    router.refresh();
+    return true;
+  }, [establishEscal8Session, getRedirectUrl, router]);
+
   useEffect(() => {
     if (!auth) return;
     setAuthChecked(false);
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
       setAuthChecked(true);
       if (u) {
         setState((s) => ({ ...s, busy: true, error: null }));
-        router.replace(APP_DEFAULT_AUTH_REDIRECT);
+        try {
+          await completeFirebaseLogin({
+            action: "portal-restore-session",
+            event: "auth.session_restore_failed",
+            freshToken: true,
+          });
+        } catch (err: any) {
+          await auth.signOut().catch(() => {});
+          redirectingRef.current = false;
+          if (!isClientErrorReported(err)) {
+            recordClientBusinessEvent({
+              event: "auth.session_restore_failed",
+              action: "portal-restore-session",
+              area: "auth",
+              captureInSentry: true,
+              error: err instanceof Error ? err : new Error(String(err)),
+              level: "error",
+              outcome: "unexpected_failure",
+              route: APP_LOGIN_ROUTE,
+            });
+          }
+          setState({
+            busy: false,
+            error: err?.message || "Unable to continue your session. Please sign in again.",
+          });
+        }
       }
     });
     return () => unsub();
-  }, [auth, router]);
+  }, [auth, completeFirebaseLogin]);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -69,19 +145,16 @@ export function PortalLogin() {
         throw new Error("Please enter a valid email address.");
       }
 
-      await signInWithEmailAndPassword(auth, email, password);
-      await getFirebaseIdTokenOrThrow({
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      void cred;
+      await completeFirebaseLogin({
         action: "portal-email-login",
-        area: "auth",
         attributes: {
           auth_provider: "password",
           email_domain: email.split("@")[1] || null,
         },
         freshToken: true,
-        missingConfigEvent: "auth.email_login_failed",
-        missingSessionEvent: "auth.email_login_failed",
-        route: APP_LOGIN_ROUTE,
-        tokenFailureEvent: "auth.email_login_failed",
+        event: "auth.email_login_failed",
       });
       recordClientBusinessEvent({
         event: "auth.email_login_succeeded",
@@ -94,8 +167,9 @@ export function PortalLogin() {
           email_domain: email.split("@")[1] || null,
         },
       });
-      router.push(APP_DEFAULT_AUTH_REDIRECT);
     } catch (err: any) {
+      await getFirebaseAuth()?.signOut().catch(() => {});
+      redirectingRef.current = false;
       console.error(err);
       if (!isClientErrorReported(err)) {
         const captureInSentry = shouldCaptureUnexpectedClientError(err);
@@ -144,18 +218,14 @@ export function PortalLogin() {
       const res = await signInWithPopup(auth, provider);
       const googleEmail = res.user.email;
       if (!googleEmail) throw new Error("Google account has no email attached.");
-      await getFirebaseIdTokenOrThrow({
+      await completeFirebaseLogin({
         action: "portal-google-login",
-        area: "auth",
         attributes: {
           auth_provider: "google",
           email_domain: googleEmail.split("@")[1] || null,
         },
         freshToken: true,
-        missingConfigEvent: "auth.google_login_failed",
-        missingSessionEvent: "auth.google_login_failed",
-        route: APP_LOGIN_ROUTE,
-        tokenFailureEvent: "auth.google_login_failed",
+        event: "auth.google_login_failed",
       });
       recordClientBusinessEvent({
         event: "auth.google_login_succeeded",
@@ -168,8 +238,9 @@ export function PortalLogin() {
           email_domain: googleEmail.split("@")[1] || null,
         },
       });
-      router.push(APP_DEFAULT_AUTH_REDIRECT);
     } catch (err: any) {
+      await getFirebaseAuth()?.signOut().catch(() => {});
+      redirectingRef.current = false;
       console.error(err);
       if (!isClientErrorReported(err)) {
         const captureInSentry = shouldCaptureUnexpectedClientError(err);

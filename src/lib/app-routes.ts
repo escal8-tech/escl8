@@ -2,7 +2,7 @@ export const APP_LOGIN_ROUTE = "/auth/login";
 export const APP_SIGNUP_ROUTE = "/signup";
 export const APP_ACCESS_ROUTE = "/access";
 export const APP_ONBOARDING_ROUTE = "/onboarding";
-export const APP_DEFAULT_AUTH_REDIRECT = "/upload";
+export const APP_DEFAULT_AUTH_REDIRECT = "/dashboard";
 export const APP_PROTECTED_ROUTE_PREFIXES = [
   "/onboarding",
   "/dashboard",
