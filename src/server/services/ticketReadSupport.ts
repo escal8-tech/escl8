@@ -9,18 +9,21 @@ import { getHydratedTicketRow, normalizeKey } from "@/server/services/ticketWork
 const LEGACY_ORDER_OPS_TICKET_TYPE_KEYS = ["orderstatus", "paymentstatus"] as const;
 
 export async function listTicketTypesForBusiness(args: { businessId: string; includeDisabled?: boolean }) {
-  await ensureDefaultTicketTypes(args.businessId);
-  const conditions = [eq(supportTicketTypes.businessId, args.businessId)];
-  if (!args.includeDisabled) conditions.push(eq(supportTicketTypes.enabled, true));
-  conditions.push(sql`lower(${supportTicketTypes.key}) not in (${sql.join(
-    LEGACY_ORDER_OPS_TICKET_TYPE_KEYS.map((key) => sql`${key}`),
-    sql`, `,
-  )})`);
-  return db
-    .select()
-    .from(supportTicketTypes)
-    .where(and(...conditions))
-    .orderBy(supportTicketTypes.sortOrder, supportTicketTypes.label);
+  const cacheKey = `ticket:types:${args.businessId}:${args.includeDisabled ?? false}`;
+  return withStatsCache(cacheKey, 300, async () => {
+    await ensureDefaultTicketTypes(args.businessId);
+    const conditions = [eq(supportTicketTypes.businessId, args.businessId)];
+    if (!args.includeDisabled) conditions.push(eq(supportTicketTypes.enabled, true));
+    conditions.push(sql`lower(${supportTicketTypes.key}) not in (${sql.join(
+      LEGACY_ORDER_OPS_TICKET_TYPE_KEYS.map((key) => sql`${key}`),
+      sql`, `,
+    )})`);
+    return db
+      .select()
+      .from(supportTicketTypes)
+      .where(and(...conditions))
+      .orderBy(supportTicketTypes.sortOrder, supportTicketTypes.label);
+  });
 }
 
 export async function listTicketsForBusiness(args: {
@@ -99,26 +102,27 @@ export async function listTicketLedgerForBusiness(args: {
     );
   }
 
-  const [countRow] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(supportTickets)
-    .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
-    .where(and(...conditions));
-
-  const rows = await db
-    .select({
-      ...getTableColumns(supportTickets),
-      orderId: orders.id,
-      orderStatus: orders.status,
-      orderPaymentMethod: orders.paymentMethod,
-      orderUpdatedAt: orders.updatedAt,
-    })
-    .from(supportTickets)
-    .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
-    .where(and(...conditions))
-    .orderBy(desc(supportTickets.updatedAt), desc(supportTickets.createdAt))
-    .limit(args.limit)
-    .offset(args.offset);
+  const [[countRow], rows] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(supportTickets)
+      .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
+      .where(and(...conditions)),
+    db
+      .select({
+        ...getTableColumns(supportTickets),
+        orderId: orders.id,
+        orderStatus: orders.status,
+        orderPaymentMethod: orders.paymentMethod,
+        orderUpdatedAt: orders.updatedAt,
+      })
+      .from(supportTickets)
+      .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
+      .where(and(...conditions))
+      .orderBy(desc(supportTickets.updatedAt), desc(supportTickets.createdAt))
+      .limit(args.limit)
+      .offset(args.offset),
+  ]);
 
   const threadIds = [...new Set(rows.map((row) => String(row.threadId || "").trim()).filter(Boolean))];
   const threadWindowRows = threadIds.length
@@ -158,21 +162,24 @@ export async function getHydratedTicketByIdForBusiness(args: { businessId: strin
 }
 
 export async function getTicketTypeCountersForBusiness(businessId: string) {
-  const rows = await db
-    .select({
-      key: supportTickets.ticketTypeKey,
-      openCount: sql<number>`count(*) filter (where lower(coalesce(${supportTickets.status}, '')) = 'open')::int`,
-      inProgressCount: sql<number>`count(*) filter (where lower(coalesce(${supportTickets.status}, '')) in ('in_progress', 'pending'))::int`,
-    })
-    .from(supportTickets)
-    .where(eq(supportTickets.businessId, businessId))
-    .groupBy(supportTickets.ticketTypeKey);
+  const cacheKey = `ticket:type-counters:${businessId}`;
+  return withStatsCache(cacheKey, 60, async () => {
+    const rows = await db
+      .select({
+        key: supportTickets.ticketTypeKey,
+        openCount: sql<number>`count(*) filter (where lower(coalesce(${supportTickets.status}, '')) = 'open')::int`,
+        inProgressCount: sql<number>`count(*) filter (where lower(coalesce(${supportTickets.status}, '')) in ('in_progress', 'pending'))::int`,
+      })
+      .from(supportTickets)
+      .where(eq(supportTickets.businessId, businessId))
+      .groupBy(supportTickets.ticketTypeKey);
 
-  return rows.map((row) => ({
-    key: row.key,
-    openCount: Number(row.openCount ?? 0),
-    inProgressCount: Number(row.inProgressCount ?? 0),
-  }));
+    return rows.map((row) => ({
+      key: row.key,
+      openCount: Number(row.openCount ?? 0),
+      inProgressCount: Number(row.inProgressCount ?? 0),
+    }));
+  });
 }
 
 export async function getTicketPerformanceForBusiness(args: {
