@@ -1,9 +1,11 @@
 import {jwtVerify, type JWTPayload} from 'jose';
 
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is missing');
-}
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
+const getJwtSecret = () => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable is missing');
+  }
+  return new TextEncoder().encode(process.env.JWT_SECRET);
+};
 const JWT_ISSUER = 'escal8';
 const JWT_AUDIENCE = 'escal8-apps';
 
@@ -54,7 +56,7 @@ export type SuiteProductModule = 'agent' | 'reservation';
  */
 export async function verifyAccessToken(token: string): Promise<Escal8JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jwtVerify(token, getJwtSecret(), {
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     });
@@ -74,7 +76,7 @@ export async function verifyAccessToken(token: string): Promise<Escal8JWTPayload
  */
 export async function verifyRefreshToken(token: string): Promise<Escal8JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET, {
+    const { payload } = await jwtVerify(token, getJwtSecret(), {
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     });
