@@ -1,0 +1,593 @@
+
+> web@0.1.0 test
+> node --import tsx --test "src/**/*.test.ts" src/server/routers/agents.test.ts src/server/routers/rag.test.ts src/server/routers/business_sub.test.ts src/server/routers/channels.test.ts src/lib/stock-settings.test.ts src/lib/customization-settings.test.ts
+
+TAP version 13
+# Subtest: readMediaInfo reads nested inbound media metadata
+ok 1 - readMediaInfo reads nested inbound media metadata
+  ---
+  duration_ms: 1.231627
+  type: 'test'
+  ...
+# Subtest: pickup orders are detected from stored pickup markers
+ok 2 - pickup orders are detected from stored pickup markers
+  ---
+  duration_ms: 1.301505
+  type: 'test'
+  ...
+# Subtest: pickup orders show pickup summary and recipient hint
+ok 3 - pickup orders show pickup summary and recipient hint
+  ---
+  duration_ms: 0.373011
+  type: 'test'
+  ...
+# Subtest: order item summaries read top-level bot snapshots
+ok 4 - order item summaries read top-level bot snapshots
+  ---
+  duration_ms: 1.219741
+  type: 'test'
+  ...
+# Subtest: order item summaries exclude delivery fee rows
+ok 5 - order item summaries exclude delivery fee rows
+  ---
+  duration_ms: 0.42258
+  type: 'test'
+  ...
+# Subtest: order money helpers parse comma thousands
+ok 6 - order money helpers parse comma thousands
+  ---
+  duration_ms: 0.695038
+  type: 'test'
+  ...
+# Subtest: ticket item formatting excludes delivery fee rows
+ok 7 - ticket item formatting excludes delivery fee rows
+  ---
+  duration_ms: 2.330326
+  type: 'test'
+  ...
+# Subtest: normalizeCustomizationSettings handles colors
+ok 8 - normalizeCustomizationSettings handles colors
+  ---
+  duration_ms: 4.384364
+  type: 'test'
+  ...
+# Subtest: normalizeCustomizationSettings defaults missing fields
+ok 9 - normalizeCustomizationSettings defaults missing fields
+  ---
+  duration_ms: 0.274244
+  type: 'test'
+  ...
+# Subtest: agent WhatsApp send failures are mapped to a critical failure key
+ok 10 - agent WhatsApp send failures are mapped to a critical failure key
+  ---
+  duration_ms: 1.405391
+  type: 'test'
+  ...
+# Subtest: non-failure events only get scope_module
+ok 11 - non-failure events only get scope_module
+  ---
+  duration_ms: 0.27797
+  type: 'test'
+  ...
+# Subtest: delivery line item detection accepts free and fee labels
+ok 12 - delivery line item detection accepts free and fee labels
+  ---
+  duration_ms: 1.636527
+  type: 'test'
+  ...
+# Subtest: normalizeStockColumnKey handles various inputs
+ok 13 - normalizeStockColumnKey handles various inputs
+  ---
+  duration_ms: 1.440964
+  type: 'test'
+  ...
+# Subtest: friendlyStockColumnLabel generates clean labels
+not ok 14 - friendlyStockColumnLabel generates clean labels
+  ---
+  duration_ms: 2.724554
+  type: 'test'
+  location: '/app/src/lib/stock-settings.test.ts:2:1436'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+
+    + 'ItemCode'
+    - 'Itemcode'
+           ^
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'Itemcode'
+  actual: 'ItemCode'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/app/src/lib/stock-settings.test.ts:19:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: inferStockColumnRole detects roles from keys
+not ok 15 - inferStockColumnRole detects roles from keys
+  ---
+  duration_ms: 0.667904
+  type: 'test'
+  location: '/app/src/lib/stock-settings.test.ts:2:1829'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+
+    + 'ignore'
+    - 'quantity'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'quantity'
+  actual: 'ignore'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/app/src/lib/stock-settings.test.ts:27:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: normalizeStockSettings deduplicates and cleans mapping
+ok 16 - normalizeStockSettings deduplicates and cleans mapping
+  ---
+  duration_ms: 0.480462
+  type: 'test'
+  ...
+# Subtest: readBearerToken parses bearer headers
+ok 17 - readBearerToken parses bearer headers
+  ---
+  duration_ms: 28.449817
+  type: 'test'
+  ...
+# Subtest: readBearerToken rejects missing or malformed headers
+ok 18 - readBearerToken rejects missing or malformed headers
+  ---
+  duration_ms: 0.586215
+  type: 'test'
+  ...
+# Subtest: secretsEqual uses exact matching semantics
+ok 19 - secretsEqual uses exact matching semantics
+  ---
+  duration_ms: 1.268137
+  type: 'test'
+  ...
+# Subtest: isInternalApiAuthorized accepts x-api-key header
+ok 20 - isInternalApiAuthorized accepts x-api-key header
+  ---
+  duration_ms: 20.751486
+  type: 'test'
+  ...
+# Subtest: normalizeServiceBaseUrl keeps valid http urls and rejects other schemes
+ok 21 - normalizeServiceBaseUrl keeps valid http urls and rejects other schemes
+  ---
+  duration_ms: 0.833783
+  type: 'test'
+  ...
+# Subtest: normalizeBlobPath rejects traversal and invalid characters
+ok 22 - normalizeBlobPath rejects traversal and invalid characters
+  ---
+  duration_ms: 0.37611
+  type: 'test'
+  ...
+# Subtest: deriveInventoryProductFromFields infers new upload columns while preserving saved mappings
+ok 23 - deriveInventoryProductFromFields infers new upload columns while preserving saved mappings
+  ---
+  duration_ms: 5.589624
+  type: 'test'
+  ...
+# Subtest: parseInventoryAmount rejects placeholders and zero prices
+ok 24 - parseInventoryAmount rejects placeholders and zero prices
+  ---
+  duration_ms: 0.239043
+  type: 'test'
+  ...
+# Subtest: parseInventoryAmount handles edge cases and invalid formats
+ok 25 - parseInventoryAmount handles edge cases and invalid formats
+  ---
+  duration_ms: 0.356877
+  type: 'test'
+  ...
+# Subtest: deriveInventoryProductFromFields handles empty and null inputs gracefully
+ok 26 - deriveInventoryProductFromFields handles empty and null inputs gracefully
+  ---
+  duration_ms: 0.330811
+  type: 'test'
+  ...
+# Subtest: deriveInventoryProductFromFields supports compact stock report headers
+ok 27 - deriveInventoryProductFromFields supports compact stock report headers
+  ---
+  duration_ms: 1.10146
+  type: 'test'
+  ...
+# Subtest: normalizeHeaderKey handles mixed spreadsheet headers
+ok 28 - normalizeHeaderKey handles mixed spreadsheet headers
+  ---
+  duration_ms: 1.421404
+  type: 'test'
+  ...
+# Subtest: summarizeInventoryFields recognizes combined product name headers
+ok 29 - summarizeInventoryFields recognizes combined product name headers
+  ---
+  duration_ms: 2.217752
+  type: 'test'
+  ...
+# Subtest: summarizeInventoryFields prefers descriptive product name and keeps code
+ok 30 - summarizeInventoryFields prefers descriptive product name and keeps code
+  ---
+  duration_ms: 0.901221
+  type: 'test'
+  ...
+# Subtest: buildSpreadsheetRowText filters invalid false price placeholders
+ok 31 - buildSpreadsheetRowText filters invalid false price placeholders
+  ---
+  duration_ms: 0.810908
+  type: 'test'
+  ...
+# Subtest: inventory source row key stays stable when an item code moves rows or files
+ok 32 - inventory source row key stays stable when an item code moves rows or files
+  ---
+  duration_ms: 5.270162
+  type: 'test'
+  ...
+# Subtest: inventory source row key can disambiguate duplicate item identities
+ok 33 - inventory source row key can disambiguate duplicate item identities
+  ---
+  duration_ms: 1.13812
+  type: 'test'
+  ...
+# Subtest: inventory source row key falls back to name and specification when item code is absent
+ok 34 - inventory source row key falls back to name and specification when item code is absent
+  ---
+  duration_ms: 1.153179
+  type: 'test'
+  ...
+# Subtest: standalone runtime packages Azure Web PubSub
+ok 35 - standalone runtime packages Azure Web PubSub
+  ---
+  duration_ms: 1.587082
+  type: 'test'
+  ...
+# Subtest: createAgent input validation
+ok 36 - createAgent input validation
+  ---
+  duration_ms: 7.084635
+  type: 'test'
+  ...
+# Subtest: updateAgent input validation
+ok 37 - updateAgent input validation
+  ---
+  duration_ms: 2.750773
+  type: 'test'
+  ...
+# Subtest: deleteAgent input validation
+ok 38 - deleteAgent input validation
+  ---
+  duration_ms: 0.867772
+  type: 'test'
+  ...
+# Subtest: filterSubscriptionRecord filters keys by prefix
+ok 39 - filterSubscriptionRecord filters keys by prefix
+  ---
+  duration_ms: 1.862521
+  type: 'test'
+  ...
+# Subtest: getSubscription logic simulation
+ok 40 - getSubscription logic simulation
+  ---
+  duration_ms: 0.273162
+  type: 'test'
+  ...
+# Subtest: updateChannel logic simulation
+ok 41 - updateChannel logic simulation
+  ---
+  duration_ms: 1.292805
+  type: 'test'
+  ...
+# Subtest: enqueueRetrain input validation
+ok 42 - enqueueRetrain input validation
+  ---
+  duration_ms: 6.121917
+  type: 'test'
+  ...
+# Subtest: regenerateInstructions input validation
+ok 43 - regenerateInstructions input validation
+  ---
+  duration_ms: 1.067866
+  type: 'test'
+  ...
+# Subtest: retrieve input validation
+ok 44 - retrieve input validation
+  ---
+  duration_ms: 5.600412
+  type: 'test'
+  ...
+# Subtest: buildOutboxAssistantObservation maps ticket approval messages to paymentstatus
+ok 45 - buildOutboxAssistantObservation maps ticket approval messages to paymentstatus
+  ---
+  duration_ms: 2.076677
+  type: 'test'
+  ...
+# Subtest: buildOutboxAssistantObservation maps ticket denial messages to orderstatus
+ok 46 - buildOutboxAssistantObservation maps ticket denial messages to orderstatus
+  ---
+  duration_ms: 0.339868
+  type: 'test'
+  ...
+# Subtest: buildOutboxAssistantObservation maps manual payment detail sends to paymentstatus
+ok 47 - buildOutboxAssistantObservation maps manual payment detail sends to paymentstatus
+  ---
+  duration_ms: 0.252124
+  type: 'test'
+  ...
+# Subtest: normalizeGraphId trims usable ids
+ok 48 - normalizeGraphId trims usable ids
+  ---
+  duration_ms: 1.246996
+  type: 'test'
+  ...
+# Subtest: hasPhoneNumber detects matching edge members
+ok 49 - hasPhoneNumber detects matching edge members
+  ---
+  duration_ms: 0.276359
+  type: 'test'
+  ...
+# Subtest: nextPagingUrl returns only non-empty urls
+ok 50 - nextPagingUrl returns only non-empty urls
+  ---
+  duration_ms: 0.204288
+  type: 'test'
+  ...
+# Subtest: normalizeRequestedWabaIds trims and deduplicates
+ok 51 - normalizeRequestedWabaIds trims and deduplicates
+  ---
+  duration_ms: 1.03424
+  type: 'test'
+  ...
+# Subtest: normalizeOrderFlowSettings defaults payment slip requirement to true
+ok 52 - normalizeOrderFlowSettings defaults payment slip requirement to true
+  ---
+  duration_ms: 1.563627
+  type: 'test'
+  ...
+# Subtest: normalizeOrderFlowSettings keeps delivery charge settings
+ok 53 - normalizeOrderFlowSettings keeps delivery charge settings
+  ---
+  duration_ms: 1.206904
+  type: 'test'
+  ...
+# Subtest: normalizeOrderFlowSettings defaults delivery charge to disabled free delivery
+ok 54 - normalizeOrderFlowSettings defaults delivery charge to disabled free delivery
+  ---
+  duration_ms: 0.233441
+  type: 'test'
+  ...
+# Subtest: parseMoneyValue keeps thousands separators as thousands
+ok 55 - parseMoneyValue keeps thousands separators as thousands
+  ---
+  duration_ms: 0.555262
+  type: 'test'
+  ...
+# Subtest: formatOrderItemsSummary reads top-level bot priced line items
+ok 56 - formatOrderItemsSummary reads top-level bot priced line items
+  ---
+  duration_ms: 0.912096
+  type: 'test'
+  ...
+# Subtest: formatOrderItemsSummary excludes delivery fee lines
+ok 57 - formatOrderItemsSummary excludes delivery fee lines
+  ---
+  duration_ms: 0.534462
+  type: 'test'
+  ...
+# Subtest: buildOrderApprovalMessages uses optional slip wording when payment slip is not required
+ok 58 - buildOrderApprovalMessages uses optional slip wording when payment slip is not required
+  ---
+  duration_ms: 0.830547
+  type: 'test'
+  ...
+# Subtest: buildFulfillmentStatusMessages keeps all fulfillment updates silent
+ok 59 - buildFulfillmentStatusMessages keeps all fulfillment updates silent
+  ---
+  duration_ms: 0.205731
+  type: 'test'
+  ...
+# Subtest: buildOrderInvoiceEmailMessage generates correct email content
+ok 60 - buildOrderInvoiceEmailMessage generates correct email content
+  ---
+  duration_ms: 1.546697
+  type: 'test'
+  ...
+# Subtest: buildOrderInvoiceDocumentMessage generates correct document payload
+ok 61 - buildOrderInvoiceDocumentMessage generates correct document payload
+  ---
+  duration_ms: 0.290761
+  type: 'test'
+  ...
+# Subtest: post-approval payment messages keep the expected approval and bank detail format
+ok 62 - post-approval payment messages keep the expected approval and bank detail format
+  ---
+  duration_ms: 2.496281
+  type: 'test'
+  ...
+# Subtest: manual payment collection messages no longer attach invoice documents
+ok 63 - manual payment collection messages no longer attach invoice documents
+  ---
+  duration_ms: 1.600072
+  type: 'test'
+  ...
+# Subtest: post-approval delivery collection message asks only for the missing fields
+ok 64 - post-approval delivery collection message asks only for the missing fields
+  ---
+  duration_ms: 0.694428
+  type: 'test'
+  ...
+# Subtest: post-approval fulfillment seed can ignore fallback customer contact data during WhatsApp collection
+ok 65 - post-approval fulfillment seed can ignore fallback customer contact data during WhatsApp collection
+  ---
+  duration_ms: 0.525007
+  type: 'test'
+  ...
+# Subtest: post-approval fulfillment seed reuses the delivery address as the delivery area fallback
+ok 66 - post-approval fulfillment seed reuses the delivery address as the delivery area fallback
+  ---
+  duration_ms: 0.37129
+  type: 'test'
+  ...
+# Subtest: post-approval payment resend stays blocked until delivery details exist
+ok 67 - post-approval payment resend stays blocked until delivery details exist
+  ---
+  duration_ms: 0.439636
+  type: 'test'
+  ...
+# Subtest: order tracking tokens round-trip without exposing raw ids in the path
+ok 68 - order tracking tokens round-trip without exposing raw ids in the path
+  ---
+  duration_ms: 2.812051
+  type: 'test'
+  ...
+# Subtest: resolveRefundAmount prefers valid explicit value
+ok 69 - resolveRefundAmount prefers valid explicit value
+  ---
+  duration_ms: 1.417549
+  type: 'test'
+  ...
+# Subtest: resolveRefundAmount falls back to ledger amount
+ok 70 - resolveRefundAmount falls back to ledger amount
+  ---
+  duration_ms: 0.253293
+  type: 'test'
+  ...
+# Subtest: bank qr payments can still be approved manually
+ok 71 - bank qr payments can still be approved manually
+  ---
+  duration_ms: 0.303456
+  type: 'test'
+  ...
+# Subtest: manual payments can still be approved
+ok 72 - manual payments can still be approved
+  ---
+  duration_ms: 0.23338
+  type: 'test'
+  ...
+# Subtest: payment setup editing is blocked after payment is finalized
+ok 73 - payment setup editing is blocked after payment is finalized
+  ---
+  duration_ms: 1.209633
+  type: 'test'
+  ...
+# Subtest: payment detail resend stays available during payment review
+ok 74 - payment detail resend stays available during payment review
+  ---
+  duration_ms: 0.251554
+  type: 'test'
+  ...
+# Subtest: paid orders can only reopen payment review before delivery starts
+ok 75 - paid orders can only reopen payment review before delivery starts
+  ---
+  duration_ms: 0.477508
+  type: 'test'
+  ...
+# Subtest: fulfillment updates are restricted to paid and refund-tracked orders
+ok 76 - fulfillment updates are restricted to paid and refund-tracked orders
+  ---
+  duration_ms: 0.336877
+  type: 'test'
+  ...
+# Subtest: nextFulfillmentTimestamps stamps delivered when status changes
+ok 77 - nextFulfillmentTimestamps stamps delivered when status changes
+  ---
+  duration_ms: 1.936102
+  type: 'test'
+  ...
+# Subtest: payment approval customer messages are internal only
+ok 78 - payment approval customer messages are internal only
+  ---
+  duration_ms: 1.345016
+  type: 'test'
+  ...
+# Subtest: cleanOptionalText handles various inputs
+ok 79 - cleanOptionalText handles various inputs
+  ---
+  duration_ms: 0.221174
+  type: 'test'
+  ...
+# Subtest: computePaymentBalance treats overpayment as sufficient
+ok 80 - computePaymentBalance treats overpayment as sufficient
+  ---
+  duration_ms: 1.625337
+  type: 'test'
+  ...
+# Subtest: computePaymentBalance marks underpayment as owed
+ok 81 - computePaymentBalance marks underpayment as owed
+  ---
+  duration_ms: 0.306899
+  type: 'test'
+  ...
+# Subtest: resolvePaymentProofAssessment upgrades sufficient rounded payment to confirmed
+ok 82 - resolvePaymentProofAssessment upgrades sufficient rounded payment to confirmed
+  ---
+  duration_ms: 0.581991
+  type: 'test'
+  ...
+# Subtest: resolvePaymentProofAssessment confirms customer payment update when amount is unknown
+ok 83 - resolvePaymentProofAssessment confirms customer payment update when amount is unknown
+  ---
+  duration_ms: 0.254123
+  type: 'test'
+  ...
+# Subtest: resolvePaymentProofAssessment marks underpayment invalid
+ok 84 - resolvePaymentProofAssessment marks underpayment invalid
+  ---
+  duration_ms: 0.466625
+  type: 'test'
+  ...
+# Subtest: normalizeKey strips punctuation and casing
+ok 85 - normalizeKey strips punctuation and casing
+  ---
+  duration_ms: 1.228653
+  type: 'test'
+  ...
+# Subtest: extractCustomerEmail reads common email field names
+ok 86 - extractCustomerEmail reads common email field names
+  ---
+  duration_ms: 0.288735
+  type: 'test'
+  ...
+# Subtest: sanitizeTicketFields rejects overly large nested payloads
+ok 87 - sanitizeTicketFields rejects overly large nested payloads
+  ---
+  duration_ms: 1.626349
+  type: 'test'
+  ...
+# Subtest: validateTicketOrderFlow only allows ordercreation tickets
+ok 88 - validateTicketOrderFlow only allows ordercreation tickets
+  ---
+  duration_ms: 0.57446
+  type: 'test'
+  ...
+# Subtest: assertTicketAwaitingOrderDecision blocks already resolved tickets
+ok 89 - assertTicketAwaitingOrderDecision blocks already resolved tickets
+  ---
+  duration_ms: 0.443111
+  type: 'test'
+  ...
+1..89
+# tests 89
+# suites 0
+# pass 87
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7840.756678
