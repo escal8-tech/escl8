@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
-import { customers, messageThreads, threadMessages, whatsappIdentities, SUPPORTED_SOURCES } from "@/../drizzle/schema";
+import { customers, messageThreads, threadMessages, channelIdentities, whatsappIdentityDetails, SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { and, desc, eq, ilike, isNull, lt, or, sql } from "drizzle-orm";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { observeAssistantMessageViaBot, sendWhatsAppMessagesViaBot } from "../services/botApi";
@@ -34,13 +34,13 @@ export const messagesRouter = router({
   /**
    * List recent threads for the current business, joined with customer info.
    * This is used to populate the Messages UI even when the user hasn't searched yet.
-   * Optionally filter by whatsappIdentityId (phone number).
+   * Optionally filter by channelIdentityId (phone number).
    */
   listRecentThreads: businessProcedure
     .input(
       z.object({
         limit: z.number().int().min(1).max(200).optional().default(50),
-        whatsappIdentityId: z.string().nullish(), // null/undefined = all numbers
+        channelIdentityId: z.string().nullish(), // null/undefined = all numbers
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -52,8 +52,8 @@ export const messagesRouter = router({
       ];
 
       // If a specific phone number is selected, filter by it
-      if (input.whatsappIdentityId) {
-        whereConditions.push(eq(messageThreads.whatsappIdentityId, input.whatsappIdentityId));
+      if (input.channelIdentityId) {
+        whereConditions.push(eq(messageThreads.channelIdentityId, input.channelIdentityId));
       }
 
       const rows = await db
@@ -68,7 +68,7 @@ export const messagesRouter = router({
           lastMessageAt: messageThreads.lastMessageAt,
           lastMessageDirection: lastMessageDirectionSelection,
           threadCreatedAt: messageThreads.createdAt,
-          whatsappIdentityId: messageThreads.whatsappIdentityId,
+          channelIdentityId: messageThreads.channelIdentityId,
         })
         .from(messageThreads)
         .innerJoin(customers, eq(messageThreads.customerId, customers.id))
@@ -83,7 +83,7 @@ export const messagesRouter = router({
     .input(
       z.object({
         limit: z.number().int().min(1).max(200).optional().default(50),
-        whatsappIdentityId: z.string().nullish(),
+        channelIdentityId: z.string().nullish(),
         query: z.string().trim().max(120).optional(),
         cursorThreadId: z.string().optional(),
         cursorSortAt: z.string().datetime().optional(),
@@ -97,8 +97,8 @@ export const messagesRouter = router({
         isNull(customers.deletedAt),
       ];
 
-      if (input.whatsappIdentityId) {
-        whereConditions.push(eq(messageThreads.whatsappIdentityId, input.whatsappIdentityId));
+      if (input.channelIdentityId) {
+        whereConditions.push(eq(messageThreads.channelIdentityId, input.channelIdentityId));
       }
 
       const trimmedQuery = String(input.query || "").trim();
@@ -144,7 +144,7 @@ export const messagesRouter = router({
           lastMessageAt: messageThreads.lastMessageAt,
           lastMessageDirection: lastMessageDirectionSelection,
           threadCreatedAt: messageThreads.createdAt,
-          whatsappIdentityId: messageThreads.whatsappIdentityId,
+          channelIdentityId: messageThreads.channelIdentityId,
           sortAt: sortAtExpr,
         })
         .from(messageThreads)
@@ -329,7 +329,7 @@ export const messagesRouter = router({
       const [thread] = await db
         .select({
           id: messageThreads.id,
-          whatsappIdentityId: messageThreads.whatsappIdentityId,
+          channelIdentityId: messageThreads.channelIdentityId,
           customerSource: customers.source,
         })
         .from(messageThreads)
@@ -349,7 +349,7 @@ export const messagesRouter = router({
       }
 
       const source = String(thread.customerSource || "").toLowerCase();
-      const isWhatsApp = source === "whatsapp" || Boolean(thread.whatsappIdentityId);
+      const isWhatsApp = source === "whatsapp" || Boolean(thread.channelIdentityId);
       if (!isWhatsApp) {
         return {
           channel: source || "unknown",
@@ -420,7 +420,7 @@ export const messagesRouter = router({
       const [thread] = await db
         .select({
           id: messageThreads.id,
-          whatsappIdentityId: messageThreads.whatsappIdentityId,
+          channelIdentityId: messageThreads.channelIdentityId,
           customerExternalId: customers.externalId,
           customerPhone: customers.phone,
           customerSource: customers.source,
@@ -443,20 +443,21 @@ export const messagesRouter = router({
       if (thread.customerSource !== "whatsapp") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Manual send is supported only for WhatsApp threads." });
       }
-      if (!thread.whatsappIdentityId) {
+      if (!thread.channelIdentityId) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Thread has no WhatsApp identity configured." });
       }
 
       const [identity] = await db
         .select({
-          phoneNumberId: whatsappIdentities.phoneNumberId,
-          aiDisabled: whatsappIdentities.aiDisabled,
+          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+          aiEnabled: channelIdentities.aiEnabled,
         })
-        .from(whatsappIdentities)
+        .from(channelIdentities)
+        .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
         .where(
           and(
-            eq(whatsappIdentities.phoneNumberId, thread.whatsappIdentityId),
-            eq(whatsappIdentities.businessId, ctx.businessId),
+            eq(channelIdentities.id, thread.channelIdentityId),
+            eq(channelIdentities.businessId, ctx.businessId),
           ),
         )
         .limit(1);
@@ -488,7 +489,7 @@ export const messagesRouter = router({
           textBody: input.text,
           meta: {
             source: "portal_manual_send",
-            whatsappIdentityId: thread.whatsappIdentityId,
+            channelIdentityId: thread.channelIdentityId,
             providerResponse: botResult?.providerResponse ?? null,
           },
           createdAt: now,
@@ -527,23 +528,23 @@ export const messagesRouter = router({
             message_type: saved.messageType,
             text_length: input.text.length,
             thread_id: input.threadId,
-            whatsapp_identity_id: thread.whatsappIdentityId,
+            channel_identity_id: thread.channelIdentityId,
           },
         });
       }
 
       try {
-        if (!identity.aiDisabled) {
+        if (identity.aiEnabled) {
           await observeAssistantMessageViaBot({
             businessId: ctx.businessId,
-            phoneNumberId: thread.whatsappIdentityId,
+            phoneNumberId: thread.channelIdentityId,
             to,
             text: input.text,
             intent: "general",
           });
           await recordAiUsageEvent({
             businessId: ctx.businessId,
-            whatsappIdentityId: thread.whatsappIdentityId,
+            channelIdentityId: thread.channelIdentityId,
             threadId: input.threadId,
             eventType: "manual_outbound_message",
             source: "portal_manual_send",
@@ -567,7 +568,7 @@ export const messagesRouter = router({
           outcome: "degraded",
           status: "assistant_observe_failed",
           attributes: {
-            whatsapp_identity_id: thread.whatsappIdentityId,
+            channel_identity_id: thread.channelIdentityId,
           },
         });
       }
@@ -586,7 +587,7 @@ export const messagesRouter = router({
       const [thread] = await db
         .select({
           id: messageThreads.id,
-          whatsappIdentityId: messageThreads.whatsappIdentityId,
+          channelIdentityId: messageThreads.channelIdentityId,
           customerExternalId: customers.externalId,
           customerPhone: customers.phone,
           customerSource: customers.source,
@@ -609,20 +610,21 @@ export const messagesRouter = router({
       if (thread.customerSource !== "whatsapp") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Manual send is supported only for WhatsApp threads." });
       }
-      if (!thread.whatsappIdentityId) {
+      if (!thread.channelIdentityId) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Thread has no WhatsApp identity configured." });
       }
 
       const [identity] = await db
         .select({
-          phoneNumberId: whatsappIdentities.phoneNumberId,
-          aiDisabled: whatsappIdentities.aiDisabled,
+          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+          aiEnabled: channelIdentities.aiEnabled,
         })
-        .from(whatsappIdentities)
+        .from(channelIdentities)
+        .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
         .where(
           and(
-            eq(whatsappIdentities.phoneNumberId, thread.whatsappIdentityId),
-            eq(whatsappIdentities.businessId, ctx.businessId),
+            eq(channelIdentities.id, thread.channelIdentityId),
+            eq(channelIdentities.businessId, ctx.businessId),
           ),
         )
         .limit(1);
@@ -648,7 +650,7 @@ export const messagesRouter = router({
         const botResult = botResults[index];
         const sharedMeta = {
           source: "portal_manual_send",
-          whatsappIdentityId: thread.whatsappIdentityId,
+          channelIdentityId: thread.channelIdentityId,
           providerResponse: botResult?.providerResponse ?? null,
         } as Record<string, unknown>;
         if (message.type === "text") {
@@ -727,12 +729,12 @@ export const messagesRouter = router({
         outcome: "success",
         attributes: {
           message_count: input.messages.length,
-          whatsapp_identity_id: thread.whatsappIdentityId,
+          channel_identity_id: thread.channelIdentityId,
         },
       });
 
       try {
-        if (!identity.aiDisabled) {
+        if (identity.aiEnabled) {
           const observationText = input.messages
             .map((message) => {
               if (message.type === "text") return message.text;
@@ -744,7 +746,7 @@ export const messagesRouter = router({
           if (observationText) {
             await observeAssistantMessageViaBot({
               businessId: ctx.businessId,
-              phoneNumberId: thread.whatsappIdentityId,
+              phoneNumberId: thread.channelIdentityId,
               to,
               text: observationText,
               intent: "general",
@@ -752,7 +754,7 @@ export const messagesRouter = router({
           }
           await recordAiUsageEvent({
             businessId: ctx.businessId,
-            whatsappIdentityId: thread.whatsappIdentityId,
+            channelIdentityId: thread.channelIdentityId,
             threadId: input.threadId,
             eventType: "manual_outbound_message",
             source: "portal_manual_send",
@@ -777,7 +779,7 @@ export const messagesRouter = router({
           outcome: "degraded",
           status: "assistant_observe_failed",
           attributes: {
-            whatsapp_identity_id: thread.whatsappIdentityId,
+            channel_identity_id: thread.channelIdentityId,
           },
         });
       }

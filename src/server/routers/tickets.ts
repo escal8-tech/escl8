@@ -115,7 +115,7 @@ export const ticketsRouter = router({
         source: z.string().optional(),
         customerId: z.string().optional(),
         threadId: z.string().optional(),
-        whatsappIdentityId: z.string().optional(),
+        channelIdentityId: z.string().optional(),
         customerName: z.string().optional(),
         customerPhone: z.string().optional(),
         fields: z.record(z.string(), z.unknown()).optional(),

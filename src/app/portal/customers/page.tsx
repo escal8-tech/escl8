@@ -27,7 +27,7 @@ function CustomersPageContent({ selectedPhoneNumberId }: { selectedPhoneNumberId
   const [page, setPage] = useState(0);
 
   const baseFilter = useMemo(
-    () => (selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
+    () => (selectedPhoneNumberId ? { channelIdentityId: selectedPhoneNumberId } : {}),
     [selectedPhoneNumberId],
   );
   const pageInput = useMemo(

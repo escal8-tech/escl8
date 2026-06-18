@@ -24,7 +24,7 @@ export type OrderRow = {
   status: string;
   supportTicketId?: string | null;
   threadId?: string | null;
-  whatsappIdentityId?: string | null;
+  channelIdentityId?: string | null;
   fulfillmentStatus?: string | null;
   currency?: string | null;
   customerName?: string | null;

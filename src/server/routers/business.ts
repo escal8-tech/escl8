@@ -2,7 +2,7 @@ import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
-import { businesses, users, whatsappIdentities } from "../../../drizzle/schema";
+import { businesses, users, channelIdentities, whatsappIdentityDetails } from "../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
@@ -39,24 +39,33 @@ export const businessRouter = router({
   listPhoneNumbers: businessProcedure.query(async ({ ctx }) => {
     const rows = await db
       .select({
-        phoneNumberId: whatsappIdentities.phoneNumberId,
-        displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
-        botType: whatsappIdentities.botType,
-        isActive: whatsappIdentities.isActive,
-        autoReplyPaused: whatsappIdentities.autoReplyPaused,
-        aiDisabled: whatsappIdentities.aiDisabled,
-        connectedAt: whatsappIdentities.connectedAt,
+        phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+        displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
+        botType: channelIdentities.botType,
+        isActive: channelIdentities.isActive,
+        autoReplyPaused: channelIdentities.autoReplyPaused,
+        aiEnabled: channelIdentities.aiEnabled,
+        connectedAt: channelIdentities.connectedAt,
       })
-      .from(whatsappIdentities)
+      .from(channelIdentities)
+      .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
       .where(
         and(
-          eq(whatsappIdentities.businessId, ctx.businessId),
-          eq(whatsappIdentities.isActive, true),
+          eq(channelIdentities.businessId, ctx.businessId),
+          eq(channelIdentities.isActive, true),
         ),
       )
-      .orderBy(whatsappIdentities.connectedAt);
+      .orderBy(channelIdentities.connectedAt);
 
-    return rows;
+    return rows.map(r => ({
+      phoneNumberId: r.phoneNumberId,
+      displayPhoneNumber: r.displayPhoneNumber,
+      botType: r.botType,
+      isActive: r.isActive,
+      autoReplyPaused: r.autoReplyPaused,
+      aiDisabled: !r.aiEnabled,
+      connectedAt: r.connectedAt,
+    }));
   }),
 
   setWhatsappIdentityAutoReplyPaused: businessProcedure
@@ -65,42 +74,54 @@ export const businessRouter = router({
       autoReplyPaused: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
+      const details = await db.select().from(whatsappIdentityDetails)
+        .where(eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId))
+        .limit(1)
+        .then(r => r[0]);
+
+      if (!details) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
+      }
+
       const [row] = await db
-        .update(whatsappIdentities)
+        .update(channelIdentities)
         .set({
           autoReplyPaused: input.autoReplyPaused,
           updatedAt: new Date(),
         })
         .where(and(
-          eq(whatsappIdentities.businessId, ctx.businessId),
-          eq(whatsappIdentities.phoneNumberId, input.phoneNumberId),
+          eq(channelIdentities.businessId, ctx.businessId),
+          eq(channelIdentities.id, details.channelIdentityId),
         ))
-        .returning({
-          phoneNumberId: whatsappIdentities.phoneNumberId,
-          displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
-          autoReplyPaused: whatsappIdentities.autoReplyPaused,
-          isActive: whatsappIdentities.isActive,
-          connectedAt: whatsappIdentities.connectedAt,
-        });
+        .returning();
+
       if (!row) {
         throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
       }
+
       recordBusinessEvent({
-        event: row.autoReplyPaused ? "whatsapp_identity.auto_reply_paused" : "whatsapp_identity.auto_reply_resumed",
+        event: input.autoReplyPaused ? "whatsapp_identity.auto_reply_paused" : "whatsapp_identity.auto_reply_resumed",
         action: "setWhatsappIdentityAutoReplyPaused",
         area: "whatsapp_identity",
         businessId: ctx.businessId,
         entity: "whatsapp_identity",
-        entityId: row.phoneNumberId,
+        entityId: details.phoneNumberId,
         userId: ctx.userId,
         actorId: ctx.firebaseUid ?? ctx.userId ?? null,
         actorType: "user",
         outcome: "success",
         attributes: {
-          display_phone_number: row.displayPhoneNumber ?? null,
+          display_phone_number: details.displayPhoneNumber ?? null,
         },
       });
-      return row;
+
+      return {
+        phoneNumberId: details.phoneNumberId,
+        displayPhoneNumber: details.displayPhoneNumber,
+        autoReplyPaused: row.autoReplyPaused,
+        isActive: row.isActive,
+        connectedAt: row.connectedAt,
+      };
     }),
 
   setWhatsappIdentityAiDisabled: businessProcedure
@@ -109,44 +130,55 @@ export const businessRouter = router({
       aiDisabled: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
+      const details = await db.select().from(whatsappIdentityDetails)
+        .where(eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId))
+        .limit(1)
+        .then(r => r[0]);
+
+      if (!details) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
+      }
+
       const [row] = await db
-        .update(whatsappIdentities)
+        .update(channelIdentities)
         .set({
-          aiDisabled: input.aiDisabled,
+          aiEnabled: !input.aiDisabled,
           ...(input.aiDisabled ? { autoReplyPaused: false } : {}),
           updatedAt: new Date(),
         })
         .where(and(
-          eq(whatsappIdentities.businessId, ctx.businessId),
-          eq(whatsappIdentities.phoneNumberId, input.phoneNumberId),
+          eq(channelIdentities.businessId, ctx.businessId),
+          eq(channelIdentities.id, details.channelIdentityId),
         ))
-        .returning({
-          phoneNumberId: whatsappIdentities.phoneNumberId,
-          displayPhoneNumber: whatsappIdentities.displayPhoneNumber,
-          autoReplyPaused: whatsappIdentities.autoReplyPaused,
-          aiDisabled: whatsappIdentities.aiDisabled,
-          isActive: whatsappIdentities.isActive,
-          connectedAt: whatsappIdentities.connectedAt,
-        });
+        .returning();
+
       if (!row) {
         throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
       }
       recordBusinessEvent({
-        event: row.aiDisabled ? "whatsapp_identity.ai_disabled" : "whatsapp_identity.ai_enabled",
+        event: input.aiDisabled ? "whatsapp_identity.ai_disabled" : "whatsapp_identity.ai_enabled",
         action: "setWhatsappIdentityAiDisabled",
         area: "whatsapp_identity",
         businessId: ctx.businessId,
         entity: "whatsapp_identity",
-        entityId: row.phoneNumberId,
+        entityId: details.phoneNumberId,
         userId: ctx.userId,
         actorId: ctx.firebaseUid ?? ctx.userId ?? null,
         actorType: "user",
         outcome: "success",
         attributes: {
-          display_phone_number: row.displayPhoneNumber ?? null,
+          display_phone_number: details.displayPhoneNumber ?? null,
         },
       });
-      return row;
+      
+      return {
+        phoneNumberId: details.phoneNumberId,
+        displayPhoneNumber: details.displayPhoneNumber,
+        autoReplyPaused: row.autoReplyPaused,
+        aiDisabled: !row.aiEnabled,
+        isActive: row.isActive,
+        connectedAt: row.connectedAt,
+      };
     }),
 
   getMine: businessProcedure
@@ -659,9 +691,10 @@ export const businessRouter = router({
       getBusinessPreferencesRecord(ctx.businessId, biz.settings),
       getBusinessWebsiteWidgetSettingsRecord(ctx.businessId, biz.settings),
       db
-        .select({ phoneNumberId: whatsappIdentities.phoneNumberId })
-        .from(whatsappIdentities)
-        .where(and(eq(whatsappIdentities.businessId, ctx.businessId), eq(whatsappIdentities.isActive, true))),
+        .select({ phoneNumberId: whatsappIdentityDetails.phoneNumberId })
+        .from(channelIdentities)
+        .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
+        .where(and(eq(channelIdentities.businessId, ctx.businessId), eq(channelIdentities.status, "active"))),
     ]);
 
     const settings = (biz.settings ?? {}) as Record<string, unknown>;

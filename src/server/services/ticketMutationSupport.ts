@@ -195,7 +195,7 @@ export async function createTicket(
     source?: string;
     customerId?: string;
     threadId?: string;
-    whatsappIdentityId?: string;
+    channelIdentityId?: string;
     customerName?: string;
     customerPhone?: string;
     fields?: Record<string, unknown>;
@@ -223,7 +223,7 @@ export async function createTicket(
     businessId: ctx.businessId,
     customerId: input.customerId ?? null,
     threadId: input.threadId ?? null,
-    whatsappIdentityId: input.whatsappIdentityId ?? null,
+    channelIdentityId: input.channelIdentityId ?? null,
     customerName: input.customerName ?? null,
     customerPhone: input.customerPhone ?? null,
   });
@@ -240,7 +240,7 @@ export async function createTicket(
       source: input.source?.trim() || "whatsapp",
       customerId: contactContext.customerId,
       threadId: contactContext.threadId,
-      whatsappIdentityId: contactContext.whatsappIdentityId,
+      channelIdentityId: contactContext.channelIdentityId,
       customerName: contactContext.customerName,
       customerPhone: contactContext.customerPhone,
       fields: sanitizeTicketFields(input.fields ?? {}),
@@ -411,7 +411,7 @@ export async function createManualOrderTicket(
         source: "staff_manual",
         customerId: customerRow.id,
         threadId: null,
-        whatsappIdentityId: null,
+        channelIdentityId: null,
         customerName: input.customerName,
         customerPhone: phoneDigits || null,
         fields: sanitizeTicketFields(fields),
@@ -1112,7 +1112,7 @@ export async function approveOrderTicket(
       source: supportTickets.source,
       customerId: supportTickets.customerId,
       threadId: supportTickets.threadId,
-      whatsappIdentityId: supportTickets.whatsappIdentityId,
+      channelIdentityId: supportTickets.channelIdentityId,
       customerName: supportTickets.customerName,
       customerPhone: supportTickets.customerPhone,
       title: supportTickets.title,
@@ -1158,7 +1158,7 @@ export async function approveOrderTicket(
     businessId: ctx.businessId,
     customerId: ticket.customerId,
     threadId: ticket.threadId,
-    whatsappIdentityId: ticket.whatsappIdentityId,
+    channelIdentityId: ticket.channelIdentityId,
     customerName: ticket.customerName,
     customerPhone: ticket.customerPhone,
   });
@@ -1202,7 +1202,7 @@ export async function approveOrderTicket(
     });
     const windowState = await getThreadWhatsappWindowState(tx, contactContext.threadId);
     const shouldSendApprovalViaWhatsapp = !suppressCustomerNotifications && windowState.whatsappWindowOpen;
-    if (shouldSendApprovalViaWhatsapp && (!contactContext.whatsappIdentityId || !approvalRecipient)) {
+    if (shouldSendApprovalViaWhatsapp && (!contactContext.channelIdentityId || !approvalRecipient)) {
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: "Ticket is missing WhatsApp routing details for payment delivery.",
@@ -1277,7 +1277,7 @@ export async function approveOrderTicket(
       source: ticket.source || "whatsapp",
       customerId: contactContext.customerId,
       threadId: contactContext.threadId,
-      whatsappIdentityId: contactContext.whatsappIdentityId,
+      channelIdentityId: contactContext.channelIdentityId,
       customerName: contactContext.customerName,
       customerPhone: contactContext.customerPhone,
       customerEmail: effectiveCustomerEmail,
@@ -1352,7 +1352,7 @@ export async function approveOrderTicket(
       .set({
         customerId: contactContext.customerId,
         threadId: contactContext.threadId,
-        whatsappIdentityId: contactContext.whatsappIdentityId,
+        channelIdentityId: contactContext.channelIdentityId,
         customerName: contactContext.customerName,
         customerPhone: contactContext.customerPhone,
         status: "resolved",
@@ -1407,7 +1407,7 @@ export async function approveOrderTicket(
           entityId: orderRow?.id ?? orderId,
           customerId: contactContext.customerId,
           threadId: contactContext.threadId,
-          whatsappIdentityId: contactContext.whatsappIdentityId,
+          channelIdentityId: contactContext.channelIdentityId,
           recipient: contactContext.approvalRecipient,
           recipientSource: contactContext.recipientSource,
           whatsappIdentitySource: contactContext.whatsappIdentitySource,
@@ -1648,7 +1648,7 @@ export async function denyOrderTicket(
       source: supportTickets.source,
       customerId: supportTickets.customerId,
       threadId: supportTickets.threadId,
-      whatsappIdentityId: supportTickets.whatsappIdentityId,
+      channelIdentityId: supportTickets.channelIdentityId,
       customerName: supportTickets.customerName,
       customerPhone: supportTickets.customerPhone,
       notes: supportTickets.notes,
@@ -1675,7 +1675,7 @@ export async function denyOrderTicket(
     businessId: ctx.businessId,
     customerId: ticket.customerId,
     threadId: ticket.threadId,
-    whatsappIdentityId: ticket.whatsappIdentityId,
+    channelIdentityId: ticket.channelIdentityId,
     customerName: ticket.customerName,
     customerPhone: ticket.customerPhone,
   });
@@ -1771,7 +1771,7 @@ export async function denyOrderTicket(
       entityId: input.id,
       customerId: contactContext.customerId,
       threadId: contactContext.threadId,
-      whatsappIdentityId: contactContext.whatsappIdentityId,
+      channelIdentityId: contactContext.channelIdentityId,
       recipient: contactContext.approvalRecipient,
       recipientSource: contactContext.recipientSource,
       whatsappIdentitySource: contactContext.whatsappIdentitySource,

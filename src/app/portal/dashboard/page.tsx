@@ -32,16 +32,16 @@ export default function DashboardPage() {
       status: recentStatusFilter !== "all" ? recentStatusFilter : undefined,
       sortKey: recentSortKey,
       sortDir: recentSortDir,
-      ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
+      ...(selectedPhoneNumberId ? { channelIdentityId: selectedPhoneNumberId } : {}),
     }),
     [recentPage, recentSortDir, recentSortKey, recentStatusFilter, selectedPhoneNumberId],
   );
   const statsInput = useMemo(
-    () => (selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : undefined),
+    () => (selectedPhoneNumberId ? { channelIdentityId: selectedPhoneNumberId } : undefined),
     [selectedPhoneNumberId],
   );
   const activityInput = useMemo(
-    () => ({ days: 30, ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}) }),
+    () => ({ days: 30, ...(selectedPhoneNumberId ? { channelIdentityId: selectedPhoneNumberId } : {}) }),
     [selectedPhoneNumberId],
   );
   const customersInput = statsInput;

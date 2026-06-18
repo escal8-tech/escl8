@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/server/db/client";
-import { businesses, orderPayments, orders, whatsappIdentities } from "@/../drizzle/schema";
+import { businesses, orderPayments, orders, channelIdentities, whatsappIdentityDetails } from "@/../drizzle/schema";
 import { storePrivateFileAtPath } from "@/lib/storage";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
@@ -181,15 +181,17 @@ export async function POST(request: Request) {
   if (!orderRow) {
     return NextResponse.json({ success: false, error: "Order not found." }, { status: 404 });
   }
-  const [identityRow] = orderRow.whatsappIdentityId
+  const [identityRow] = orderRow.channelIdentityId
     ? await db
         .select({
-          aiDisabled: whatsappIdentities.aiDisabled,
+          aiEnabled: channelIdentities.aiEnabled,
+          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
         })
-        .from(whatsappIdentities)
-        .where(and(eq(whatsappIdentities.businessId, businessId), eq(whatsappIdentities.phoneNumberId, orderRow.whatsappIdentityId)))
+        .from(channelIdentities)
+        .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
+        .where(and(eq(channelIdentities.businessId, businessId), eq(channelIdentities.id, orderRow.channelIdentityId)))
         .limit(1)
-    : [{ aiDisabled: false }];
+    : [{ aiEnabled: true, phoneNumberId: null }];
   const [businessRow] = await db
     .select({ settings: businesses.settings })
     .from(businesses)
@@ -239,11 +241,11 @@ export async function POST(request: Request) {
     };
   }
 
-  const shouldRunPaymentProofAi = !identityRow?.aiDisabled && paymentProofAiEnabled && Boolean(storedProof?.url);
+  const shouldRunPaymentProofAi = (identityRow?.aiEnabled ?? true) && paymentProofAiEnabled && Boolean(storedProof?.url);
   const analyzed = shouldRunPaymentProofAi
     ? await analyzePaymentProof({
         businessId,
-        phoneNumberId: orderRow.whatsappIdentityId ?? null,
+        phoneNumberId: identityRow?.phoneNumberId ?? null,
         expectedAmount: toMoneyString(orderRow.expectedAmount),
         currency: String(orderRow.currency || "LKR").trim() || "LKR",
         expectedReference: String(orderRow.paymentReference || "").trim() || null,
@@ -255,7 +257,7 @@ export async function POST(request: Request) {
   if (didConsumePaymentProofAi(analyzed) && shouldRunPaymentProofAi) {
     await recordAiUsageEvent({
       businessId,
-      whatsappIdentityId: orderRow.whatsappIdentityId ?? null,
+      channelIdentityId: orderRow.channelIdentityId ?? null,
       customerId: orderRow.customerId ?? null,
       threadId: orderRow.threadId ?? null,
       eventType: "payment_proof_ai_analysis",
@@ -332,7 +334,7 @@ export async function POST(request: Request) {
             orderId: orderRow.id,
             customerId: orderRow.customerId,
             threadId: orderRow.threadId,
-            whatsappIdentityId: orderRow.whatsappIdentityId,
+            channelIdentityId: orderRow.channelIdentityId,
             paymentMethod: orderRow.paymentMethod,
             status: "submitted",
             currency: orderRow.currency,

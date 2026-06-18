@@ -57,10 +57,10 @@ function formatWindowRemaining(totalSeconds: number) {
   return `${minutes}m left`;
 }
 
-function isWhatsAppThread(thread: { customerSource?: string | null; whatsappIdentityId?: string | null } | null | undefined) {
+function isWhatsAppThread(thread: { customerSource?: string | null; channelIdentityId?: string | null } | null | undefined) {
   if (!thread) return false;
   const source = String(thread.customerSource || "").toLowerCase();
-  return source === "whatsapp" || Boolean(thread.whatsappIdentityId);
+  return source === "whatsapp" || Boolean(thread.channelIdentityId);
 }
 
 function isCustomerLastMessage(direction: string | null | undefined) {
@@ -167,7 +167,7 @@ export default function MessagesPage() {
     lastMessageAt: Date | null;
     lastMessageDirection: string | null;
     threadCreatedAt: Date;
-    whatsappIdentityId: string | null;
+    channelIdentityId: string | null;
     sortAt: Date;
   }>>([]);
   const [threadCursor, setThreadCursor] = useState<{ threadId: string; sortAt: string } | null>(null);
@@ -179,7 +179,7 @@ export default function MessagesPage() {
   const threadPageInput = useMemo(
     () => ({
       limit: 50,
-      ...(selectedPhoneNumberId ? { whatsappIdentityId: selectedPhoneNumberId } : {}),
+      ...(selectedPhoneNumberId ? { channelIdentityId: selectedPhoneNumberId } : {}),
       ...(deferredSearchQuery.trim() ? { query: deferredSearchQuery.trim() } : {}),
       ...(threadCursor ? { cursorThreadId: threadCursor.threadId, cursorSortAt: threadCursor.sortAt } : {}),
     }),
@@ -445,7 +445,7 @@ export default function MessagesPage() {
         source: "staff_escalation",
         customerId: selectedThread.customerId,
         threadId: activeThreadId,
-        whatsappIdentityId: selectedThread.whatsappIdentityId || undefined,
+        channelIdentityId: selectedThread.channelIdentityId || undefined,
         customerName: selectedThread.customerName || undefined,
         customerPhone: customerPhone || undefined,
         fields: {
@@ -522,7 +522,7 @@ export default function MessagesPage() {
         for (let index = 0; index < attachments.length; index += 1) {
           const attachment = attachments[index];
           const form = new FormData();
-          form.append("phoneNumberId", String(selectedThread?.whatsappIdentityId || ""));
+          form.append("phoneNumberId", String(selectedThread?.channelIdentityId || ""));
           form.append("file", attachment.file);
           const uploadResponse = await fetchWithFirebaseAuth(
             "/api/messages/media",

@@ -16,7 +16,7 @@ export const requestsRouter = router({
           limit: z.number().min(1).max(200).optional(),
           source: sourceSchema.optional(),
           includeDeleted: z.boolean().optional(),
-          whatsappIdentityId: z.string().nullish(), // null/undefined = all numbers
+          channelIdentityId: z.string().nullish(), // null/undefined = all numbers
         })
         .optional()
     )
@@ -25,14 +25,14 @@ export const requestsRouter = router({
 
       // If filtering by phone number, get customer IDs first
       let customerIdsForPhone: string[] | null = null;
-      if (input?.whatsappIdentityId) {
+      if (input?.channelIdentityId) {
         const matchingCustomers = await db
           .select({ id: customers.id })
           .from(customers)
           .where(
             and(
               eq(customers.businessId, ctx.businessId),
-              eq(customers.whatsappIdentityId, input.whatsappIdentityId)
+              eq(customers.channelIdentityId, input.channelIdentityId)
             )
           );
         customerIdsForPhone = matchingCustomers.map((c) => c.id);
@@ -78,19 +78,19 @@ export const requestsRouter = router({
         source: sourceSchema.optional(),
         sortKey: requestSortKeySchema.default("created"),
         sortDir: sortDirectionSchema.default("desc"),
-        whatsappIdentityId: z.string().nullish(),
+        channelIdentityId: z.string().nullish(),
       }),
     )
     .query(async ({ input, ctx }) => {
       let customerIdsForPhone: string[] | null = null;
-      if (input.whatsappIdentityId) {
+      if (input.channelIdentityId) {
         const matchingCustomers = await db
           .select({ id: customers.id })
           .from(customers)
           .where(
             and(
               eq(customers.businessId, ctx.businessId),
-              eq(customers.whatsappIdentityId, input.whatsappIdentityId),
+              eq(customers.channelIdentityId, input.channelIdentityId),
             ),
           );
         customerIdsForPhone = matchingCustomers.map((customer) => customer.id);
@@ -176,21 +176,21 @@ export const requestsRouter = router({
         .object({
           days: z.number().int().min(1).max(365).optional(),
           source: sourceSchema.optional(),
-          whatsappIdentityId: z.string().nullish(),
+          channelIdentityId: z.string().nullish(),
         })
         .optional(),
     )
     .query(async ({ input, ctx }) => {
       const days = input?.days ?? 30;
       let customerIdsForPhone: string[] | null = null;
-      if (input?.whatsappIdentityId) {
+      if (input?.channelIdentityId) {
         const matchingCustomers = await db
           .select({ id: customers.id })
           .from(customers)
           .where(
             and(
               eq(customers.businessId, ctx.businessId),
-              eq(customers.whatsappIdentityId, input.whatsappIdentityId),
+              eq(customers.channelIdentityId, input.channelIdentityId),
             ),
           );
         customerIdsForPhone = matchingCustomers.map((c) => c.id);
@@ -225,21 +225,21 @@ export const requestsRouter = router({
       z
         .object({
           source: sourceSchema.optional(),
-          whatsappIdentityId: z.string().nullish(), // null/undefined = all numbers
+          channelIdentityId: z.string().nullish(), // null/undefined = all numbers
         })
         .optional()
     )
     .query(async ({ ctx, input }) => {
       // If filtering by phone number, get customer IDs first
       let customerIdsForPhone: string[] | null = null;
-      if (input?.whatsappIdentityId) {
+      if (input?.channelIdentityId) {
         const matchingCustomers = await db
           .select({ id: customers.id })
           .from(customers)
           .where(
             and(
               eq(customers.businessId, ctx.businessId),
-              eq(customers.whatsappIdentityId, input.whatsappIdentityId)
+              eq(customers.channelIdentityId, input.channelIdentityId)
             )
           );
         customerIdsForPhone = matchingCustomers.map((c) => c.id);

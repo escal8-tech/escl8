@@ -18,14 +18,14 @@ export const customersRouter = router({
   /**
    * List all customers for the current business (excludes soft-deleted)
    * Each row is one customer per source (same person on 4 platforms = 4 rows)
-   * Can filter by source and/or whatsappIdentityId
+   * Can filter by source and/or channelIdentityId
    */
   list: businessProcedure
     .input(
       z.object({
         source: sourceSchema.optional(),
         includeDeleted: z.boolean().optional(),
-        whatsappIdentityId: z.string().nullish(), // null/undefined = all numbers
+        channelIdentityId: z.string().nullish(), // null/undefined = all numbers
         limit: z.number().int().min(1).max(2000).optional(),
         cursorUpdatedAt: z.string().datetime().optional(),
         cursorId: z.string().optional(),
@@ -44,8 +44,8 @@ export const customersRouter = router({
       }
 
       // Filter by phone number if specified
-      if (input?.whatsappIdentityId) {
-        conditions.push(eq(customers.whatsappIdentityId, input.whatsappIdentityId));
+      if (input?.channelIdentityId) {
+        conditions.push(eq(customers.channelIdentityId, input.channelIdentityId));
       }
 
       if (input?.cursorUpdatedAt && input?.cursorId) {
@@ -83,7 +83,7 @@ export const customersRouter = router({
       z.object({
         source: sourceSchema.optional(),
         includeDeleted: z.boolean().optional(),
-        whatsappIdentityId: z.string().nullish(),
+        channelIdentityId: z.string().nullish(),
         limit: z.number().int().min(1).max(100).default(20),
         offset: z.number().int().min(0).default(0),
         search: z.string().optional(),
@@ -102,8 +102,8 @@ export const customersRouter = router({
         conditions.push(isNull(customers.deletedAt));
       }
 
-      if (input.whatsappIdentityId) {
-        conditions.push(eq(customers.whatsappIdentityId, input.whatsappIdentityId));
+      if (input.channelIdentityId) {
+        conditions.push(eq(customers.channelIdentityId, input.channelIdentityId));
       }
 
       const searchPattern = String(input.search ?? "").trim().toLowerCase();
@@ -549,7 +549,7 @@ export const customersRouter = router({
   getSourceCounts: businessProcedure
     .input(
       z.object({
-        whatsappIdentityId: z.string().nullish(),
+        channelIdentityId: z.string().nullish(),
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
@@ -557,8 +557,8 @@ export const customersRouter = router({
         eq(customers.businessId, ctx.businessId),
         isNull(customers.deletedAt),
       ];
-      if (input?.whatsappIdentityId) {
-        conditions.push(eq(customers.whatsappIdentityId, input.whatsappIdentityId));
+      if (input?.channelIdentityId) {
+        conditions.push(eq(customers.channelIdentityId, input.channelIdentityId));
       }
 
       const rows = await db

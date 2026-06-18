@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { db } from "@/server/db/client";
-import { businesses, users, whatsappIdentities } from "../../../../../../drizzle/schema";
+import { businesses, users, channelIdentities, whatsappIdentityDetails } from "../../../../../../drizzle/schema";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { generateSixDigitPin } from "@/server/meta/crypto";
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
@@ -106,12 +106,13 @@ export async function POST(req: Request) {
     const existingPhoneRows = user.businessId
       ? await db
           .select({ count: sql<number>`count(*)::int` })
-          .from(whatsappIdentities)
+          .from(channelIdentities)
+          .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
           .where(
             and(
-              eq(whatsappIdentities.businessId, user.businessId),
-              eq(whatsappIdentities.isActive, true),
-              ne(whatsappIdentities.phoneNumberId, phoneNumberId),
+              eq(channelIdentities.businessId, user.businessId),
+              eq(channelIdentities.isActive, true),
+              ne(whatsappIdentityDetails.phoneNumberId, phoneNumberId),
             ),
           )
           .limit(1)
@@ -277,48 +278,61 @@ export async function POST(req: Request) {
 
     // Persist the identity for routing + webhooks. Storing token and PIN in plaintext per user request.
     // NOTE: this does NOT mean Cloud API registration/webhook subscription is complete.
-    await db
-      .insert(whatsappIdentities)
-      .values({
-        phoneNumberId,
+    const existingIdentity = await db
+      .select({ id: whatsappIdentityDetails.channelIdentityId })
+      .from(whatsappIdentityDetails)
+      .where(eq(whatsappIdentityDetails.phoneNumberId, phoneNumberId))
+      .limit(1)
+      .then(rows => rows[0] ?? null);
+
+    if (existingIdentity) {
+      await db.update(channelIdentities).set({
         businessId: user.businessId,
         connectedByUserId: user.id,
+        isActive: true,
+        status: "connected",
+        connectedAt: now,
+        disconnectedAt: null,
+        updatedAt: now,
+      }).where(eq(channelIdentities.id, existingIdentity.id));
+
+      await db.update(whatsappIdentityDetails).set({
         wabaId: resolvedWabaId,
         displayPhoneNumber: phoneNumber.display_phone_number?.trim() || null,
         twoStepPin: desiredPin,
-
         webhookSubscribedAt: now,
         creditLineSharedAt: now,
         creditLineAllocationConfigId: creditShareRes?.allocation_config_id ?? null,
         wabaCurrency: currency,
         registeredAt: now,
-
-        isActive: true,
-        connectedAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: whatsappIdentities.phoneNumberId,
-        set: {
+      }).where(eq(whatsappIdentityDetails.channelIdentityId, existingIdentity.id));
+    } else {
+      await db.transaction(async (tx) => {
+        const [newChannel] = await tx.insert(channelIdentities).values({
           businessId: user.businessId,
+          provider: "whatsapp",
+          externalAccountId: phoneNumberId,
+          isActive: true,
+          status: "connected",
           connectedByUserId: user.id,
+          connectedAt: now,
+          updatedAt: now,
+        }).returning({ id: channelIdentities.id });
+
+        await tx.insert(whatsappIdentityDetails).values({
+          channelIdentityId: newChannel.id,
+          phoneNumberId,
           wabaId: resolvedWabaId,
           displayPhoneNumber: phoneNumber.display_phone_number?.trim() || null,
-
           twoStepPin: desiredPin,
-
           webhookSubscribedAt: now,
           creditLineSharedAt: now,
           creditLineAllocationConfigId: creditShareRes?.allocation_config_id ?? null,
           wabaCurrency: currency,
           registeredAt: now,
-
-          isActive: true,
-          connectedAt: now,
-          disconnectedAt: null,
-          updatedAt: now,
-        },
+        });
       });
+    }
 
     await db
       .update(users)
