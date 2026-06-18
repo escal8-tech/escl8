@@ -15,6 +15,7 @@ const PUBLIC_PATHS = [
   '/pricing',
   '/subscription',
   '/auth',
+  '/access',
   '/static',
 ] as const
 

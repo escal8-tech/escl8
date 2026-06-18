@@ -1,4 +1,4 @@
-export const APP_LOGIN_ROUTE = "/";
+export const APP_LOGIN_ROUTE = "/auth/login";
 export const APP_SIGNUP_ROUTE = "/signup";
 export const APP_ACCESS_ROUTE = "/auth/login";
 export const APP_ONBOARDING_ROUTE = "/onboarding";
