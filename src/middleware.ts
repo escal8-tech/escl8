@@ -14,7 +14,7 @@ const PUBLIC_PATHS = [
   '/book',
   '/pricing',
   '/subscription',
-  '/access',
+  '/auth',
   '/static',
 ] as const
 
@@ -126,7 +126,7 @@ export async function middleware(request: NextRequest) {
       return response
     }
     // No JWT cookie - redirect to login to establish session
-    const loginUrl = new URL('/access', request.url)
+    const loginUrl = new URL('/auth/login', request.url)
     loginUrl.searchParams.set('redirect', pathname)
     return NextResponse.redirect(loginUrl)
   }
@@ -156,7 +156,7 @@ export async function middleware(request: NextRequest) {
       return response
     }
     // Invalid/expired token - clear cookie and redirect to login
-    const loginUrl = new URL('/access', request.url)
+    const loginUrl = new URL('/auth/login', request.url)
     loginUrl.searchParams.set('redirect', pathname)
     loginUrl.searchParams.set('reason', 'token_invalid')
     const response = NextResponse.redirect(loginUrl)
@@ -170,7 +170,7 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'unauthorized', reason: 'invalid_token_type' }, { status: 401 })
     }
-    const loginUrl = new URL('/access', request.url)
+    const loginUrl = new URL('/auth/login', request.url)
     return NextResponse.redirect(loginUrl)
   }
 
