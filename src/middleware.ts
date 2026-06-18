@@ -33,7 +33,7 @@ const PUBLIC_EXACT = [
 const ASSET_REGEX = /\.(ico|png|jpg|jpeg|svg|css|js|woff|woff2|webp|avif)$/i
 
 function isPublicPath(pathname: string): boolean {
-  if (PUBLIC_EXACT.includes(pathname as any)) return true
+  if (PUBLIC_EXACT.includes(pathname as typeof PUBLIC_EXACT[number])) return true
   if (ASSET_REGEX.test(pathname)) return true
   return PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(`${p}/`))
 }
@@ -168,7 +168,7 @@ export async function middleware(request: NextRequest) {
   // JWT valid - extract all claims
   const { sub: firebaseUid, email, suiteTenantId, subscription, userId } = payload
 
-  if (!firebaseUid || !email || !suiteTenantId) {
+  if (!firebaseUid || !email || !suiteTenantId || !subscription) {
     if (pathname.startsWith('/api/')) {
       const response = NextResponse.json({ error: 'unauthorized', reason: 'token_malformed' }, { status: 401 })
       response.cookies.set('escal8_access_token', '', { maxAge: 0, path: '/' })

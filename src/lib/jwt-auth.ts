@@ -195,7 +195,6 @@ export async function generateRefreshToken(
     email,
     suiteTenantId,
     userId,
-    subscription: null as any, // Not used in refresh token
     type: 'refresh',
     iss: JWT_ISSUER,
     aud: JWT_AUDIENCE,

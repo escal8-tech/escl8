@@ -1,55 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyFirebaseIdToken } from '@/server/firebaseAdmin';
 import { queryRows } from '@/lib/db';
-import { 
-  generateTokenPair, 
-  verifyRefreshToken, 
-  refreshAccessToken,
-  validateAuthToken 
-} from '@/lib/jwt-auth';
+import { generateTokenPair } from '@/lib/jwt-auth';
 import { db } from '@/server/db/client';
 import { users, businesses } from '@/../drizzle/schema';
 import { eq, and } from 'drizzle-orm';
 import { rateLimiter, RATE_LIMITS } from '@/lib/rate-limiter';
 import { setAuthCookies, clearAuthCookies, blacklistToken } from '@/lib/auth-cookies';
+import { checkRateLimit, getClientIp } from '@/lib/auth-rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/**
- * Get client IP for rate limiting
- */
-function getClientIp(request: NextRequest): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return request.headers.get('x-real-ip') || 'unknown';
-}
-
-/**
- * Check rate limit and return error response if exceeded
- */
-async function checkRateLimit(
-  request: NextRequest,
-  config: typeof RATE_LIMITS.AUTH_TOKEN
-): Promise<NextResponse | null> {
-  const identifier = getClientIp(request);
-  const result = await rateLimiter.checkLimitAsync(identifier, config);
-
-  const headers = new Headers();
-  headers.set('X-RateLimit-Limit', String(config.maxRequests));
-  headers.set('X-RateLimit-Remaining', String(result.remaining));
-  headers.set('X-RateLimit-Reset', String(Math.ceil(result.resetAt / 1000)));
-
-  if (!result.allowed) {
-    headers.set('Retry-After', String(Math.ceil((result.retryAfterMs || config.windowMs) / 1000)));
-    return NextResponse.json(
-      { error: 'Too many requests', retryAfterMs: result.retryAfterMs },
-      { status: 429, headers }
-    );
-  }
-
-  return null;
-}
 
 /**
  * POST /api/auth/token - Exchange Firebase ID token for Escal8 JWT pair

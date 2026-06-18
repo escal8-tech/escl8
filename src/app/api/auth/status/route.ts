@@ -73,8 +73,8 @@ async function getSubscriptionDetails(suiteTenantId: string) {
         ...(latest.featureOverrides as Record<string, boolean> || {}),
       }, 'agent.'),
       limits: filterSubscriptionRecord({
-        ...(latest.planLimits as Record<string, number> || {}),
-        ...(latest.limitOverrides as Record<string, number> || {}),
+        ...(latest.planLimits as Record<string, number | string | boolean | null> || {}),
+        ...(latest.limitOverrides as Record<string, number | string | boolean | null> || {}),
       }, 'agent.'),
       isActive: hasAccess,
       isSpecialGrant,

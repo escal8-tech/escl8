@@ -87,8 +87,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         setUser(escal8User)
         setStatus('authenticated')
-      } catch (e: any) {
-        if (e.name === 'AbortError') return
+      } catch (e: unknown) {
+        if (e && typeof e === 'object' && 'name' in e && e.name === 'AbortError') return
         console.error('Failed to resolve Escal8 user context', e)
         // Fallback to basic FB user, but do not set status to authenticated
         // if the backend rejected the session.

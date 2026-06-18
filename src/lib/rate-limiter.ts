@@ -48,7 +48,6 @@ class RateLimiter {
   } {
     const key = `${config.keyPrefix}:${identifier}`;
     const now = Date.now();
-    const windowStart = now - config.windowMs;
 
     let record = this.store.get(key);
 

@@ -1,8 +1,9 @@
 import {jwtVerify, type JWTPayload} from 'jose';
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'dev-secret-change-in-production-min-32-chars!!'
-);
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is missing');
+}
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 const JWT_ISSUER = 'escal8';
 const JWT_AUDIENCE = 'escal8-apps';
 
@@ -21,14 +22,23 @@ export interface SubscriptionClaims {
   businessId: string | null; // Added for middleware to use directly
 }
 
-export interface Escal8JWTPayload extends JWTPayload {
-  sub: string;           // firebaseUid
+export interface Escal8JWTPayloadBase extends JWTPayload {
+  sub: string;
   email: string;
   suiteTenantId: string;
-  userId: string | null; // db id of the user
-  subscription: SubscriptionClaims;
-  type: 'access' | 'refresh';
+  userId: string | null;
 }
+
+export interface Escal8JWTAccessPayload extends Escal8JWTPayloadBase {
+  type: 'access';
+  subscription: SubscriptionClaims;
+}
+
+export interface Escal8JWTRefreshPayload extends Escal8JWTPayloadBase {
+  type: 'refresh';
+}
+
+export type Escal8JWTPayload = Escal8JWTAccessPayload | Escal8JWTRefreshPayload;
 
 export interface TokenPair {
   accessToken: string;
@@ -47,6 +57,11 @@ export async function verifyAccessToken(token: string): Promise<Escal8JWTPayload
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     });
+    
+    if (payload.type !== 'access') {
+      return null;
+    }
+    
     return payload as unknown as Escal8JWTPayload;
   } catch {
     return null;
@@ -62,7 +77,11 @@ export async function verifyRefreshToken(token: string): Promise<Escal8JWTPayloa
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
     });
-    if (payload.type !== 'refresh') return null;
+    
+    if (typeof payload.type !== 'string' || payload.type !== 'refresh') {
+      return null;
+    }
+    
     return payload as unknown as Escal8JWTPayload;
   } catch {
     return null;

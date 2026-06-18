@@ -191,12 +191,11 @@ export async function acquireLock(lockKey: string, ttlSeconds: number = 30): Pro
   if (!client) return false;
   
   try {
-    const result = await client.setNX(lockKey, Date.now().toString());
-    if (result) {
-      await client.expire(lockKey, ttlSeconds);
-      return true;
-    }
-    return false;
+    const result = await client.set(lockKey, Date.now().toString(), {
+      NX: true,
+      EX: ttlSeconds
+    });
+    return result === 'OK';
   } catch (err) {
     console.error('Redis LOCK error:', err);
     return false;

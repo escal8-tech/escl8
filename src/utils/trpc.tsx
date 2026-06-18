@@ -16,6 +16,8 @@ function getBaseUrl() {
   return 'https://app.escal8.tech'
 }
 
+let refreshPromise: Promise<Response> | null = null;
+
 export function TRPCProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient())
   const [trpcClient] = useState(() =>
@@ -30,10 +32,15 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
             let res = await fetch(url, fetchOptions)
             if (res.status === 401) {
               try {
-                const refreshRes = await fetch(`${getBaseUrl()}/api/auth/refresh`, {
-                  method: 'PUT',
-                  credentials: 'include',
-                })
+                if (!refreshPromise) {
+                  refreshPromise = fetch(`${getBaseUrl()}/api/auth/refresh`, {
+                    method: 'PUT',
+                    credentials: 'include',
+                  }).finally(() => {
+                    refreshPromise = null
+                  })
+                }
+                const refreshRes = await refreshPromise
                 if (refreshRes.ok) {
                   res = await fetch(url, fetchOptions)
                 } else if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/auth/login')) {
@@ -47,7 +54,10 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
                 }
               }
             } else if (res.status === 403 && typeof window !== 'undefined') {
-              window.location.href = '/subscription?reason=inactive_subscription&redirect=' + encodeURIComponent(window.location.pathname)
+              if (!window.location.pathname.startsWith('/subscription')) {
+                window.location.href = '/subscription?reason=inactive_subscription&redirect=' + encodeURIComponent(window.location.pathname)
+                await new Promise(() => {}) 
+              }
             }
             return res
           }

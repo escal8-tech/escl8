@@ -2,38 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { refreshAccessToken } from '@/lib/jwt-auth';
 import { rateLimiter, RATE_LIMITS } from '@/lib/rate-limiter';
 import { setAuthCookies } from '@/lib/auth-cookies';
+import { checkRateLimit } from '@/lib/auth-rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function getClientIp(request: NextRequest): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0].trim();
-  return request.headers.get('x-real-ip') || 'unknown';
-}
-
-async function checkRateLimit(
-  request: NextRequest,
-  config: typeof RATE_LIMITS.AUTH_TOKEN
-): Promise<NextResponse | null> {
-  const identifier = getClientIp(request);
-  const result = await rateLimiter.checkLimitAsync(identifier, config);
-
-  const headers = new Headers();
-  headers.set('X-RateLimit-Limit', String(config.maxRequests));
-  headers.set('X-RateLimit-Remaining', String(result.remaining));
-  headers.set('X-RateLimit-Reset', String(Math.ceil(result.resetAt / 1000)));
-
-  if (!result.allowed) {
-    headers.set('Retry-After', String(Math.ceil((result.retryAfterMs || config.windowMs) / 1000)));
-    return NextResponse.json(
-      { error: 'Too many requests' },
-      { status: 429, headers }
-    );
-  }
-
-  return null;
-}
 
 /**
  * PUT /api/auth/refresh - Refresh access token using refresh token

@@ -46,12 +46,14 @@ const handler = async (req: Request) => {
       const userEmail = req.headers.get("x-user-email") || null;
       const userId = req.headers.get("x-user-id") || null;
       const businessId = req.headers.get("x-business-id") || null;
+      const suiteTenantId = req.headers.get("x-suite-tenant-id") || null;
 
       return {
         firebaseUid,
         userEmail,
         userId,
         businessId,
+        suiteTenantId,
       };
     },
   });
