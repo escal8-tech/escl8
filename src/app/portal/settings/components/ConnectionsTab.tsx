@@ -178,6 +178,7 @@ const styles: Record<string, React.CSSProperties> = {
 
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function ConnectionsTab(props: any) {
   const {
     businessQuery,
