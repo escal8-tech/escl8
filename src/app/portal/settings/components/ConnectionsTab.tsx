@@ -195,6 +195,8 @@ export function ConnectionsTab(props: any) {
   const channelsQuery = trpc.channels.listChannels.useQuery();
   const agentsQuery = trpc.agents.listAgents.useQuery();
   const updateChannel = trpc.channels.updateChannel.useMutation();
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingChannel, setEditingChannel] = useState<any>(null);
 
   const handleToggleAi = async (id: string, current: boolean) => {
     try {
@@ -311,225 +313,288 @@ export function ConnectionsTab(props: any) {
         <div style={styles.header}>
           <h1 style={styles.title}>Connections</h1>
           <p style={styles.subtitle}>
-            Manage all your connected channels, unified routing settings, and monthly AI credit allocations from a single place.
+            Manage all your connected channels, unified routing settings, and monthly AI credit allocations.
           </p>
         </div>
-        <div style={{ background: "var(--card)", padding: "12px 20px", borderRadius: 12, border: "1px solid var(--border)", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-          <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Business Pool</span>
-          <span style={{ fontSize: 24, fontWeight: 700, color: totalAllocated > businessCreditPool ? "#ef4444" : "var(--foreground)" }}>
-            {totalAllocated} / {businessCreditPool}
-          </span>
-          <span style={{ fontSize: 13, color: "var(--muted)" }}>credits allocated</span>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 24, marginBottom: 48 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>Add New Connection</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
-          {integrationCards.map((card) => (
-            <div key={card.key} style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <div style={{ padding: 20, flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 12, background: card.accent, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 700, fontSize: 14 }}>
-                    {card.key === "whatsapp" ? "WA" : card.key === "website" ? "</>" : card.title.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{card.title}</h4>
-                    <span style={{ fontSize: 12, color: card.connected ? "#10b981" : "var(--muted)", fontWeight: 500 }}>
-                      {card.connected ? "Connected" : card.key === "whatsapp" || card.key === "website" ? "Ready" : "Coming Soon"}
-                    </span>
-                  </div>
-                </div>
-                <p style={{ margin: 0, fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>{card.description}</p>
-              </div>
-              <div style={{ padding: "12px 20px", background: "rgba(0,0,0,0.02)", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end" }}>
-                {card.key === "whatsapp" ? (
-                  <WhatsAppEmbeddedSignupButton
-                    email={email ?? undefined}
-                    connected={whatsappConnected}
-                    disabled={whatsappConnectBlocked}
-                    disabledReason={whatsappConnectReason}
-                    onConnected={() => {
-                      void phoneNumbersQuery.refetch();
-                      channelsQuery.refetch();
-                    }}
-                    label="Connect WhatsApp"
-                    syncedLabel="Connected"
-                    className="btn"
-                    style={{
-                      padding: "8px 16px",
-                      borderRadius: 8,
-                      background: whatsappConnected ? "transparent" : "var(--primary)",
-                      color: whatsappConnected ? "var(--foreground)" : "white",
-                      border: whatsappConnected ? "1px solid var(--border)" : "none",
-                      fontWeight: 500,
-                      cursor: "pointer",
-                    }}
-                  />
-                ) : card.key === "website" ? (
-                  <button
-                    type="button"
-                    style={{
-                      padding: "8px 16px",
-                      borderRadius: 8,
-                      background: websiteWidget?.key ? "transparent" : "var(--primary)",
-                      color: websiteWidget?.key ? "var(--foreground)" : "white",
-                      border: websiteWidget?.key ? "1px solid var(--border)" : "none",
-                      fontWeight: 500,
-                      cursor: "pointer",
-                    }}
-                    onClick={() => {
-                      void openWebsiteWidgetModal();
-                    }}
-                    disabled={ensureWebsiteWidget?.isPending}
-                  >
-                    {ensureWebsiteWidget?.isPending ? "Preparing..." : websiteWidget?.key ? "View Snippet" : "Generate Snippet"}
-                  </button>
-                ) : (
-                  <button type="button" style={{ padding: "8px 16px", borderRadius: 8, background: "transparent", border: "1px solid var(--border)", color: "var(--muted)", fontWeight: 500 }} disabled>
-                    Coming Soon
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-        {whatsappConnectBlocked && (
-          <div style={{ marginTop: 16, padding: 12, borderRadius: 8, background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.2)", color: "var(--text-secondary)", fontSize: 13 }}>
-            {whatsappConnectReason}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end", background: "var(--card)", padding: "16px 24px", borderRadius: 12, border: "1px solid var(--border)", minWidth: 200 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", letterSpacing: "0.05em" }}>BUSINESS POOL</span>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+            <span style={{ fontSize: 24, fontWeight: 700, color: "var(--primary)" }}>{businessCreditPool} credits</span>
           </div>
-        )}
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>left in balance</span>
+        </div>
       </div>
 
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Active Connections</h2>
-        <p style={{ color: "var(--muted)", fontSize: 14, margin: 0 }}>Configure settings and assign AI agents to your connected channels.</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <div>
+          <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Active Connections</h2>
+          <p style={{ color: "var(--muted)", fontSize: 14, margin: 0 }}>Configure settings and assign AI agents to your connected channels.</p>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          style={{
+            padding: "10px 20px",
+            background: "var(--primary)",
+            color: "white",
+            border: "none",
+            borderRadius: 8,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          Add New Connection
+        </button>
       </div>
 
       {channelsQuery.isLoading ? (
         <div>Loading connections...</div>
       ) : channels.length === 0 ? (
         <div style={styles.emptyState}>
-          No channels connected yet. Go to Settings &gt; Integrations to connect your first account.
+          No channels connected yet. Click "Add New Connection" to connect your first account.
         </div>
       ) : (
-        <div style={styles.grid}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {channels.map(channel => {
             const isWhatsapp = channel.provider === "whatsapp";
             const isInstagram = channel.provider === "instagram";
             const badgeStyle = isWhatsapp ? styles.whatsappBadge : isInstagram ? styles.instagramBadge : styles.defaultBadge;
+            const assignedAgent = agents.find(a => a.id === channel.agentId);
 
             return (
-              <div key={channel.id} style={styles.card}>
-                <div style={styles.cardHeader}>
-                  <span style={{ ...styles.providerBadge, ...badgeStyle }}>
+              <div key={channel.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 24px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+                  <span style={{ ...styles.providerBadge, ...badgeStyle, width: 90, textAlign: "center" }}>
                     {channel.provider}
                   </span>
-                  <div style={styles.statusIndicator}>
-                    <div style={{ ...styles.statusDot, ...(channel.isActive ? styles.activeDot : styles.inactiveDot) }} />
-                    <span style={{ color: channel.isActive ? "#10b981" : "#ef4444" }}>
-                      {channel.status}
-                    </span>
+                  <div>
+                    <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 4px 0", color: "var(--foreground)" }}>{channel.displayName || "Unknown Account"}</h3>
+                    <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>{channel.displayHandle || channel.externalAccountId}</p>
                   </div>
                 </div>
-
-                <div style={styles.accountInfo}>
-                  <h3 style={styles.accountName}>{channel.displayName || "Unknown Account"}</h3>
-                  <p style={styles.accountHandle}>{channel.displayHandle || channel.externalAccountId}</p>
-                </div>
-
-                <div style={styles.controls}>
-                  <div style={styles.controlRow}>
-                    <div style={styles.controlLabel}>
-                      <span style={styles.controlTitle}>Assigned Agent</span>
-                      <span style={styles.controlHint}>Bot handling this channel</span>
-                    </div>
-                    <select
-                      style={{ ...styles.input, width: "120px" }}
-                      value={channel.agentId || ""}
-                      onChange={(e) => handleAssignAgent(channel.id, e.target.value)}
-                    >
-                      <option value="">Select Agent</option>
-                      {agents.map((ag) => (
-                        <option key={ag.id} value={ag.id}>
-                          {ag.name}
-                        </option>
-                      ))}
-                    </select>
+                
+                <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>Agent</span>
+                    <span style={{ fontSize: 14, color: "var(--foreground)", fontWeight: 500 }}>{assignedAgent?.name || "None"}</span>
                   </div>
-
-                  <div style={styles.controlRow}>
-                    <div style={styles.controlLabel}>
-                      <span style={styles.controlTitle}>AI Copilot Enabled</span>
-                      <span style={styles.controlHint}>Let AI draft and handle responses</span>
-                    </div>
-                    <div 
-                      style={{ ...styles.toggle, background: channel.aiEnabled ? "var(--primary)" : "var(--border)" }}
-                      onClick={() => handleToggleAi(channel.id, channel.aiEnabled)}
-                    >
-                      <div style={{ ...styles.toggleKnob, transform: channel.aiEnabled ? "translateX(20px)" : "translateX(0)" }} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>Status</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: channel.isActive ? "#10b981" : "#ef4444" }} />
+                      <span style={{ fontSize: 14, color: channel.isActive ? "#10b981" : "#ef4444", fontWeight: 500 }}>{channel.status}</span>
                     </div>
                   </div>
-
-                  <div style={styles.controlRow}>
-                    <div style={styles.controlLabel}>
-                      <span style={styles.controlTitle}>Auto-reply Paused</span>
-                      <span style={styles.controlHint}>Temporarily halt bot replies</span>
-                    </div>
-                    <div 
-                      style={{ ...styles.toggle, background: channel.autoReplyPaused ? "var(--warning, #f59e0b)" : "var(--border)" }}
-                      onClick={() => handleToggleAutoReply(channel.id, channel.autoReplyPaused)}
-                    >
-                      <div style={{ ...styles.toggleKnob, transform: channel.autoReplyPaused ? "translateX(20px)" : "translateX(0)" }} />
-                    </div>
-                  </div>
-
-                  <div style={styles.controlRow}>
-                    <div style={styles.controlLabel}>
-                      <span style={styles.controlTitle}>Share Business Pool</span>
-                      <span style={styles.controlHint}>Draw credits directly from main pool</span>
-                    </div>
-                    <div 
-                      style={{ ...styles.toggle, background: channel.useSharedPool ? "var(--primary)" : "var(--border)" }}
-                      onClick={async () => {
-                        try {
-                          await updateChannel.mutateAsync({ id: channel.id, useSharedPool: !channel.useSharedPool });
-                          showSuccessToast(toast, { title: "Success", message: "Shared pool setting updated" });
-                          channelsQuery.refetch();
-                        } catch (e) {
-                          showErrorToast(toast, { title: "Error", message: "Failed to update setting" });
-                        }
-                      }}
-                    >
-                      <div style={{ ...styles.toggleKnob, transform: channel.useSharedPool ? "translateX(20px)" : "translateX(0)" }} />
-                    </div>
-                  </div>
-
-                  {!channel.useSharedPool && (
-                    <div style={styles.controlRow}>
-                      <div style={styles.controlLabel}>
-                        <span style={styles.controlTitle}>Monthly AI Credit Cap</span>
-                        <span style={styles.controlHint}>
-                          Used: {channel.totalCreditsConsumed || 0} / {channel.monthlyCreditLimit || 0}
-                        </span>
-                      </div>
-                      <input 
-                        type="number" 
-                        style={styles.input}
-                        defaultValue={channel.monthlyCreditLimit || 0}
-                        key={`${channel.id}-${channel.monthlyCreditLimit}`} // Force re-render if reset
-                        onBlur={(e) => {
-                          if (e.target.value !== String(channel.monthlyCreditLimit)) {
-                            handleCreditLimitChange(channel.id, e.target.value, channel.monthlyCreditLimit || 0, totalAllocated, businessCreditPool);
-                          }
-                        }}
-                      />
-                    </div>
-                  )}
+                  <button
+                    onClick={() => setEditingChannel(channel)}
+                    style={{
+                      padding: "8px 16px",
+                      background: "transparent",
+                      color: "var(--foreground)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Edit
+                  </button>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Add Connection Modal */}
+      {showAddModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--background)", borderRadius: 16, border: "1px solid var(--border)", width: "100%", maxWidth: 800, maxHeight: "90vh", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: 24, borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: "var(--background)", zIndex: 10 }}>
+              <h2 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>Add New Connection</h2>
+              <button onClick={() => setShowAddModal(false)} style={{ background: "transparent", border: "none", fontSize: 24, color: "var(--muted)", cursor: "pointer" }}>&times;</button>
+            </div>
+            <div style={{ padding: 24 }}>
+              <div style={styles.grid}>
+                {integrationCards.map(card => (
+                  <div key={card.key} style={{ ...styles.card, padding: 20 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+                      <div style={{ width: 48, height: 48, borderRadius: 12, background: card.accent, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: "bold", fontSize: 20, shrink: 0 }}>
+                        {card.title.charAt(0)}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 4px 0", color: "var(--foreground)" }}>{card.title}</h3>
+                        <p style={{ fontSize: 13, color: "var(--muted)", margin: 0, lineHeight: 1.5 }}>{card.description}</p>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: "auto", paddingTop: 16, display: "flex", justifyContent: "flex-end" }}>
+                      {card.key === "whatsapp" ? (
+                        <WhatsAppEmbeddedSignupButton
+                          businessId={businessQuery.data?.[0]?.id || ""}
+                          userEmail={email}
+                          onSuccess={() => {
+                            toast.show({ type: "success", title: "Connected", message: "WhatsApp connected" });
+                            channelsQuery.refetch();
+                            setShowAddModal(false);
+                          }}
+                          onError={(err) => {
+                            toast.show({ type: "error", title: "Failed", message: err });
+                          }}
+                        />
+                      ) : card.key === "website" ? (
+                        <button
+                          type="button"
+                          style={{
+                            padding: "8px 16px",
+                            borderRadius: 8,
+                            background: "transparent",
+                            color: "var(--foreground)",
+                            border: "1px solid var(--border)",
+                            fontWeight: 500,
+                            cursor: "pointer",
+                          }}
+                          onClick={() => {
+                            setShowAddModal(false);
+                            void openWebsiteWidgetModal();
+                          }}
+                        >
+                          Generate Snippet
+                        </button>
+                      ) : (
+                        <button type="button" style={{ padding: "8px 16px", borderRadius: 8, background: "transparent", border: "1px solid var(--border)", color: "var(--muted)", fontWeight: 500 }} disabled>
+                          Coming Soon
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Connection Modal */}
+      {editingChannel && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", width: "100%", maxWidth: 500, padding: 32 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+              <div>
+                <h2 style={{ fontSize: 20, fontWeight: 600, margin: "0 0 4px 0" }}>Edit Connection</h2>
+                <p style={{ color: "var(--muted)", margin: 0, fontSize: 14 }}>{editingChannel.displayName}</p>
+              </div>
+              <button onClick={() => setEditingChannel(null)} style={{ background: "transparent", border: "none", fontSize: 24, color: "var(--muted)", cursor: "pointer" }}>&times;</button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <label style={{ fontSize: 14, fontWeight: 500, color: "var(--foreground)" }}>Assigned Agent</label>
+                <select
+                  style={{ ...styles.input, width: "100%", textAlign: "left" }}
+                  value={editingChannel.agentId || ""}
+                  onChange={async (e) => {
+                    await handleAssignAgent(editingChannel.id, e.target.value);
+                    setEditingChannel({ ...editingChannel, agentId: e.target.value });
+                  }}
+                >
+                  <option value="">Select Agent</option>
+                  {agents.map((ag) => (
+                    <option key={ag.id} value={ag.id}>
+                      {ag.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={styles.controlRow}>
+                <div style={styles.controlLabel}>
+                  <span style={styles.controlTitle}>AI Copilot Enabled</span>
+                  <span style={styles.controlHint}>Let AI draft and handle responses</span>
+                </div>
+                <div 
+                  style={{ ...styles.toggle, background: editingChannel.aiEnabled ? "var(--primary)" : "var(--border)" }}
+                  onClick={async () => {
+                    await handleToggleAi(editingChannel.id, editingChannel.aiEnabled);
+                    setEditingChannel({ ...editingChannel, aiEnabled: !editingChannel.aiEnabled });
+                  }}
+                >
+                  <div style={{ ...styles.toggleKnob, transform: editingChannel.aiEnabled ? "translateX(20px)" : "translateX(0)" }} />
+                </div>
+              </div>
+
+              <div style={styles.controlRow}>
+                <div style={styles.controlLabel}>
+                  <span style={styles.controlTitle}>Auto-reply Paused</span>
+                  <span style={styles.controlHint}>Temporarily halt bot replies</span>
+                </div>
+                <div 
+                  style={{ ...styles.toggle, background: editingChannel.autoReplyPaused ? "var(--warning, #f59e0b)" : "var(--border)" }}
+                  onClick={async () => {
+                    await handleToggleAutoReply(editingChannel.id, editingChannel.autoReplyPaused);
+                    setEditingChannel({ ...editingChannel, autoReplyPaused: !editingChannel.autoReplyPaused });
+                  }}
+                >
+                  <div style={{ ...styles.toggleKnob, transform: editingChannel.autoReplyPaused ? "translateX(20px)" : "translateX(0)" }} />
+                </div>
+              </div>
+
+              <div style={styles.controlRow}>
+                <div style={styles.controlLabel}>
+                  <span style={styles.controlTitle}>Share Business Pool</span>
+                  <span style={styles.controlHint}>Draw credits directly from main pool</span>
+                </div>
+                <div 
+                  style={{ ...styles.toggle, background: editingChannel.useSharedPool ? "var(--primary)" : "var(--border)" }}
+                  onClick={async () => {
+                    try {
+                      await updateChannel.mutateAsync({ id: editingChannel.id, useSharedPool: !editingChannel.useSharedPool });
+                      showSuccessToast(toast, { title: "Success", message: "Shared pool setting updated" });
+                      setEditingChannel({ ...editingChannel, useSharedPool: !editingChannel.useSharedPool });
+                      channelsQuery.refetch();
+                    } catch (e) {
+                      showErrorToast(toast, { title: "Error", message: "Failed to update setting" });
+                    }
+                  }}
+                >
+                  <div style={{ ...styles.toggleKnob, transform: editingChannel.useSharedPool ? "translateX(20px)" : "translateX(0)" }} />
+                </div>
+              </div>
+
+              {!editingChannel.useSharedPool && (
+                <div style={styles.controlRow}>
+                  <div style={styles.controlLabel}>
+                    <span style={styles.controlTitle}>Monthly AI Credit Cap</span>
+                  </div>
+                  <input 
+                    type="number" 
+                    style={styles.input}
+                    defaultValue={editingChannel.monthlyCreditLimit || 0}
+                    onBlur={(e) => {
+                      if (e.target.value !== String(editingChannel.monthlyCreditLimit)) {
+                        handleCreditLimitChange(editingChannel.id, e.target.value, editingChannel.monthlyCreditLimit || 0, totalAllocated, businessCreditPool);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+            
+            <div style={{ marginTop: 32, paddingTop: 24, borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setEditingChannel(null)}
+                style={{
+                  padding: "10px 20px",
+                  background: "var(--primary)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

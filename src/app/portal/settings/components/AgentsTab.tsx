@@ -128,8 +128,35 @@ export function AgentsTab() {
                       background: agent.isActive ? "#10b981" : "#ef4444"
                     }} />
                     <span style={{ fontSize: 13, color: "var(--muted)" }}>
-                      {agent.isActive ? "Active" : "Inactive"} • {agent.botType || "AGENT"}
+                      {agent.isActive ? "Active" : "Inactive"}
                     </span>
+                    <select
+                      value={agent.botType || "AGENT"}
+                      onChange={async (e) => {
+                        try {
+                          await updateAgent.mutateAsync({ id: agent.id, botType: e.target.value });
+                          agentsQuery.refetch();
+                          showSuccessToast(toast, { title: "Success", message: "Agent type updated" });
+                        } catch (err) {
+                          showErrorToast(toast, { title: "Error", message: "Failed to update agent type" });
+                        }
+                      }}
+                      style={{
+                        padding: "2px 8px",
+                        borderRadius: 4,
+                        border: "1px solid var(--border)",
+                        background: "var(--background)",
+                        color: "var(--foreground)",
+                        fontSize: 12,
+                        marginLeft: 4,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <option value="AGENT">AGENT</option>
+                      <option value="ORDER2">ORDER2</option>
+                      <option value="RESERVATION2">RESERVATION2</option>
+                      <option value="HOTEL_BOOKING">HOTEL_BOOKING</option>
+                    </select>
                   </div>
                 </div>
                 

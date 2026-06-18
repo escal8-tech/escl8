@@ -139,9 +139,6 @@ export function SubscriptionContent() {
   const statusStyle = STATUS_STYLES[subscription.status] ?? STATUS_STYLES.none;
   const StatusIcon = statusStyle.icon;
   const features = AGENT_PLAN_FEATURES[subscription.planCode ?? ""] ?? [];
-  const creditPercent = subscription.monthlyCredits > 0
-    ? Math.min(100, (subscription.creditsUsed / subscription.monthlyCredits) * 100)
-    : 0;
   const formatDate = (date: string | Date | null) => date
     ? new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : "N/A";
@@ -247,11 +244,8 @@ export function SubscriptionContent() {
           <div className="space-y-5 p-5">
             <div>
               <div className="flex justify-between gap-4 text-sm">
-                <span className="text-slate-400">Message Credits</span>
-                <span className="font-medium">{subscription.creditsUsed.toLocaleString()} / {subscription.monthlyCredits.toLocaleString()}</span>
-              </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-700">
-                <div className="h-full rounded-full bg-emerald-500" style={{ width: `${creditPercent}%` }} />
+                <span className="text-slate-400">Message Credits Left</span>
+                <span className="font-bold text-emerald-400 text-lg">{subscription.creditsBalance.toLocaleString()} credits</span>
               </div>
             </div>
             <div className="flex justify-between gap-4 text-sm">
