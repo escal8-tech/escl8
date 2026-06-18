@@ -31,6 +31,7 @@ export const channelsRouter = router({
       autoReplyPaused: z.boolean().optional(),
       monthlyCreditLimit: z.number().int().min(0).optional(),
       useSharedPool: z.boolean().optional(),
+      agentId: z.string().optional().nullable(),
     }))
     .mutation(async ({ ctx, input }) => {
       if (input.monthlyCreditLimit !== undefined || input.useSharedPool !== undefined) {
@@ -60,6 +61,7 @@ export const channelsRouter = router({
           ...(input.autoReplyPaused !== undefined ? { autoReplyPaused: input.autoReplyPaused } : {}),
           ...(input.monthlyCreditLimit !== undefined ? { monthlyCreditLimit: input.monthlyCreditLimit } : {}),
           ...(input.useSharedPool !== undefined ? { useSharedPool: input.useSharedPool } : {}),
+          ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
           updatedAt: new Date(),
         })
         .where(and(

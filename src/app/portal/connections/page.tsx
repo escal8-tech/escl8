@@ -179,6 +179,7 @@ const styles: Record<string, React.CSSProperties> = {
 export default function ConnectionsPage() {
   const toast = useToast();
   const channelsQuery = trpc.channels.listChannels.useQuery();
+  const agentsQuery = trpc.agents.listAgents.useQuery();
   const updateChannel = trpc.channels.updateChannel.useMutation();
 
   const handleToggleAi = async (id: string, current: boolean) => {
@@ -198,6 +199,16 @@ export default function ConnectionsPage() {
       channelsQuery.refetch();
     } catch (e) {
       showErrorToast(toast, { title: "Error", message: "Failed to update auto-reply status" });
+    }
+  };
+
+  const handleAssignAgent = async (id: string, agentId: string) => {
+    try {
+      await updateChannel.mutateAsync({ id, agentId });
+      showSuccessToast(toast, { title: "Success", message: "Agent assigned" });
+      channelsQuery.refetch();
+    } catch (e) {
+      showErrorToast(toast, { title: "Error", message: "Failed to assign agent" });
     }
   };
 
@@ -223,6 +234,7 @@ export default function ConnectionsPage() {
   };
 
   const channels = channelsQuery.data?.channels || [];
+  const agents = agentsQuery.data || [];
   const businessCreditPool = channelsQuery.data?.businessCreditPool || 0;
   const totalAllocated = channels.reduce((sum, ch) => sum + (ch.useSharedPool ? 0 : (ch.monthlyCreditLimit || 0)), 0);
 
@@ -277,6 +289,25 @@ export default function ConnectionsPage() {
                 </div>
 
                 <div style={styles.controls}>
+                  <div style={styles.controlRow}>
+                    <div style={styles.controlLabel}>
+                      <span style={styles.controlTitle}>Assigned Agent</span>
+                      <span style={styles.controlHint}>Bot handling this channel</span>
+                    </div>
+                    <select
+                      style={{ ...styles.input, width: "120px" }}
+                      value={channel.agentId || ""}
+                      onChange={(e) => handleAssignAgent(channel.id, e.target.value)}
+                    >
+                      <option value="">Select Agent</option>
+                      {agents.map((ag) => (
+                        <option key={ag.id} value={ag.id}>
+                          {ag.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div style={styles.controlRow}>
                     <div style={styles.controlLabel}>
                       <span style={styles.controlTitle}>AI Copilot Enabled</span>

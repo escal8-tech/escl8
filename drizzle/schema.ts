@@ -251,6 +251,28 @@ export const businessUserInvites = pgTable(
   }),
 );
 
+export const agents = pgTable(
+  "agents",
+  {
+    id: text("id").primaryKey().notNull().$defaultFn(() => crypto.randomUUID()),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    name: text("name").notNull().default("Default Agent"),
+    botType: text("bot_type").notNull().default("AGENT"), // AGENT, ORDER2, RESERVATION2, etc.
+    promptOverride: text("prompt_override"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    agentsBizIdx: index("agents_business_id_idx").on(t.businessId),
+  })
+);
+
+export type AgentRow = typeof agents.$inferSelect;
+export type NewAgent = typeof agents.$inferInsert;
+
 /**
  * CHANNEL IDENTITIES = Unified routing table for all channels (WhatsApp, Instagram, etc.).
  */
@@ -266,7 +288,7 @@ export const channelIdentities = pgTable(
     displayName: text("display_name"),
     displayHandle: text("display_handle"),
     
-    botType: text("bot_type").notNull().default("AGENT"),
+    agentId: text("agent_id").references(() => agents.id, { onDelete: "restrict", onUpdate: "cascade" }),
     status: text("status").notNull().default("connected"),
     isActive: boolean("is_active").notNull().default(true),
 
@@ -358,10 +380,23 @@ export const businessesRelations = relations(businesses, ({ many }) => ({
   inventoryProductOffers: many(inventoryProductOffers),
 }));
 
+export const agentsRelations = relations(agents, ({ one, many }) => ({
+  business: one(businesses, {
+    fields: [agents.businessId],
+    references: [businesses.id],
+  }),
+  channels: many(channelIdentities),
+  documents: many(trainingDocuments),
+}));
+
 export const channelIdentitiesRelations = relations(channelIdentities, ({ one }) => ({
   business: one(businesses, {
     fields: [channelIdentities.businessId],
     references: [businesses.id],
+  }),
+  agent: one(agents, {
+    fields: [channelIdentities.agentId],
+    references: [agents.id],
   }),
   connectedByUser: one(users, {
     fields: [channelIdentities.connectedByUserId],
@@ -2170,6 +2205,9 @@ export const trainingDocuments = pgTable(
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
 
+    agentId: text("agent_id")
+      .references(() => agents.id, { onDelete: "cascade", onUpdate: "cascade" }),
+
     // One of the 5 portal doc slots
     docType: text("doc_type").notNull(),
 
@@ -2196,7 +2234,7 @@ export const trainingDocuments = pgTable(
   },
   (t) => ({
     trainingDocsBizIdx: index("training_documents_business_id_idx").on(t.businessId),
-    trainingDocsBizTypeUx: uniqueIndex("training_documents_business_doc_type_ux").on(t.businessId, t.docType),
+    trainingDocsBizTypeUx: uniqueIndex("training_documents_agent_id_doc_type_ux").on(t.agentId, t.docType),
   }),
 );
 

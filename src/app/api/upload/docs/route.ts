@@ -30,7 +30,7 @@ function maxUploadBytes() {
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_UPLOAD_BYTES;
 }
 
-async function listCurrent(businessId: string) {
+async function listCurrent(businessId: string, agentId?: string) {
   const out = buildDocTypeRecord<{
     name: string;
     size: number;
@@ -40,12 +40,11 @@ async function listCurrent(businessId: string) {
     uploadedAt: string | null;
   } | null>(() => null);
 
-  const rows = await db
-    .select()
-    .from(trainingDocuments)
-    .where(eq(trainingDocuments.businessId, businessId));
+  let query = db.select().from(trainingDocuments).where(eq(trainingDocuments.businessId, businessId));
+  const rows = await query;
 
   for (const row of rows) {
+    if (agentId && row.agentId !== agentId) continue;
     const dt = row.docType as DocType;
     if (!dt || !(dt in out)) continue;
     const name = row.originalFilename || row.blobPath.split("/").slice(-1)[0] || "latest";
@@ -92,7 +91,11 @@ export async function GET(request: Request) {
   if (!businessId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const files = await listCurrent(businessId);
+
+  const { searchParams } = new URL(request.url);
+  const agentId = searchParams.get("agentId") || undefined;
+
+  const files = await listCurrent(businessId, agentId);
   return NextResponse.json({ ok: true, businessId, files }, { headers: rl.headers });
 }
 
@@ -122,9 +125,14 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get("file");
     docType = (formData.get("docType") as string) as DocType;
+    const agentId = formData.get("agentId") as string;
     businessId = await getAuthedBusinessId(request);
     if (!businessId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!agentId) {
+      return NextResponse.json({ error: "No agentId provided" }, { status: 400 });
     }
 
     if (!file || !(file instanceof File)) {
@@ -169,6 +177,7 @@ export async function POST(request: Request) {
       .insert(trainingDocuments)
       .values({
         businessId,
+        agentId,
         docType,
         blobPath: stored.blobPath,
         blobUrl: stored.url,
@@ -180,7 +189,7 @@ export async function POST(request: Request) {
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: [trainingDocuments.businessId, trainingDocuments.docType],
+        target: [trainingDocuments.agentId, trainingDocuments.docType],
         set: {
           blobPath: stored.blobPath,
           blobUrl: stored.url,
@@ -206,7 +215,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const latest = await listCurrent(businessId);
+    const latest = await listCurrent(businessId, agentId);
     recordSentryMetric("count", "escl8.upload.docs.success", 1, {
       area: "upload",
       business_id: businessId,

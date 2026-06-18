@@ -24,7 +24,7 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-export function UploadContent() {
+export function UploadContent({ agentId }: { agentId?: string }) {
   const isMobile = useIsMobileViewport();
   const pathname = usePathname();
   const [busy, setBusy] = useState(false);
@@ -44,7 +44,8 @@ export function UploadContent() {
   const fetchExisting = useCallback(async () => {
     try {
       setBusy(true);
-      const res = await fetchWithFirebaseAuth("/api/upload/docs", undefined, {
+      const url = agentId ? `/api/upload/docs?agentId=${agentId}` : "/api/upload/docs";
+      const res = await fetchWithFirebaseAuth(url, undefined, {
         action: "portal.upload.fetchExisting",
         area: "documents",
         missingConfigEvent: "document.list_failed",
@@ -157,6 +158,7 @@ export function UploadContent() {
       const form = new FormData();
       form.append("file", file);
       form.append("docType", docType);
+      if (agentId) form.append("agentId", agentId);
       const res = await fetchWithFirebaseAuth("/api/upload/docs", { method: "POST", body: form }, {
         action: "portal.upload.submit",
         area: "documents",

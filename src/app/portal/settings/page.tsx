@@ -952,7 +952,7 @@ const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "payments", label: "Payments", icon: Icons.ticket },
   { id: "customization", label: "Customization", icon: Icons.building },
   { id: "integrations", label: "Integrations", icon: Icons.whatsapp },
-  { id: "documents", label: "Documents", icon: Icons.upload },
+  { id: "agents", label: "Agents", icon: Icons.upload },
   { id: "stock", label: "Stock", icon: Icons.stock },
   { id: "users", label: "Users & Permissions", icon: Icons.user },
   { id: "flowbuilder", label: "Flow Builder", icon: Icons.flow },
@@ -965,7 +965,7 @@ const settingsTabFeatureMap: Partial<Record<SettingsTab, string>> = {
   payments: "agent.settings.basic",
   customization: "agent.settings.basic",
   integrations: "agent.whatsapp.connect",
-  documents: "agent.settings.basic",
+  agents: "agent.settings.basic",
   stock: "agent.settings.basic",
   users: "agent.settings.basic",
   flowbuilder: "agent.messages.view",
@@ -2465,7 +2465,13 @@ export default function SettingsPage() {
     );
   };
 
-  const renderDocumentsTab = () => <UploadContent />;
+  const renderAgentsTab = () => {
+    // If the user navigates here via tab, we can redirect them to the new page or show a link
+    if (typeof window !== "undefined") {
+      window.location.href = "/portal/agents";
+    }
+    return <div style={{ padding: 24 }}>Redirecting to Agents...</div>;
+  };
   const renderStockTab = () => <StockSettingsPanel />;
 
   const renderCustomizationTab = () => (
@@ -2734,8 +2740,8 @@ export default function SettingsPage() {
         return renderCustomizationTab();
       case "integrations":
         return renderIntegrationsTab();
-      case "documents":
-        return renderDocumentsTab();
+      case "agents":
+        return renderAgentsTab();
       case "stock":
         return renderStockTab();
       case "users":
