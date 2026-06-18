@@ -13,14 +13,16 @@ export function AgentsTab() {
   const updateAgent = trpc.agents.updateAgent.useMutation();
   
   const [newAgentName, setNewAgentName] = useState("");
+  const [newBotType, setNewBotType] = useState("AGENT");
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   const handleCreateAgent = async () => {
     if (!newAgentName.trim()) return;
     try {
-      await createAgent.mutateAsync({ name: newAgentName, botType: "AGENT" });
+      await createAgent.mutateAsync({ name: newAgentName, botType: newBotType });
       showSuccessToast(toast, { title: "Success", message: "Agent created successfully" });
       setNewAgentName("");
+      setNewBotType("AGENT");
       agentsQuery.refetch();
     } catch (e) {
       showErrorToast(toast, { title: "Error", message: "Failed to create agent" });
@@ -65,6 +67,22 @@ export function AgentsTab() {
               color: "var(--foreground)",
             }}
           />
+          <select
+            value={newBotType}
+            onChange={(e) => setNewBotType(e.target.value)}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "var(--background)",
+              color: "var(--foreground)",
+            }}
+          >
+            <option value="AGENT">AGENT (Default)</option>
+            <option value="ORDER2">ORDER2</option>
+            <option value="RESERVATION2">RESERVATION2</option>
+            <option value="HOTEL_BOOKING">HOTEL_BOOKING</option>
+          </select>
           <button
             onClick={handleCreateAgent}
             disabled={!newAgentName.trim() || createAgent.isPending}
@@ -104,13 +122,13 @@ export function AgentsTab() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <h3 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 4px 0", color: "var(--foreground)" }}>{agent.name}</h3>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
                     <div style={{
                       width: 8, height: 8, borderRadius: "50%",
                       background: agent.isActive ? "#10b981" : "#ef4444"
                     }} />
                     <span style={{ fontSize: 13, color: "var(--muted)" }}>
-                      {agent.isActive ? "Active" : "Inactive"}
+                      {agent.isActive ? "Active" : "Inactive"} • {agent.botType || "AGENT"}
                     </span>
                   </div>
                 </div>
