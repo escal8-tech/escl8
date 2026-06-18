@@ -1,18 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { randomUUID } from "crypto";
 import { z } from "zod";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import {
-  businesses,
-  customers,
-  orders,
-  orderPayments,
-  requests,
   supportTicketEvents,
-  supportTicketTypes,
-  supportTickets,
 } from "../../../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 import { resolveInitialFulfillmentStatus } from "@/lib/order-operations";

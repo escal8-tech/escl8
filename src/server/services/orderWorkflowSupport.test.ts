@@ -7,6 +7,7 @@ import {
   buildPaymentReviewMessages,
   canReopenPaidOrderForPaymentReview,
   canResendPaymentDetails,
+  cleanOptionalText,
   nextFulfillmentTimestamps,
   resolveRefundAmount,
 } from "@/server/services/orderWorkflowSupport";
@@ -90,4 +91,12 @@ test("payment approval customer messages are internal only", () => {
   });
 
   assert.deepEqual(messages, []);
+});
+
+test("cleanOptionalText handles various inputs", () => {
+  assert.equal(cleanOptionalText("  hello world  "), "hello world");
+  assert.equal(cleanOptionalText(null), null);
+  assert.equal(cleanOptionalText(undefined), null);
+  assert.equal(cleanOptionalText(""), null);
+  assert.equal(cleanOptionalText("a".repeat(100), 10), "aaaaaaaaaa");
 });

@@ -45,6 +45,23 @@ test("parseInventoryAmount rejects placeholders and zero prices", () => {
   assert.equal(parseInventoryAmount("N/A"), null);
 });
 
+test("parseInventoryAmount handles edge cases and invalid formats", () => {
+  assert.equal(parseInventoryAmount("-150.00"), null); // negative amount
+  assert.equal(parseInventoryAmount("0.00"), null); // zero amount
+  assert.equal(parseInventoryAmount("abc"), null); // no digits
+  assert.equal(parseInventoryAmount("Rs. 5000.50"), "5000.50"); // currency prefix
+  assert.equal(parseInventoryAmount("100.555"), "100.56"); // rounding
+  assert.equal(parseInventoryAmount("1,000,000"), "1000000.00"); // multiple commas
+});
+
+test("deriveInventoryProductFromFields handles empty and null inputs gracefully", () => {
+  const product = deriveInventoryProductFromFields({});
+  assert.equal(product.name, "");
+  assert.equal(product.itemCode, null);
+  assert.equal(product.quantityOnHand, null);
+  assert.deepEqual(product.priceFields, []);
+});
+
 test("deriveInventoryProductFromFields supports compact stock report headers", () => {
   const product = deriveInventoryProductFromFields({
     code: "0.5X",
