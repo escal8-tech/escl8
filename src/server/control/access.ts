@@ -229,6 +229,24 @@ function normalizeSubscriptionAccess(latestSubscription: LatestSubscriptionRow, 
     latestSubscription.limitOverrides ?? {},
   );
 
+  if (module === "agent" && !fullAccess) {
+    return {
+      allowed: true,
+      workspaceMode: "readonly",
+      canConnectWhatsapp: false,
+      isGrandfathered: false,
+      reason: "subscription_inactive",
+      planCode: latestSubscription.planCode,
+      planName: latestSubscription.planName,
+      subscriptionStatus: latestSubscription.status,
+      grantKind: latestSubscription.grantKind,
+      lastPaidAt: latestSubscription.lastPaidAt ?? null,
+      nextDueAt: latestSubscription.nextDueAt ?? null,
+      features: mergeFeatureManifests(AGENT_READONLY_FEATURES, features),
+      limits,
+    };
+  }
+
   return {
     allowed: fullAccess,
     workspaceMode: fullAccess ? "full" : "blocked",
