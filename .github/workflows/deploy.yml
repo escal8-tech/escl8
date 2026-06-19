@@ -238,6 +238,34 @@ jobs:
               grafana-logs-user="$GRAFANA_LOGS_USER" \
               grafana-logs-api-key="$GRAFANA_LOGS_API_KEY"
 
+      - name: Capacity budget report
+        shell: bash
+        run: |
+          WEB_MAX_REPLICAS=3
+          WORKER_MAX_REPLICAS=3
+          DB_POOL_MAX=8
+          CONTROL_DB_POOL_MAX=4
+          RAG_WORKER_CONCURRENCY=5
+          MAX_APP_DB_CONNECTIONS=$(( (WEB_MAX_REPLICAS + WORKER_MAX_REPLICAS) * DB_POOL_MAX ))
+          MAX_CONTROL_DB_CONNECTIONS=$(( (WEB_MAX_REPLICAS + WORKER_MAX_REPLICAS) * CONTROL_DB_POOL_MAX ))
+          MAX_RAG_JOBS=$(( WORKER_MAX_REPLICAS * RAG_WORKER_CONCURRENCY ))
+
+          {
+            echo "## Agent Dashboard Capacity Budget"
+            echo ""
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            echo "| Web replicas | 1-${WEB_MAX_REPLICAS} |"
+            echo "| Worker replicas | 1-${WORKER_MAX_REPLICAS} |"
+            echo "| App DB pool max per replica | ${DB_POOL_MAX} |"
+            echo "| Estimated app DB connections | ${MAX_APP_DB_CONNECTIONS} |"
+            echo "| Control DB pool max per replica | ${CONTROL_DB_POOL_MAX} |"
+            echo "| Estimated control DB connections | ${MAX_CONTROL_DB_CONNECTIONS} |"
+            echo "| RAG worker concurrency per replica | ${RAG_WORKER_CONCURRENCY} |"
+            echo "| Estimated max concurrent RAG jobs | ${MAX_RAG_JOBS} |"
+            echo "| Redis mode | cluster |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Deploy Web Container App (dashboard)
         shell: bash
         run: |
@@ -273,6 +301,7 @@ jobs:
               REDIS_HOST=secretref:redis-host \
               REDIS_PORT=secretref:redis-port \
               REDIS_PASSWORD=secretref:redis-password \
+              REDIS_CLUSTER_MODE=true \
               SENTRY_ORG="${{ secrets.PRODUCTION_SENTRY_ORG }}" \
               SENTRY_PROJECT="${{ secrets.PRODUCTION_SENTRY_PROJECT }}" \
               NEXT_PUBLIC_SENTRY_ENVIRONMENT=production \
@@ -307,6 +336,7 @@ jobs:
               REDIS_HOST=secretref:redis-host \
               REDIS_PORT=secretref:redis-port \
               REDIS_PASSWORD=secretref:redis-password \
+              REDIS_CLUSTER_MODE=true \
               RAG_WORKER_MODE=queue \
               RAG_WORKER_POLL_MS=1500
 
