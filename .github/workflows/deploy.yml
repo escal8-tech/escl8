@@ -73,6 +73,7 @@ jobs:
       ACA_META_APP_SECRET: ${{ secrets.ACA_META_APP_SECRET }}
       ACA_BOT_INTERNAL_API_KEY: ${{ secrets.ACA_BOT_INTERNAL_API_KEY }}
       ACA_OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}
+      ACA_NEXTAUTH_SECRET: ${{ secrets.ACA_NEXTAUTH_SECRET }}
 
     steps:
       - name: Checkout
@@ -129,6 +130,7 @@ jobs:
           ACA_META_APP_SECRET: ${{ secrets.ACA_META_APP_SECRET }}
           ACA_BOT_INTERNAL_API_KEY: ${{ secrets.ACA_BOT_INTERNAL_API_KEY }}
           ACA_OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}
+          ACA_NEXTAUTH_SECRET: ${{ secrets.ACA_NEXTAUTH_SECRET }}
         run: |
           required=(
             CONTROL_PLANE_DATABASE_URL AGENT_DATABASE_URL
@@ -138,7 +140,7 @@ jobs:
             ACA_SERVICE_BUS_CONN ACA_PUBSUB_CONN ACA_FIREBASE_SERVICE_ACCOUNT_JSON
             ACA_AZURE_BLOB_CONNECTION_STRING ACA_AZURE_QUEUE_CONNECTION_STRING
             ACA_META_SYSTEM_KEY ACA_META_APP_SECRET ACA_BOT_INTERNAL_API_KEY
-            ACA_OTEL_EXPORTER_OTLP_HEADERS
+            ACA_OTEL_EXPORTER_OTLP_HEADERS ACA_NEXTAUTH_SECRET
           )
           for name in "${required[@]}"; do
             [[ -n "${!name}" ]] || { echo "Missing required secret: $name"; exit 1; }
@@ -200,9 +202,16 @@ jobs:
               meta-app-secret="$ACA_META_APP_SECRET" \
               bot-internal-api-key="$ACA_BOT_INTERNAL_API_KEY" \
               otel-exporter-otlp-headers="$ACA_OTEL_EXPORTER_OTLP_HEADERS" \
+              nextauth-secret="$ACA_NEXTAUTH_SECRET" \
               grafana-logs-user="$GRAFANA_LOGS_USER" \
               grafana-logs-api-key="$GRAFANA_LOGS_API_KEY" \
               jwt-secret="${{ secrets.JWT_SECRET }}" \
+              firebase-api-key="${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_API_KEY }}" \
+              firebase-auth-domain="${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}" \
+              firebase-project-id="${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_PROJECT_ID }}" \
+              firebase-app-id="${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_APP_ID }}" \
+              firebase-messaging-sender-id="${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}" \
+              firebase-storage-bucket="${{ secrets.PRODUCTION_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}" \
               redis-host="${{ secrets.REDIS_HOST }}" \
               redis-port="${{ secrets.REDIS_PORT }}" \
               redis-password="${{ secrets.REDIS_PASSWORD }}"
@@ -291,7 +300,7 @@ jobs:
               SENANGPAY_HASH_TYPE=sha256 \
               SENANGPAY_SANDBOX=false \
               NEXT_PUBLIC_SENTRY_DSN="${{ secrets.PRODUCTION_NEXT_PUBLIC_SENTRY_DSN }}" \
-              SENTRY_AUTH_TOKEN=secretref:ACA_SENTRY_AUTH_TOKEN \
+              SENTRY_AUTH_TOKEN=secretref:sentry-auth-token \
               OPENAI_API_KEY=secretref:open-ai-api \
               PINECONE_API_KEY=secretref:pinecone-api \
               PINECONE_INDEX_NAME=malaysia-rag2 \
@@ -302,7 +311,7 @@ jobs:
               AZURE_QUEUE_CONNECTION_STRING=secretref:azure-queue-connection-string \
               META_SYSTEM_USER_TOKEN=secretref:meta-system-key \
               META_APP_SECRET=secretref:meta-app-secret \
-              MNEXTAUTH_SECRET=secretref:ACA_NEXTAUTH_SECRET \
+              NEXTAUTH_SECRET=secretref:nextauth-secret \
               BOT_INTERNAL_API_KEY=secretref:bot-internal-api-key \
               OTEL_EXPORTER_OTLP_HEADERS=secretref:otel-exporter-otlp-headers \
               GRAFANA_LOGS_USER=secretref:grafana-logs-user \
@@ -321,17 +330,17 @@ jobs:
               NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE=1 \
               NEXT_PUBLIC_SENTRY_ENABLE_LOGS=true \
               NEXT_PUBLIC_GRAFANA_BROWSER_LOGS_ENABLED=false \
-               NEXT_PUBLIC_FIREBASE_API_KEY=secretref:firebase-api-key \
-               NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=secretref:firebase-auth-domain \
-               NEXT_PUBLIC_FIREBASE_PROJECT_ID=secretref:firebase-project-id \
-               NEXT_PUBLIC_FIREBASE_APP_ID=secretref:firebase-app-id \
-               NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=secretref:firebase-messaging-sender-id \
-               NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=secretref:firebase-storage-bucket \
-               NEXTAUTH_URL=https://dashboard.escal8.tech \
-               NEXT_PUBLIC_APP_URL=https://dashboard.escal8.tech \
-               REQUIRE_WEB_PUBSUB_READY=true \\
-               ORDER_INVOICE_BLOB_CONTAINER=agent-invoices \\
-               SENANGPAY_PAYMENT_BASE_URL=https://app.senangpay.my/payment
+              NEXT_PUBLIC_FIREBASE_API_KEY=secretref:firebase-api-key \
+              NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=secretref:firebase-auth-domain \
+              NEXT_PUBLIC_FIREBASE_PROJECT_ID=secretref:firebase-project-id \
+              NEXT_PUBLIC_FIREBASE_APP_ID=secretref:firebase-app-id \
+              NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=secretref:firebase-messaging-sender-id \
+              NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=secretref:firebase-storage-bucket \
+              NEXTAUTH_URL=https://dashboard.escal8.tech \
+              NEXT_PUBLIC_APP_URL=https://dashboard.escal8.tech \
+              REQUIRE_WEB_PUBSUB_READY=true \
+              ORDER_INVOICE_BLOB_CONTAINER=agent-invoices \
+              SENANGPAY_PAYMENT_BASE_URL=https://app.senangpay.my/payment
 
       - name: Deploy Worker Container App (RAG worker)
         shell: bash
