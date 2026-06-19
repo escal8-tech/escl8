@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { db } from "@/server/db/client";
-import { businesses, users, channelIdentities, whatsappIdentityDetails } from "../../../../../../drizzle/schema";
+import { businesses, users, channelIdentities, whatsappIdentityDetails, agents } from "../../../../../../drizzle/schema";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { generateSixDigitPin } from "@/server/meta/crypto";
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
@@ -276,11 +276,22 @@ export async function POST(req: Request) {
 
     const now = new Date();
 
+    const defaultAgent = await db
+      .select({ id: agents.id })
+      .from(agents)
+      .where(eq(agents.businessId, user.businessId))
+      .limit(1)
+      .then(rows => rows[0] ?? null);
+
     // Persist the identity for routing + webhooks. Storing token and PIN in plaintext per user request.
     // NOTE: this does NOT mean Cloud API registration/webhook subscription is complete.
     const existingIdentity = await db
-      .select({ id: whatsappIdentityDetails.channelIdentityId })
+      .select({ 
+        id: whatsappIdentityDetails.channelIdentityId,
+        agentId: channelIdentities.agentId
+      })
       .from(whatsappIdentityDetails)
+      .innerJoin(channelIdentities, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
       .where(eq(whatsappIdentityDetails.phoneNumberId, phoneNumberId))
       .limit(1)
       .then(rows => rows[0] ?? null);
@@ -294,6 +305,8 @@ export async function POST(req: Request) {
         connectedAt: now,
         disconnectedAt: null,
         updatedAt: now,
+        // Only set default agent if it currently has no agent
+        ...(!existingIdentity.agentId && defaultAgent ? { agentId: defaultAgent.id } : {}),
       }).where(eq(channelIdentities.id, existingIdentity.id));
 
       await db.update(whatsappIdentityDetails).set({
@@ -314,6 +327,7 @@ export async function POST(req: Request) {
           externalAccountId: phoneNumberId,
           isActive: true,
           status: "connected",
+          agentId: defaultAgent?.id || null,
           connectedByUserId: user.id,
           connectedAt: now,
           updatedAt: now,
