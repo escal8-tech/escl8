@@ -1,4 +1,4 @@
-const APP_NAME = "escal8-agent-dashboard";
+const APP_NAME = "escl8-agent-dashboard";
 const CLIENT_LOG_ENDPOINT = "/api/observability/logs";
 const DEFAULT_BATCH_SIZE = 20;
 const DEFAULT_BROWSER_LOGS_ENABLED = false;

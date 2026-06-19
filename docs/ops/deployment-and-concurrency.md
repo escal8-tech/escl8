@@ -4,9 +4,9 @@
 
 | Runtime | ACA name | Image | Ingress | Workflow |
 | --- | --- | --- | --- | --- |
-| Dashboard/web API | `escal8-agent-dashboard` | `escal8-agent:<sha>` | External, port 3000 | `.github/workflows/deploy.yml` |
-| RAG worker | `escal8-agent-worker` | `escal8-agent-worker:<sha>` | None | `.github/workflows/deploy.yml` |
-| Request rollover job | `escal8-agent-request-rollover-job` | `escal8-agent-job:<sha>` | Scheduled job | `.github/workflows/deploy.yml` |
+| Dashboard/web API | `escal8-web` | `escal8-agent:<sha>` | External, port 3000 | `.github/workflows/deploy.yml` |
+| RAG worker | `escal8-worker` | `escal8-agent-worker:<sha>` | None | `.github/workflows/deploy.yml` |
+| Request rollover job | `escal8-agent-request-rollover` | `escal8-agent-job:<sha>` | Scheduled job | `.github/workflows/deploy.yml` |
 
 `main` and `staging` pushes build immutable SHA images. Automatic ACA deployment is intentionally tied to `main` build completions only because staging ACA apps are currently not hosted.
 

@@ -1,7 +1,7 @@
 import { recordGrafanaLog, type GrafanaLogLevel } from "@/lib/grafana-monitoring";
 import { enrichBusinessFailureTaxonomy } from "@/lib/failure-taxonomy";
 
-const APP_NAME = "escal8-agent-dashboard";
+const APP_NAME = "escl8-agent-dashboard";
 
 type MonitoringPrimitive = string | number | boolean | null | undefined;
 export type BusinessEventAttributes = Record<string, MonitoringPrimitive>;
