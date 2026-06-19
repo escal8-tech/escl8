@@ -31,8 +31,8 @@ export function TicketCounterBarChart({
   }
 
   return (
-    <div className="portal-ticket-counter-chart">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="portal-ticket-counter-chart" style={{ minHeight: 1, minWidth: 1 }}>
+      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
         <ReBarChart
           data={data}
           layout="vertical"
