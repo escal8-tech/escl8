@@ -6,7 +6,10 @@ function getRedisConfig() {
   const host = process.env.REDIS_HOST || process.env.REDIS_HOST_NAME;
   const port = parseInt(process.env.REDIS_PORT || process.env.REDIS_PORT_NUMBER || '6380', 10);
   const password = process.env.REDIS_PASSWORD || process.env.REDIS_PRIMARY_KEY || process.env.REDIS_KEY;
-  const isCluster = process.env.REDIS_CLUSTER_MODE === 'true';
+  const clusterMode = String(process.env.REDIS_CLUSTER_MODE || '').trim().toLowerCase();
+  const isCluster = clusterMode
+    ? clusterMode !== 'false' && clusterMode !== '0' && clusterMode !== 'no'
+    : Boolean(host && password);
 
   if (url && !isCluster) return { url, isCluster };
 

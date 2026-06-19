@@ -129,7 +129,58 @@ export async function replaceInventoryProductsForRows(params: {
     // This is a weekly stock refresh system - no merging, no archiving
     // ============================================================
     
-    // 1. Delete ALL commerce products that came from inventory bridge for this business
+    // 1. Delete child commerce rows first so refresh does not depend on FK cascade drift.
+    await tx.execute(sql`
+      DELETE FROM commerce_product_prices
+      WHERE business_id = ${params.businessId}
+        AND product_id IN (
+          SELECT id FROM commerce_products
+          WHERE business_id = ${params.businessId}
+            AND metadata->>'bridge' = 'inventory'
+        )
+    `);
+
+    await tx.execute(sql`
+      DELETE FROM commerce_stock_balances
+      WHERE business_id = ${params.businessId}
+        AND product_id IN (
+          SELECT id FROM commerce_products
+          WHERE business_id = ${params.businessId}
+            AND metadata->>'bridge' = 'inventory'
+        )
+    `);
+
+    await tx.execute(sql`
+      DELETE FROM commerce_stock_movements
+      WHERE business_id = ${params.businessId}
+        AND product_id IN (
+          SELECT id FROM commerce_products
+          WHERE business_id = ${params.businessId}
+            AND metadata->>'bridge' = 'inventory'
+        )
+    `);
+
+    await tx.execute(sql`
+      DELETE FROM commerce_stock_reservations
+      WHERE business_id = ${params.businessId}
+        AND product_id IN (
+          SELECT id FROM commerce_products
+          WHERE business_id = ${params.businessId}
+            AND metadata->>'bridge' = 'inventory'
+        )
+    `);
+
+    await tx.execute(sql`
+      DELETE FROM commerce_offers
+      WHERE business_id = ${params.businessId}
+        AND product_id IN (
+          SELECT id FROM commerce_products
+          WHERE business_id = ${params.businessId}
+            AND metadata->>'bridge' = 'inventory'
+        )
+    `);
+
+    // 2. Delete ALL commerce products that came from inventory bridge for this business
     const deletedProducts = await tx.execute(sql`
       DELETE FROM commerce_products
       WHERE business_id = ${params.businessId}
@@ -138,7 +189,7 @@ export async function replaceInventoryProductsForRows(params: {
     `);
     const existingCount = deletedProducts.rows?.length ?? 0;
     
-    // 2. Delete orphaned commerce records (balances, movements, prices)
+    // 3. Delete orphaned commerce records (balances, movements, prices)
     await tx.execute(sql`
       DELETE FROM commerce_stock_balances
       WHERE business_id = ${params.businessId}
