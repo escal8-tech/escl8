@@ -3,7 +3,7 @@ import type { ErrorEvent, EventHint, Integration, Log } from "@sentry/core";
 
 import { recordGrafanaLog } from "@/lib/grafana-monitoring";
 
-const APP_NAME = "escl8-agent-dashboard";
+const APP_NAME = "escal8-agent-dashboard";
 const MONITORING_VENDOR = "sentry";
 const DEFAULT_TRACES_SAMPLE_RATE = 1;
 const DEFAULT_LOGS_ENABLED = true;

@@ -31,9 +31,9 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   AZURE_RESOURCE_GROUP: Escal8
   CONTAINERAPPS_ENVIRONMENT: whatsapp-bot-env
-  WEB_APP_NAME: escal8-web
-  WORKER_APP_NAME: escal8-worker
-  JOB_APP_NAME: escal8-agent-request-rollover
+  WEB_APP_NAME: escal8-agent-dashboard
+  WORKER_APP_NAME: escal8-agent-worker
+  JOB_APP_NAME: escal8-agent-request-rollover-job
   ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
   WEB_IMAGE_NAME: escal8-agent
   WORKER_IMAGE_NAME: escal8-agent-worker
