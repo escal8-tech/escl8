@@ -424,13 +424,39 @@ export function buildOrderBaseConditions(params: {
 
 export async function hydrateOrderRows(businessId: string, orderRows: Array<typeof orders.$inferSelect>) {
   const orderIds = orderRows.map((row) => row.id);
-  const paymentRows = orderIds.length
-    ? await db
-        .select()
-        .from(orderPayments)
-        .where(and(eq(orderPayments.businessId, businessId), inArray(orderPayments.orderId, orderIds)))
-        .orderBy(desc(orderPayments.createdAt))
-    : [];
+  const threadIds = [...new Set(orderRows.map((row) => String(row.threadId || "").trim()).filter(Boolean))];
+  const identityIds = [...new Set(orderRows.map((row) => String(row.channelIdentityId || "").trim()).filter(Boolean))];
+
+  const [paymentRows, latestInboundRows, identityRows] = await Promise.all([
+    orderIds.length
+      ? db
+          .select()
+          .from(orderPayments)
+          .where(and(eq(orderPayments.businessId, businessId), inArray(orderPayments.orderId, orderIds)))
+          .orderBy(desc(orderPayments.createdAt))
+      : Promise.resolve([]),
+    threadIds.length
+      ? db
+          .select({
+            threadId: threadMessages.threadId,
+            createdAt: threadMessages.createdAt,
+          })
+          .from(threadMessages)
+          .where(and(inArray(threadMessages.threadId, threadIds), eq(threadMessages.direction, "inbound")))
+          .orderBy(desc(threadMessages.createdAt))
+      : Promise.resolve([]),
+    identityIds.length
+      ? db
+          .select({
+            channelIdentityId: channelIdentities.id,
+            phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+            displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
+          })
+          .from(channelIdentities)
+          .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
+          .where(inArray(channelIdentities.id, identityIds))
+      : Promise.resolve([]),
+  ]);
 
   const latestPaymentByOrder = new Map<string, (typeof paymentRows)[number]>();
   for (const payment of paymentRows) {
@@ -439,17 +465,6 @@ export async function hydrateOrderRows(businessId: string, orderRows: Array<type
     }
   }
 
-  const threadIds = [...new Set(orderRows.map((row) => String(row.threadId || "").trim()).filter(Boolean))];
-  const latestInboundRows = threadIds.length
-    ? await db
-        .select({
-          threadId: threadMessages.threadId,
-          createdAt: threadMessages.createdAt,
-        })
-        .from(threadMessages)
-        .where(and(inArray(threadMessages.threadId, threadIds), eq(threadMessages.direction, "inbound")))
-        .orderBy(desc(threadMessages.createdAt))
-    : [];
   const latestInboundByThread = new Map<string, Date | string | null>();
   for (const row of latestInboundRows) {
     if (!latestInboundByThread.has(row.threadId)) {
@@ -457,18 +472,6 @@ export async function hydrateOrderRows(businessId: string, orderRows: Array<type
     }
   }
 
-  const identityIds = [...new Set(orderRows.map((row) => String(row.channelIdentityId || "").trim()).filter(Boolean))];
-  const identityRows = identityIds.length
-    ? await db
-        .select({
-          channelIdentityId: channelIdentities.id,
-          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-        })
-        .from(channelIdentities)
-        .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
-        .where(inArray(channelIdentities.id, identityIds))
-    : [];
   const displayPhoneByIdentity = new Map(identityRows.map((row) => [row.channelIdentityId, row.displayPhoneNumber ?? null]));
 
   return orderRows.map((row) => {
