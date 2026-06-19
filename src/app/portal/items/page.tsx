@@ -27,6 +27,8 @@ type InventoryItem = {
   quantityUnit?: string | null;
   priceOptions: Array<{ id: string; label: string; valueText: string; currency: string }>;
   activeOffer?: { title: string; originalPriceText?: string | null; offerPriceText: string; currency: string } | null;
+  agentId?: string | null;
+  agentName?: string | null;
 };
 
 function PriceChips({ item }: { item: InventoryItem }) {
@@ -84,7 +86,7 @@ function QuantityEditor({ item }: { item: InventoryItem }) {
           type="button"
           className="btn btn-primary portal-items-quantity__save"
           disabled={!canSave || updateQuantity.isPending}
-          onClick={() => updateQuantity.mutate({ productId: item.id, quantity })}
+          onClick={() => updateQuantity.mutate({ productId: item.id, quantity, agentId: item.agentId ?? "" })}
         >
           Save
         </button>
@@ -124,7 +126,14 @@ function ItemCard({ item }: { item: InventoryItem }) {
     <article className="portal-items-card">
       <ItemImage item={item} />
       <div className="portal-items-card__body">
-        <div className="portal-items-name">{item.name}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div className="portal-items-name">{item.name}</div>
+          {item.agentName && (
+            <span style={{ fontSize: 11, padding: "2px 6px", background: "var(--primary-muted)", color: "var(--primary)", borderRadius: 4, fontWeight: 600 }}>
+              {item.agentName}
+            </span>
+          )}
+        </div>
         <div className="portal-items-meta">
           {[item.itemCode, item.brand, item.model, item.category].filter(Boolean).join(" | ") || "Uncategorized"}
         </div>
@@ -145,7 +154,14 @@ function ListRow({ item }: { item: InventoryItem }) {
         <div className="portal-items-list-item">
           <ItemImage item={item} />
           <div>
-            <div className="portal-items-name">{item.name}</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div className="portal-items-name">{item.name}</div>
+              {item.agentName && (
+                <span style={{ fontSize: 11, padding: "2px 6px", background: "var(--primary-muted)", color: "var(--primary)", borderRadius: 4, fontWeight: 600 }}>
+                  {item.agentName}
+                </span>
+              )}
+            </div>
             <div className="portal-items-meta">
               {[item.itemCode, item.brand, item.model, item.category].filter(Boolean).join(" | ") || "Uncategorized"}
             </div>
@@ -188,18 +204,22 @@ export default function ItemsPage() {
   const deferredSearch = useDeferredValue(search);
   const [page, setPage] = useState(0);
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [agentFilter, setAgentFilter] = useState<string | null>(null);
 
   const input = useMemo(() => ({
     search: deferredSearch.trim() || undefined,
+    agentId: agentFilter || undefined,
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
     sortKey: "name" as const,
     sortDir: "asc" as const,
-  }), [deferredSearch, page]);
+  }), [deferredSearch, page, agentFilter]);
 
   const itemsQuery = trpc.inventory.listItems.useQuery(input, {
     placeholderData: (previousData) => previousData,
   });
+  const agentsQuery = trpc.agents.listAgents.useQuery();
+  const agents = agentsQuery.data || [];
   const items = (itemsQuery.data?.items ?? []) as InventoryItem[];
   const mappingStatus = itemsQuery.data?.mappingStatus as StockMappingStatus | undefined;
   const totalCount = itemsQuery.data?.totalCount ?? 0;
@@ -213,8 +233,8 @@ export default function ItemsPage() {
       <div className="portal-page-stack">
         <StockMappingWarning status={mappingStatus} surface="items" />
         <div className="portal-table-surface portal-items-surface">
-          <div className="portal-items-toolbar">
-            <div className="portal-items-toolbar__search">
+          <div className="portal-items-toolbar" style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            <div className="portal-items-toolbar__search" style={{ flex: 1 }}>
               <TableSearchControl
                 value={search}
                 onChange={(value) => {
@@ -224,7 +244,24 @@ export default function ItemsPage() {
                 placeholder="Search items..."
               />
             </div>
-            <div className="portal-items-toolbar__end">
+            <select
+              value={agentFilter ?? "all"}
+              onChange={(e) => setAgentFilter(e.target.value === "all" ? null : e.target.value)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "var(--background)",
+                color: "var(--foreground)",
+                minWidth: 150,
+              }}
+            >
+              <option value="all">All Agents</option>
+              {agents.map((agent) => (
+                <option key={agent.id} value={agent.id}>{agent.name}</option>
+              ))}
+            </select>
+            <div className="portal-items-toolbar__end" style={{ marginLeft: "auto" }}>
               <p className="portal-meta-text">{totalCount} item{totalCount === 1 ? "" : "s"}</p>
               <ViewToggle view={view} onChange={setView} />
             </div>

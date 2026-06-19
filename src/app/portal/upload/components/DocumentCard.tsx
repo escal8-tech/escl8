@@ -13,6 +13,7 @@ type Props = {
   retrainBusy: boolean;
   onUpload: (file: File | null) => void;
   onRetrain: () => void;
+  onMapColumns?: () => void;
   disabled: boolean;
 };
 
@@ -24,6 +25,7 @@ export function DocumentCard({
   retrainBusy,
   onUpload,
   onRetrain,
+  onMapColumns,
   disabled,
 }: Props) {
   const [dragActive, setDragActive] = useState(false);
@@ -198,6 +200,21 @@ export function DocumentCard({
           {UploadIcons.upload}
           {current ? "Replace" : "Upload"}
         </button>
+        {onMapColumns && current && isIndexed && (
+          <button
+            style={{
+              ...uploadStyles.btnSecondary,
+              width: compact ? "100%" : undefined,
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onMapColumns();
+            }}
+          >
+            {UploadIcons.file}
+            Map Columns
+          </button>
+        )}
         <button
           style={{
             ...(isIndexed ? uploadStyles.btnSuccess : uploadStyles.btnPrimary),

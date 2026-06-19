@@ -24,7 +24,7 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-export function UploadContent({ agentId }: { agentId?: string }) {
+export function UploadContent({ agentId, onMapColumns }: { agentId?: string; onMapColumns?: () => void }) {
   const isMobile = useIsMobileViewport();
   const pathname = usePathname();
   const [busy, setBusy] = useState(false);
@@ -350,6 +350,7 @@ export function UploadContent({ agentId }: { agentId?: string }) {
             retrainBusy={retrainBusy === slot.key}
             onUpload={(file) => onUpload(slot.key, file)}
             onRetrain={() => retrain(slot.key)}
+            onMapColumns={slot.key === "inventory" ? onMapColumns : undefined}
             disabled={!businessId}
           />
         ))}

@@ -8,7 +8,7 @@ import {
 import type { SpreadsheetRow } from "./extractText";
 import {
   deriveInventoryProductFromFields,
-  getBusinessStockSettings,
+  getAgentStockSettings,
 } from "@/server/inventory/stockMapping";
 import { normalizeStockSettings, type BusinessStockSettings } from "@/lib/stock-settings";
 import { acquireInventoryBusinessLock } from "@/server/inventory/locks";
@@ -69,7 +69,7 @@ function productIdentityBaseKey(input: {
 function stableSourceRowKey(params: {
   source: string;
   row: SpreadsheetRow;
-  stockSettings?: Awaited<ReturnType<typeof getBusinessStockSettings>>;
+  stockSettings?: Awaited<ReturnType<typeof getAgentStockSettings>>;
   duplicateIndex?: number;
 }): string {
   const derived = deriveInventoryProductFromFields(params.row.fields || {}, params.stockSettings);
@@ -109,6 +109,7 @@ function searchTextForRow(row: SpreadsheetRow): string {
 
 export async function replaceInventoryProductsForRows(params: {
   businessId: string;
+  agentId?: string | null;
   trainingDocumentId?: string | null;
   source: string;
   sourceFilename?: string;
@@ -117,7 +118,8 @@ export async function replaceInventoryProductsForRows(params: {
   const refs = new Map<string, IndexedProductRef>();
   const rows = (params.rows || []).filter((row) => row && row.fields && Object.keys(row.fields).length > 0);
   if (!params.businessId || !params.source || rows.length === 0) return refs;
-  const stockSettings = await getBusinessStockSettings(params.businessId);
+  const { getAgentStockSettings } = await import("@/server/inventory/stockMapping");
+  const stockSettings = params.agentId ? await getAgentStockSettings(params.agentId) : await getAgentStockSettings(params.businessId);
 
   await db.transaction(async (tx) => {
     await acquireInventoryBusinessLock(tx, params.businessId);
@@ -241,7 +243,7 @@ export async function replaceInventoryProductsForRows(params: {
 export function sourceRowKeyForSpreadsheetRow(params: {
   source: string;
   row: SpreadsheetRow;
-  stockSettings?: Awaited<ReturnType<typeof getBusinessStockSettings>>;
+  stockSettings?: Awaited<ReturnType<typeof getAgentStockSettings>>;
   duplicateIndex?: number;
 }): string {
   return stableSourceRowKey({

@@ -18,7 +18,6 @@ import { buildWebsiteWidgetSnippet, normalizeWebsiteWidgetSettings } from "@/lib
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
 import { UploadContent } from "@/app/portal/upload/components/UploadContent";
 import { FlowBuilderContent } from "@/app/portal/flowbuilder/FlowBuilderContent";
-import { StockSettingsPanel } from "@/app/portal/settings/components/StockSettingsPanel";
 import { usePortalTheme } from "@/app/portal/components/PortalThemeProvider";
 import UsersPermissionsPanel from "@/app/portal/settings/components/UsersPermissionsPanel";
 import { SubscriptionContent } from "@/components/subscription/SubscriptionContent";
@@ -165,13 +164,7 @@ const Icons = {
       <line x1="12" y1="3" x2="12" y2="15" />
     </svg>
   ),
-  stock: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-      <path d="M3.27 6.96 12 12l8.73-5.04" />
-      <path d="M12 22V12" />
-    </svg>
-  ),
+
   flow: (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="4" width="6" height="6" rx="2" />
@@ -945,7 +938,7 @@ function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onC
 /* ─────────────────────────────────────────────────────────────────────────────
    SETTINGS PAGE TABS
 ───────────────────────────────────────────────────────────────────────────── */
-type SettingsTab = "profile" | "booking" | "payments" | "customization" | "connections" | "agents" | "documents" | "stock" | "users" | "flowbuilder" | "subscription";
+type SettingsTab = "profile" | "booking" | "payments" | "customization" | "connections" | "agents" | "users" | "flowbuilder" | "subscription";
 type ActiveSettingsView = SettingsTab | "overview";
 
 const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
@@ -955,7 +948,6 @@ const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: "customization", label: "Customization", icon: Icons.building },
   { id: "connections", label: "Connections", icon: Icons.whatsapp },
   { id: "agents", label: "Agents", icon: Icons.upload },
-  { id: "stock", label: "Stock", icon: Icons.stock },
   { id: "users", label: "Users & Permissions", icon: Icons.user },
   { id: "flowbuilder", label: "Flow Builder", icon: Icons.flow },
   { id: "subscription", label: "Subscription", icon: Icons.shield },
@@ -968,7 +960,7 @@ const settingsTabFeatureMap: Partial<Record<SettingsTab, string>> = {
   customization: "agent.settings.basic",
   connections: "agent.whatsapp.connect",
   agents: "agent.settings.basic",
-  stock: "agent.settings.basic",
+
   users: "agent.settings.basic",
   flowbuilder: "agent.messages.view",
   subscription: "agent.settings.basic",
@@ -980,8 +972,7 @@ const settingsTabDescriptions: Record<SettingsTab, string> = {
   payments: "Order payment collection, bank QR, payment slips, delivery charge, and currency settings.",
   customization: "Invoice branding, business logo, colors, address, and customer-facing footer notes.",
   connections: "WhatsApp numbers, embedded signup, and automation controls.",
-  documents: "AI training documents for policies, product knowledge, conversations, and stock lists.",
-  stock: "Column mapping for uploaded item sheets so inventory, prices, and product fields stay structured.",
+
   users: "Invite teammates, manage roles, and remove users from this business workspace.",
   flowbuilder: "Conversation routing, automation rules, message flows, and AI handoff logic.",
   agents: "Manage and configure autonomous AI agents that handle reservations, customer support, and sales inquiries.",
@@ -994,8 +985,7 @@ const settingsTabPoints: Record<SettingsTab, string[]> = {
   payments: ["Payment method and currency", "Bank QR and transfer details", "Slip checks and delivery charge"],
   customization: ["Invoice branding and logo", "Business colors and footer", "Customer-facing contact details"],
   connections: ["WhatsApp number connection", "Embedded signup", "Automation connection health"],
-  documents: ["Policy and product documents", "AI training knowledge", "Conversation support material"],
-  stock: ["Product sheet upload mapping", "Inventory and price columns", "Structured stock controls"],
+
   users: ["Invite teammates", "Roles and permissions", "Remove workspace access"],
   flowbuilder: ["Routing rules and handoffs", "Message flow automation", "AI control logic"],
   agents: ["Create AI agents", "Configure personalities and roles", "Connect channels to agents"],
@@ -1611,7 +1601,7 @@ export default function SettingsPage() {
 
   const responsesUsed = Number(businessQuery.data?.responseUsage?.used ?? 0);
   const responsesMax = Number(businessQuery.data?.responseUsage?.max ?? 50_000);
-  const responsesPercent = Math.min(100, Math.max(0, (responsesUsed / Math.max(1, responsesMax)) * 100));
+  const responsesPercent = Math.min(100, Math.max(0, ((Math.max(0, responsesMax - responsesUsed)) / Math.max(1, responsesMax)) * 100));
   const websiteWidget = (businessQuery.data as { websiteWidgetSettings?: ReturnType<typeof normalizeWebsiteWidgetSettings> } | undefined)
     ?.websiteWidgetSettings ?? normalizeWebsiteWidgetSettings(businessQuery.data?.settings);
   const whatsappConnected = (phoneNumbersQuery.data?.length ?? 0) > 0;
@@ -1822,9 +1812,9 @@ export default function SettingsPage() {
             </div>
             <div style={styles.usageCard}>
               <div style={styles.usageRow}>
-                <span style={styles.usageTitle}>AI Responses Used This Month</span>
+                <span style={styles.usageTitle}>AI Credits Remaining</span>
                 <span style={styles.usageValue}>
-                  {fmtInt(responsesUsed)} / {fmtInt(responsesMax)}
+                  {fmtInt(Math.max(0, responsesMax - responsesUsed))}
                 </span>
               </div>
               <div style={styles.usageTrack}>
@@ -2245,7 +2235,6 @@ export default function SettingsPage() {
   );
 
     const renderAgentsTab = () => <AgentsTab />;
-  const renderStockTab = () => <StockSettingsPanel />;
 
   const renderCustomizationTab = () => (
     <div style={styles.section}>
@@ -2525,8 +2514,6 @@ export default function SettingsPage() {
         />;
       case "agents":
         return renderAgentsTab();
-      case "stock":
-        return renderStockTab();
       case "users":
         return <UsersPermissionsPanel />;
       case "flowbuilder":

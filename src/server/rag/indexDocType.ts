@@ -5,7 +5,7 @@ import { downloadBlobToBuffer, uploadTextToBlob } from "./blob";
 import { extractTextFromBuffer, PAGE_BOUNDARY, SpreadsheetRow } from "./extractText";
 import { smartChunkText, classifyChunksWithLLM, SmartChunk } from "./smartChunk";
 import { embedTexts } from "./embed";
-import { deriveInventoryProductFromFields, getBusinessStockSettings } from "@/server/inventory/stockMapping";
+import { deriveInventoryProductFromFields, getAgentStockSettings } from "@/server/inventory/stockMapping";
 import { getPineconeIndex } from "./pinecone";
 import {
   replaceInventoryProductsForRows,
@@ -255,7 +255,7 @@ function buildInventoryRowChunks(rows: string[]): SmartChunk[] {
 
 function buildInventoryStructuredRowChunks(
   rows: SpreadsheetRow[],
-  opts: { source: string; productRefs?: Map<string, IndexedProductRef>; stockSettings?: Awaited<ReturnType<typeof getBusinessStockSettings>> },
+  opts: { source: string; productRefs?: Map<string, IndexedProductRef>; stockSettings?: Awaited<ReturnType<typeof getAgentStockSettings>> },
 ): SmartChunk[] {
   const chunks: SmartChunk[] = [];
   const rowTexts = rows.map((r) => r.text);
@@ -404,7 +404,7 @@ export async function indexSingleDocType(params: {
   agentId?: string | null;
 }): Promise<{ chunkCount: number; sha256: string }>
 {
-  const { businessId, docType, blobPath, filename, agentId } = params;
+  const { businessId, agentId, docType, blobPath, filename } = params;
   const targetNamespace = agentId || businessId;
   console.log(`[rag:index] begin businessId=${businessId} agentId=${agentId} docType=${docType} blobPath=${blobPath}`);
 
@@ -433,12 +433,13 @@ export async function indexSingleDocType(params: {
   }
 
   let productRefs: Map<string, IndexedProductRef> | undefined;
-  let stockSettings: Awaited<ReturnType<typeof getBusinessStockSettings>> | undefined;
+  let stockSettings: Awaited<ReturnType<typeof getAgentStockSettings>> | undefined;
   if (docType === "inventory" && extracted.structuredRows && extracted.structuredRows.length > 0) {
     try {
-      stockSettings = await getBusinessStockSettings(businessId);
+      stockSettings = agentId ? await getAgentStockSettings(agentId) : undefined;
       productRefs = await replaceInventoryProductsForRows({
         businessId,
+        agentId,
         trainingDocumentId: params.trainingDocumentId ?? null,
         source: blobPath,
         sourceFilename: filename,
@@ -518,7 +519,7 @@ export async function indexSingleDocType(params: {
         values,
         metadata: {
           businessId,
-          agentId: agentId || businessId,
+          agentId: agentId || "",
           docType,
           chunkType: chunk.chunkType,                        // Chunk classification (pricing, policy, faq, etc.)
           headingContext: truncate(chunk.headingContext, 200),

@@ -261,6 +261,7 @@ export const agents = pgTable(
     name: text("name").notNull().default("Default Agent"),
     botType: text("bot_type").notNull().default("AGENT"), // AGENT, ORDER2, RESERVATION2, etc.
     promptOverride: text("prompt_override"),
+    settings: jsonb("settings").$type<Record<string, unknown>>().default({}),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -802,6 +803,7 @@ export const supportTickets = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
     ticketTypeId: text("ticket_type_id").references(() => supportTicketTypes.id, {
       onDelete: "set null",
       onUpdate: "cascade",
@@ -937,6 +939,7 @@ export const orders = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
     supportTicketId: text("support_ticket_id").references(() => supportTickets.id, {
       onDelete: "set null",
       onUpdate: "cascade",
@@ -1668,6 +1671,7 @@ export const commerceProducts = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
     suiteTenantId: text("suite_tenant_id"),
     source: text("source").notNull().default("shared_commerce"),
     sourceFilename: text("source_filename"),
@@ -2016,6 +2020,7 @@ export const commerceOffers = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
     suiteTenantId: text("suite_tenant_id"),
     productId: text("product_id")
       .notNull()

@@ -98,40 +98,7 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: { sidebarWidt
   const { theme } = usePortalTheme();
   const isDark = theme === "dark";
   const isMobile = useIsMobileViewport();
-  const { selectedPhoneNumberId, setSelectedPhoneNumberId } = usePhoneFilter();
-  const phoneNumbersQuery = trpc.business.listPhoneNumbers.useQuery();
   const setupStatusQuery = trpc.business.getSetupStatus.useQuery(undefined, { refetchOnWindowFocus: false });
-  const phoneNumbers = phoneNumbersQuery.data ?? [];
-  const hasPhoneFilter = phoneNumbers.length > 0 || phoneNumbersQuery.isLoading;
-  const phoneFilterOptions = [
-    { value: "all", label: "All Numbers" },
-    ...phoneNumbers.map((phone) => ({
-      value: phone.phoneNumberId,
-      label: phone.displayPhoneNumber || phone.phoneNumberId.slice(-8),
-    })),
-  ];
-  const phoneFilterWidthCh = Math.min(
-    Math.max(...phoneFilterOptions.map((option) => option.label.length), "All Numbers".length) + 4,
-    22,
-  );
-  const phoneFilterWidth = `min(100%, calc(${phoneFilterWidthCh}ch + 2.75rem))`;
-
-  const phoneFilterControl = phoneNumbersQuery.isLoading ? (
-    <div style={{ fontSize: 12, color: "var(--muted)", padding: "8px 12px" }}>Loading...</div>
-  ) : phoneNumbers.length > 0 ? (
-    <div className="portal-topbar-control portal-topbar-control--filter">
-      <select
-        value={selectedPhoneNumberId ?? "all"}
-        onChange={(e) => setSelectedPhoneNumberId(e.target.value === "all" ? null : e.target.value)}
-        style={{ minWidth: 0, width: phoneFilterWidth, height: 38, padding: "0 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--background)", color: "var(--foreground)", fontSize: 14 }}
-        aria-label="Filter by phone number"
-      >
-        {phoneFilterOptions.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
-    </div>
-  ) : null;
 
   const setupStatus = setupStatusQuery.data;
   const setupPercent = setupStatus?.percent ?? 0;
@@ -151,7 +118,7 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: { sidebarWidt
     <>
       <header
         className="portal-topbar"
-        data-mobile-has-filter={isMobile && hasPhoneFilter ? "true" : "false"}
+        data-mobile-has-filter={isMobile ? "true" : "false"}
         style={{
           marginLeft: sidebarWidth,
           width: `calc(100% - ${sidebarWidth}px)`,
@@ -186,9 +153,9 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: { sidebarWidt
           </div>
         </div>
 
-        {/* Right side: Phone number filter + Setup button + Time */}
-        {!isMobile || hasPhoneFilter ? (
-          <div className={`topbar-right${hasPhoneFilter ? " has-filter" : ""}`} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {/* Right side: Setup button + Time */}
+        {!isMobile ? (
+          <div className="topbar-right" style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <button
               type="button"
               onClick={() => setSetupOpen(true)}
@@ -204,7 +171,6 @@ export default function TopBar({ sidebarWidth, onMobileMenuOpen }: { sidebarWidt
               </span>
               <ChevronRight className="ml-auto h-4 w-4" strokeWidth={2.4} />
             </button>
-            {phoneFilterControl}
             <div className="topbar-secondary" style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 8, background: "var(--card-muted)", border: "1px solid var(--border)" }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: isDark ? "var(--gold-light)" : "var(--primary)" }}>
                 <circle cx="12" cy="12" r="9" />

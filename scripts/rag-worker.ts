@@ -132,7 +132,6 @@ async function processJob(job: RagJobRow) {
     event: "rag.training_started",
     action: "rag-worker.process-job",
     area: "rag",
-    businessId: job.businessId,
     entity: "training_document",
     entityId: doc.id,
     outcome: "started",
@@ -152,7 +151,7 @@ async function processJob(job: RagJobRow) {
 
   if (indexingDoc) {
     await publishPortalEvent({
-      businessId: job.businessId,
+      businessId: doc.businessId,
       entity: "document",
       op: "upsert",
       entityId: indexingDoc.id,
@@ -168,13 +167,13 @@ async function processJob(job: RagJobRow) {
   const { indexSingleDocType } = await import("../src/server/rag/indexDocType");
 
   const res = await indexSingleDocType({
-    businessId: job.businessId,
+    businessId: doc.businessId,
+    agentId: doc.agentId,
     docType: docType as any,
     blobPath: doc.blobPath,
     filename: doc.originalFilename,
     contentType: doc.contentType ?? undefined,
     trainingDocumentId: doc.id,
-    agentId: doc.agentId,
   });
 
   const [indexedDoc] = await db
@@ -191,7 +190,7 @@ async function processJob(job: RagJobRow) {
 
   if (indexedDoc) {
     await publishPortalEvent({
-      businessId: job.businessId,
+      businessId: doc.businessId,
       entity: "document",
       op: "upsert",
       entityId: indexedDoc.id,
@@ -212,7 +211,6 @@ async function processJob(job: RagJobRow) {
     event: "rag.training_completed",
     action: "rag-worker.process-job",
     area: "rag",
-    businessId: job.businessId,
     entity: "training_document",
     entityId: indexedDoc?.id ?? doc.id,
     outcome: "success",
@@ -234,7 +232,7 @@ async function processJob(job: RagJobRow) {
         "../src/server/inventory/stockMapping"
       );
       const result = await rebaseInventoryFromTrainingDocument({
-        businessId: job.businessId,
+        agentId: doc.agentId || "",
         trainingDocumentId: doc.id,
       });
       console.log(
@@ -244,7 +242,6 @@ async function processJob(job: RagJobRow) {
         event: "inventory.rebase_complete",
         action: "rag-worker.rebase-inventory",
         area: "inventory",
-        businessId: job.businessId,
         entity: "rag_job",
         entityId: job.id,
         outcome: "success",
@@ -282,7 +279,6 @@ async function processJob(job: RagJobRow) {
           event: "rag.instructions_generated",
           action: "rag-worker.generate-instructions",
           area: "rag",
-          businessId: job.businessId,
           entity: "rag_job",
           entityId: job.id,
           outcome: "success",
@@ -299,7 +295,6 @@ async function processJob(job: RagJobRow) {
         level: "error",
         action: "rag-worker.generate-instructions",
         area: "rag",
-        businessId: job.businessId,
         entity: "rag_job",
         entityId: job.id,
         outcome: "failed",
@@ -340,7 +335,7 @@ async function failJob(job: RagJobRow, err: unknown) {
 
     if (failedDoc) {
       await publishPortalEvent({
-        businessId: job.businessId,
+        businessId: failedDoc.businessId,
         entity: "document",
         op: "upsert",
         entityId: failedDoc.id,
@@ -360,7 +355,7 @@ async function failJob(job: RagJobRow, err: unknown) {
 
     if (failedDoc) {
       await publishPortalEvent({
-        businessId: job.businessId,
+        businessId: failedDoc.businessId,
         entity: "document",
         op: "upsert",
         entityId: failedDoc.id,
@@ -378,7 +373,6 @@ async function failJob(job: RagJobRow, err: unknown) {
     level: "error",
     action: "rag-worker.process-job",
     area: "rag",
-    businessId: job.businessId,
     entity: "rag_job",
     entityId: job.id,
     outcome: "failed",
@@ -400,7 +394,6 @@ async function failJob(job: RagJobRow, err: unknown) {
     },
     contexts: {
       rag: {
-        businessId: job.businessId,
         docType: job.docType,
         jobId: job.id,
         trainingDocumentId: job.trainingDocumentId,

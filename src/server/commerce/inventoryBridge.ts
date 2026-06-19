@@ -176,6 +176,7 @@ export async function upsertCommerceProductFromInventory(
   tx: CommerceTx,
   params: {
     businessId: string;
+    agentId?: string | null;
     productId: string;
     trainingDocumentId?: string | null;
     source: string;

@@ -21,6 +21,8 @@ type OfferRow = {
   isActive: boolean;
   startsAt?: string | null;
   endsAt?: string | null;
+  agentId?: string | null;
+  agentName?: string | null;
 };
 
 type ItemOption = {
@@ -59,8 +61,14 @@ export default function OffersPage() {
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
 
+  const [agentFilter, setAgentFilter] = useState<string | null>(null);
+
+  const agentsQuery = trpc.agents.listAgents.useQuery();
+  const agents = agentsQuery.data || [];
+
   const itemsQuery = trpc.inventory.listItems.useQuery({
     search: deferredItemSearch.trim() || undefined,
+    agentId: agentFilter || undefined,
     limit: 50,
     offset: 0,
     sortKey: "name",
@@ -69,9 +77,10 @@ export default function OffersPage() {
   const offerInput = useMemo(() => ({
     includeInactive: true,
     search: deferredOfferSearch.trim() || undefined,
+    agentId: agentFilter || undefined,
     limit: OFFER_PAGE_SIZE,
     offset: offerPage * OFFER_PAGE_SIZE,
-  }), [deferredOfferSearch, offerPage]);
+  }), [deferredOfferSearch, offerPage, agentFilter]);
 
   const offersQuery = trpc.inventory.listOffers.useQuery(offerInput);
   const upsertOffer = trpc.inventory.upsertOffer.useMutation({
@@ -152,8 +161,8 @@ export default function OffersPage() {
       <div className="portal-page-stack">
         <StockMappingWarning status={mappingStatus} surface="offers" />
         <section className="portal-table-surface portal-offers-list portal-offers-list--full">
-          <div className="portal-items-toolbar portal-offers-toolbar">
-            <div className="portal-items-toolbar__search">
+          <div className="portal-items-toolbar portal-offers-toolbar" style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            <div className="portal-items-toolbar__search" style={{ flex: 1 }}>
               <TableSearchControl
                 value={offerSearch}
                 onChange={(value) => {
@@ -163,7 +172,24 @@ export default function OffersPage() {
                 placeholder="Search offers..."
               />
             </div>
-            <div className="portal-items-toolbar__end">
+            <select
+              value={agentFilter ?? "all"}
+              onChange={(e) => setAgentFilter(e.target.value === "all" ? null : e.target.value)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "var(--background)",
+                color: "var(--foreground)",
+                minWidth: 150,
+              }}
+            >
+              <option value="all">All Agents</option>
+              {agents.map((agent) => (
+                <option key={agent.id} value={agent.id}>{agent.name}</option>
+              ))}
+            </select>
+            <div className="portal-items-toolbar__end" style={{ marginLeft: "auto" }}>
               <p className="portal-meta-text">{totalCount} offer{totalCount === 1 ? "" : "s"}</p>
               <button
                 type="button"
@@ -192,7 +218,14 @@ export default function OffersPage() {
                 {offers.map((offer) => (
                   <tr key={offer.id}>
                     <td data-label="Item">
-                      <div className="portal-items-name">{offer.productName || "Item"}</div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <div className="portal-items-name">{offer.productName || "Item"}</div>
+                        {offer.agentName && (
+                          <span style={{ fontSize: 11, padding: "2px 6px", background: "var(--primary-muted)", color: "var(--primary)", borderRadius: 4, fontWeight: 600 }}>
+                            {offer.agentName}
+                          </span>
+                        )}
+                      </div>
                       <div className="portal-items-meta">{offer.title}</div>
                     </td>
                     <td data-label="Price">

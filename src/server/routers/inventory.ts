@@ -11,6 +11,7 @@ import {
   commerceStockReservations as inventoryReservations,
   commerceStockBalances,
   businesses,
+  agents,
   trainingDocuments,
 } from "../../../drizzle/schema";
 import {
@@ -25,9 +26,9 @@ import {
   type StockMappingStatus,
 } from "@/lib/stock-settings";
 import {
-  applyStockColumnMappingForBusiness,
+  applyStockColumnMappingForAgent,
   parseInventoryAmount,
-  saveBusinessStockSettings,
+  saveAgentStockSettings,
 } from "@/server/inventory/stockMapping";
 import { acquireInventoryBusinessLock } from "@/server/inventory/locks";
 import { setCommerceStockAbsolute } from "@/server/commerce/inventoryBridge";
@@ -85,13 +86,23 @@ function normalizeMappingInput(entries: z.infer<typeof columnMappingEntrySchema>
   return out;
 }
 
-async function getBusinessStockMappingStatus(businessId: string): Promise<StockMappingStatus> {
-  const [biz] = await db
-    .select({ settings: businesses.settings })
-    .from(businesses)
-    .where(eq(businesses.id, businessId))
+async function getAgentStockMappingStatus(agentId: string | null | undefined): Promise<StockMappingStatus> {
+  if (!agentId) return {
+    isMapped: false,
+    isReady: false,
+    hasName: false,
+    priceCount: 0,
+    hasQuantity: false,
+    hasImage: false,
+    hasDocument: false,
+    mappedAt: null,
+  };
+  const [agent] = await db
+    .select({ settings: agents.settings })
+    .from(agents)
+    .where(eq(agents.id, agentId))
     .limit(1);
-  return getStockMappingStatus(normalizeStockSettings(biz?.settings));
+  return getStockMappingStatus(normalizeStockSettings(agent?.settings));
 }
 
 function serializePriceOption(row: typeof inventoryProductPriceOptions.$inferSelect) {
@@ -136,6 +147,7 @@ function serializeProduct(
   const availableQty = row.availableQuantity ?? null;
   return {
     id: row.id,
+    agentId: row.agentId,
     itemCode: row.sku,
     name: row.name,
     specification: row.specification,
@@ -214,13 +226,16 @@ export const inventoryRouter = router({
       offset: z.number().int().min(0).default(0),
       sortKey: itemSortKeySchema.default("name"),
       sortDir: sortDirectionSchema.default("asc"),
-    }))
+     agentId: z.string().optional(),}))
     .query(async ({ ctx, input }) => {
       const conditions: any[] = [
         eq(inventoryProducts.businessId, ctx.businessId),
         eq(inventoryProducts.status, "active"),
         sql`commerce_products.metadata->>'bridge' = 'inventory'`,
       ];
+      if (input.agentId) {
+        conditions.push(eq(inventoryProducts.agentId, input.agentId));
+      }
 
       const search = cleanSearch(input.search);
       if (search) {
@@ -288,7 +303,7 @@ export const inventoryRouter = router({
 
       return {
         totalCount: countRow?.count ?? 0,
-        mappingStatus: await getBusinessStockMappingStatus(ctx.businessId),
+        mappingStatus: await getAgentStockMappingStatus(input.agentId ?? ""),
         items: rows.map((row) => serializeProduct(
           row,
           pricesByProduct.get(row.id) ?? [],
@@ -298,13 +313,15 @@ export const inventoryRouter = router({
       };
     }),
 
-  getColumnMapping: businessProcedure.query(async ({ ctx }) => {
-    const [biz] = await db
-      .select({ settings: businesses.settings })
-      .from(businesses)
-      .where(eq(businesses.id, ctx.businessId))
+  getColumnMapping: businessProcedure
+    .input(z.object({ agentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+    const [agent] = await db
+      .select({ settings: agents.settings })
+      .from(agents)
+      .where(eq(agents.id, input.agentId))
       .limit(1);
-    const stockSettings = normalizeStockSettings(biz?.settings);
+    const stockSettings = normalizeStockSettings(agent?.settings);
     const mapped = new Map(stockSettings.columnMapping.map((entry) => [entry.key, entry]));
 
     // Find the latest inventory training document for this business
@@ -313,7 +330,7 @@ export const inventoryRouter = router({
       .from(trainingDocuments)
       .where(
         and(
-          eq(trainingDocuments.businessId, ctx.businessId),
+          eq(trainingDocuments.agentId, input.agentId),
           eq(trainingDocuments.docType, "inventory")
         )
       )
@@ -396,20 +413,21 @@ export const inventoryRouter = router({
 
   saveColumnMapping: businessProcedure
     .input(z.object({
+      agentId: z.string(),
       columns: z.array(columnMappingEntrySchema).max(200),
     }))
     .mutation(async ({ ctx, input }) => {
       const columnMapping = normalizeMappingInput(input.columns);
-      await saveBusinessStockSettings({
-        businessId: ctx.businessId,
+      await saveAgentStockSettings({
+        agentId: input.agentId,
         settings: {
           schemaVersion: 1,
           columnMapping,
           updatedAt: new Date().toISOString(),
         },
       });
-      const appliedCount = await applyStockColumnMappingForBusiness({
-        businessId: ctx.businessId,
+      const appliedCount = await applyStockColumnMappingForAgent({
+        agentId: input.agentId,
         settings: { schemaVersion: 1, columnMapping },
       });
       return { ok: true, appliedCount };
@@ -419,6 +437,7 @@ export const inventoryRouter = router({
     .input(z.object({
       productId: z.string().min(1),
       quantity: z.number().int().min(0),
+      agentId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
       const row = await db.transaction(async (tx) => {
@@ -452,9 +471,13 @@ export const inventoryRouter = router({
       search: z.string().max(200).optional(),
       limit: z.number().int().min(1).max(100).default(50),
       offset: z.number().int().min(0).default(0),
+      agentId: z.string().optional(),
     }).optional())
     .query(async ({ ctx, input }) => {
       const conditions: any[] = [eq(inventoryProductOffers.businessId, ctx.businessId)];
+      if (input?.agentId) {
+        conditions.push(eq(inventoryProductOffers.agentId, input.agentId));
+      }
       if (!input?.includeInactive) {
         conditions.push(eq(inventoryProductOffers.active, true));
       }
@@ -509,7 +532,7 @@ export const inventoryRouter = router({
 
       return {
         totalCount: countRow?.count ?? 0,
-        mappingStatus: await getBusinessStockMappingStatus(ctx.businessId),
+        mappingStatus: await getAgentStockMappingStatus(input?.agentId),
         items: rows.map((row) => serializeOffer(row, productNames.get(row.productId))),
       };
     }),
@@ -526,6 +549,7 @@ export const inventoryRouter = router({
       isActive: z.boolean().default(true),
       startsAt: z.string().max(80).optional().nullable(),
       endsAt: z.string().max(80).optional().nullable(),
+      agentId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const [product] = await db

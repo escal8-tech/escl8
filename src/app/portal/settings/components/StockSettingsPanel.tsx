@@ -42,10 +42,10 @@ const SINGLE_VALUE_ROLES = new Set<StockColumnRole>([
   "quantity",
 ]);
 
-export function StockSettingsPanel() {
+export function StockSettingsPanel({ agentId }: { agentId: string }) {
   const toast = useToast();
   const utils = trpc.useUtils();
-  const mappingQuery = trpc.inventory.getColumnMapping.useQuery();
+  const mappingQuery = trpc.inventory.getColumnMapping.useQuery({ agentId });
   const saveMapping = trpc.inventory.saveColumnMapping.useMutation({
     onSuccess: (result) => {
       toast.show({
@@ -223,7 +223,7 @@ export function StockSettingsPanel() {
         <button
           type="button"
           className="btn btn-primary"
-          onClick={() => saveMapping.mutate({ columns })}
+          onClick={() => saveMapping.mutate({ agentId, columns })}
           disabled={saveMapping.isPending || columns.length === 0}
         >
           {saveMapping.isPending ? "Saving..." : "Save Mapping"}

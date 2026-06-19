@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import {
   businesses,
+  agents,
   commerceProducts,
 } from "../../../drizzle/schema";
 import {
@@ -187,14 +188,14 @@ function firstUrl(entries: FieldEntry[]): { url: string; type: "image" | "docume
   return null;
 }
 
-export async function getBusinessStockSettings(businessId: string): Promise<BusinessStockSettings> {
-  if (!businessId) return normalizeStockSettings(null);
-  const [biz] = await db
-    .select({ settings: businesses.settings })
-    .from(businesses)
-    .where(eq(businesses.id, businessId))
+export async function getAgentStockSettings(agentId: string): Promise<BusinessStockSettings> {
+  if (!agentId) return normalizeStockSettings(null);
+  const [agent] = await db
+    .select({ settings: agents.settings })
+    .from(agents)
+    .where(eq(agents.id, agentId))
     .limit(1);
-  return normalizeStockSettings(biz?.settings);
+  return normalizeStockSettings(agent?.settings);
 }
 
 export function deriveInventoryProductFromFields(
@@ -260,29 +261,29 @@ export function deriveInventoryProductFromFields(
   };
 }
 
-export async function saveBusinessStockSettings(params: {
-  businessId: string;
+export async function saveAgentStockSettings(params: {
+  agentId: string;
   settings: BusinessStockSettings;
 }): Promise<void> {
   await db.transaction(async (tx) => {
-    const [biz] = await tx
-      .select({ settings: businesses.settings })
-      .from(businesses)
-      .where(eq(businesses.id, params.businessId))
+    const [agent] = await tx
+      .select({ settings: agents.settings, businessId: agents.businessId })
+      .from(agents)
+      .where(eq(agents.id, params.agentId))
       .limit(1);
     const nextSettings = mergeStockSettings(
-      (biz?.settings ?? {}) as Record<string, unknown>,
+      (agent?.settings ?? {}) as Record<string, unknown>,
       {
         ...params.settings,
         updatedAt: new Date().toISOString(),
       },
     );
     await tx
-      .update(businesses)
+      .update(agents)
       .set({ settings: nextSettings, updatedAt: new Date() })
-      .where(eq(businesses.id, params.businessId));
+      .where(eq(agents.id, params.agentId));
     await ensureCommerceSettingsForBusiness(tx, {
-      businessId: params.businessId,
+      businessId: agent.businessId,
       stockSettings: {
         ...params.settings,
         updatedAt: new Date().toISOString(),
@@ -291,12 +292,12 @@ export async function saveBusinessStockSettings(params: {
   });
 }
 
-export async function applyStockColumnMappingForBusiness(params: {
-  businessId: string;
+export async function applyStockColumnMappingForAgent(params: {
+  agentId: string;
   settings?: BusinessStockSettings;
   trainingDocumentId?: string | null; // Only update products from this training document
 }): Promise<number> {
-  const settings = params.settings ?? await getBusinessStockSettings(params.businessId);
+  const settings = params.settings ?? await getAgentStockSettings(params.agentId);
   const rows = await db
     .select({
       id: commerceProducts.id,
@@ -308,17 +309,18 @@ export async function applyStockColumnMappingForBusiness(params: {
       sourceSheet: commerceProducts.sourceSheet,
       sourceRowNumber: commerceProducts.sourceRowNumber,
       sourceRowKey: commerceProducts.sourceRowKey,
+      businessId: commerceProducts.businessId,
     })
     .from(commerceProducts)
     .where(and(
-      eq(commerceProducts.businessId, params.businessId), 
+      eq(commerceProducts.agentId, params.agentId), 
       eq(commerceProducts.status, "active"),
       sql`metadata->>'bridge' = 'inventory'`
     ));
 
   let applied = 0;
   await db.transaction(async (tx) => {
-    await acquireInventoryBusinessLock(tx, params.businessId);
+    await acquireInventoryBusinessLock(tx, params.agentId);
     for (const row of rows) {
       // Skip products not from the current training document (if specified)
       if (params.trainingDocumentId && row.trainingDocumentId !== params.trainingDocumentId) {
@@ -329,7 +331,8 @@ export async function applyStockColumnMappingForBusiness(params: {
       if (!mapped.name) continue;
 
       const updatedProduct = await upsertCommerceProductFromInventory(tx, {
-        businessId: params.businessId,
+        businessId: row.businessId,
+        agentId: params.agentId,
         productId: row.id,
         trainingDocumentId: row.trainingDocumentId,
         source: row.source,
@@ -350,11 +353,11 @@ export async function applyStockColumnMappingForBusiness(params: {
 }
 
 export async function rebaseInventoryFromTrainingDocument(params: {
-  businessId: string;
+  agentId: string;
   trainingDocumentId: string;
   settings?: BusinessStockSettings;
 }): Promise<{ deleted: number; inserted: number }> {
-  const settings = params.settings ?? await getBusinessStockSettings(params.businessId);
+  const settings = params.settings ?? await getAgentStockSettings(params.agentId);
 
   // Get the training document to extract structured rows
   const { db } = await import("@/server/db/client");
@@ -393,14 +396,14 @@ export async function rebaseInventoryFromTrainingDocument(params: {
   let inserted = 0;
 
   await db.transaction(async (tx) => {
-    await acquireInventoryBusinessLock(tx, params.businessId);
+    await acquireInventoryBusinessLock(tx, params.agentId);
 
     // 1. Archive all products NOT from this training document
     // Use raw SQL for IS DISTINCT FROM (handles null trainingDocumentId correctly)
     const archiveResult = await tx.execute(sql`
       UPDATE commerce_products
       SET status = 'archived', updated_at = now()
-      WHERE business_id = ${params.businessId}
+      WHERE agent_id = ${params.agentId}
         AND status = 'active'
         AND metadata->>'bridge' = 'inventory'
         AND metadata->>'trainingDocumentId' IS DISTINCT FROM ${params.trainingDocumentId}
@@ -413,7 +416,8 @@ export async function rebaseInventoryFromTrainingDocument(params: {
     // 2. Insert fresh products from the new training document
     const { replaceInventoryProductsForRows } = await import("../rag/productCatalog");
     const refs = await replaceInventoryProductsForRows({
-      businessId: params.businessId,
+      businessId: doc.businessId,
+      agentId: params.agentId,
       trainingDocumentId: params.trainingDocumentId,
       source: doc.blobPath,
       sourceFilename: doc.originalFilename,
