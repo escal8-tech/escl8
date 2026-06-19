@@ -294,6 +294,7 @@ jobs:
               SENTRY_AUTH_TOKEN=secretref:sentry-auth-token \
               OPENAI_API_KEY=secretref:open-ai-api \
               PINECONE_API_KEY=secretref:pinecone-api \
+              PINECONE_INDEX_NAME=malaysia-rag2 \
               SERVICE_BUS_CONNECTION_STRING=secretref:service-bus-conn \
               WEB_PUBSUB_CONNECTION_STRING=secretref:pubsub-conn \
               FIREBASE_SERVICE_ACCOUNT_JSON=secretref:firebase-service-account-json \
@@ -336,6 +337,7 @@ jobs:
               DATABASE_URL=secretref:database-url \
               OPENAI_API_KEY=secretref:open-ai-api \
               PINECONE_API_KEY=secretref:pinecone-api-key \
+              PINECONE_INDEX_NAME=malaysia-rag2 \
               SERVICE_BUS_CONNECTION_STRING=secretref:service-bus-conn \
               WEB_PUBSUB_CONNECTION_STRING=secretref:pubsub-conn \
               FIREBASE_SERVICE_ACCOUNT_JSON=secretref:firebase-service-account-json \
