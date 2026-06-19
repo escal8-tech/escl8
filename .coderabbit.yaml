@@ -9,8 +9,3 @@ reviews:
     base_branches: ["main"]
 chat:
   enabled: false
-suggestions:
-  enabled: false
-  path_filters:
-    - "!**/*.md"
-    - "!**/*.txt"
