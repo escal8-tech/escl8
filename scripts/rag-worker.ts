@@ -481,10 +481,10 @@ async function main() {
           } catch (deleteErr) {
             console.error("[rag-worker] failed to delete msg", deleteErr);
           }
-          activePromises.delete(p);
         }
       })();
       activePromises.add(p);
+      p.finally(() => activePromises.delete(p));
     } else {
       const job = await claimNextJob();
       if (!job) {
@@ -501,11 +501,10 @@ async function main() {
           await processJob(job);
         } catch (e) {
           await failJob(job, e);
-        } finally {
-          activePromises.delete(p);
         }
       })();
       activePromises.add(p);
+      p.finally(() => activePromises.delete(p));
     }
   }
 }
