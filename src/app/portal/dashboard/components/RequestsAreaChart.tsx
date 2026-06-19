@@ -19,7 +19,7 @@ export function RequestsAreaChart({ data }: Props) {
     <div className="glass" style={{ height: 320 }}>
       <div className="muted">Requests over time</div>
       <div style={{ height: 260 }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <AreaChart data={data} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
             <defs>
               <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">

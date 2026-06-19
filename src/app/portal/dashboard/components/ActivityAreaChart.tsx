@@ -21,8 +21,8 @@ export function ActivityAreaChart({ data }: { data: { date: string; count: numbe
   }
 
   return (
-    <div style={{ height: "100%" }}>
-      <ResponsiveContainer width="100%" height="100%">
+    <div style={{ height: "100%", minHeight: 1, minWidth: 1 }}>
+      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
         <ReAreaChart data={data} margin={{ top: 10, right: 12, left: -8, bottom: 8 }}>
           <defs>
             <linearGradient id="fillRequests" x1="0" y1="0" x2="0" y2="1">

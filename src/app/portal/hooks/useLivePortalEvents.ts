@@ -137,6 +137,12 @@ type PortalEvent = {
 };
 
 const REALTIME_CLIENT_FAILURE_LOG_COOLDOWN_MS = 30_000;
+const REALTIME_HEARTBEAT_INTERVAL_MS = 25_000;
+const REALTIME_STABLE_CONNECTION_MS = 60_000;
+const REALTIME_UNSTABLE_WINDOW_MS = 10 * 60_000;
+const REALTIME_UNSTABLE_TRANSIENT_THRESHOLD = 6;
+const REALTIME_MAX_RECONNECT_DELAY_MS = 30_000;
+const ACTIONABLE_WEBSOCKET_CLOSE_CODES = new Set([1002, 1003, 1007, 1008, 1009, 1011, 1015]);
 
 function describeWebSocketReadyState(state: number | undefined): string {
   switch (state) {
@@ -228,6 +234,12 @@ function getRealtimeRuntimeAttributes(): RealtimeLogAttributes {
     network_rtt_ms: typeof connection?.rtt === "number" ? connection.rtt : undefined,
     network_save_data: typeof connection?.saveData === "boolean" ? connection.saveData : undefined,
   };
+}
+
+function describeClientConnectivityState(): string {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return "offline";
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") return "backgrounded";
+  return "active";
 }
 
 async function getRealtimeHttpFailureAttributes(response: Response): Promise<RealtimeLogAttributes> {
@@ -458,6 +470,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     let cancelled = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let pendingSocketErrorTimer: ReturnType<typeof setTimeout> | null = null;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
     let ws: WebSocket | null = null;
     let ackId = 1;
     let lastCatchupAt = 0;
@@ -466,6 +479,8 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
     let hasConnectedOnce = false;
     let lastRealtimeClientFailureAt = 0;
     let connectAttempt = 0;
+    let reconnectAttempt = 0;
+    let transientFailureTimestamps: number[] = [];
     const recentEventKeys = new Map<string, number>();
 
     const reportRealtimeClientFailure = (
@@ -503,6 +518,43 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
           realtime: payload,
         },
       });
+    };
+
+    const recordTransientRealtimeFailure = () => {
+      const now = Date.now();
+      transientFailureTimestamps = transientFailureTimestamps
+        .filter((reportedAt) => now - reportedAt < REALTIME_UNSTABLE_WINDOW_MS)
+        .concat(now);
+      return transientFailureTimestamps.length >= REALTIME_UNSTABLE_TRANSIENT_THRESHOLD;
+    };
+
+    const stopHeartbeat = () => {
+      if (!heartbeatTimer) return;
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    };
+
+    const startHeartbeat = () => {
+      stopHeartbeat();
+      heartbeatTimer = setInterval(() => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        try {
+          ws.send(JSON.stringify({ type: "ping" }));
+        } catch {
+          // The socket close/error handlers own reconnect and reporting.
+        }
+      }, REALTIME_HEARTBEAT_INTERVAL_MS);
+    };
+
+    const getReconnectDelayMs = () => {
+      const base = Math.min(1500 * 2 ** Math.max(0, reconnectAttempt), REALTIME_MAX_RECONNECT_DELAY_MS);
+      reconnectAttempt += 1;
+      return Math.round(base + Math.random() * 500);
+    };
+
+    const scheduleReconnect = () => {
+      if (cancelled) return;
+      reconnectTimer = setTimeout(connect, getReconnectDelayMs());
     };
 
     const runCatchup = () => {
@@ -933,7 +985,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
             },
             response.status >= 500,
           );
-          reconnectTimer = setTimeout(connect, 2000);
+          scheduleReconnect();
           return;
         }
 
@@ -957,7 +1009,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
             },
             false,
           );
-          reconnectTimer = setTimeout(connect, 2000);
+          scheduleReconnect();
           return;
         }
 
@@ -967,10 +1019,12 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
           if (!ws || cancelled) return;
           socketOpened = true;
           socketOpenedAt = Date.now();
+          reconnectAttempt = 0;
           if (pendingSocketErrorTimer) {
             clearTimeout(pendingSocketErrorTimer);
             pendingSocketErrorTimer = null;
           }
+          startHeartbeat();
           // Join the tenant group once connected so we receive business-scoped broadcasts.
           ws.send(JSON.stringify({ type: "joinGroup", group, ackId: ackId++ }));
           // Only on reconnect (not first connect), force catch-up to reconcile missed events.
@@ -1005,13 +1059,29 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
             clearTimeout(pendingSocketErrorTimer);
             pendingSocketErrorTimer = null;
           }
+          stopHeartbeat();
           if (!cancelled && !connectionFailureReported) {
             if (event.wasClean && event.code === 1000) {
               connectionFailureReported = true;
             } else {
-              const message =
-                socketErrored || !socketOpened ? "realtime.websocket_error" : "realtime.websocket_closed";
-              const level = event.wasClean ? "warn" : "error";
+              const openDurationMs = socketOpenedAt ? Date.now() - socketOpenedAt : 0;
+              const connectivityState = describeClientConnectivityState();
+              const stableAbnormalClose = event.code === 1006 && socketOpened && openDurationMs >= REALTIME_STABLE_CONNECTION_MS;
+              const transientClose = event.wasClean || connectivityState !== "active" || stableAbnormalClose;
+              const repeatedTransientFailure = transientClose ? recordTransientRealtimeFailure() : false;
+              const actionableClose =
+                (!transientClose && !stableAbnormalClose) ||
+                repeatedTransientFailure ||
+                !socketOpened ||
+                ACTIONABLE_WEBSOCKET_CLOSE_CODES.has(event.code);
+              const message = repeatedTransientFailure
+                ? "realtime.websocket_unstable"
+                : transientClose
+                  ? "realtime.websocket_transient_disconnect"
+                  : socketErrored || !socketOpened
+                    ? "realtime.websocket_error"
+                    : "realtime.websocket_closed";
+              const level = actionableClose ? "error" : "warn";
               reportRealtimeClientFailure(
                 message,
                 {
@@ -1022,23 +1092,24 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
                   close_reason: event.reason || undefined,
                   connect_attempt: attempt,
                   connect_elapsed_ms: socketOpenedAt ? socketOpenedAt - connectStartedAt : Date.now() - connectStartedAt,
+                  connectivity_state: connectivityState,
                   group,
                   hub,
                   opened_once: socketOpened,
-                  open_duration_ms: socketOpenedAt ? Date.now() - socketOpenedAt : undefined,
+                  open_duration_ms: openDurationMs || undefined,
                   ready_state: describeWebSocketReadyState(ws?.readyState),
-                  reconnect_delay_ms: 1500,
+                  repeated_transient_failure: repeatedTransientFailure || undefined,
                   socket_errored: socketErrored,
                   subprotocol: ws?.protocol || subprotocol,
                   websocket_host: socketHost,
                 },
-                !event.wasClean,
+                actionableClose,
                 level,
               );
               connectionFailureReported = true;
             }
           }
-          if (!cancelled) reconnectTimer = setTimeout(connect, 1500);
+          scheduleReconnect();
         };
 
         ws.onerror = () => {
@@ -1047,25 +1118,31 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
             pendingSocketErrorTimer = setTimeout(() => {
               pendingSocketErrorTimer = null;
               if (cancelled || connectionFailureReported) return;
+              const openDurationMs = socketOpenedAt ? Date.now() - socketOpenedAt : 0;
+              const connectivityState = describeClientConnectivityState();
+              const transientError = socketOpened && (connectivityState !== "active" || openDurationMs >= REALTIME_STABLE_CONNECTION_MS);
+              const repeatedTransientFailure = transientError ? recordTransientRealtimeFailure() : false;
+              const captureInSentry = (!transientError && !socketOpened) || repeatedTransientFailure;
               reportRealtimeClientFailure(
                 "realtime.websocket_error",
                 {
                   ...getRealtimeRuntimeAttributes(),
                   connect_attempt: attempt,
                   connect_elapsed_ms: socketOpenedAt ? socketOpenedAt - connectStartedAt : Date.now() - connectStartedAt,
+                  connectivity_state: connectivityState,
                   error_without_close: true,
                   group,
                   hub,
                   opened_once: socketOpened,
-                  open_duration_ms: socketOpenedAt ? Date.now() - socketOpenedAt : undefined,
+                  open_duration_ms: openDurationMs || undefined,
                   ready_state: describeWebSocketReadyState(ws?.readyState),
-                  reconnect_delay_ms: 1500,
+                  repeated_transient_failure: repeatedTransientFailure || undefined,
                   socket_errored: true,
                   subprotocol: ws?.protocol || subprotocol,
                   websocket_host: socketHost,
                 },
-                true,
-                "error",
+                captureInSentry,
+                captureInSentry ? "error" : "warn",
               );
               connectionFailureReported = true;
             }, 1000);
@@ -1091,7 +1168,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       }
 
       if (!cancelled) {
-        reconnectTimer = setTimeout(connect, 1500);
+        scheduleReconnect();
       }
     };
 
@@ -1101,6 +1178,7 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
       cancelled = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (pendingSocketErrorTimer) clearTimeout(pendingSocketErrorTimer);
+      stopHeartbeat();
       if (ws) ws.close();
     };
   }, [
