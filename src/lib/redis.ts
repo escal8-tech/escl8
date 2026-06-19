@@ -110,7 +110,7 @@ export async function getRedisClient(): Promise<AnyRedisClient | null> {
 
     try {
       await withTimeout(
-        client.connect(),
+        Promise.resolve(client.connect()).then(() => undefined),
         REDIS_CONNECT_TIMEOUT_MS,
         'Redis connection',
         () => {
