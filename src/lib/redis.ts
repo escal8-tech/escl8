@@ -26,6 +26,30 @@ type AnyRedisClient = RedisClientType | RedisClusterType;
 let redisClient: AnyRedisClient | null = null;
 let isConnecting = false;
 let connectionPromise: Promise<AnyRedisClient> | null = null;
+const REDIS_CONNECT_TIMEOUT_MS = Number(process.env.REDIS_CONNECT_TIMEOUT_MS || 1500);
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+  onTimeout?: () => void
+): Promise<T> {
+  let timeout: NodeJS.Timeout | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => {
+          onTimeout?.();
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+        timeout.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 export async function getRedisClient(): Promise<AnyRedisClient | null> {
   if (redisClient?.isOpen) return redisClient;
@@ -85,7 +109,14 @@ export async function getRedisClient(): Promise<AnyRedisClient | null> {
     });
 
     try {
-      await client.connect();
+      await withTimeout(
+        client.connect(),
+        REDIS_CONNECT_TIMEOUT_MS,
+        'Redis connection',
+        () => {
+          void client.destroy?.();
+        }
+      );
       redisClient = client;
       return client;
     } finally {

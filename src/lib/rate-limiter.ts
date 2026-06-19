@@ -79,9 +79,13 @@ class RateLimiter {
     resetAt: number;
     retryAfterMs?: number;
   }> {
-    const redisResult = await checkRedisRateLimit(identifier, config.maxRequests, config.windowMs, config.keyPrefix)
-    if (redisResult.source === 'redis') {
-      return redisResult
+    try {
+      const redisResult = await checkRedisRateLimit(identifier, config.maxRequests, config.windowMs, config.keyPrefix)
+      if (redisResult.source === 'redis') {
+        return redisResult
+      }
+    } catch (error) {
+      console.error('Redis rate limit check failed; falling back to in-memory limiter:', error)
     }
     return this.checkLimit(identifier, config)
   }
