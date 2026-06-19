@@ -240,7 +240,14 @@ export function AgentsTab() {
                 
                 <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                   <button
-                    onClick={() => setSelectedAgentId(selectedAgentId === agent.id ? null : agent.id)}
+                    onClick={() => {
+                      if (selectedAgentId === agent.id) {
+                        setSelectedAgentId(null);
+                      } else {
+                        setSelectedAgentId(agent.id);
+                        setMapColumnsAgentId(null);
+                      }
+                    }}
                     style={{
                       padding: "8px 16px",
                       background: "transparent",
@@ -252,6 +259,27 @@ export function AgentsTab() {
                     }}
                   >
                     {selectedAgentId === agent.id ? "Close Training" : "Train"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (mapColumnsAgentId === agent.id) {
+                        setMapColumnsAgentId(null);
+                      } else {
+                        setMapColumnsAgentId(agent.id);
+                        setSelectedAgentId(null);
+                      }
+                    }}
+                    style={{
+                      padding: "8px 16px",
+                      background: "transparent",
+                      color: "var(--foreground)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {mapColumnsAgentId === agent.id ? "Close Mapping" : "Map Columns"}
                   </button>
                   <button
                     onClick={() => handleToggleAgent(agent.id, agent.isActive)}
@@ -272,52 +300,22 @@ export function AgentsTab() {
 
               {selectedAgentId === agent.id && (
                 <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
-                  <UploadContent agentId={agent.id} onMapColumns={() => setMapColumnsAgentId(agent.id)} />
+                  <UploadContent agentId={agent.id} onMapColumns={() => {
+                    setSelectedAgentId(null);
+                    setMapColumnsAgentId(agent.id);
+                  }} />
+                </div>
+              )}
+
+              {mapColumnsAgentId === agent.id && (
+                <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+                  <StockSettingsPanel agentId={agent.id} />
                 </div>
               )}
             </div>
           ))
         )}
       </div>
-
-      {mapColumnsAgentId && (
-        <div style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0, 0, 0, 0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-          padding: 16,
-        }}>
-          <div style={{
-            background: "var(--card)",
-            padding: 32,
-            borderRadius: 16,
-            border: "1px solid var(--border)",
-            width: "100%",
-            maxWidth: 1000,
-            maxHeight: "90vh",
-            overflowY: "auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: 20,
-            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", paddingBottom: 16 }}>
-              <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Map Columns</h2>
-              <button
-                onClick={() => setMapColumnsAgentId(null)}
-                style={{ background: "transparent", border: "none", fontSize: 24, cursor: "pointer", color: "var(--muted)" }}
-              >
-                &times;
-              </button>
-            </div>
-            <StockSettingsPanel agentId={mapColumnsAgentId} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
