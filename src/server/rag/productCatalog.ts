@@ -217,6 +217,7 @@ export async function replaceInventoryProductsForRows(params: {
       const productId = crypto.randomUUID();
       const product = await upsertCommerceProductFromInventory(tx, {
         businessId: params.businessId,
+        agentId: params.agentId || null,
         productId: productId,
         trainingDocumentId: params.trainingDocumentId || null,
         source: params.source,

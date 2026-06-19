@@ -207,6 +207,7 @@ export async function upsertCommerceProductFromInventory(
   });
   const values = {
     businessId: params.businessId,
+    agentId: params.agentId || null,
     suiteTenantId: settings.suiteTenantId || null,
     source: params.source || "inventory",
     sourceFilename: params.sourceFilename || null,
