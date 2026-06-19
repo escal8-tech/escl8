@@ -206,8 +206,6 @@ export const users = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
-    agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
-    channelIdentityId: text("channel_identity_id"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -234,8 +232,6 @@ export const businessUserInvites = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
-    agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
-    channelIdentityId: text("channel_identity_id"),
     email: text("email").notNull(),
     role: text("role").notNull().default("member"),
     tokenHash: text("token_hash").notNull(),
