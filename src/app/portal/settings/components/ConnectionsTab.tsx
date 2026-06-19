@@ -196,6 +196,7 @@ export function ConnectionsTab(props: any) {
   const agentsQuery = trpc.agents.listAgents.useQuery();
   const updateChannel = trpc.channels.updateChannel.useMutation();
   const [showAddModal, setShowAddModal] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editingChannel, setEditingChannel] = useState<any>(null);
 
   const handleToggleAi = async (id: string, current: boolean) => {
@@ -350,7 +351,7 @@ export function ConnectionsTab(props: any) {
         <div>Loading connections...</div>
       ) : channels.length === 0 ? (
         <div style={styles.emptyState}>
-          No channels connected yet. Click "Add New Connection" to connect your first account.
+          No channels connected yet. Click &quot;Add New Connection&quot; to connect your first account.
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
