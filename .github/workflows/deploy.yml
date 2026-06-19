@@ -73,6 +73,7 @@ jobs:
       ACA_META_APP_SECRET: ${{ secrets.ACA_META_APP_SECRET }}
       ACA_BOT_INTERNAL_API_KEY: ${{ secrets.ACA_BOT_INTERNAL_API_KEY }}
       ACA_OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}
+      WHATSAPP_TOKEN_ENCRYPTION_KEY: ${{ secrets.WHATSAPP_TOKEN_ENCRYPTION_KEY }}
 
     steps:
       - name: Checkout
@@ -129,6 +130,7 @@ jobs:
           ACA_META_APP_SECRET: ${{ secrets.ACA_META_APP_SECRET }}
           ACA_BOT_INTERNAL_API_KEY: ${{ secrets.ACA_BOT_INTERNAL_API_KEY }}
           ACA_OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}
+          WHATSAPP_TOKEN_ENCRYPTION_KEY: ${{ secrets.WHATSAPP_TOKEN_ENCRYPTION_KEY }}
         run: |
           required=(
             CONTROL_PLANE_DATABASE_URL AGENT_DATABASE_URL
@@ -138,7 +140,7 @@ jobs:
             ACA_SERVICE_BUS_CONN ACA_PUBSUB_CONN ACA_FIREBASE_SERVICE_ACCOUNT_JSON
             ACA_AZURE_BLOB_CONNECTION_STRING ACA_AZURE_QUEUE_CONNECTION_STRING
             ACA_META_SYSTEM_KEY ACA_META_APP_SECRET ACA_BOT_INTERNAL_API_KEY
-            ACA_OTEL_EXPORTER_OTLP_HEADERS
+            ACA_OTEL_EXPORTER_OTLP_HEADERS WHATSAPP_TOKEN_ENCRYPTION_KEY
           )
           for name in "${required[@]}"; do
             [[ -n "${!name}" ]] || { echo "Missing required secret: $name"; exit 1; }
@@ -199,6 +201,7 @@ jobs:
               meta-system-key="$ACA_META_SYSTEM_KEY" \
               meta-app-secret="$ACA_META_APP_SECRET" \
               bot-internal-api-key="$ACA_BOT_INTERNAL_API_KEY" \
+              whatsapp-token-encryption-key="$WHATSAPP_TOKEN_ENCRYPTION_KEY" \
               otel-exporter-otlp-headers="$ACA_OTEL_EXPORTER_OTLP_HEADERS" \
               grafana-logs-user="$GRAFANA_LOGS_USER" \
               grafana-logs-api-key="$GRAFANA_LOGS_API_KEY" \
@@ -294,6 +297,7 @@ jobs:
               SENTRY_AUTH_TOKEN=secretref:sentry-auth-token \
               OPENAI_API_KEY=secretref:open-ai-api \
               PINECONE_API_KEY=secretref:pinecone-api \
+              PINECONE_INDEX_NAME=malaysia-rag2 \
               SERVICE_BUS_CONNECTION_STRING=secretref:service-bus-conn \
               WEB_PUBSUB_CONNECTION_STRING=secretref:pubsub-conn \
               FIREBASE_SERVICE_ACCOUNT_JSON=secretref:firebase-service-account-json \
@@ -302,6 +306,7 @@ jobs:
               META_SYSTEM_USER_TOKEN=secretref:meta-system-key \
               META_APP_SECRET=secretref:meta-app-secret \
               BOT_INTERNAL_API_KEY=secretref:bot-internal-api-key \
+              WHATSAPP_TOKEN_ENCRYPTION_KEY=secretref:whatsapp-token-encryption-key \
               OTEL_EXPORTER_OTLP_HEADERS=secretref:otel-exporter-otlp-headers \
               GRAFANA_LOGS_USER=secretref:grafana-logs-user \
               GRAFANA_LOGS_API_KEY=secretref:grafana-logs-api-key \
@@ -336,6 +341,7 @@ jobs:
               DATABASE_URL=secretref:database-url \
               OPENAI_API_KEY=secretref:open-ai-api \
               PINECONE_API_KEY=secretref:pinecone-api-key \
+              PINECONE_INDEX_NAME=malaysia-rag2 \
               SERVICE_BUS_CONNECTION_STRING=secretref:service-bus-conn \
               WEB_PUBSUB_CONNECTION_STRING=secretref:pubsub-conn \
               FIREBASE_SERVICE_ACCOUNT_JSON=secretref:firebase-service-account-json \
