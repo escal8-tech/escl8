@@ -418,7 +418,7 @@ export function ConnectionsTab(props: any) {
                 {integrationCards.map(card => (
                   <div key={card.key} style={{ ...styles.card, padding: 20 }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
-                      <div style={{ width: 48, height: 48, borderRadius: 12, background: card.accent, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: "bold", fontSize: 20, shrink: 0 }}>
+                      <div style={{ width: 48, height: 48, borderRadius: 12, background: card.accent, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: "bold", fontSize: 20, flexShrink: 0 }}>
                         {card.title.charAt(0)}
                       </div>
                       <div style={{ flex: 1 }}>
@@ -429,15 +429,11 @@ export function ConnectionsTab(props: any) {
                     <div style={{ marginTop: "auto", paddingTop: 16, display: "flex", justifyContent: "flex-end" }}>
                       {card.key === "whatsapp" ? (
                         <WhatsAppEmbeddedSignupButton
-                          businessId={businessQuery.data?.[0]?.id || ""}
-                          userEmail={email}
-                          onSuccess={() => {
+                          email={email}
+                          onConnected={() => {
                             toast.show({ type: "success", title: "Connected", message: "WhatsApp connected" });
                             channelsQuery.refetch();
                             setShowAddModal(false);
-                          }}
-                          onError={(err) => {
-                            toast.show({ type: "error", title: "Failed", message: err });
                           }}
                         />
                       ) : card.key === "website" ? (
