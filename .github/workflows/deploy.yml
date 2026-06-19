@@ -31,9 +31,9 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   AZURE_RESOURCE_GROUP: Escal8
   CONTAINERAPPS_ENVIRONMENT: whatsapp-bot-env
-  WEB_APP_NAME: escal8-web
-  WORKER_APP_NAME: escal8-worker
-  JOB_APP_NAME: escal8-agent-request-rollover
+  WEB_APP_NAME: escal8-agent-dashboard
+  WORKER_APP_NAME: escal8-agent-worker
+  JOB_APP_NAME: escal8-agent-request-rollover-job
   ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
   WEB_IMAGE_NAME: escal8-agent
   WORKER_IMAGE_NAME: escal8-agent-worker
@@ -156,14 +156,14 @@ jobs:
               --environment "$CONTAINERAPPS_ENVIRONMENT" --image "$WEB_IMAGE" \
               --registry-server "$ACR_LOGIN_SERVER" --registry-username "$ACR_USERNAME" \
               --registry-password "$ACR_PASSWORD" --ingress external --target-port 3000 \
-              --cpu 0.5 --memory 1Gi --min-replicas 1 --max-replicas 3
+              --cpu 0.75 --memory 1.5Gi --min-replicas 1 --max-replicas 2
           fi
           if ! az containerapp show -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.worker_app }}" >/dev/null 2>&1; then
             az containerapp create -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.worker_app }}" \
               --environment "$CONTAINERAPPS_ENVIRONMENT" --image "$WORKER_IMAGE" \
               --registry-server "$ACR_LOGIN_SERVER" --registry-username "$ACR_USERNAME" \
               --registry-password "$ACR_PASSWORD" \
-              --cpu 0.5 --memory 1Gi --min-replicas 1 --max-replicas 3
+              --cpu 0.5 --memory 1Gi --min-replicas 1 --max-replicas 2
           fi
           if ! az containerapp job show -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.job_app }}" >/dev/null 2>&1; then
             az containerapp job create -g "$AZURE_RESOURCE_GROUP" -n "${{ steps.env.outputs.job_app }}" \
@@ -172,7 +172,8 @@ jobs:
               --registry-password "$ACR_PASSWORD" \
               --trigger-type Schedule --cron-expression "0 * * * *" \
               --replica-timeout 1800 --replica-retry-limit 3 \
-              --replica-completion-count 1 --parallelism 1
+              --replica-completion-count 1 --parallelism 1 \
+              --cpu 0.25 --memory 0.5Gi
           fi
 
       - name: Update Web Container App secrets
@@ -241,8 +242,8 @@ jobs:
       - name: Capacity budget report
         shell: bash
         run: |
-          WEB_MAX_REPLICAS=3
-          WORKER_MAX_REPLICAS=3
+          WEB_MAX_REPLICAS=2
+          WORKER_MAX_REPLICAS=2
           DB_POOL_MAX=8
           CONTROL_DB_POOL_MAX=4
           RAG_WORKER_CONCURRENCY=5
@@ -275,6 +276,10 @@ jobs:
             --name "${{ steps.env.outputs.web_app }}" \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --image "$IMAGE" \
+            --cpu 0.75 \
+            --memory 1.5Gi \
+            --min-replicas 1 \
+            --max-replicas 2 \
             --set-env-vars \
               CONTROL_PLANE_DATABASE_URL=secretref:control-plane-database-url \
               DATABASE_URL=secretref:database-url \
@@ -319,6 +324,10 @@ jobs:
             --name "${{ steps.env.outputs.worker_app }}" \
             --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
             --image "$IMAGE" \
+            --cpu 0.5 \
+            --memory 1Gi \
+            --min-replicas 1 \
+            --max-replicas 2 \
             --set-env-vars \
               CONTROL_PLANE_DATABASE_URL=secretref:control-plane-database-url \
               DATABASE_URL=secretref:database-url \
