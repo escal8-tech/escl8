@@ -206,6 +206,8 @@ export const users = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
+    channelIdentityId: text("channel_identity_id"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -232,6 +234,8 @@ export const businessUserInvites = pgTable(
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
+    channelIdentityId: text("channel_identity_id"),
     email: text("email").notNull(),
     role: text("role").notNull().default("member"),
     tokenHash: text("token_hash").notNull(),
@@ -1326,6 +1330,8 @@ export const requestsRelations = relations(requests, ({ one }) => ({
 export const bookings = pgTable("bookings", {
   id: text("id").primaryKey().notNull().$defaultFn(() => crypto.randomUUID()),
   businessId: text("business_id").notNull().references(() => businesses.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  agentId: text("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  channelIdentityId: text("channel_identity_id"),
   // userId is a platform user identifier (e.g. phone number, email) - NOT a FK to users table
   // Multiple dashboard users can manage the same business's bookings
   userId: text("user_id").notNull(),

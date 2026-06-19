@@ -133,16 +133,16 @@ function FlowBuilderWorkspaceView({
       <div className="portal-page-stack">
         <PortalHeaderCard
           title="Flow Builder"
-          description="Edit one WhatsApp identity at a time. Drafts save under this business and selected number only."
+          description="Edit flow logic for one Agent at a time. Drafts save under this specific Agent."
           controls={
             <>
               <PortalSelect
                 value={selectedIdentity?.phoneNumberId ?? selectedPhoneNumberId ?? ""}
                 onValueChange={(value) => onSelectIdentity(value || null)}
                 options={identityOptions}
-                placeholder="Select identity"
+                placeholder="Select Agent"
                 disabled={!identityOptions.length}
-                ariaLabel="Select WhatsApp identity for flow builder"
+                ariaLabel="Select Agent for flow builder"
                 className="portal-toolbar-select portal-toolbar-select--header"
                 style={{ width: "220px" }}
               />
@@ -160,7 +160,7 @@ function FlowBuilderWorkspaceView({
 
         <div className="portal-summary-grid">
           <PortalMetricCard
-            label="WhatsApp Identity"
+            label="Agent"
             value={selectedIdentity?.displayPhoneNumber || selectedIdentity?.phoneNumberId || "-"}
             hint={storageScope || "No identity selected"}
             tone="blue"
@@ -189,7 +189,7 @@ function FlowBuilderWorkspaceView({
           {isLoadingWorkspace ? (
             <div className={styles.emptyState}>
               <div className="empty-state-title">Loading flow workspace</div>
-              <div className="text-muted">Fetching the selected WhatsApp identity and its saved draft.</div>
+              <div className="text-muted">Fetching the selected Agent and its saved draft.</div>
             </div>
           ) : workspaceError ? (
             <div className={styles.emptyState}>
@@ -198,8 +198,8 @@ function FlowBuilderWorkspaceView({
             </div>
           ) : !selectedIdentity || !agent ? (
             <div className={styles.emptyState}>
-              <div className="empty-state-title">No WhatsApp identity available</div>
-              <div className="text-muted">Connect a business number first to configure its bot flow.</div>
+              <div className="empty-state-title">No Agent available</div>
+              <div className="text-muted">Create an Agent first to configure its bot flow.</div>
             </div>
           ) : (
             <>
@@ -347,7 +347,7 @@ function FlowBuilderWorkspaceView({
 
             <div className="portal-drawer-footer">
               <div className="portal-drawer-footer__label">
-                {dirty ? "Unsaved changes for this identity" : "Saved for this business and WhatsApp identity"}
+                {dirty ? "Unsaved changes for this Agent" : "Saved for this Agent"}
               </div>
               <div className="portal-drawer-footer__actions">
                 <button type="button" className="btn btn-secondary" onClick={() => setSelectedModuleId(null)}>
@@ -375,7 +375,7 @@ export function FlowBuilderContent() {
   const utils = trpc.useUtils();
   const { selectedPhoneNumberId, setSelectedPhoneNumberId } = usePhoneFilter();
   const workspaceQuery = trpc.flowBuilder.getWorkspace.useQuery(
-    { phoneNumberId: selectedPhoneNumberId ?? undefined },
+    { agentId: selectedPhoneNumberId ?? undefined },
     {
       staleTime: 30_000,
       refetchOnWindowFocus: false,
@@ -386,7 +386,7 @@ export function FlowBuilderContent() {
       await utils.flowBuilder.getWorkspace.invalidate();
       showSuccessToast(toast, {
         title: "Flow draft saved",
-        message: "This flow is now saved only for the selected business and WhatsApp identity.",
+        message: "This flow is now saved only for the selected Agent.",
       });
     },
     onError: (error) => {

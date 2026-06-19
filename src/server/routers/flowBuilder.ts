@@ -79,13 +79,9 @@ function swapTextToWhatsApp(value: string): string {
     .replace(/Instagram/gi, "WhatsApp");
 }
 
-function buildScopedAgent(input: {
-  botType: string | null;
-  displayPhoneNumber: string | null;
-  phoneNumberId: string;
-}): FlowAgentManifest {
+function buildScopedAgent(input: { botType: string | null; agentName: string | null; agentId: string; }): FlowAgentManifest {
   const baseAgent = flowBuilderAgents.find((agent) => agent.id === mapTemplateAgentId(input.botType)) ?? flowBuilderAgents[0];
-  const numberLabel = String(input.displayPhoneNumber || "").trim() || input.phoneNumberId;
+  const numberLabel = String(input.agentName || "").trim() || input.agentId;
   const botLabel = relabelBotType(input.botType);
   return {
     ...baseAgent,
@@ -94,8 +90,8 @@ function buildScopedAgent(input: {
     owned: 1,
     health: "Business scoped",
     name: `${botLabel} Flow`,
-    description: `Edit the ${botLabel.toLowerCase()} runtime for ${numberLabel}. Changes stay scoped to this business and WhatsApp identity.`,
-    runtimeGraph: `${baseAgent.runtimeGraph}.${input.phoneNumberId.slice(-6)}`,
+    description: `Edit the ${botLabel.toLowerCase()} runtime for ${numberLabel}. Changes stay scoped to this Agent.`,
+    runtimeGraph: `${baseAgent.runtimeGraph}.${input.agentId.slice(-6)}`,
     routes: baseAgent.routes.map((route) => ({
       ...route,
       name: swapTextToWhatsApp(route.name),
@@ -131,22 +127,15 @@ function buildScopedAgent(input: {
 
 export const flowBuilderRouter = router({
   getWorkspace: businessProcedure
-    .input(z.object({ phoneNumberId: z.string().min(1).optional() }).optional())
+    .input(z.object({ agentId: z.string().min(1).optional() }).optional())
     .query(async ({ ctx, input }) => {
-      const identities = await db
-        .select({
-          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-          botType: agents.botType,
-          connectedAt: channelIdentities.connectedAt,
-        })
-        .from(channelIdentities)
-        .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
-        .innerJoin(agents, eq(channelIdentities.agentId, agents.id))
-        .where(and(eq(channelIdentities.businessId, ctx.businessId), eq(channelIdentities.isActive, true), eq(channelIdentities.provider, "whatsapp")))
-        .orderBy(channelIdentities.connectedAt);
+      const dbAgents = await db
+        .select()
+        .from(agents)
+        .where(and(eq(agents.businessId, ctx.businessId), eq(agents.isActive, true)))
+        .orderBy(agents.createdAt);
 
-      if (!identities.length) {
+      if (!dbAgents.length) {
         return {
           identities: [],
           selectedIdentity: null,
@@ -157,113 +146,93 @@ export const flowBuilderRouter = router({
         };
       }
 
-      const selectedIdentity =
-        identities.find((identity) => identity.phoneNumberId === input?.phoneNumberId)
-        ?? identities[0];
-      if (!selectedIdentity) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
+      const selectedDbAgent =
+        dbAgents.find((a) => a.id === input?.agentId) ?? dbAgents[0];
+      if (!selectedDbAgent) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Agent not found for this business." });
       }
 
-      const [businessRow] = await db
-        .select({ settings: businesses.settings })
-        .from(businesses)
-        .where(eq(businesses.id, ctx.businessId))
-        .limit(1);
-
-      const settings = asRecord(businessRow?.settings);
-      const draftStore = asRecord(settings.flowBuilderDrafts);
-      const savedDraft = asRecord(draftStore[selectedIdentity.phoneNumberId]);
+      const settings = asRecord(selectedDbAgent.settings);
+      const savedDraft = asRecord(settings["flowBuilderDraft"]);
       const savedModulesResult = z.array(flowModuleSchema).safeParse(savedDraft.modules);
       const agent = buildScopedAgent({
-        botType: selectedIdentity.botType,
-        displayPhoneNumber: selectedIdentity.displayPhoneNumber,
-        phoneNumberId: selectedIdentity.phoneNumberId,
+        botType: selectedDbAgent.botType,
+        agentName: selectedDbAgent.name,
+        agentId: selectedDbAgent.id,
       });
+
+      // Map dbAgents to the expected identities format for the frontend dropdown
+      const identities = dbAgents.map(a => ({
+        phoneNumberId: a.id,
+        displayPhoneNumber: a.name,
+        botType: a.botType,
+      }));
 
       return {
         identities,
-        selectedIdentity,
+        selectedIdentity: identities.find(i => i.phoneNumberId === selectedDbAgent.id)!,
         agent,
         modules: savedModulesResult.success ? savedModulesResult.data : agent.modules,
         lastSavedAt: typeof savedDraft.updatedAt === "string" ? savedDraft.updatedAt : null,
-        storageScope: `business:${ctx.businessId}:whatsapp:${selectedIdentity.phoneNumberId}`,
+        storageScope: `business:${ctx.businessId}:agent:${selectedDbAgent.id}`,
       };
     }),
 
   saveDraft: businessProcedure
     .input(
       z.object({
-        phoneNumberId: z.string().min(1),
+        phoneNumberId: z.string().min(1), // frontend still calls it phoneNumberId, but it's agentId now
         modules: z.array(flowModuleSchema).min(1).max(24),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const [identity] = await db
-        .select({
-          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-          botType: agents.botType,
-        })
-        .from(channelIdentities)
-        .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
-        .innerJoin(agents, eq(channelIdentities.agentId, agents.id))
+      const [dbAgent] = await db
+        .select()
+        .from(agents)
         .where(and(
-          eq(channelIdentities.businessId, ctx.businessId),
-          eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
-          eq(channelIdentities.isActive, true),
-          eq(channelIdentities.provider, "whatsapp")
+          eq(agents.businessId, ctx.businessId),
+          eq(agents.id, input.phoneNumberId),
+          eq(agents.isActive, true)
         ))
         .limit(1);
-      if (!identity) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
 
-      const [businessRow] = await db
-        .select({ settings: businesses.settings })
-        .from(businesses)
-        .where(eq(businesses.id, ctx.businessId))
-        .limit(1);
-      if (!businessRow) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Business not found." });
+      if (!dbAgent) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Agent not found for this business." });
       }
 
       const now = new Date();
-      const settings = asRecord(businessRow.settings);
-      const draftStore = asRecord(settings.flowBuilderDrafts);
+      const settings = asRecord(dbAgent.settings);
       const nextSettings = {
         ...settings,
-        flowBuilderDrafts: {
-          ...draftStore,
-          [input.phoneNumberId]: {
-            botType: identity.botType,
-            modules: input.modules,
-            updatedAt: now.toISOString(),
-          },
+        flowBuilderDraft: {
+          botType: dbAgent.botType,
+          modules: input.modules,
+          updatedAt: now.toISOString(),
         },
       };
 
       await db
-        .update(businesses)
+        .update(agents)
         .set({
           settings: nextSettings,
           updatedAt: now,
         })
-        .where(eq(businesses.id, ctx.businessId));
+        .where(eq(agents.id, dbAgent.id));
 
       recordBusinessEvent({
         event: "flow_builder.draft_saved",
         action: "saveDraft",
         area: "flow_builder",
         businessId: ctx.businessId,
-        entity: "whatsapp_identity",
-        entityId: input.phoneNumberId,
+        entity: "agent",
+        entityId: dbAgent.id,
         userId: ctx.userId,
         actorId: ctx.firebaseUid ?? ctx.userId ?? null,
         actorType: "user",
         outcome: "success",
         attributes: {
-          bot_type: identity.botType,
-          display_phone_number: identity.displayPhoneNumber ?? null,
+          bot_type: dbAgent.botType,
+          agent_name: dbAgent.name,
           module_count: input.modules.length,
         },
       });
