@@ -448,35 +448,64 @@ async function main() {
   });
   console.log(`[rag-worker] started (poll=${pollMs}ms mode=${useQueue ? "queue" : "db"})`);
 
+  const CONCURRENCY_LIMIT = Number(process.env.RAG_WORKER_CONCURRENCY || 5);
+  const activePromises = new Set<Promise<void>>();
+  console.log(`[rag-worker] max concurrency: ${CONCURRENCY_LIMIT}`);
+
   while (true) {
+    if (activePromises.size >= CONCURRENCY_LIMIT) {
+      await Promise.race(activePromises);
+      continue;
+    }
+
     if (useQueue) {
       const claimed = await claimNextJobFromQueue();
       if (!claimed) {
-        await sleep(pollMs);
+        if (activePromises.size > 0) {
+          await Promise.race(activePromises);
+        } else {
+          await sleep(pollMs);
+        }
         continue;
       }
 
-      try {
-        await processJob(claimed.job);
-        const queue = await ensureRagQueue();
-        await queue.deleteMessage(claimed.receipt.messageId, claimed.receipt.popReceipt);
-      } catch (e) {
-        await failJob(claimed.job, e);
-        const queue = await ensureRagQueue();
-        await queue.deleteMessage(claimed.receipt.messageId, claimed.receipt.popReceipt);
-      }
+      const p = (async () => {
+        try {
+          await processJob(claimed.job);
+        } catch (e) {
+          await failJob(claimed.job, e);
+        } finally {
+          try {
+            const queue = await ensureRagQueue();
+            await queue.deleteMessage(claimed.receipt.messageId, claimed.receipt.popReceipt);
+          } catch (deleteErr) {
+            console.error("[rag-worker] failed to delete msg", deleteErr);
+          }
+          activePromises.delete(p);
+        }
+      })();
+      activePromises.add(p);
     } else {
       const job = await claimNextJob();
       if (!job) {
-        await sleep(pollMs);
+        if (activePromises.size > 0) {
+          await Promise.race(activePromises);
+        } else {
+          await sleep(pollMs);
+        }
         continue;
       }
 
-      try {
-        await processJob(job);
-      } catch (e) {
-        await failJob(job, e);
-      }
+      const p = (async () => {
+        try {
+          await processJob(job);
+        } catch (e) {
+          await failJob(job, e);
+        } finally {
+          activePromises.delete(p);
+        }
+      })();
+      activePromises.add(p);
     }
   }
 }
