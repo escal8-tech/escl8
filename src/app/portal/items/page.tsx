@@ -231,7 +231,7 @@ export default function ItemsPage() {
   return (
     <main className="portal-page-shell portal-items-page">
       <div className="portal-page-stack">
-        <StockMappingWarning status={mappingStatus} surface="items" />
+        {input.agentId && <StockMappingWarning status={mappingStatus} surface="items" />}
         <div className="portal-table-surface portal-items-surface">
           <div className="portal-items-toolbar" style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
             <div className="portal-items-toolbar__search" style={{ flex: 1 }}>

@@ -159,7 +159,7 @@ export default function OffersPage() {
   return (
     <main className="portal-page-shell portal-offers-page">
       <div className="portal-page-stack">
-        <StockMappingWarning status={mappingStatus} surface="offers" />
+        {offerInput.agentId && <StockMappingWarning status={mappingStatus} surface="offers" />}
         <section className="portal-table-surface portal-offers-list portal-offers-list--full">
           <div className="portal-items-toolbar portal-offers-toolbar" style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
             <div className="portal-items-toolbar__search" style={{ flex: 1 }}>
