@@ -15,25 +15,28 @@ export async function listOrdersForBusiness(args: {
   limit?: number;
   status?: string;
 }) {
-  const [settings, orderRows] = await Promise.all([
-    getBusinessOrderSettings(args.businessId),
-    db
-      .select()
-      .from(orders)
-      .where(
-        and(
-          eq(orders.businessId, args.businessId),
-          ...(args.status ? [eq(orders.status, args.status)] : []),
-        ),
-      )
-      .orderBy(desc(orders.updatedAt), desc(orders.createdAt))
-      .limit(args.limit ?? 200),
-  ]);
+  const cacheKey = `orders:list:${args.businessId}:${args.limit ?? 200}:${args.status ?? "all"}`;
+  return withStatsCache(cacheKey, 30, async () => {
+    const [settings, orderRows] = await Promise.all([
+      getBusinessOrderSettings(args.businessId),
+      db
+        .select()
+        .from(orders)
+        .where(
+          and(
+            eq(orders.businessId, args.businessId),
+            ...(args.status ? [eq(orders.status, args.status)] : []),
+          ),
+        )
+        .orderBy(desc(orders.updatedAt), desc(orders.createdAt))
+        .limit(args.limit ?? 200),
+    ]);
 
-  return {
-    settings,
-    items: await hydrateOrderRows(args.businessId, orderRows),
-  };
+    return {
+      settings,
+      items: await hydrateOrderRows(args.businessId, orderRows),
+    };
+  });
 }
 
 export async function listOrdersPageForBusiness(args: {
@@ -47,21 +50,24 @@ export async function listOrdersPageForBusiness(args: {
   rangeDays: number;
   methodFilter: "all" | "manual" | "bank_qr" | "cod";
 }) {
-  const settings = await getBusinessOrderSettings(args.businessId);
   const { conditions } = buildWorkspaceConditions(args);
 
-  const [countRow] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(orders)
-    .where(and(...conditions));
+  const [settings, countRows, orderRows] = await Promise.all([
+    getBusinessOrderSettings(args.businessId),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(orders)
+      .where(and(...conditions)),
+    db
+      .select()
+      .from(orders)
+      .where(and(...conditions))
+      .orderBy(desc(orders.updatedAt), desc(orders.createdAt))
+      .limit(args.limit)
+      .offset(args.offset),
+  ]);
 
-  const orderRows = await db
-    .select()
-    .from(orders)
-    .where(and(...conditions))
-    .orderBy(desc(orders.updatedAt), desc(orders.createdAt))
-    .limit(args.limit)
-    .offset(args.offset);
+  const countRow = countRows[0];
 
   return {
     settings,
@@ -143,48 +149,48 @@ export async function getOrderStatsForBusiness(businessId: string) {
   const cacheKey = `order:stats:${businessId}`;
   return withStatsCache(cacheKey, 60, async () => {
     const settings = await getBusinessOrderSettings(businessId);
-  const statusExpr = sql<string>`lower(coalesce(${orders.status}, ''))`;
-  const fulfillmentStatusExpr = sql<string>`lower(coalesce(${orders.fulfillmentStatus}, ''))`;
-  const amountExpr = sql<number>`coalesce(${orders.paidAmount}, ${orders.refundAmount}, ${orders.expectedAmount}, 0)::numeric`;
+    const statusExpr = sql<string>`lower(coalesce(${orders.status}, ''))`;
+    const fulfillmentStatusExpr = sql<string>`lower(coalesce(${orders.fulfillmentStatus}, ''))`;
+    const amountExpr = sql<number>`coalesce(${orders.paidAmount}, ${orders.refundAmount}, ${orders.expectedAmount}, 0)::numeric`;
 
-  const [aggregateRow] = await db
-    .select({
-      totalOrders: sql<number>`count(*)::int`,
-      pendingPaymentCount: sql<number>`count(*) filter (where ${statusExpr} in ('awaiting_payment', 'edit_required'))::int`,
-      paymentStatusPendingCount: sql<number>`count(*) filter (where ${statusExpr} in ('approved', 'awaiting_payment'))::int`,
-      paymentSubmittedCount: sql<number>`count(*) filter (where ${statusExpr} = 'payment_submitted')::int`,
-      paidCount: sql<number>`count(*) filter (where ${statusExpr} = 'paid')::int`,
-      refundPendingCount: sql<number>`count(*) filter (where ${statusExpr} = 'refund_pending')::int`,
-      refundedCount: sql<number>`count(*) filter (where ${statusExpr} = 'refunded')::int`,
-      orderStatusPendingCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded') and ${fulfillmentStatusExpr} not in ('delivered', 'dispatched', 'out_for_delivery'))::int`,
-      orderStatusInProgressCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded') and ${fulfillmentStatusExpr} in ('dispatched', 'out_for_delivery'))::int`,
-      orderStatusCompletedCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded') and ${fulfillmentStatusExpr} = 'delivered')::int`,
-      approvedAmount: sql<number>`coalesce(sum(case when ${statusExpr} = 'paid' then ${amountExpr} else 0 end), 0)::numeric`,
-      grossCollectedAmount: sql<number>`coalesce(sum(case when ${statusExpr} in ('paid', 'refund_pending', 'refunded') then ${amountExpr} else 0 end), 0)::numeric`,
-      refundPendingAmount: sql<number>`coalesce(sum(case when ${statusExpr} = 'refund_pending' then ${amountExpr} else 0 end), 0)::numeric`,
-      refundedAmount: sql<number>`coalesce(sum(case when ${statusExpr} = 'refunded' then ${amountExpr} else 0 end), 0)::numeric`,
-    })
-    .from(orders)
-    .where(eq(orders.businessId, businessId));
+    const [aggregateRow] = await db
+      .select({
+        totalOrders: sql<number>`count(*)::int`,
+        pendingPaymentCount: sql<number>`count(*) filter (where ${statusExpr} in ('awaiting_payment', 'edit_required'))::int`,
+        paymentStatusPendingCount: sql<number>`count(*) filter (where ${statusExpr} in ('approved', 'awaiting_payment'))::int`,
+        paymentSubmittedCount: sql<number>`count(*) filter (where ${statusExpr} = 'payment_submitted')::int`,
+        paidCount: sql<number>`count(*) filter (where ${statusExpr} = 'paid')::int`,
+        refundPendingCount: sql<number>`count(*) filter (where ${statusExpr} = 'refund_pending')::int`,
+        refundedCount: sql<number>`count(*) filter (where ${statusExpr} = 'refunded')::int`,
+        orderStatusPendingCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded') and ${fulfillmentStatusExpr} not in ('delivered', 'dispatched', 'out_for_delivery'))::int`,
+        orderStatusInProgressCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded') and ${fulfillmentStatusExpr} in ('dispatched', 'out_for_delivery'))::int`,
+        orderStatusCompletedCount: sql<number>`count(*) filter (where ${statusExpr} in ('paid', 'refund_pending', 'refunded') and ${fulfillmentStatusExpr} = 'delivered')::int`,
+        approvedAmount: sql<number>`coalesce(sum(case when ${statusExpr} = 'paid' then ${amountExpr} else 0 end), 0)::numeric`,
+        grossCollectedAmount: sql<number>`coalesce(sum(case when ${statusExpr} in ('paid', 'refund_pending', 'refunded') then ${amountExpr} else 0 end), 0)::numeric`,
+        refundPendingAmount: sql<number>`coalesce(sum(case when ${statusExpr} = 'refund_pending' then ${amountExpr} else 0 end), 0)::numeric`,
+        refundedAmount: sql<number>`coalesce(sum(case when ${statusExpr} = 'refunded' then ${amountExpr} else 0 end), 0)::numeric`,
+      })
+      .from(orders)
+      .where(eq(orders.businessId, businessId));
 
-  return {
-    settings,
-    totalOrders: Number(aggregateRow?.totalOrders ?? 0),
-    pendingPaymentCount: Number(aggregateRow?.pendingPaymentCount ?? 0),
-    paymentStatusPendingCount: Number(aggregateRow?.paymentStatusPendingCount ?? 0),
-    paymentStatusReviewCount: Number(aggregateRow?.paymentSubmittedCount ?? 0),
-    paymentSubmittedCount: Number(aggregateRow?.paymentSubmittedCount ?? 0),
-    paidCount: Number(aggregateRow?.paidCount ?? 0),
-    refundPendingCount: Number(aggregateRow?.refundPendingCount ?? 0),
-    refundedCount: Number(aggregateRow?.refundedCount ?? 0),
-    orderStatusPendingCount: Number(aggregateRow?.orderStatusPendingCount ?? 0),
-    orderStatusInProgressCount: Number(aggregateRow?.orderStatusInProgressCount ?? 0),
-    orderStatusCompletedCount: Number(aggregateRow?.orderStatusCompletedCount ?? 0),
-    approvedAmount: Number(aggregateRow?.approvedAmount ?? 0).toFixed(2),
-    grossCollectedAmount: Number(aggregateRow?.grossCollectedAmount ?? 0).toFixed(2),
-    refundPendingAmount: Number(aggregateRow?.refundPendingAmount ?? 0).toFixed(2),
-    refundedAmount: Number(aggregateRow?.refundedAmount ?? 0).toFixed(2),
-  };
+    return {
+      settings,
+      totalOrders: Number(aggregateRow?.totalOrders ?? 0),
+      pendingPaymentCount: Number(aggregateRow?.pendingPaymentCount ?? 0),
+      paymentStatusPendingCount: Number(aggregateRow?.paymentStatusPendingCount ?? 0),
+      paymentStatusReviewCount: Number(aggregateRow?.paymentSubmittedCount ?? 0),
+      paymentSubmittedCount: Number(aggregateRow?.paymentSubmittedCount ?? 0),
+      paidCount: Number(aggregateRow?.paidCount ?? 0),
+      refundPendingCount: Number(aggregateRow?.refundPendingCount ?? 0),
+      refundedCount: Number(aggregateRow?.refundedCount ?? 0),
+      orderStatusPendingCount: Number(aggregateRow?.orderStatusPendingCount ?? 0),
+      orderStatusInProgressCount: Number(aggregateRow?.orderStatusInProgressCount ?? 0),
+      orderStatusCompletedCount: Number(aggregateRow?.orderStatusCompletedCount ?? 0),
+      approvedAmount: Number(aggregateRow?.approvedAmount ?? 0).toFixed(2),
+      grossCollectedAmount: Number(aggregateRow?.grossCollectedAmount ?? 0).toFixed(2),
+      refundPendingAmount: Number(aggregateRow?.refundPendingAmount ?? 0).toFixed(2),
+      refundedAmount: Number(aggregateRow?.refundedAmount ?? 0).toFixed(2),
+    };
   });
 }
 
