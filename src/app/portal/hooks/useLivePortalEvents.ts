@@ -434,7 +434,51 @@ function orderMatchesFilter(order: Record<string, unknown>, input?: OrderListInp
   return true;
 }
 
+import { useLiveOptionsStore } from "./LiveOptionsStore";
+import { useState, useMemo } from "react";
+
 export function useLivePortalEvents(options: LiveSyncOptions = {}) {
+  const setOptions = useLiveOptionsStore((s) => s.setOptions);
+  const removeOptions = useLiveOptionsStore((s) => s.removeOptions);
+  const [id] = useState(() => Math.random().toString(36).slice(2));
+
+  const optionsStr = JSON.stringify(options, (k, v) => (typeof v === "function" ? undefined : v));
+
+  useEffect(() => {
+    setOptions(id, options);
+    return () => removeOptions(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, optionsStr]);
+}
+
+export function useLivePortalEventsInternal() {
+  const optionsMap = useLiveOptionsStore((s) => s.optionsMap);
+
+  const mergedOptions = useMemo(() => {
+    const merged: LiveSyncOptions = {};
+    const onEventFns: Array<(event: PortalEvent) => void> = [];
+    const onTicketFns: Array<(ticket: Record<string, unknown>, event: PortalEvent) => void> = [];
+    const onThreadMessageFns: Array<(message: any) => void> = [];
+    const onCatchupFns: Array<() => void | Promise<void>> = [];
+
+    for (const opt of Object.values(optionsMap)) {
+      Object.assign(merged, opt);
+      if (opt.onEvent) onEventFns.push(opt.onEvent);
+      if (opt.onTicket) onTicketFns.push(opt.onTicket);
+      if (opt.onThreadMessage) onThreadMessageFns.push(opt.onThreadMessage);
+      if (opt.onCatchup) onCatchupFns.push(opt.onCatchup);
+    }
+
+    if (onEventFns.length > 0) merged.onEvent = (e) => onEventFns.forEach((f) => f(e));
+    if (onTicketFns.length > 0) merged.onTicket = (t, e) => onTicketFns.forEach((f) => f(t, e));
+    if (onThreadMessageFns.length > 0) merged.onThreadMessage = (m) => onThreadMessageFns.forEach((f) => f(m));
+    if (onCatchupFns.length > 0) merged.onCatchup = async () => {
+      for (const f of onCatchupFns) await f();
+    };
+
+    return merged;
+  }, [optionsMap]);
+
   const utils = trpc.useUtils();
   const customersList = utils.customers.list as any;
   const customersPage = utils.customers.listPage as any;
@@ -460,11 +504,11 @@ export function useLivePortalEvents(options: LiveSyncOptions = {}) {
   const ordersStats = utils.orders.getStats as any;
   const orderPayments = utils.orders.getOrderPayments as any;
   const orderEvents = utils.orders.getOrderEvents as any;
-  const optionsRef = useRef(options);
+  const optionsRef = useRef(mergedOptions);
 
   useEffect(() => {
-    optionsRef.current = options;
-  }, [options]);
+    optionsRef.current = mergedOptions;
+  }, [mergedOptions]);
 
   useEffect(() => {
     let cancelled = false;

@@ -5,6 +5,7 @@ import PortalAuthProvider from "@/components/PortalAuthProvider";
 import { PhoneFilterProvider } from "@/components/PhoneFilterContext";
 import PortalLiveDocumentToasts from "@/app/portal/components/PortalLiveDocumentToasts";
 import { isAppAuthPath, isAppFlushPath, normalizeAppPath } from "@/lib/app-routes";
+import { PortalLiveProvider } from "@/app/portal/components/PortalLiveProvider";
 import {
   PortalThemeProvider,
   usePortalTheme,
@@ -35,6 +36,7 @@ function PortalLayoutShell({ children }: { children: React.ReactNode }) {
   return (
     <PortalAuthProvider>
       <PhoneFilterProvider>
+        <PortalLiveProvider />
         <PortalLiveDocumentToasts />
         <div className="portal-layout" data-theme={theme} suppressHydrationWarning>
           <PortalNav />
