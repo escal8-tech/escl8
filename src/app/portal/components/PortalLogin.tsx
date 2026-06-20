@@ -16,10 +16,10 @@ export function PortalLogin() {
   const auth = getFirebaseAuth();
   const router = useRouter();
   const redirectingRef = useRef(false);
-  const [authChecked, setAuthChecked] = useState(!auth);
+  const [authChecked, setAuthChecked] = useState(false);
   const [state, setState] = useState<LoginFormState>({
     busy: false,
-    error: auth ? null : "Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.",
+    error: null,
   });
   const [isRestoringSession, setIsRestoringSession] = useState(false);
 
@@ -73,7 +73,11 @@ export function PortalLogin() {
   }, [establishEscal8Session, getRedirectUrl, router]);
 
   useEffect(() => {
-    if (!auth) return;
+    if (!auth) {
+      setAuthChecked(true);
+      setState(s => ({ ...s, error: "Firebase auth is not configured." }));
+      return;
+    }
     setAuthChecked(false);
     const unsub = onAuthStateChanged(auth, async (u) => {
       setAuthChecked(true);
