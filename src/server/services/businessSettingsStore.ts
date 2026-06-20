@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { withStatsCache, invalidateStatsCache } from "@/server/lib/statsCache";
 
 import {
   businessCustomizationSettings,
@@ -118,68 +119,80 @@ export async function getBusinessOrderSettingsRecord(
   businessId: string,
   fallbackSettings?: unknown,
 ): Promise<OrderFlowSettings> {
-  try {
-    const [row] = await db
-      .select()
-      .from(businessOrderSettings)
-      .where(eq(businessOrderSettings.businessId, businessId))
-      .limit(1);
-    return orderSettingsFromRow(row, fallbackSettings);
-  } catch (error) {
-    if (isSettingsSchemaUnavailable(error)) return normalizeOrderFlowSettings(fallbackSettings);
-    throw error;
-  }
+  const cacheKey = `business:settings:order:${businessId}`;
+  return withStatsCache(cacheKey, 60, async () => {
+    try {
+      const [row] = await db
+        .select()
+        .from(businessOrderSettings)
+        .where(eq(businessOrderSettings.businessId, businessId))
+        .limit(1);
+      return orderSettingsFromRow(row, fallbackSettings);
+    } catch (error) {
+      if (isSettingsSchemaUnavailable(error)) return normalizeOrderFlowSettings(fallbackSettings);
+      throw error;
+    }
+  });
 }
 
 export async function getBusinessCustomizationSettingsRecord(
   businessId: string,
   fallbackSettings?: unknown,
 ): Promise<BusinessCustomizationSettings> {
-  try {
-    const [row] = await db
-      .select()
-      .from(businessCustomizationSettings)
-      .where(eq(businessCustomizationSettings.businessId, businessId))
-      .limit(1);
-    return customizationSettingsFromRow(row, fallbackSettings);
-  } catch (error) {
-    if (isSettingsSchemaUnavailable(error)) return normalizeCustomizationSettings(fallbackSettings);
-    throw error;
-  }
+  const cacheKey = `business:settings:customization:${businessId}`;
+  return withStatsCache(cacheKey, 60, async () => {
+    try {
+      const [row] = await db
+        .select()
+        .from(businessCustomizationSettings)
+        .where(eq(businessCustomizationSettings.businessId, businessId))
+        .limit(1);
+      return customizationSettingsFromRow(row, fallbackSettings);
+    } catch (error) {
+      if (isSettingsSchemaUnavailable(error)) return normalizeCustomizationSettings(fallbackSettings);
+      throw error;
+    }
+  });
 }
 
 export async function getBusinessPreferencesRecord(
   businessId: string,
   fallbackSettings?: unknown,
 ): Promise<{ timezone: string }> {
-  try {
-    const [row] = await db
-      .select()
-      .from(businessPreferences)
-      .where(eq(businessPreferences.businessId, businessId))
-      .limit(1);
-    return preferencesFromRow(row, fallbackSettings);
-  } catch (error) {
-    if (isSettingsSchemaUnavailable(error)) return preferencesFromRow(null, fallbackSettings);
-    throw error;
-  }
+  const cacheKey = `business:settings:preferences:${businessId}`;
+  return withStatsCache(cacheKey, 60, async () => {
+    try {
+      const [row] = await db
+        .select()
+        .from(businessPreferences)
+        .where(eq(businessPreferences.businessId, businessId))
+        .limit(1);
+      return preferencesFromRow(row, fallbackSettings);
+    } catch (error) {
+      if (isSettingsSchemaUnavailable(error)) return preferencesFromRow(null, fallbackSettings);
+      throw error;
+    }
+  });
 }
 
 export async function getBusinessWebsiteWidgetSettingsRecord(
   businessId: string,
   fallbackSettings?: unknown,
 ): Promise<WebsiteWidgetSettings> {
-  try {
-    const [row] = await db
-      .select()
-      .from(businessWebsiteWidgetSettings)
-      .where(eq(businessWebsiteWidgetSettings.businessId, businessId))
-      .limit(1);
-    return websiteWidgetSettingsFromRow(row, fallbackSettings);
-  } catch (error) {
-    if (isSettingsSchemaUnavailable(error)) return normalizeWebsiteWidgetSettings(fallbackSettings);
-    throw error;
-  }
+  const cacheKey = `business:settings:widget:${businessId}`;
+  return withStatsCache(cacheKey, 60, async () => {
+    try {
+      const [row] = await db
+        .select()
+        .from(businessWebsiteWidgetSettings)
+        .where(eq(businessWebsiteWidgetSettings.businessId, businessId))
+        .limit(1);
+      return websiteWidgetSettingsFromRow(row, fallbackSettings);
+    } catch (error) {
+      if (isSettingsSchemaUnavailable(error)) return normalizeWebsiteWidgetSettings(fallbackSettings);
+      throw error;
+    }
+  });
 }
 
 export async function upsertBusinessOrderSettings(
@@ -215,6 +228,7 @@ export async function upsertBusinessOrderSettings(
         target: businessOrderSettings.businessId,
         set: row,
       });
+    invalidateStatsCache(`business:settings:order:${businessId}`);
     return true;
   } catch (error) {
     if (isSettingsSchemaUnavailable(error)) return false;
@@ -250,6 +264,7 @@ export async function upsertBusinessCustomizationSettings(
         target: businessCustomizationSettings.businessId,
         set: row,
       });
+    invalidateStatsCache(`business:settings:customization:${businessId}`);
     return true;
   } catch (error) {
     if (isSettingsSchemaUnavailable(error)) return false;
@@ -272,6 +287,7 @@ export async function upsertBusinessTimezone(businessId: string, timezone: strin
         target: businessPreferences.businessId,
         set: row,
       });
+    invalidateStatsCache(`business:settings:preferences:${businessId}`);
     return true;
   } catch (error) {
     if (isSettingsSchemaUnavailable(error)) return false;
@@ -300,6 +316,7 @@ export async function upsertBusinessWebsiteWidgetSettings(
         target: businessWebsiteWidgetSettings.businessId,
         set: row,
       });
+    invalidateStatsCache(`business:settings:widget:${businessId}`);
     return true;
   } catch (error) {
     if (isSettingsSchemaUnavailable(error)) return false;
