@@ -21,6 +21,7 @@ export function PortalLogin() {
     busy: false,
     error: auth ? null : "Firebase auth is not configured. Add NEXT_PUBLIC_FIREBASE_* env vars.",
   });
+  const [isRestoringSession, setIsRestoringSession] = useState(false);
 
   const getRedirectUrl = useCallback(() => {
     if (typeof window === "undefined") return null;
@@ -77,6 +78,7 @@ export function PortalLogin() {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setAuthChecked(true);
       if (u) {
+        setIsRestoringSession(true);
         setState((s) => ({ ...s, busy: true, error: null }));
         try {
           await completeFirebaseLogin({
@@ -99,6 +101,7 @@ export function PortalLogin() {
               route: APP_LOGIN_ROUTE,
             });
           }
+          setIsRestoringSession(false);
           setState({
             busy: false,
             error: err?.message || "Unable to continue your session. Please sign in again.",
@@ -264,25 +267,14 @@ export function PortalLogin() {
     }
   };
 
-  if (!authChecked) {
+  if (!authChecked || isRestoringSession) {
     return (
-      <AuthLayout>
-        <div className="frost-card" style={{ width: "100%", maxWidth: 520, padding: "36px 40px", textAlign: "center" }}>
-          <div
-            aria-hidden
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: "50%",
-              margin: "0 auto 16px",
-              background: "linear-gradient(135deg, var(--gold), var(--gold-light))",
-              animation: "pulse 1.2s ease-in-out infinite",
-            }}
-          />
-          <h1 style={{ fontSize: 22, marginBottom: 8, color: "var(--foreground)" }}>Loading...</h1>
-          <p style={{ fontSize: 14, color: "var(--muted)", margin: 0 }}>Checking your session</p>
+      <div className="min-h-screen relative flex items-center justify-center bg-dark-900">
+        <div className="absolute inset-0 bg-dark-950 -z-10" />
+        <div className="relative z-10 flex flex-col items-center gap-4 text-dark-100">
+          <div className="w-8 h-8 rounded-full border-2 border-accent-gold/20 border-t-accent-gold animate-spin" />
         </div>
-      </AuthLayout>
+      </div>
     );
   }
 

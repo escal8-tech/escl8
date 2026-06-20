@@ -134,12 +134,17 @@ export default function PortalAuthProvider({ children }: Props) {
     };
   }, [user, router, ensureUser]);
 
-  if (user === undefined) {
-    return (
-      <div className="container" style={{ padding: "60px 0 80px" }}>
-        <p className="muted">Checking session…</p>
+  const SleekLoader = () => (
+    <div className="min-h-screen relative flex items-center justify-center bg-dark-900">
+      <div className="absolute inset-0 bg-dark-950 -z-10" />
+      <div className="relative z-10 flex flex-col items-center gap-4 text-dark-100">
+        <div className="w-8 h-8 rounded-full border-2 border-accent-gold/20 border-t-accent-gold animate-spin" />
       </div>
-    );
+    </div>
+  );
+
+  if (user === undefined) {
+    return <SleekLoader />;
   }
 
   if (!user) return null;
@@ -151,11 +156,7 @@ export default function PortalAuthProvider({ children }: Props) {
     );
   }
   if (!ready) {
-    return (
-      <div className="container" style={{ padding: "60px 0 80px" }}>
-        <p className="muted">Preparing your workspace…</p>
-      </div>
-    );
+    return <SleekLoader />;
   }
 
   return <>{children}</>;
