@@ -322,7 +322,7 @@ jobs:
               REDIS_HOST=secretref:redis-host \
               REDIS_PORT=secretref:redis-port \
               REDIS_PASSWORD=secretref:redis-password \
-              REDIS_CLUSTER_MODE=true \
+              REDIS_CLUSTER_MODE=false \
               DB_POOL_MAX=8 \
               CONTROL_DB_POOL_MAX=4 \
               SENTRY_ORG="${{ secrets.PRODUCTION_SENTRY_ORG }}" \
@@ -377,7 +377,7 @@ jobs:
               REDIS_HOST=secretref:redis-host \
               REDIS_PORT=secretref:redis-port \
               REDIS_PASSWORD=secretref:redis-password \
-              REDIS_CLUSTER_MODE=true \
+              REDIS_CLUSTER_MODE=false \
               RAG_WORKER_MODE=queue \
               RAG_WORKER_POLL_MS=1500
 
