@@ -17,7 +17,10 @@ import { DEFAULT_CUSTOMIZATION_SETTINGS } from "@/lib/customization-settings";
 import { buildWebsiteWidgetSnippet, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
 import { UploadContent } from "@/app/portal/upload/components/UploadContent";
-import { FlowBuilderContent } from "@/app/portal/flowbuilder/FlowBuilderContent";
+import dynamic from "next/dynamic";
+const FlowBuilderContent = dynamic(() => import("@/app/portal/flowbuilder/FlowBuilderContent").then(mod => mod.FlowBuilderContent), {
+  loading: () => <div className="p-8 text-center text-gray-500 dark:text-gray-400">Loading Flow Builder...</div>
+});
 import { usePortalTheme } from "@/app/portal/components/PortalThemeProvider";
 import UsersPermissionsPanel from "@/app/portal/settings/components/UsersPermissionsPanel";
 import { SubscriptionContent } from "@/components/subscription/SubscriptionContent";
