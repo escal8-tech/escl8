@@ -77,6 +77,24 @@ function getAllowedOrigin(requestOrigin: string | null): string {
  * 7. Middleware validates new cookies → allows through
  */
 export async function middleware(request: NextRequest) {
+  // PREVENT HEADER SPOOFING: Strip all internal identity/context headers from the incoming request.
+  // These will be re-populated by this middleware from the validated JWT claims.
+  const headersToStrip = [
+    'x-firebase-uid',
+    'x-user-email',
+    'x-suite-tenant-id',
+    'x-user-id',
+    'x-business-id',
+    'x-subscription-status',
+    'x-plan-code',
+    'x-workspace-mode',
+    'x-grant-kind',
+    'x-is-special-grant',
+    'x-subscription-features',
+    'x-subscription-limits',
+  ];
+  headersToStrip.forEach((header) => request.headers.delete(header));
+
   const pathname = request.nextUrl.pathname
 
   const origin = request.headers.get('origin')
