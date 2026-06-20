@@ -159,13 +159,7 @@ export function PricingPage() {
   const [selectedTier, setSelectedTier] = useState<string>("agent");
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
 
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat("en-MY", {
-      style: "currency",
-      currency: "MYR",
-      minimumFractionDigits: 0,
-    }).format(price);
-  };
+
 
   return (
     <div className="min-h-screen bg-gray-50 py-16 px-4">

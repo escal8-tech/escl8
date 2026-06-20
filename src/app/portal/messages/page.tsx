@@ -1146,6 +1146,7 @@ export default function MessagesPage() {
                                       color: "inherit",
                                     }}
                                   >
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img
                                       src={media.imageUrl!}
                                       alt={captionText || "Image"}
@@ -1368,7 +1369,9 @@ export default function MessagesPage() {
                           ×
                         </button>
                         {isImage && attachment.previewUrl ? (
-                          <img
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
                             src={attachment.previewUrl}
                             alt={attachment.file.name}
                             style={{
@@ -1377,7 +1380,8 @@ export default function MessagesPage() {
                               objectFit: "cover",
                               borderRadius: 10,
                             }}
-                          />
+                            />
+                          </>
                         ) : (
                           <div
                             style={{

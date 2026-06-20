@@ -2,7 +2,7 @@
 // Quick test script to verify Azure Blob access using .env
 // Usage: node scripts/test-azure-blob.js
 
-const fs = require('fs');
+// const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(process.cwd(), '.env') });
 const { BlobServiceClient } = require('@azure/storage-blob');

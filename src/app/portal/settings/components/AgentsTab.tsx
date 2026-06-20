@@ -29,7 +29,7 @@ export function AgentsTab() {
       setNewBotType("AGENT");
       setIsCreateModalOpen(false);
       agentsQuery.refetch();
-    } catch (e) {
+    } catch {
       showErrorToast(toast, { title: "Error", message: "Failed to create agent" });
     }
   };
@@ -39,7 +39,7 @@ export function AgentsTab() {
       await updateAgent.mutateAsync({ id, isActive: !current });
       showSuccessToast(toast, { title: "Success", message: "Agent status updated" });
       agentsQuery.refetch();
-    } catch (e) {
+    } catch {
       showErrorToast(toast, { title: "Error", message: "Failed to update agent status" });
     }
   };
@@ -215,7 +215,7 @@ export function AgentsTab() {
                           await updateAgent.mutateAsync({ id: agent.id, botType: e.target.value });
                           agentsQuery.refetch();
                           showSuccessToast(toast, { title: "Success", message: "Agent type updated" });
-                        } catch (err) {
+                        } catch {
                           showErrorToast(toast, { title: "Error", message: "Failed to update agent type" });
                         }
                       }}

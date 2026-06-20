@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
   const userEmail = req.headers.get('x-user-email')
   const suiteTenantId = req.headers.get('x-suite-tenant-id')
   const businessIdHeader = req.headers.get('x-business-id')
-  const businessId = businessIdHeader ? String(businessIdHeader) : null
+  const _businessId = businessIdHeader ? String(businessIdHeader) : null
 
   // If middleware didn't set headers, user is not authenticated
   if (!firebaseUid || !userEmail || !suiteTenantId) {
