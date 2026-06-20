@@ -49,6 +49,16 @@ import {
   publishHydratedTicketUpsert,
   sanitizeTicketFields,
 } from "@/server/services/ticketWorkflowSupport";
+import {
+  ORDER_FULFILLMENT_STATUSES,
+  normalizeOrderFulfillmentStatus,
+} from "@/lib/order-operations";
+import {
+  enqueueWhatsAppOutboxMessages,
+  enqueueEmailOutboxMessages,
+  drainBusinessOutbox,
+} from "@/server/services/messageOutbox";
+import { isStaffManualOrder, resolveFulfillmentPrefill } from "@/server/services/orderMutationUtils";
 export * from "./orderMutationUtils";
 
 export async function updateDraftOrder(
