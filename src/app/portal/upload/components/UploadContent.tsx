@@ -62,7 +62,7 @@ export function UploadContent({ agentId, onMapColumns }: { agentId?: string; onM
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [agentId]);
 
   useEffect(() => {
     const auth = getFirebaseAuth();
@@ -226,7 +226,7 @@ export function UploadContent({ agentId, onMapColumns }: { agentId?: string; onM
     } finally {
       setBusy(false);
     }
-  }, [businessId, emailDomain, route, toast]);
+  }, [businessId, emailDomain, route, toast, agentId]);
 
   const retrain = useCallback(async (docType: DocType) => {
     setRetrainBusy(docType);

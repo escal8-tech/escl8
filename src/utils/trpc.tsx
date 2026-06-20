@@ -47,7 +47,7 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
                   window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname)
                   await new Promise(() => {}) 
                 }
-              } catch (e) {
+              } catch {
                 if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/auth/login')) {
                   window.location.href = '/auth/login?redirect=' + encodeURIComponent(window.location.pathname)
                   await new Promise(() => {}) 

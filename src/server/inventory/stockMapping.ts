@@ -329,7 +329,7 @@ export async function applyStockColumnMappingForAgent(params: {
       const mapped = deriveInventoryProductFromFields(rawFields as Record<string, string>, settings);
       if (!mapped.name) continue;
 
-      const updatedProduct = await upsertCommerceProductFromInventory(tx, {
+      const _updatedProduct = await upsertCommerceProductFromInventory(tx, {
         businessId: row.businessId,
         agentId: params.agentId,
         productId: row.id,
@@ -356,7 +356,7 @@ export async function rebaseInventoryFromTrainingDocument(params: {
   trainingDocumentId: string;
   settings?: BusinessStockSettings;
 }): Promise<{ deleted: number; inserted: number }> {
-  const settings = params.settings ?? await getAgentStockSettings(params.agentId);
+  const _settings = params.settings ?? await getAgentStockSettings(params.agentId);
 
   // Get the training document to extract structured rows
   const { db } = await import("@/server/db/client");

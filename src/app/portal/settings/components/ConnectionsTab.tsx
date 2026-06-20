@@ -181,15 +181,10 @@ import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignu
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function ConnectionsTab(props: any) {
   const {
-    businessQuery,
     email,
     whatsappConnected,
-    whatsappConnectBlocked,
-    whatsappConnectReason,
-    phoneNumbersQuery,
     openWebsiteWidgetModal,
     websiteWidget,
-    ensureWebsiteWidget
   } = props;
   const toast = useToast();
   const channelsQuery = trpc.channels.listChannels.useQuery();
@@ -204,7 +199,7 @@ export function ConnectionsTab(props: any) {
       await updateChannel.mutateAsync({ id, aiEnabled: !current });
       showSuccessToast(toast, { title: "Success", message: "AI status updated" });
       channelsQuery.refetch();
-    } catch (e) {
+    } catch {
       showErrorToast(toast, { title: "Error", message: "Failed to update AI status" });
     }
   };
@@ -214,7 +209,7 @@ export function ConnectionsTab(props: any) {
       await updateChannel.mutateAsync({ id, autoReplyPaused: !current });
       showSuccessToast(toast, { title: "Success", message: "Auto-reply status updated" });
       channelsQuery.refetch();
-    } catch (e) {
+    } catch {
       showErrorToast(toast, { title: "Error", message: "Failed to update auto-reply status" });
     }
   };
@@ -224,7 +219,7 @@ export function ConnectionsTab(props: any) {
       await updateChannel.mutateAsync({ id, agentId });
       showSuccessToast(toast, { title: "Success", message: "Agent assigned" });
       channelsQuery.refetch();
-    } catch (e) {
+    } catch {
       showErrorToast(toast, { title: "Error", message: "Failed to assign agent" });
     }
   };
@@ -245,7 +240,7 @@ export function ConnectionsTab(props: any) {
       await updateChannel.mutateAsync({ id, monthlyCreditLimit: num });
       showSuccessToast(toast, { title: "Success", message: "Credit limit updated" });
       channelsQuery.refetch();
-    } catch (e) {
+    } catch {
       showErrorToast(toast, { title: "Error", message: "Failed to update credit limit" });
     }
   };
@@ -547,7 +542,7 @@ export function ConnectionsTab(props: any) {
                       showSuccessToast(toast, { title: "Success", message: "Shared pool setting updated" });
                       setEditingChannel({ ...editingChannel, useSharedPool: !editingChannel.useSharedPool });
                       channelsQuery.refetch();
-                    } catch (e) {
+                    } catch {
                       showErrorToast(toast, { title: "Error", message: "Failed to update setting" });
                     }
                   }}

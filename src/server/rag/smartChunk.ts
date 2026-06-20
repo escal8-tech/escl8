@@ -679,7 +679,7 @@ export function smartChunkText(text: string, opts?: SmartChunkOptions): SmartChu
   const pages = opts?.pages;
   
   // Convert to characters (rough: 1 token ≈ 4 chars)
-  const targetChars = targetTokens * 4;
+  const _targetChars = targetTokens * 4;
   const minChars = minTokens * 4;
   const maxChars = maxTokens * 4;
   const overlapChars = overlapTokens * 4;

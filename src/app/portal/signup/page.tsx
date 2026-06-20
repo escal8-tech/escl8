@@ -122,6 +122,7 @@ function SignupPageContent() {
     <div className="auth-screen">
       <div className="auth-top">
         <Link className="auth-brand" href="/">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/8.png"
             alt="Escal8"

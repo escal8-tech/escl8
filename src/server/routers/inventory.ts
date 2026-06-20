@@ -415,7 +415,7 @@ export const inventoryRouter = router({
       agentId: z.string(),
       columns: z.array(columnMappingEntrySchema).max(200),
     }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ ctx: _ctx, input }) => {
       const columnMapping = normalizeMappingInput(input.columns);
       await saveAgentStockSettings({
         agentId: input.agentId,

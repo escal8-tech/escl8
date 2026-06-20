@@ -1149,7 +1149,7 @@ export default function SettingsPage() {
       });
     },
   });
-  const setWhatsappIdentityAutoReplyPaused = trpc.business.setWhatsappIdentityAutoReplyPaused.useMutation({
+  const _setWhatsappIdentityAutoReplyPaused = trpc.business.setWhatsappIdentityAutoReplyPaused.useMutation({
     onSuccess: (row) => {
       showSuccessToast(toast, {
         title: row.autoReplyPaused ? "Auto replies paused" : "Auto replies resumed",
@@ -1166,7 +1166,7 @@ export default function SettingsPage() {
       });
     },
   });
-  const setWhatsappIdentityAiDisabled = trpc.business.setWhatsappIdentityAiDisabled.useMutation({
+  const _setWhatsappIdentityAiDisabled = trpc.business.setWhatsappIdentityAiDisabled.useMutation({
     onSuccess: (row) => {
       showSuccessToast(toast, {
         title: row.aiDisabled ? "AI disabled" : "AI enabled",

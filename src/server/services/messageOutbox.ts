@@ -427,7 +427,7 @@ export async function drainBusinessOutbox(input: {
               intent: observation.intent,
             });
           }
-        } catch (error) {
+        } catch {
           recordBusinessEvent({
             event: "outbox.assistant_observe_failed",
             action: "deliver",

@@ -554,7 +554,7 @@ export const messagesRouter = router({
             },
           });
         }
-      } catch (error) {
+      } catch {
         recordBusinessEvent({
           event: "message.manual_send_observe_failed",
           action: "sendText",
@@ -765,7 +765,7 @@ export const messagesRouter = router({
             },
           });
         }
-      } catch (error) {
+      } catch {
         recordBusinessEvent({
           event: "message.manual_send_observe_failed",
           action: "sendMedia",

@@ -22,7 +22,7 @@ function normalizeWhitespace(text: string): string {
   return text.replace(/\r/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function splitIntoSections(text: string): string[] {
+function _splitIntoSections(text: string): string[] {
   const lines = text.split("\n");
   const sections: string[] = [];
   let current: string[] = [];
@@ -46,7 +46,7 @@ function splitIntoSections(text: string): string[] {
   return sections.filter((s) => s.length > 0);
 }
 
-function chunkSection(text: string, maxChars: number): string[] {
+function _chunkSection(text: string, maxChars: number): string[] {
   if (text.length <= maxChars) return [text];
   const parts: string[] = [];
   let start = 0;
@@ -64,7 +64,7 @@ function chunkSection(text: string, maxChars: number): string[] {
   return parts.length > 0 ? parts : [text];
 }
 
-async function formatSectionWithLLM(section: string, index: number): Promise<string> {
+async function _formatSectionWithLLM(section: string, index: number): Promise<string> {
   const model = process.env.OPENAI_CHAT_MODEL || DEFAULT_MODEL;
   const prompt = `You are formatting a product/inventory document section for RAG retrieval.
 Rewrite the content into structured Markdown using the template below.
@@ -106,7 +106,7 @@ ${section}`.trim();
   return (res.choices[0]?.message?.content || "").trim();
 }
 
-async function reconcileFormattedSection(section: string, formatted: string, index: number): Promise<string> {
+async function _reconcileFormattedSection(section: string, formatted: string, index: number): Promise<string> {
   const model = process.env.OPENAI_CHAT_MODEL || DEFAULT_MODEL;
   const prompt = `You are validating and correcting a formatted product section for RAG retrieval.
 Compare the ORIGINAL text with the FORMATTED text. Fix any missing facts or wrong facts by inserting them into the correct fields.
@@ -131,7 +131,7 @@ ${formatted}`.trim();
   return (res.choices[0]?.message?.content || "").trim();
 }
 
-async function validateFormattedSection(section: string, formatted: string, index: number): Promise<{ ok: boolean; missingFacts: string[]; notes?: string }> {
+async function _validateFormattedSection(section: string, formatted: string, index: number): Promise<{ ok: boolean; missingFacts: string[]; notes?: string }> {
   const model = process.env.OPENAI_CHAT_MODEL || DEFAULT_MODEL;
   const prompt = `You are a strict validator. Compare ORIGINAL vs FORMATTED and decide if any factual details were lost or changed.
 Return JSON ONLY: {"ok": true|false, "missingFacts": ["..."], "notes": "optional"}.
@@ -324,7 +324,7 @@ export function injectAliasesIntoFormatted(formatted: string, aliases: ProductAl
   return out.join("\n");
 }
 
-async function repairFormattedCoverage(params: { original: string; formatted: string; missingProducts: string[]; missingVariants: string[] }): Promise<string> {
+async function _repairFormattedCoverage(params: { original: string; formatted: string; missingProducts: string[]; missingVariants: string[] }): Promise<string> {
   const model = process.env.RAG_PRODUCT_REPAIR_MODEL || DEFAULT_MODEL;
   const prompt = `You are repairing a formatted product document to include missing items.
 Given ORIGINAL and FORMATTED, insert the missing products/variants into the correct product blocks.
@@ -430,7 +430,7 @@ ${params.raw}`.trim();
   return (res.choices[0]?.message?.content || "").trim();
 }
 
-async function validateProductBlock(params: { product: string; raw: string; block: string }): Promise<ProductCoverageReport> {
+async function _validateProductBlock(params: { product: string; raw: string; block: string }): Promise<ProductCoverageReport> {
   const model = process.env.RAG_PRODUCT_VALIDATE_MODEL || DEFAULT_VALIDATE_MODEL;
   const prompt = `Validate that the FORMATTED block contains all key facts for the product "${params.product}".
 Return JSON ONLY:
@@ -465,7 +465,7 @@ ${params.block}`.trim();
   }
 }
 
-function fallbackAppendRaw(block: string, raw: string, product: string): string {
+function _fallbackAppendRaw(block: string, raw: string, product: string): string {
   const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const matched = lines.filter(l => l.toLowerCase().includes(product.toLowerCase())).slice(0, 30);
   if (matched.length === 0) return block;

@@ -86,7 +86,7 @@ function stableSourceRowKey(params: {
   });
 }
 
-function searchTextForRow(row: SpreadsheetRow): string {
+function _searchTextForRow(row: SpreadsheetRow): string {
   const derived = deriveInventoryProductFromFields(row.fields || {});
   return [
     derived.name,
@@ -241,7 +241,7 @@ export async function replaceInventoryProductsForRows(params: {
     // ============================================================
     // INSERT FRESH: Insert new products from the new document
     // ============================================================
-    const now = new Date();
+    const _now = new Date();
 
     // Track duplicate sourceRowKeys within this batch (for rows with identical product identity)
     const sourceRowKeyCounts = new Map<string, number>();
@@ -259,8 +259,8 @@ export async function replaceInventoryProductsForRows(params: {
       const duplicateIndex = (sourceRowKeyCounts.get(sourceRowKeyBase) ?? 0) + 1;
       sourceRowKeyCounts.set(sourceRowKeyBase, duplicateIndex);
       const sourceRowKey = duplicateIndex === 1 ? sourceRowKeyBase : `${sourceRowKeyBase}:${duplicateIndex}`;
-      const legacyKey = legacySourceRowKey({ source: params.source, sheetName: row.sheetName, rowNumber: row.rowNumber });
-      const itemCodeKey = normalizeIdentity(derived.itemCode);
+      const _legacyKey = legacySourceRowKey({ source: params.source, sheetName: row.sheetName, rowNumber: row.rowNumber });
+      const _itemCodeKey = normalizeIdentity(derived.itemCode);
 
       // Upsert commerce product directly
       const productId = crypto.randomUUID();
