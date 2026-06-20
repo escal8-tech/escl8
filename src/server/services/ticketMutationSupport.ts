@@ -236,49 +236,368 @@ export async function createManualTicket(
         updatedAt: now,
       })
       .returning();
+    if (!ticketRow) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create manual order ticket." });
+    }
 
-    return { customer, ticket: ticket! };
+    const [requestRow] = await tx
+      .insert(requests)
+      .values({
+        businessId: ctx.businessId,
+        customerId: customerRow.id,
+        customerNumber: phoneDigits || null,
+        source: "other",
+        sourceMeta: {
+          source: "manual_order",
+          channel: input.channel,
+          ticketId: ticketRow.id,
+          suppressCustomerNotifications: true,
+        },
+        sentiment: "neutral",
+        status: "ongoing",
+        type: "high_intent_lead",
+        price: expectedAmount ?? "0",
+        paid: false,
+        summary,
+        botVersion: "staff_manual",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    const [finalCustomerRow] = await tx
+      .update(customers)
+      .set({
+        totalRequests: sql`${customers.totalRequests} + 1`,
+        leadScore: sql`${customers.leadScore} + 20`,
+        isHighIntent: true,
+        updatedAt: now,
+      })
+      .where(and(eq(customers.businessId, ctx.businessId), eq(customers.id, customerRow.id)))
+      .returning();
+
+    await logTicketEvent({
+      businessId: ctx.businessId,
+      ticketId: ticketRow.id,
+      eventType: "created",
+      actorType: "user",
+      actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+      actorLabel: ctx.userEmail ?? "user",
+      payload: {
+        source: "staff_manual",
+        channel: input.channel,
+        customerId: customerRow.id,
+        requestId: requestRow?.id ?? null,
+        suppressCustomerNotifications: true,
+      },
+    });
+
+    return { customerRow: finalCustomerRow ?? customerRow, ticketRow, requestRow: requestRow ?? null };
   });
 
-  await logTicketEvent({
-    businessId: ctx.businessId,
-    ticketId: result.ticket.id,
-    eventType: "created",
-    actorType: "user",
-    actorId: ctx.userId ?? ctx.firebaseUid ?? null,
-    actorLabel: ctx.userEmail ?? "user",
-    payload: {
-      source: "staff_manual",
-      customerName: input.customerName,
-    },
-  });
-
-  const realtimeTicket = await publishHydratedTicketUpsert({
-    businessId: ctx.businessId,
-    ticketId: result.ticket.id,
-    createdAt: result.ticket.updatedAt ?? now,
-  });
+  await Promise.all([
+    publishPortalEvent({
+      businessId: ctx.businessId,
+      entity: "customer",
+      op: "upsert",
+      entityId: result.customerRow.id,
+      payload: { customer: JSON.parse(JSON.stringify(result.customerRow)) as any },
+      createdAt: result.customerRow.updatedAt ?? now,
+    }),
+    publishHydratedTicketUpsert({
+      businessId: ctx.businessId,
+      ticketId: result.ticketRow.id,
+      createdAt: result.ticketRow.updatedAt ?? now,
+    }),
+    result.requestRow
+      ? publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "request",
+          op: "upsert",
+          entityId: result.requestRow.id,
+          payload: { request: JSON.parse(JSON.stringify(result.requestRow)) as any },
+          createdAt: result.requestRow.updatedAt ?? now,
+        })
+      : Promise.resolve(null),
+  ]);
 
   recordBusinessEvent({
-    event: "ticket.created",
-    action: "createManualTicket",
+    event: "ticket.manual_order_created",
+    action: "createManualOrderTicket",
     area: "ticket",
     businessId: ctx.businessId,
     entity: "ticket",
-    entityId: result.ticket.id,
+    entityId: result.ticketRow.id,
     userId: ctx.userId,
     actorId: ctx.firebaseUid ?? ctx.userId ?? null,
     actorType: "user",
     outcome: "success",
-    status: "open",
     attributes: {
       source: "staff_manual",
-      ticket_type: "ordercreation",
+      channel: input.channel,
+      customer_id: result.customerRow.id,
+      request_id: result.requestRow?.id ?? null,
+      expected_amount: expectedAmount,
     },
   });
 
   return {
-    customer: result.customer,
-    ticket: realtimeTicket ?? result.ticket,
+    ticket: result.ticketRow,
+    customer: result.customerRow,
+    request: result.requestRow,
   };
 }
+
+export async function updateTicket(
+  ctx: any,
+  input: {
+    id: string;
+    expectedUpdatedAt?: Date;
+    title?: string | null;
+    summary?: string | null;
+    notes?: string | null;
+    priority?: "low" | "normal" | "high" | "urgent";
+    customerName?: string | null;
+    customerPhone?: string | null;
+    fields?: Record<string, unknown>;
+  }
+) {
+  const now = new Date();
+  const [existing] = await db
+    .select()
+    .from(supportTickets)
+    .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
+    .limit(1);
+  if (!existing) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
+  }
+  const nextFields = sanitizeTicketFields(input.fields ?? asRecord(existing.fields));
+  const nextCustomerEmail = extractCustomerEmail(nextFields);
+  const [updated] = await db
+    .update(supportTickets)
+    .set({
+      title: input.title === undefined ? existing.title : input.title?.trim() || null,
+      summary: input.summary === undefined ? existing.summary : input.summary?.trim() || null,
+      notes: input.notes === undefined ? existing.notes : input.notes?.trim() || null,
+      priority: input.priority ?? existing.priority,
+      customerName:
+        input.customerName === undefined ? existing.customerName : input.customerName?.trim() || null,
+      customerPhone:
+        input.customerPhone === undefined ? existing.customerPhone : input.customerPhone?.trim() || null,
+      fields: nextFields,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(supportTickets.id, input.id),
+        eq(supportTickets.businessId, ctx.businessId),
+      ),
+    )
+    .returning();
+
+  if (!updated) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Failed to update ticket.",
+    });
+  }
+
+  let updatedDraftOrder: { id: string; updatedAt: Date | string | null } | null = null;
+  if (normalizeKey(updated.ticketTypeKey) === "ordercreation") {
+    const ticketSnapshot = {
+      ticketId: updated.id,
+      title: updated.title ?? null,
+      summary: updated.summary ?? null,
+      fields: nextFields,
+      notes: updated.notes ?? null,
+      priority: updated.priority ?? null,
+    };
+    const [draftOrder] = await db
+      .select({
+        id: orders.id,
+      })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.businessId, ctx.businessId),
+          eq(orders.supportTicketId, updated.id),
+          eq(orders.status, "pending_approval"),
+        ),
+      )
+      .limit(1);
+
+    if (draftOrder) {
+      const [draftOrderRow] = await db
+        .update(orders)
+        .set({
+          customerName: updated.customerName,
+          customerPhone: updated.customerPhone,
+          customerEmail: nextCustomerEmail,
+          ticketSnapshot,
+          notes: updated.notes?.trim() || null,
+          updatedAt: now,
+        })
+        .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, draftOrder.id)))
+        .returning({
+          id: orders.id,
+          updatedAt: orders.updatedAt,
+        });
+      if (draftOrderRow) updatedDraftOrder = draftOrderRow;
+    }
+
+    if (updated.customerId) {
+      await db
+        .update(customers)
+        .set({
+          name: updated.customerName,
+          phone: updated.customerPhone,
+          email: nextCustomerEmail,
+          updatedAt: now,
+        })
+        .where(and(eq(customers.businessId, ctx.businessId), eq(customers.id, updated.customerId)));
+    }
+  }
+
+  await logTicketEvent({
+    businessId: ctx.businessId,
+    ticketId: updated.id,
+    eventType: "edited",
+    actorType: "user",
+    actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+    actorLabel: ctx.userEmail ?? "user",
+    payload: {
+      fieldsUpdated: input.fields ? Object.keys(input.fields) : [],
+      priority: updated.priority,
+    },
+  });
+  if (updatedDraftOrder) {
+    await logOrderEvent({
+      businessId: ctx.businessId,
+      orderId: updatedDraftOrder.id,
+      eventType: "draft_updated",
+      actorType: "user",
+      actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+      actorLabel: ctx.userEmail ?? "user",
+      payload: {
+        supportTicketId: updated.id,
+      },
+    });
+  }
+  await Promise.all([
+    publishHydratedTicketUpsert({
+      businessId: ctx.businessId,
+      ticketId: updated.id,
+      createdAt: updated.updatedAt ?? updated.createdAt ?? now,
+    }),
+    updatedDraftOrder
+      ? publishPortalEvent({
+          businessId: ctx.businessId,
+          entity: "order",
+          op: "upsert",
+          entityId: updatedDraftOrder.id,
+          payload: { order: { id: updatedDraftOrder.id } as any },
+          createdAt: updatedDraftOrder.updatedAt ?? now,
+        })
+      : Promise.resolve(false),
+  ]);
+  recordBusinessEvent({
+    event: "ticket.updated",
+    action: "updateTicket",
+    area: "ticket",
+    businessId: ctx.businessId,
+    entity: "ticket",
+    entityId: updated.id,
+    userId: ctx.userId,
+    actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+    actorType: "user",
+    outcome: "success",
+    status: updated.status,
+    attributes: {
+      priority: updated.priority,
+      ticket_type_key: updated.ticketTypeKey,
+    },
+  });
+
+  return updated;
+}
+
+export * from "./ticketLifecycleSupport";
+
+export async function updateTicketSlaDueAt(
+  ctx: any,
+  input: {
+    id: string;
+    expectedUpdatedAt?: Date;
+    slaDueAt: Date | null;
+  }
+) {
+  const [existing] = await db
+    .select({ slaDueAt: supportTickets.slaDueAt, updatedAt: supportTickets.updatedAt })
+    .from(supportTickets)
+    .where(and(eq(supportTickets.id, input.id), eq(supportTickets.businessId, ctx.businessId)))
+    .limit(1);
+  if (!existing) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
+  }
+  const [updated] = await db
+    .update(supportTickets)
+    .set({
+      slaDueAt: input.slaDueAt,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(supportTickets.id, input.id),
+        eq(supportTickets.businessId, ctx.businessId),
+      ),
+    )
+    .returning();
+  if (!updated) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Failed to update ticket SLA.",
+    });
+  }
+
+  const fromIso = existing.slaDueAt ? new Date(existing.slaDueAt).toISOString() : null;
+  const toIso = updated.slaDueAt ? new Date(updated.slaDueAt).toISOString() : null;
+  if (fromIso !== toIso) {
+    await logTicketEvent({
+      businessId: ctx.businessId,
+      ticketId: updated.id,
+      eventType: "sla_changed",
+      actorType: "user",
+      actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+      actorLabel: ctx.userEmail ?? "user",
+      payload: {
+        from: fromIso,
+        to: toIso,
+      },
+    });
+  }
+  await publishHydratedTicketUpsert({
+    businessId: ctx.businessId,
+    ticketId: updated.id,
+    createdAt: updated.updatedAt ?? updated.createdAt ?? new Date(),
+  });
+  if (fromIso !== toIso) {
+    recordBusinessEvent({
+      event: "ticket.sla_updated",
+      action: "updateTicketSlaDueAt",
+      area: "ticket",
+      businessId: ctx.businessId,
+      entity: "ticket",
+      entityId: updated.id,
+      userId: ctx.userId,
+      actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+      actorType: "user",
+      outcome: "success",
+      attributes: {
+        from_sla_due_at: fromIso,
+        to_sla_due_at: toIso,
+      },
+    });
+  }
+  return updated;
+}
+
