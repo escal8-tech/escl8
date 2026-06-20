@@ -1,7 +1,3 @@
-import { and, eq } from "drizzle-orm";
-import { db } from "@/server/db/client";
-import { users } from "@/../drizzle/schema";
-import { verifyFirebaseIdToken } from "@/server/firebaseAdmin";
 
 export function readBearerToken(request: Request): string | null {
   const auth = request.headers.get("authorization") || "";

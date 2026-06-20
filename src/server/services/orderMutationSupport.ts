@@ -1,15 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/server/db/client";
-import { customers, orderPayments, orders, supportTickets } from "../../../drizzle/schema";
+import { customers, orders, supportTickets } from "../../../drizzle/schema";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import {
   buildOrderApprovalEmail,
   buildOrderApprovalMessages,
-  buildManualCollectionMessages,
-  buildManualCollectionEmail,
   formatOrderItemsSummary,
   logOrderEvent,
   missingRequiredOrderDeliveryFields,
@@ -18,16 +16,10 @@ import {
 } from "../services/orderFlow";
 import {
   assertOrderAllowsFulfillmentUpdates,
-  assertPaymentReviewAllowed,
   assertPaymentSetupEditable,
   asRecord,
-  buildPaymentReviewEmail,
-  buildPaymentReviewMessages,
-  buildRefundStatusMessages,
   buildStoredOrderFlowSettings,
-  canReopenPaidOrderForPaymentReview,
   canResendPaymentDetails,
-  canCaptureManualPayment,
   cleanOptionalText,
   cleanOptionalUrl,
   coalesceText,
@@ -40,7 +32,6 @@ import {
   nextFulfillmentTimestamps,
   parseOptionalDate,
   resolveOrderNotificationContext,
-  resolveRefundAmount,
   requiresDispatchData,
 } from "@/server/services/orderWorkflowSupport";
 import {

@@ -15,8 +15,6 @@ import { recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@
 import type { OrderDeliveryChargeType, OrderPaymentMethod } from "@/lib/order-settings";
 import { DEFAULT_CUSTOMIZATION_SETTINGS } from "@/lib/customization-settings";
 import { buildWebsiteWidgetSnippet, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
-import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
-import { UploadContent } from "@/app/portal/upload/components/UploadContent";
 import dynamic from "next/dynamic";
 const FlowBuilderContent = dynamic(() => import("@/app/portal/flowbuilder/FlowBuilderContent").then(mod => mod.FlowBuilderContent), {
   loading: () => <div className="p-8 text-center text-gray-500 dark:text-gray-400">Loading Flow Builder...</div>

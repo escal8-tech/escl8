@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePortalTheme } from "@/app/portal/components/PortalThemeProvider";
 import { trpc } from "@/utils/trpc";
-import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useIsMobileViewport } from "@/app/portal/hooks/useIsMobileViewport";
 import Breadcrumbs from "@/app/portal/components/Breadcrumbs";
 import {

@@ -7,7 +7,6 @@ import {
   customers,
   orders,
   orderPayments,
-  supportTicketTypes,
   supportTickets,
 } from "../../../drizzle/schema";
 import { TRPCError } from "@trpc/server";

@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { getFirebaseAuth } from '@/lib/firebaseClient'
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth'
+import { onAuthStateChanged } from 'firebase/auth'
 
 export type Escal8User = {
   id?: string | null

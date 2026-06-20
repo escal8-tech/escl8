@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { NextResponse } from "next/server";
 import { WebPubSubServiceClient } from "@azure/web-pubsub";
 import { getAuthedUserFromRequest } from "@/server/apiAuth";

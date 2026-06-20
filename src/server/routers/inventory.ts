@@ -10,7 +10,6 @@ import {
   commerceProducts as inventoryProducts,
   commerceStockReservations as inventoryReservations,
   commerceStockBalances,
-  businesses,
   agents,
   trainingDocuments,
 } from "../../../drizzle/schema";
@@ -521,7 +520,7 @@ export const inventoryRouter = router({
         .limit(input?.limit ?? 50)
         .offset(input?.offset ?? 0);
 
-      const productIds = Array.from(new Set(rows.map((row) => row.productId)));
+      const productIds = Array.from(new Set(rows.map((row) => row.productId))).filter(Boolean) as string[];
       const products = productIds.length
         ? await db
             .select({ id: inventoryProducts.id, name: inventoryProducts.name })

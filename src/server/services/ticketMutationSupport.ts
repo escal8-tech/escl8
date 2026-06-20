@@ -3,45 +3,28 @@ import { randomUUID } from "crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db/client";
 import {
-  businesses,
   customers,
   orders,
-  orderPayments,
   requests,
   supportTicketTypes,
   supportTickets,
 } from "../../../drizzle/schema";
 import { TRPCError } from "@trpc/server";
-import { resolveInitialFulfillmentStatus } from "@/lib/order-operations";
 import { DEFAULT_TICKET_TYPE_KEYS, ensureDefaultTicketTypes } from "../services/ticketDefaults";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
-import { drainBusinessOutbox, enqueueEmailOutboxMessages, enqueueWhatsAppOutboxMessages } from "@/server/services/messageOutbox";
 import {
-  buildOrderApprovalEmail,
-  buildOrderApprovalMessages,
-  buildOrderDeliveryDetailsRequestMessages,
   computeOrderExpectedAmount,
-  extractOrderFulfillmentSeed,
   formatOrderItemsSummary,
   logOrderEvent,
-  missingRequiredOrderDeliveryFields,
   parseMoneyValue,
   sanitizePhoneDigits,
 } from "../services/orderFlow";
 import {
   asRecord,
-  assertTicketAwaitingOrderDecision,
-  buildOrderDenialMessages,
-  coalesceText,
-  enforceOrderTicketOperationThrottle,
   extractCustomerEmail,
-  flushBusinessOutbox,
   getSlaDueAt,
-  getThreadWhatsappWindowState,
-  lockWorkflowKey,
   logTicketEvent,
-  maskPhoneNumber,
   normalizeKey,
   publishHydratedTicketUpsert,
   resolveTicketContactContext,

@@ -1,5 +1,5 @@
 import {SignJWT, jwtVerify, type JWTPayload} from 'jose';
-import {getTenantModuleAccess, type TenantModuleAccess, type SuiteProductModule} from '@/server/control/access';
+import {getTenantModuleAccess, type SuiteProductModule} from '@/server/control/access';
 import {getRedisClient, getCached, setCached} from '@/lib/redis';
 import {REDIS_KEYS} from '@/lib/redis';
 

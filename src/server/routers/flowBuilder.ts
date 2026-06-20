@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { businesses, channelIdentities, whatsappIdentityDetails, agents } from "@/../drizzle/schema";
+import { agents } from "@/../drizzle/schema";
 import { cloneFlowModules, flowBuilderAgents, type FlowAgentManifest } from "@/lib/flow-builder/registry";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { db } from "../db/client";

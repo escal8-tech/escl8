@@ -1,14 +1,13 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import { withStatsCache } from "@/server/lib/statsCache";
-import { orderEvents, orderPayments, orders, threadMessages, channelIdentities, whatsappIdentityDetails } from "@/../drizzle/schema";
+import { orderEvents, orderPayments, orders } from "@/../drizzle/schema";
 import {
   ORDER_WORKSPACE_MODES,
   buildWorkspaceConditions,
   getBusinessOrderSettings,
   hydrateOrderRows,
   refreshOrderPaymentProofUrl,
-  whatsappWindowState,
 } from "@/server/services/orderWorkflowSupport";
 
 export async function listOrdersForBusiness(args: {

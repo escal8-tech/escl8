@@ -5,9 +5,9 @@ import { generateTokenPair } from '@/lib/jwt-auth';
 import { db } from '@/server/db/client';
 import { users, businesses } from '@/../drizzle/schema';
 import { eq, and } from 'drizzle-orm';
-import { rateLimiter, RATE_LIMITS } from '@/lib/rate-limiter';
-import { setAuthCookies, clearAuthCookies, blacklistToken } from '@/lib/auth-cookies';
-import { checkRateLimit, getClientIp } from '@/lib/auth-rate-limit';
+import { RATE_LIMITS } from '@/lib/rate-limiter';
+import { setAuthCookies } from '@/lib/auth-cookies';
+import { checkRateLimit } from '@/lib/auth-rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

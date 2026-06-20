@@ -1,16 +1,14 @@
 import crypto from "crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import {
   businesses,
-  commerceProducts,
 } from "../../../drizzle/schema";
 import type { SpreadsheetRow } from "./extractText";
 import {
   deriveInventoryProductFromFields,
   getAgentStockSettings,
 } from "@/server/inventory/stockMapping";
-import { normalizeStockSettings, type BusinessStockSettings } from "@/lib/stock-settings";
 import { acquireInventoryBusinessLock } from "@/server/inventory/locks";
 import {
   upsertCommerceProductFromInventory,

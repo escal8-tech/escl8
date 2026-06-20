@@ -1,7 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import {
-  businesses,
   agents,
   commerceProducts,
 } from "../../../drizzle/schema";

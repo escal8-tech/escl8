@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, X, Sparkles, Crown, Zap, Shield, Globe, Users, Calendar, Bed, Utensils, Building, Users as UsersIcon, Crown as CrownIcon, MessageSquare, Cpu, Database, Lock } from "lucide-react";
+import { Check, X, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Tier {

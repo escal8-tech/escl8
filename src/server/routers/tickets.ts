@@ -16,7 +16,7 @@ import {
   listTicketsForBusiness,
 } from "@/server/services/ticketReadSupport";
 import * as ticketMutationSupport from "@/server/services/ticketMutationSupport";
-import { getCached, setCached } from "@/lib/redis";
+import { setCached } from "@/lib/redis";
 
 const ticketStatusSchema = z.enum(["open", "in_progress", "resolved"]);
 const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
