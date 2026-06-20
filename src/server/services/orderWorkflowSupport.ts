@@ -83,6 +83,23 @@ export type OrderStatusQueueFilter = "all" | "pending" | "out_for_delivery" | "c
 export type RevenueQueueFilter = "all" | "realized" | "unrealized";
 export type OrderWorkspaceFilter = PaymentQueueFilter | OrderStatusQueueFilter | RevenueQueueFilter;
 
+export const PAYMENT_PENDING_WORKSPACE_STATUSES = [
+  "pending_approval",
+  "edit_required",
+  "approved",
+  "awaiting_payment",
+  "payment_submitted",
+] as const;
+
+export const PAYMENT_ALL_WORKSPACE_STATUSES = [
+  ...PAYMENT_PENDING_WORKSPACE_STATUSES,
+  "payment_rejected",
+  "denied",
+  "paid",
+  "refund_pending",
+  "refunded",
+] as const;
+
 const PAYMENT_SETUP_EDITABLE_ORDER_STATUSES = new Set([
   "approved",
   "awaiting_payment",
@@ -521,14 +538,16 @@ export function buildWorkspaceConditions(params: {
 
   if (params.mode === "payments") {
     if (params.queueFilter === "pending") {
-      conditions.push(sql<boolean>`${statusExpr} in ('approved', 'awaiting_payment', 'payment_submitted')`);
+      conditions.push(
+        sql<boolean>`${statusExpr} in ('pending_approval', 'edit_required', 'approved', 'awaiting_payment', 'payment_submitted')`,
+      );
     } else if (params.queueFilter === "approved") {
       conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
     } else if (params.queueFilter === "denied") {
       conditions.push(sql<boolean>`${statusExpr} in ('payment_rejected', 'denied')`);
     } else {
       conditions.push(
-        sql<boolean>`${statusExpr} in ('approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'denied', 'paid', 'refund_pending', 'refunded')`,
+        sql<boolean>`${statusExpr} in ('pending_approval', 'edit_required', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'denied', 'paid', 'refund_pending', 'refunded')`,
       );
     }
   } else if (params.mode === "status") {
