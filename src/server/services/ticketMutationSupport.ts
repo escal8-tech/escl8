@@ -164,74 +164,246 @@ export async function upsertType(
   return row;
 }
 
-export async function createManualTicket(
+export async function createTicket(
   ctx: any,
   input: {
-    channel: string;
-    customerName: string;
-    customerPhone?: string | null;
-    customerEmail?: string | null;
-    notes?: string | null;
-    deliveryArea?: string | null;
-    shippingAddress?: string | null;
-    lineItems: Array<{ item: string; quantity?: string; unitPrice?: string }>;
-    total?: string | null;
+    ticketTypeKey: string;
+    title?: string;
+    summary?: string;
+    status?: "open" | "in_progress" | "resolved";
+    priority?: "low" | "normal" | "high" | "urgent";
+    source?: string;
+    customerId?: string;
+    threadId?: string;
+    channelIdentityId?: string;
+    customerName?: string;
+    customerPhone?: string;
+    fields?: Record<string, unknown>;
+    notes?: string;
+    createdBy?: "bot" | "user" | "system";
+    slaDueAt?: Date;
   }
 ) {
+  await ensureDefaultTicketTypes(ctx.businessId);
+  const ticketTypeKey = normalizeKey(input.ticketTypeKey);
+  const [typeRow] = await db
+    .select()
+    .from(supportTicketTypes)
+    .where(
+      and(
+        eq(supportTicketTypes.businessId, ctx.businessId),
+        eq(supportTicketTypes.key, ticketTypeKey),
+      ),
+    )
+    .limit(1);
+  if (!typeRow) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid ticket type" });
+  }
+  const contactContext = await resolveTicketContactContext({
+    businessId: ctx.businessId,
+    customerId: input.customerId ?? null,
+    threadId: input.threadId ?? null,
+    channelIdentityId: input.channelIdentityId ?? null,
+    customerName: input.customerName ?? null,
+    customerPhone: input.customerPhone ?? null,
+  });
+  const [created] = await db
+    .insert(supportTickets)
+    .values({
+      businessId: ctx.businessId,
+      ticketTypeId: typeRow.id,
+      ticketTypeKey,
+      title: input.title?.trim() || null,
+      summary: input.summary?.trim() || null,
+      status: input.status ?? "open",
+      priority: input.priority ?? "normal",
+      source: input.source?.trim() || "whatsapp",
+      customerId: contactContext.customerId,
+      threadId: contactContext.threadId,
+      channelIdentityId: contactContext.channelIdentityId,
+      customerName: contactContext.customerName,
+      customerPhone: contactContext.customerPhone,
+      fields: sanitizeTicketFields(input.fields ?? {}),
+      notes: input.notes?.trim() || null,
+      createdBy: input.createdBy ?? "user",
+      outcome: "pending",
+      lossReason: null,
+      slaDueAt: input.slaDueAt ?? getSlaDueAt(input.priority ?? "normal"),
+    })
+    .returning();
+  if (created) {
+    await logTicketEvent({
+      businessId: ctx.businessId,
+      ticketId: created.id,
+      eventType: "created",
+      actorType: input.createdBy === "bot" ? "bot" : "user",
+      actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+      actorLabel: ctx.userEmail ?? input.createdBy ?? "system",
+      payload: {
+        status: created.status,
+        priority: created.priority,
+        outcome: created.outcome,
+        slaDueAt: created.slaDueAt ? new Date(created.slaDueAt).toISOString() : null,
+      },
+    });
+    await publishHydratedTicketUpsert({
+      businessId: ctx.businessId,
+      ticketId: created.id,
+      createdAt: created.updatedAt ?? created.createdAt ?? new Date(),
+    });
+    recordBusinessEvent({
+      event: "ticket.created",
+      action: "createTicket",
+      area: "ticket",
+      businessId: ctx.businessId,
+      entity: "ticket",
+      entityId: created.id,
+      userId: ctx.userId,
+      actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+      actorType: input.createdBy === "bot" ? "bot" : "user",
+      outcome: "success",
+      status: created.status,
+      attributes: {
+        outcome: created.outcome,
+        priority: created.priority,
+        source: created.source,
+        ticket_type_key: created.ticketTypeKey,
+        customer_phone_saved: Boolean(contactContext.customerPhone),
+        customer_phone_source: contactContext.recipientSource,
+      },
+    });
+  }
+  return created;
+}
+
+export async function createManualOrderTicket(
+  ctx: any,
+  input: {
+    channel: "walkin" | "phone" | "website" | "other";
+    customerName: string;
+    customerPhone?: string;
+    customerEmail?: string;
+    priority: "low" | "normal" | "high" | "urgent";
+    notes?: string;
+    deliveryArea?: string;
+    shippingAddress?: string;
+    lineItems: Array<{ item: string; quantity?: string; unitPrice?: string }>;
+    total?: string;
+  }
+) {
+  await ensureDefaultTicketTypes(ctx.businessId);
   const settings = await getBusinessOrderSettingsRecord(ctx.businessId);
   validateTicketOrderFlow({
     ticketTypeKey: "ordercreation",
     ticketFlowEnabled: settings.ticketToOrderEnabled,
   });
-
   const now = new Date();
+  const phoneDigits = sanitizePhoneDigits(input.customerPhone);
+  const customerEmail = normalizeOptionalText(input.customerEmail);
   const externalId = normalizeManualExternalId({
-    phone: input.customerPhone,
-    email: input.customerEmail,
+    phone: phoneDigits,
+    email: customerEmail,
     name: input.customerName,
   });
-
-  const customerEmail = normalizeOptionalText(input.customerEmail);
+  const fields = buildManualOrderFields({
+    channel: input.channel,
+    customerName: input.customerName,
+    customerPhone: phoneDigits,
+    customerEmail,
+    notes: input.notes,
+    deliveryArea: input.deliveryArea,
+    shippingAddress: input.shippingAddress,
+    lineItems: input.lineItems,
+    total: input.total,
+  });
+  const expectedAmount = computeOrderExpectedAmount(fields);
+  const summary = `Manual ${input.channel} order: ${formatOrderItemsSummary(fields)}`;
 
   const result = await db.transaction(async (tx) => {
-    let [customer] = await tx
+    const [typeRow] = await tx
       .select()
-      .from(customers)
-      .where(and(eq(customers.businessId, ctx.businessId), eq(customers.externalId, externalId)))
+      .from(supportTicketTypes)
+      .where(and(eq(supportTicketTypes.businessId, ctx.businessId), eq(supportTicketTypes.key, "ordercreation")))
       .limit(1);
-
-    if (!customer) {
-      const [newCustomer] = await tx
-        .insert(customers)
-        .values({
-          businessId: ctx.businessId,
-          externalId,
-          source: "staff_manual",
-          name: input.customerName,
-          phone: sanitizePhoneDigits(input.customerPhone),
-          email: customerEmail,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning();
-      customer = newCustomer!;
+    if (!typeRow) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Order ticket type is not configured." });
     }
 
-    const fields = buildManualOrderFields(input);
-    const [ticket] = await tx
+    const [existingCustomer] = await tx
+      .select()
+      .from(customers)
+      .where(
+        and(
+          eq(customers.businessId, ctx.businessId),
+          eq(customers.source, "other"),
+          eq(customers.externalId, externalId),
+        ),
+      )
+      .limit(1);
+
+    const nextTags = Array.from(new Set([...(existingCustomer?.tags ?? []), "manual", input.channel]));
+    const [customerRow] = existingCustomer
+      ? await tx
+          .update(customers)
+          .set({
+            name: input.customerName,
+            phone: phoneDigits || existingCustomer.phone,
+            email: customerEmail ?? existingCustomer.email,
+            tags: nextTags,
+            botPaused: true,
+            status: "active",
+            updatedAt: now,
+          })
+          .where(and(eq(customers.businessId, ctx.businessId), eq(customers.id, existingCustomer.id)))
+          .returning()
+      : await tx
+          .insert(customers)
+          .values({
+            businessId: ctx.businessId,
+            source: "other",
+            externalId,
+            name: input.customerName,
+            phone: phoneDigits || null,
+            email: customerEmail,
+            tags: ["manual", input.channel],
+            botPaused: true,
+            status: "active",
+            platformMeta: {
+              source: "manual_order",
+              channel: input.channel,
+              suppressCustomerNotifications: true,
+            },
+            firstMessageAt: now,
+            lastMessageAt: now,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
+    if (!customerRow) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create manual customer." });
+    }
+
+    const [ticketRow] = await tx
       .insert(supportTickets)
       .values({
         businessId: ctx.businessId,
-        customerId: customer.id,
+        ticketTypeId: typeRow.id,
         ticketTypeKey: "ordercreation",
+        title: `Manual order - ${input.customerName}`,
+        summary,
         status: "open",
-        outcome: "pending",
+        priority: input.priority,
         source: "staff_manual",
+        customerId: customerRow.id,
+        threadId: null,
+        channelIdentityId: null,
         customerName: input.customerName,
-        customerPhone: sanitizePhoneDigits(input.customerPhone),
+        customerPhone: phoneDigits || null,
+        fields: sanitizeTicketFields(fields),
         notes: normalizeOptionalText(input.notes),
-        fields,
-        slaDueAt: getSlaDueAt(now, 24 * 60),
+        createdBy: "user",
+        outcome: "pending",
+        slaDueAt: getSlaDueAt(input.priority),
         createdAt: now,
         updatedAt: now,
       })
