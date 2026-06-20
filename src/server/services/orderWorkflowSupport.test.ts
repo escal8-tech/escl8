@@ -8,6 +8,7 @@ import {
   canReopenPaidOrderForPaymentReview,
   canResendPaymentDetails,
   cleanOptionalText,
+  PAYMENT_PENDING_WORKSPACE_STATUSES,
   nextFulfillmentTimestamps,
   resolveRefundAmount,
 } from "@/server/services/orderWorkflowSupport";
@@ -56,6 +57,16 @@ test("payment detail resend stays available during payment review", () => {
   assert.equal(canResendPaymentDetails({ paymentMethod: "bank_qr", status: "awaiting_payment" }), true);
   assert.equal(canResendPaymentDetails({ paymentMethod: "bank_qr", status: "payment_submitted" }), true);
   assert.equal(canResendPaymentDetails({ paymentMethod: "bank_qr", status: "paid" }), false);
+});
+
+test("payment workspace pending queue includes draft and approval states", () => {
+  assert.deepEqual(PAYMENT_PENDING_WORKSPACE_STATUSES, [
+    "pending_approval",
+    "edit_required",
+    "approved",
+    "awaiting_payment",
+    "payment_submitted",
+  ]);
 });
 
 test("paid orders can only reopen payment review before delivery starts", () => {
