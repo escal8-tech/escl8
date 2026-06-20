@@ -5,6 +5,15 @@ import { customers, requests, SUPPORTED_SOURCES } from "@/../drizzle/schema";
 import { eq, and, desc, sql, isNull, lt, or, inArray, asc, ilike } from "drizzle-orm";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { getCached, setCached } from "@/lib/redis";
+
+async function withCache<T>(key: string, ttl: number, fetcher: () => Promise<T>): Promise<T> {
+  const cached = await getCached<T>(key);
+  if (cached) return cached;
+  const result = await fetcher();
+  await setCached(key, result, ttl);
+  return result;
+}
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
 
@@ -32,7 +41,9 @@ export const customersRouter = router({
       }).optional()
     )
     .query(async ({ ctx, input }) => {
-      const conditions = [eq(customers.businessId, ctx.businessId)];
+      const cacheKey = `customers:list:${ctx.businessId}:${JSON.stringify(input || {})}`;
+      return withCache(cacheKey, 900, async () => {
+        const conditions = [eq(customers.businessId, ctx.businessId)];
       
       if (input?.source) {
         conditions.push(eq(customers.source, input.source));
@@ -66,16 +77,17 @@ export const customersRouter = router({
         .orderBy(desc(customers.updatedAt), desc(customers.id))
         .limit(limit);
 
-      return rows.map((row) => ({
-        ...row,
-        totalRequests: row.totalRequests ?? 0,
-        totalRevenue: row.totalRevenue ?? "0",
-        successfulRequests: row.successfulRequests ?? 0,
-        leadScore: row.leadScore ?? 0,
-        isHighIntent: row.isHighIntent ?? false,
-        tags: (row.tags as string[]) ?? [],
-        platformMeta: row.platformMeta as Record<string, unknown> | null,
-      }));
+        return rows.map((row) => ({
+          ...row,
+          totalRequests: row.totalRequests ?? 0,
+          totalRevenue: row.totalRevenue ?? "0",
+          successfulRequests: row.successfulRequests ?? 0,
+          leadScore: row.leadScore ?? 0,
+          isHighIntent: row.isHighIntent ?? false,
+          tags: (row.tags as string[]) ?? [],
+          platformMeta: row.platformMeta as Record<string, unknown> | null,
+        }));
+      });
     }),
 
   listPage: businessProcedure
@@ -92,7 +104,9 @@ export const customersRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const conditions = [eq(customers.businessId, ctx.businessId)];
+      const cacheKey = `customers:page:${ctx.businessId}:${JSON.stringify(input || {})}`;
+      return withCache(cacheKey, 900, async () => {
+        const conditions = [eq(customers.businessId, ctx.businessId)];
 
       if (input.source) {
         conditions.push(eq(customers.source, input.source));
@@ -153,19 +167,20 @@ export const customersRouter = router({
         .limit(input.limit)
         .offset(input.offset);
 
-      return {
-        totalCount: countRow?.count ?? 0,
-        items: rows.map((row) => ({
-          ...row,
-          totalRequests: row.totalRequests ?? 0,
-          totalRevenue: row.totalRevenue ?? "0",
-          successfulRequests: row.successfulRequests ?? 0,
-          leadScore: row.leadScore ?? 0,
-          isHighIntent: row.isHighIntent ?? false,
-          tags: (row.tags as string[]) ?? [],
-          platformMeta: row.platformMeta as Record<string, unknown> | null,
-        })),
-      };
+        return {
+          totalCount: countRow?.count ?? 0,
+          items: rows.map((row) => ({
+            ...row,
+            totalRequests: row.totalRequests ?? 0,
+            totalRevenue: row.totalRevenue ?? "0",
+            successfulRequests: row.successfulRequests ?? 0,
+            leadScore: row.leadScore ?? 0,
+            isHighIntent: row.isHighIntent ?? false,
+            tags: (row.tags as string[]) ?? [],
+            platformMeta: row.platformMeta as Record<string, unknown> | null,
+          })),
+        };
+      });
     }),
 
   /**
@@ -176,7 +191,9 @@ export const customersRouter = router({
       id: z.string(),
     }))
     .query(async ({ ctx, input }) => {
-      const [customer] = await db
+      const cacheKey = `customers:id:${ctx.businessId}:${input.id}`;
+      return withCache(cacheKey, 900, async () => {
+        const [customer] = await db
         .select()
         .from(customers)
         .where(
@@ -188,13 +205,14 @@ export const customersRouter = router({
         )
         .limit(1);
 
-      if (!customer) return null;
+        if (!customer) return null;
 
-      return {
-        ...customer,
-        tags: (customer.tags as string[]) ?? [],
-        platformMeta: customer.platformMeta as Record<string, unknown> | null,
-      };
+        return {
+          ...customer,
+          tags: (customer.tags as string[]) ?? [],
+          platformMeta: customer.platformMeta as Record<string, unknown> | null,
+        };
+      });
     }),
 
   /**
@@ -206,7 +224,9 @@ export const customersRouter = router({
       externalId: z.string(),
     }))
     .query(async ({ ctx, input }) => {
-      const [customer] = await db
+      const cacheKey = `customers:extId:${ctx.businessId}:${input.source}:${input.externalId}`;
+      return withCache(cacheKey, 900, async () => {
+        const [customer] = await db
         .select()
         .from(customers)
         .where(
@@ -219,13 +239,14 @@ export const customersRouter = router({
         )
         .limit(1);
 
-      if (!customer) return null;
+        if (!customer) return null;
 
-      return {
-        ...customer,
-        tags: (customer.tags as string[]) ?? [],
-        platformMeta: customer.platformMeta as Record<string, unknown> | null,
-      };
+        return {
+          ...customer,
+          tags: (customer.tags as string[]) ?? [],
+          platformMeta: customer.platformMeta as Record<string, unknown> | null,
+        };
+      });
     }),
 
   /**
@@ -236,7 +257,9 @@ export const customersRouter = router({
       customerId: z.string(),
     }))
     .query(async ({ ctx, input }) => {
-      const rows = await db
+      const cacheKey = `customers:requests:${ctx.businessId}:${input.customerId}`;
+      return withCache(cacheKey, 900, async () => {
+        const rows = await db
         .select({
           id: requests.id,
           sentiment: requests.sentiment,
@@ -260,7 +283,8 @@ export const customersRouter = router({
         )
         .orderBy(desc(requests.createdAt));
 
-      return rows;
+        return rows;
+      });
     }),
 
   /**
@@ -527,7 +551,9 @@ export const customersRouter = router({
    * Get aggregate stats across all sources for dashboard
    */
   getStats: businessProcedure.query(async ({ ctx }) => {
-    const result = await db
+    const cacheKey = `customers:stats:${ctx.businessId}`;
+    return withCache(cacheKey, 900, async () => {
+      const result = await db
       .select({
         totalCustomers: sql<number>`count(*)::int`,
         totalRevenue: sql<string>`coalesce(sum(${customers.totalRevenue}::numeric), 0)::text`,
@@ -540,7 +566,8 @@ export const customersRouter = router({
         isNull(customers.deletedAt)
       ));
 
-    return result[0] ?? { totalCustomers: 0, totalRevenue: "0", avgLeadScore: 0, highIntentCount: 0 };
+      return result[0] ?? { totalCustomers: 0, totalRevenue: "0", avgLeadScore: 0, highIntentCount: 0 };
+    });
   }),
 
   /**
@@ -553,7 +580,9 @@ export const customersRouter = router({
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
-      const conditions = [
+      const cacheKey = `customers:sourceCounts:${ctx.businessId}:${JSON.stringify(input || {})}`;
+      return withCache(cacheKey, 900, async () => {
+        const conditions = [
         eq(customers.businessId, ctx.businessId),
         isNull(customers.deletedAt),
       ];
@@ -570,18 +599,21 @@ export const customersRouter = router({
         .where(and(...conditions))
         .groupBy(customers.source);
 
-      const counts: Record<string, number> = {};
-      for (const row of rows) {
-        counts[row.source] = row.count;
-      }
-      return counts;
+        const counts: Record<string, number> = {};
+        for (const row of rows) {
+          counts[row.source] = row.count;
+        }
+        return counts;
+      });
     }),
 
   getBotPausedByIds: businessProcedure
     .input(z.object({ ids: z.array(z.string()).max(500) }))
     .query(async ({ ctx, input }) => {
       if (!input.ids.length) return {} as Record<string, boolean>;
-      const rows = await db
+      const cacheKey = `customers:botPaused:${ctx.businessId}:${JSON.stringify(input.ids)}`;
+      return withCache(cacheKey, 900, async () => {
+        const rows = await db
         .select({
           id: customers.id,
           botPaused: customers.botPaused,
@@ -594,11 +626,12 @@ export const customersRouter = router({
             inArray(customers.id, input.ids),
           ),
         );
-      const result: Record<string, boolean> = {};
-      for (const row of rows) {
-        result[row.id] = Boolean(row.botPaused);
-      }
-      return result;
+        const result: Record<string, boolean> = {};
+        for (const row of rows) {
+          result[row.id] = Boolean(row.botPaused);
+        }
+        return result;
+      });
     }),
 
   setBotPaused: businessProcedure
