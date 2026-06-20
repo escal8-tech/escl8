@@ -97,7 +97,7 @@ type MessageRow = {
   createdAt: string | Date;
 };
 
-type LiveSyncOptions = {
+export type LiveSyncOptions = {
   requestListInput?: { limit?: number; channelIdentityId?: string };
   requestPageInput?: RequestPageInput;
   requestStatsInput?: MaybePhoneFilter;
