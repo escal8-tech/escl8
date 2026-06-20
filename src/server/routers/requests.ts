@@ -183,7 +183,7 @@ export const requestsRouter = router({
     )
     .query(async ({ input, ctx }) => {
       const cacheKey = `requests:activity:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = await getCached<any>(cacheKey);
+      const cached = await getCached<{ date: string; count: number }[]>(cacheKey);
       if (cached) return cached;
 
       const days = input?.days ?? 30;
@@ -237,7 +237,16 @@ export const requestsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const cacheKey = `requests:stats:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = await getCached<any>(cacheKey);
+      const cached = await getCached<{
+        count: number;
+        revenue: number;
+        paidCount: number;
+        completed: number;
+        failed: number;
+        needsFollowup: number;
+        bySentiment: Record<string, number>;
+        byStatus: Record<string, number>;
+      }>(cacheKey);
       if (cached) return cached;
 
       // If filtering by phone number, get customer IDs first

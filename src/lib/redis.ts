@@ -26,7 +26,7 @@ type AnyRedisClient = RedisClientType | RedisClusterType;
 let redisClient: AnyRedisClient | null = null;
 let isConnecting = false;
 let connectionPromise: Promise<AnyRedisClient> | null = null;
-const REDIS_CONNECT_TIMEOUT_MS = Number(process.env.REDIS_CONNECT_TIMEOUT_MS || 1500);
+const REDIS_CONNECT_TIMEOUT_MS = Number(process.env.REDIS_CONNECT_TIMEOUT_MS || 10000);
 
 async function withTimeout<T>(
   promise: Promise<T>,

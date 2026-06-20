@@ -8,7 +8,7 @@ import { getCached, setCached } from "@/lib/redis";
 export const agentsRouter = router({
   listAgents: businessProcedure.query(async ({ ctx }) => {
     const cacheKey = `agents:list:${ctx.businessId}`;
-    const cached = await getCached<any>(cacheKey);
+    const cached = await getCached<typeof agents.$inferSelect[]>(cacheKey);
     if (cached) return cached;
 
     const rows = await db

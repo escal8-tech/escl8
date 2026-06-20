@@ -59,7 +59,7 @@ export const ordersRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const cacheKey = `orders:list:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = await getCached<any>(cacheKey);
+      const cached = await getCached<Awaited<ReturnType<typeof listOrdersForBusiness>>>(cacheKey);
       if (cached) return cached;
 
       const result = await listOrdersForBusiness({ businessId: ctx.businessId, limit: input?.limit, status: input?.status });
@@ -93,7 +93,7 @@ export const ordersRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const cacheKey = `orders:page:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = await getCached<any>(cacheKey);
+      const cached = await getCached<Awaited<ReturnType<typeof listOrdersPageForBusiness>>>(cacheKey);
       if (cached) return cached;
 
       const result = await listOrdersPageForBusiness({ businessId: ctx.businessId, ...input });
@@ -124,7 +124,7 @@ export const ordersRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const cacheKey = `orders:overview:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = await getCached<any>(cacheKey);
+      const cached = await getCached<Awaited<ReturnType<typeof getOrderWorkspaceOverviewForBusiness>>>(cacheKey);
       if (cached) return cached;
 
       const result = await getOrderWorkspaceOverviewForBusiness({ businessId: ctx.businessId, ...input });
@@ -136,7 +136,7 @@ export const ordersRouter = router({
     .input(z.object({ orderId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const cacheKey = `orders:id:${ctx.businessId}:${input.orderId}`;
-      const cached = await getCached<any>(cacheKey);
+      const cached = await getCached<Awaited<ReturnType<typeof getOrderByIdForBusiness>>>(cacheKey);
       if (cached) return cached;
 
       const result = await getOrderByIdForBusiness({ businessId: ctx.businessId, orderId: input.orderId });
@@ -146,7 +146,7 @@ export const ordersRouter = router({
 
   getStats: businessProcedure.query(async ({ ctx }) => {
     const cacheKey = `orders:stats:${ctx.businessId}`;
-    const cached = await getCached<any>(cacheKey);
+    const cached = await getCached<Awaited<ReturnType<typeof getOrderStatsForBusiness>>>(cacheKey);
     if (cached) return cached;
 
     const result = await getOrderStatsForBusiness(ctx.businessId);
@@ -158,7 +158,7 @@ export const ordersRouter = router({
     .input(z.object({ orderId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const cacheKey = `orders:payments:${ctx.businessId}:${input.orderId}`;
-      const cached = await getCached<any>(cacheKey);
+      const cached = await getCached<Awaited<ReturnType<typeof listOrderPaymentsForBusiness>>>(cacheKey);
       if (cached) return cached;
 
       const result = await listOrderPaymentsForBusiness({ businessId: ctx.businessId, orderId: input.orderId });
@@ -199,7 +199,7 @@ export const ordersRouter = router({
     .input(z.object({ orderId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const cacheKey = `orders:events:${ctx.businessId}:${input.orderId}`;
-      const cached = await getCached<any>(cacheKey);
+      const cached = await getCached<Awaited<ReturnType<typeof listOrderEventsForBusiness>>>(cacheKey);
       if (cached) return cached;
 
       const result = await listOrderEventsForBusiness({ businessId: ctx.businessId, orderId: input.orderId });
