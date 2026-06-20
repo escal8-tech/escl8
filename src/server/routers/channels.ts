@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
-import { channelIdentities, businesses } from "../../../drizzle/schema";
+import { channelIdentities, businesses, agents } from "../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
@@ -34,6 +34,20 @@ export const channelsRouter = router({
       agentId: z.string().optional().nullable(),
     }))
     .mutation(async ({ ctx, input }) => {
+      if (input.agentId) {
+        const [agent] = await db
+          .select({ id: agents.id })
+          .from(agents)
+          .where(and(eq(agents.id, input.agentId), eq(agents.businessId, ctx.businessId)))
+          .limit(1);
+        if (!agent) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "The specified agent does not belong to your business.",
+          });
+        }
+      }
+
       if (input.monthlyCreditLimit !== undefined || input.useSharedPool !== undefined) {
         const allChannels = await db.select().from(channelIdentities).where(eq(channelIdentities.businessId, ctx.businessId));
         const [business] = await db.select({ creditPool: businesses.creditPool }).from(businesses).where(eq(businesses.id, ctx.businessId));
