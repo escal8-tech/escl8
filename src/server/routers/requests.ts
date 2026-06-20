@@ -3,6 +3,7 @@ import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { requests, customers, SUPPORTED_SOURCES } from "../../../drizzle/schema";
 import { desc, eq, and, sql, isNull, inArray, asc, ilike, or } from "drizzle-orm";
+import { getCached, setCached } from "@/lib/redis";
 
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
 const requestSortKeySchema = z.enum(["customer", "status", "type", "sentiment", "created", "bot"]);
@@ -181,6 +182,10 @@ export const requestsRouter = router({
         .optional(),
     )
     .query(async ({ input, ctx }) => {
+      const cacheKey = `requests:activity:${ctx.businessId}:${JSON.stringify(input || {})}`;
+      const cached = await getCached<any>(cacheKey);
+      if (cached) return cached;
+
       const days = input?.days ?? 30;
       let customerIdsForPhone: string[] | null = null;
       if (input?.channelIdentityId) {
@@ -217,6 +222,7 @@ export const requestsRouter = router({
         .groupBy(sql`date_trunc('day', ${requests.createdAt})`)
         .orderBy(sql`date_trunc('day', ${requests.createdAt}) asc`);
 
+      await setCached(cacheKey, rows, 60);
       return rows;
     }),
 
@@ -230,6 +236,10 @@ export const requestsRouter = router({
         .optional()
     )
     .query(async ({ ctx, input }) => {
+      const cacheKey = `requests:stats:${ctx.businessId}:${JSON.stringify(input || {})}`;
+      const cached = await getCached<any>(cacheKey);
+      if (cached) return cached;
+
       // If filtering by phone number, get customer IDs first
       let customerIdsForPhone: string[] | null = null;
       if (input?.channelIdentityId) {
@@ -350,7 +360,7 @@ export const requestsRouter = router({
       const deflectionRate = completed + failed > 0 ? completed / (completed + failed) : 0;
       const followUpRate = total > 0 ? needsFollowup / total : 0;
 
-      return {
+      const result = {
         totals: {
           count: total,
           revenue,
@@ -362,6 +372,9 @@ export const requestsRouter = router({
         byStatus,
         bySource,
       };
+
+      await setCached(cacheKey, result, 60);
+      return result;
     }),
 
   /**

@@ -3,15 +3,21 @@ import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { agents } from "../../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
+import { getCached, setCached } from "@/lib/redis";
 
 export const agentsRouter = router({
   listAgents: businessProcedure.query(async ({ ctx }) => {
+    const cacheKey = `agents:list:${ctx.businessId}`;
+    const cached = await getCached<any>(cacheKey);
+    if (cached) return cached;
+
     const rows = await db
       .select()
       .from(agents)
       .where(eq(agents.businessId, ctx.businessId))
       .orderBy(agents.createdAt);
 
+    await setCached(cacheKey, rows, 15);
     return rows;
   }),
 

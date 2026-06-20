@@ -41,6 +41,7 @@ import {
   listOrdersPageForBusiness,
 } from "@/server/services/orderReadSupport";
 import * as orderMutationSupport from "@/server/services/orderMutationSupport";
+import { getCached, setCached } from "@/lib/redis";
 
 const reviewActionSchema = z.enum(["approve", "reject"]);
 const refundActionSchema = z.enum(["mark_pending", "mark_refunded", "cancel"]);
@@ -56,7 +57,15 @@ export const ordersRouter = router({
         })
         .optional(),
     )
-    .query(async ({ ctx, input }) => listOrdersForBusiness({ businessId: ctx.businessId, limit: input?.limit, status: input?.status })),
+    .query(async ({ ctx, input }) => {
+      const cacheKey = `orders:list:${ctx.businessId}:${JSON.stringify(input || {})}`;
+      const cached = await getCached<any>(cacheKey);
+      if (cached) return cached;
+
+      const result = await listOrdersForBusiness({ businessId: ctx.businessId, limit: input?.limit, status: input?.status });
+      await setCached(cacheKey, result, 15);
+      return result;
+    }),
 
   listOrdersPage: businessProcedure
     .input(
@@ -82,7 +91,15 @@ export const ordersRouter = router({
         methodFilter: z.enum(["all", "manual", "bank_qr", "cod"]).default("all"),
       }),
     )
-    .query(async ({ ctx, input }) => listOrdersPageForBusiness({ businessId: ctx.businessId, ...input })),
+    .query(async ({ ctx, input }) => {
+      const cacheKey = `orders:page:${ctx.businessId}:${JSON.stringify(input || {})}`;
+      const cached = await getCached<any>(cacheKey);
+      if (cached) return cached;
+
+      const result = await listOrdersPageForBusiness({ businessId: ctx.businessId, ...input });
+      await setCached(cacheKey, result, 15);
+      return result;
+    }),
 
   getOverview: businessProcedure
     .input(
@@ -105,17 +122,49 @@ export const ordersRouter = router({
         methodFilter: z.enum(["all", "manual", "bank_qr", "cod"]).default("all"),
       }),
     )
-    .query(async ({ ctx, input }) => getOrderWorkspaceOverviewForBusiness({ businessId: ctx.businessId, ...input })),
+    .query(async ({ ctx, input }) => {
+      const cacheKey = `orders:overview:${ctx.businessId}:${JSON.stringify(input || {})}`;
+      const cached = await getCached<any>(cacheKey);
+      if (cached) return cached;
+
+      const result = await getOrderWorkspaceOverviewForBusiness({ businessId: ctx.businessId, ...input });
+      await setCached(cacheKey, result, 15);
+      return result;
+    }),
 
   getOrderById: businessProcedure
     .input(z.object({ orderId: z.string().min(1) }))
-    .query(async ({ ctx, input }) => getOrderByIdForBusiness({ businessId: ctx.businessId, orderId: input.orderId })),
+    .query(async ({ ctx, input }) => {
+      const cacheKey = `orders:id:${ctx.businessId}:${input.orderId}`;
+      const cached = await getCached<any>(cacheKey);
+      if (cached) return cached;
 
-  getStats: businessProcedure.query(async ({ ctx }) => getOrderStatsForBusiness(ctx.businessId)),
+      const result = await getOrderByIdForBusiness({ businessId: ctx.businessId, orderId: input.orderId });
+      await setCached(cacheKey, result, 15);
+      return result;
+    }),
+
+  getStats: businessProcedure.query(async ({ ctx }) => {
+    const cacheKey = `orders:stats:${ctx.businessId}`;
+    const cached = await getCached<any>(cacheKey);
+    if (cached) return cached;
+
+    const result = await getOrderStatsForBusiness(ctx.businessId);
+    await setCached(cacheKey, result, 60);
+    return result;
+  }),
 
   getOrderPayments: businessProcedure
     .input(z.object({ orderId: z.string().min(1) }))
-    .query(async ({ ctx, input }) => listOrderPaymentsForBusiness({ businessId: ctx.businessId, orderId: input.orderId })),
+    .query(async ({ ctx, input }) => {
+      const cacheKey = `orders:payments:${ctx.businessId}:${input.orderId}`;
+      const cached = await getCached<any>(cacheKey);
+      if (cached) return cached;
+
+      const result = await listOrderPaymentsForBusiness({ businessId: ctx.businessId, orderId: input.orderId });
+      await setCached(cacheKey, result, 15);
+      return result;
+    }),
 
   updateDraftOrder: businessProcedure
     .input(
@@ -148,7 +197,15 @@ export const ordersRouter = router({
 
   getOrderEvents: businessProcedure
     .input(z.object({ orderId: z.string().min(1) }))
-    .query(async ({ ctx, input }) => listOrderEventsForBusiness({ businessId: ctx.businessId, orderId: input.orderId })),
+    .query(async ({ ctx, input }) => {
+      const cacheKey = `orders:events:${ctx.businessId}:${input.orderId}`;
+      const cached = await getCached<any>(cacheKey);
+      if (cached) return cached;
+
+      const result = await listOrderEventsForBusiness({ businessId: ctx.businessId, orderId: input.orderId });
+      await setCached(cacheKey, result, 15);
+      return result;
+    }),
 
   sendPaymentDetails: businessProcedure
     .input(z.object({ orderId: z.string().min(1) }))

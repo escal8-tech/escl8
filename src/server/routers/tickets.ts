@@ -16,6 +16,7 @@ import {
   listTicketsForBusiness,
 } from "@/server/services/ticketReadSupport";
 import * as ticketMutationSupport from "@/server/services/ticketMutationSupport";
+import { getCached, setCached } from "@/lib/redis";
 
 const ticketStatusSchema = z.enum(["open", "in_progress", "resolved"]);
 const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
@@ -83,7 +84,15 @@ export const ticketsRouter = router({
         limit: z.number().int().min(1).max(500).optional(),
       }).optional(),
     )
-    .query(async ({ ctx, input }) => listTicketsForBusiness({ businessId: ctx.businessId, status: input?.status, typeKey: input?.typeKey, limit: input?.limit })),
+    .query(async ({ ctx, input }) => {
+      const cacheKey = `tickets:list:${ctx.businessId}:${JSON.stringify(input || {})}`;
+      const cached = await getCached<any>(cacheKey);
+      if (cached) return cached;
+
+      const result = await listTicketsForBusiness({ businessId: ctx.businessId, status: input?.status, typeKey: input?.typeKey, limit: input?.limit });
+      await setCached(cacheKey, result, 15);
+      return result;
+    }),
 
   listTicketLedger: businessProcedure
     .input(
@@ -98,7 +107,15 @@ export const ticketsRouter = router({
         offset: z.number().int().min(0).default(0),
       }),
     )
-    .query(async ({ ctx, input }) => listTicketLedgerForBusiness({ businessId: ctx.businessId, ...input })),
+    .query(async ({ ctx, input }) => {
+      const cacheKey = `tickets:ledger:${ctx.businessId}:${JSON.stringify(input || {})}`;
+      const cached = await getCached<any>(cacheKey);
+      if (cached) return cached;
+
+      const result = await listTicketLedgerForBusiness({ businessId: ctx.businessId, ...input });
+      await setCached(cacheKey, result, 15);
+      return result;
+    }),
 
   getTicketById: businessProcedure
     .input(z.object({ ticketId: z.string().min(1) }))
@@ -241,7 +258,15 @@ export const ticketsRouter = router({
         .limit(input.limit ?? 100);
     }),
 
-  getTypeCounters: businessProcedure.query(async ({ ctx }) => getTicketTypeCountersForBusiness(ctx.businessId)),
+  getTypeCounters: businessProcedure.query(async ({ ctx }) => {
+    const cacheKey = `tickets:typeCounters:${ctx.businessId}`;
+    const cached = await getCached<any>(cacheKey);
+    if (cached) return cached;
+
+    const result = await getTicketTypeCountersForBusiness(ctx.businessId);
+    await setCached(cacheKey, result, 60);
+    return result;
+  }),
 
   getPerformance: businessProcedure
     .input(
@@ -252,5 +277,13 @@ export const ticketsRouter = router({
         })
         .optional(),
     )
-    .query(async ({ ctx, input }) => getTicketPerformanceForBusiness({ businessId: ctx.businessId, typeKey: input?.typeKey, windowDays: input?.windowDays })),
+    .query(async ({ ctx, input }) => {
+      const cacheKey = `tickets:performance:${ctx.businessId}:${JSON.stringify(input || {})}`;
+      const cached = await getCached<any>(cacheKey);
+      if (cached) return cached;
+
+      const result = await getTicketPerformanceForBusiness({ businessId: ctx.businessId, typeKey: input?.typeKey, windowDays: input?.windowDays });
+      await setCached(cacheKey, result, 60);
+      return result;
+    }),
 });
