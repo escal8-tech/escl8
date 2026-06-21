@@ -33,7 +33,7 @@ function safeName(name: string) {
 }
 
 function applyFrontDoor(blobUrl: string, containerName: string): string {
-  if (AZURE_FRONT_DOOR_DOMAIN && containerName === 'uploads') {
+  if (AZURE_FRONT_DOOR_DOMAIN && (containerName === 'uploads' || containerName === 'agent-invoices' || containerName === 'agent-customization' || containerName === 'hotelwidgets')) {
     try {
       const url = new URL(blobUrl);
       // Remove trailing slash from domain if present
