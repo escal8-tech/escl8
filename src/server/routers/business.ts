@@ -75,8 +75,18 @@ export const businessRouter = router({
       autoReplyPaused: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const details = await db.select().from(whatsappIdentityDetails)
-        .where(eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId))
+      const details = await db
+        .select({
+          channelIdentityId: whatsappIdentityDetails.channelIdentityId,
+          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
+          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+        })
+        .from(whatsappIdentityDetails)
+        .innerJoin(channelIdentities, eq(whatsappIdentityDetails.channelIdentityId, channelIdentities.id))
+        .where(and(
+          eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
+          eq(channelIdentities.businessId, ctx.businessId),
+        ))
         .limit(1)
         .then(r => r[0]);
 
@@ -131,8 +141,18 @@ export const businessRouter = router({
       aiDisabled: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const details = await db.select().from(whatsappIdentityDetails)
-        .where(eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId))
+      const details = await db
+        .select({
+          channelIdentityId: whatsappIdentityDetails.channelIdentityId,
+          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
+          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+        })
+        .from(whatsappIdentityDetails)
+        .innerJoin(channelIdentities, eq(whatsappIdentityDetails.channelIdentityId, channelIdentities.id))
+        .where(and(
+          eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
+          eq(channelIdentities.businessId, ctx.businessId),
+        ))
         .limit(1)
         .then(r => r[0]);
 

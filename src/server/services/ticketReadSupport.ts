@@ -184,7 +184,7 @@ export async function getTicketPerformanceForBusiness(args: {
   return withStatsCache(cacheKey, 60, async () => {
   const whereChunks = [sql`${supportTickets.businessId} = ${args.businessId}`];
   if (args.typeKey) whereChunks.push(sql`${supportTickets.ticketTypeKey} = ${normalizeKey(args.typeKey)}`);
-  if (args.windowDays) whereChunks.push(sql`${supportTickets.createdAt} >= now() - (${args.windowDays} * interval '1 day')`);
+  if (args.windowDays) whereChunks.push(sql`${supportTickets.createdAt} >= now() - (interval '1 day' * ${args.windowDays})`);
 
   const whereSql = sql.join(whereChunks, sql` AND `);
   const result = await db.execute<{
