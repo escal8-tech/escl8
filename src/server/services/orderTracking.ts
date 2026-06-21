@@ -87,7 +87,7 @@ function trackingSecret(): string {
     process.env.ORDER_TRACKING_SECRET ||
       process.env.ORDER_INVOICE_API_KEY ||
       process.env.ORDER_PAYMENT_API_KEY ||
-      process.env.BOT_INTERNAL_API_KEY ||
+      process.env.ESCAL8_INTERNAL_SERVICE_TOKEN ||
       process.env.NEXTAUTH_SECRET ||
       process.env.AUTH_SECRET ||
       process.env.WHATSAPP_API_KEY ||

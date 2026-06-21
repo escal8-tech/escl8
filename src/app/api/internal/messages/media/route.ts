@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 function getInternalApiKey(): string {
   return String(
-    process.env.BOT_INTERNAL_API_KEY ||
+    process.env.ESCAL8_INTERNAL_SERVICE_TOKEN ||
       process.env.WHATSAPP_API_KEY ||
       process.env.PAYMENT_PROOF_ANALYZER_API_KEY ||
       "",

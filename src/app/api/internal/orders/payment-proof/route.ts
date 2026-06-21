@@ -59,7 +59,7 @@ function toPortalPayload(value: unknown): Record<string, PortalJsonValue> {
 function getInternalApiKey(): string {
   return String(
     process.env.ORDER_PAYMENT_API_KEY ||
-      process.env.BOT_INTERNAL_API_KEY ||
+      process.env.ESCAL8_INTERNAL_SERVICE_TOKEN ||
       process.env.WHATSAPP_API_KEY ||
       "",
   ).trim();
@@ -95,7 +95,7 @@ async function analyzePaymentProof(input: {
   const baseUrl = normalizeServiceBaseUrl(String(process.env.BOT_INTERNAL_BASE_URL || ""));
   const apiKey = String(
     process.env.PAYMENT_PROOF_ANALYZER_API_KEY ||
-      process.env.BOT_INTERNAL_API_KEY ||
+      process.env.ESCAL8_INTERNAL_SERVICE_TOKEN ||
       process.env.WHATSAPP_API_KEY ||
       "",
   ).trim();

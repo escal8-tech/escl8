@@ -38,7 +38,7 @@ function getBotBaseUrl(): string {
 
 function getBotApiKey(): string {
   return String(
-    process.env.BOT_INTERNAL_API_KEY ||
+    process.env.ESCAL8_INTERNAL_SERVICE_TOKEN ||
       process.env.WHATSAPP_API_KEY ||
       process.env.PAYMENT_PROOF_ANALYZER_API_KEY ||
       "",
@@ -58,7 +58,7 @@ export async function sendWhatsAppMessagesViaBot(input: {
     throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_BASE_URL." });
   }
   if (!apiKey) {
-    throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_API_KEY." });
+    throw new TRPCError({ code: "CONFLICT", message: "Missing ESCAL8_INTERNAL_SERVICE_TOKEN." });
   }
 
   const response = await fetch(`${baseUrl}/internal/whatsapp/send`, {
@@ -106,7 +106,7 @@ export async function observeAssistantMessageViaBot(input: {
     throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_BASE_URL." });
   }
   if (!apiKey) {
-    throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_API_KEY." });
+    throw new TRPCError({ code: "CONFLICT", message: "Missing ESCAL8_INTERNAL_SERVICE_TOKEN." });
   }
 
   const response = await fetch(`${baseUrl}/internal/assistant/observe`, {
@@ -148,7 +148,7 @@ export async function sendWebChatMessageViaBot(input: {
     throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_BASE_URL." });
   }
   if (!apiKey) {
-    throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_API_KEY." });
+    throw new TRPCError({ code: "CONFLICT", message: "Missing ESCAL8_INTERNAL_SERVICE_TOKEN." });
   }
 
   const response = await fetch(`${baseUrl}/internal/webchat/reply`, {
@@ -184,7 +184,7 @@ export async function getFlowBuilderManifestViaBot() {
     throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_BASE_URL." });
   }
   if (!apiKey) {
-    throw new TRPCError({ code: "CONFLICT", message: "Missing BOT_INTERNAL_API_KEY." });
+    throw new TRPCError({ code: "CONFLICT", message: "Missing ESCAL8_INTERNAL_SERVICE_TOKEN." });
   }
 
   const response = await fetch(`${baseUrl}/internal/flow-builder/manifest`, {

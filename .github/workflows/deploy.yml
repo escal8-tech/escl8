@@ -71,7 +71,7 @@ jobs:
       ACA_AZURE_QUEUE_CONNECTION_STRING: ${{ secrets.ACA_AZURE_QUEUE_CONNECTION_STRING }}
       ACA_META_SYSTEM_KEY: ${{ secrets.ACA_META_SYSTEM_KEY }}
       ACA_META_APP_SECRET: ${{ secrets.ACA_META_APP_SECRET }}
-      ACA_BOT_INTERNAL_API_KEY: ${{ secrets.ACA_BOT_INTERNAL_API_KEY }}
+      ACA_ESCAL8_INTERNAL_SERVICE_TOKEN: ${{ secrets.ESCAL8_INTERNAL_SERVICE_TOKEN }}
       ACA_OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}
       ACA_NEXTAUTH_SECRET: ${{ secrets.ACA_NEXTAUTH_SECRET }}
 
@@ -128,7 +128,7 @@ jobs:
           ACA_AZURE_QUEUE_CONNECTION_STRING: ${{ secrets.ACA_AZURE_QUEUE_CONNECTION_STRING }}
           ACA_META_SYSTEM_KEY: ${{ secrets.ACA_META_SYSTEM_KEY }}
           ACA_META_APP_SECRET: ${{ secrets.ACA_META_APP_SECRET }}
-          ACA_BOT_INTERNAL_API_KEY: ${{ secrets.ACA_BOT_INTERNAL_API_KEY }}
+          ACA_ESCAL8_INTERNAL_SERVICE_TOKEN: ${{ secrets.ESCAL8_INTERNAL_SERVICE_TOKEN }}
           ACA_OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.ACA_OTEL_EXPORTER_OTLP_HEADERS }}
           ACA_NEXTAUTH_SECRET: ${{ secrets.ACA_NEXTAUTH_SECRET }}
         run: |
@@ -139,7 +139,7 @@ jobs:
             ACR_USERNAME ACR_PASSWORD ACA_OPEN_AI_API ACA_PINECONE_API
             ACA_SERVICE_BUS_CONN ACA_PUBSUB_CONN ACA_FIREBASE_SERVICE_ACCOUNT_JSON
             ACA_AZURE_BLOB_CONNECTION_STRING ACA_AZURE_QUEUE_CONNECTION_STRING
-            ACA_META_SYSTEM_KEY ACA_META_APP_SECRET ACA_BOT_INTERNAL_API_KEY
+            ACA_META_SYSTEM_KEY ACA_META_APP_SECRET ACA_ESCAL8_INTERNAL_SERVICE_TOKEN
             ACA_OTEL_EXPORTER_OTLP_HEADERS ACA_NEXTAUTH_SECRET
           )
           for name in "${required[@]}"; do
@@ -200,7 +200,7 @@ jobs:
               azure-queue-connection-string="$ACA_AZURE_QUEUE_CONNECTION_STRING" \
               meta-system-key="$ACA_META_SYSTEM_KEY" \
               meta-app-secret="$ACA_META_APP_SECRET" \
-              bot-internal-api-key="$ACA_BOT_INTERNAL_API_KEY" \
+              escal8-internal-service-token="$ACA_ESCAL8_INTERNAL_SERVICE_TOKEN" \
               otel-exporter-otlp-headers="$ACA_OTEL_EXPORTER_OTLP_HEADERS" \
               nextauth-secret="$ACA_NEXTAUTH_SECRET" \
               grafana-logs-user="$GRAFANA_LOGS_USER" \
@@ -315,7 +315,7 @@ jobs:
               META_SYSTEM_USER_TOKEN=secretref:meta-system-key \
               META_APP_SECRET=secretref:meta-app-secret \
               NEXTAUTH_SECRET=secretref:nextauth-secret \
-              BOT_INTERNAL_API_KEY=secretref:bot-internal-api-key \
+              ESCAL8_INTERNAL_SERVICE_TOKEN=secretref:escal8-internal-service-token \
               OTEL_EXPORTER_OTLP_HEADERS=secretref:otel-exporter-otlp-headers \
               GRAFANA_LOGS_USER=secretref:grafana-logs-user \
               GRAFANA_LOGS_API_KEY=secretref:grafana-logs-api-key \
