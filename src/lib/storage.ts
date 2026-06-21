@@ -32,8 +32,8 @@ function safeName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-function applyFrontDoor(blobUrl: string): string {
-  if (AZURE_FRONT_DOOR_DOMAIN) {
+function applyFrontDoor(blobUrl: string, containerName: string): string {
+  if (AZURE_FRONT_DOOR_DOMAIN && containerName === 'uploads') {
     try {
       const url = new URL(blobUrl);
       // Remove trailing slash from domain if present
@@ -58,7 +58,7 @@ function parseConnectionString(connectionString: string): { accountName: string;
 
 function buildReadUrl(blobUrl: string, blobPath: string, expiresOn: Date, containerName = AZURE_CONTAINER): string {
   const creds = parseConnectionString(AZURE_CONN);
-  if (!creds) return applyFrontDoor(blobUrl);
+  if (!creds) return applyFrontDoor(blobUrl, containerName);
   const sharedKey = new StorageSharedKeyCredential(creds.accountName, creds.accountKey);
   const sas = generateBlobSASQueryParameters(
     {
@@ -71,7 +71,7 @@ function buildReadUrl(blobUrl: string, blobPath: string, expiresOn: Date, contai
   ).toString();
   
   // Apply Front Door to the base URL, then re-attach the SAS query string
-  const frontDoorUrl = applyFrontDoor(blobUrl);
+  const frontDoorUrl = applyFrontDoor(blobUrl, containerName);
   return `${frontDoorUrl}?${sas}`;
 }
 
@@ -107,7 +107,7 @@ export async function storeFile(
   })();
 
   // Stable path: always keep only ONE latest blob per business+docType.
-  const blobPath = `${businessId}/${docType}/latest${ext}`;
+  const blobPath = `${docType}/${businessId}/latest${ext}`;
 
   const service = BlobServiceClient.fromConnectionString(AZURE_CONN);
   const container = service.getContainerClient(AZURE_CONTAINER);
@@ -120,7 +120,7 @@ export async function storeFile(
   return {
     name: `latest${ext}`,
     size: Number(props.contentLength || buffer.byteLength),
-    url: applyFrontDoor(blockBlob.url),
+    url: applyFrontDoor(blockBlob.url, AZURE_CONTAINER),
     blobPath,
     containerName: AZURE_CONTAINER,
     contentType: contentType || props.contentType || undefined,
