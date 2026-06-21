@@ -2,7 +2,7 @@
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/server/db/client";
-import { customers, orderPayments, orders, supportTickets } from "../../../drizzle/schema";
+import { orderPayments, orders, supportTickets } from "../../../drizzle/schema";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { drainBusinessOutbox, enqueueEmailOutboxMessages, enqueueWhatsAppOutboxMessages } from "@/server/services/messageOutbox";

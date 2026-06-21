@@ -27,16 +27,16 @@ test("getSlaDueAt calculates correct times", () => {
 
 test("sanitizeTicketFields rejects overly large or deep payloads", () => {
   // Deep nesting
-  const deep: any = {};
+  const deep: Record<string, unknown> = {};
   let current = deep;
   for (let i = 0; i < 10; i++) {
     current.child = {};
-    current = current.child;
+    current = current.child as Record<string, unknown>;
   }
   assert.throws(() => sanitizeTicketFields(deep), /too deeply nested/);
 
   // Too many properties
-  const wide: any = {};
+  const wide: Record<string, unknown> = {};
   for (let i = 0; i < 201; i++) {
     wide[`prop${i}`] = i;
   }
