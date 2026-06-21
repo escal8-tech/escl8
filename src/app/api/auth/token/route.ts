@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyFirebaseIdToken } from '@/server/firebaseAdmin';
+import { queryRows } from '@/lib/db';
 import { generateTokenPair } from '@/lib/jwt-auth';
 import { db } from '@/server/db/client';
 import { users, businesses } from '@/../drizzle/schema';
@@ -42,23 +43,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token payload' }, { status: 401 });
     }
 
-    // Look up user's assigned businessId and suiteTenantId
-    const userRows = await db
-      .select({ 
-        businessId: users.businessId,
-        suiteTenantId: businesses.suiteTenantId
-      })
-      .from(users)
-      .innerJoin(businesses, eq(users.businessId, businesses.id))
-      .where(eq(users.firebaseUid, firebaseUid))
-      .limit(1);
+    // Look up tenant via suite_memberships
+    const rows = await queryRows<{ id: string }>(
+      'control',
+      `
+      SELECT st.id
+      FROM suite_tenants st
+      JOIN suite_memberships sm ON sm.suite_tenant_id = st.id
+      JOIN suite_users su ON su.id = sm.suite_user_id
+      WHERE su.firebase_uid = $1 AND sm.is_active = true
+      LIMIT 1
+      `,
+      [firebaseUid]
+    );
 
-    const suiteTenantId = userRows[0]?.suiteTenantId ?? null;
-    const userBusinessId = userRows[0]?.businessId ?? null;
-
+    const suiteTenantId = rows[0]?.id;
     if (!suiteTenantId) {
       return NextResponse.json({ error: 'No active tenant found for user' }, { status: 403 });
     }
+
+    // Look up user's assigned businessId, constrained by suiteTenantId
+    const userRows = await db
+      .select({ businessId: users.businessId })
+      .from(users)
+      .innerJoin(businesses, eq(users.businessId, businesses.id))
+      .where(and(eq(users.firebaseUid, firebaseUid), eq(businesses.suiteTenantId, suiteTenantId)))
+      .limit(1);
+    const userBusinessId = userRows[0]?.businessId ?? null;
 
     // Generate token pair with user's businessId
     const tokens = await generateTokenPair(firebaseUid, email, suiteTenantId, module as 'agent' | 'reservation', userBusinessId);
