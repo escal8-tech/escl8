@@ -5,7 +5,7 @@ import { trainingDocuments } from "@/../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { storeFile } from "@/lib/storage";
 import { getAuthedUserFromRequest } from "@/server/apiAuth";
-import { checkRateLimit } from "@/server/rateLimit";
+
 import { publishPortalEvent, toPortalDocumentPayload } from "@/server/realtime/portalEvents";
 import { captureSentryException, recordSentryLog, recordSentryMetric } from "@/lib/sentry-monitoring";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
@@ -69,34 +69,13 @@ async function getAuthedBusinessId(request: Request): Promise<string | null> {
 
 export async function GET(request: Request) {
   // Polling endpoint: allow relatively high volume.
-  const rl = checkRateLimit(request, {
-    name: "upload_docs_get",
-    max: Number(process.env.RATE_LIMIT_UPLOAD_DOCS_GET_MAX ?? "120"),
-    windowMs: Number(process.env.RATE_LIMIT_UPLOAD_DOCS_GET_WINDOW_MS ?? String(60_000)),
-  });
-  if (!rl.ok) {
-    return NextResponse.json(
-      { error: "Too Many Requests" },
-      {
-        status: 429,
-        headers: {
-          ...rl.headers,
-          "retry-after": String(Math.max(1, Math.ceil((rl.resetAtMs - Date.now()) / 1000))),
-        },
-      },
-    );
-  }
-
-  const businessId = await getAuthedBusinessId(request);
-  if (!businessId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { searchParams } = new URL(request.url);
+  const businessIdObj = await getAuthedBusinessId(request);
+  if (!businessIdObj) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const businessId = businessIdObj;  const { searchParams } = new URL(request.url);
   const agentId = searchParams.get("agentId") || undefined;
 
   const files = await listCurrent(businessId, agentId);
-  return NextResponse.json({ ok: true, businessId, files }, { headers: rl.headers });
+  return NextResponse.json({ ok: true, businessId, files });
 }
 
 export async function POST(request: Request) {
@@ -104,32 +83,14 @@ export async function POST(request: Request) {
   let docType: DocType | null = null;
   try {
     // Upload endpoint: stricter.
-    const rl = checkRateLimit(request, {
-      name: "upload_docs_post",
-      max: Number(process.env.RATE_LIMIT_UPLOAD_DOCS_POST_MAX ?? "20"),
-      windowMs: Number(process.env.RATE_LIMIT_UPLOAD_DOCS_POST_WINDOW_MS ?? String(60_000)),
-    });
-    if (!rl.ok) {
-      return NextResponse.json(
-        { error: "Too Many Requests" },
-        {
-          status: 429,
-          headers: {
-            ...rl.headers,
-            "retry-after": String(Math.max(1, Math.ceil((rl.resetAtMs - Date.now()) / 1000))),
-          },
-        },
-      );
-    }
+    const businessIdObj = await getAuthedBusinessId(request);
+    if (!businessIdObj) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    businessId = businessIdObj;
 
-    const formData = await request.formData();
-    const file = formData.get("file");
-    docType = (formData.get("docType") as string) as DocType;
-    const agentId = formData.get("agentId") as string;
-    businessId = await getAuthedBusinessId(request);
-    if (!businessId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const form = await request.formData();
+    docType = form.get("docType") as DocType;
+    const agentId = form.get("agentId") as string;
+    const file = form.get("file") as unknown as File;
 
     if (!agentId) {
       return NextResponse.json({ error: "No agentId provided" }, { status: 400 });
@@ -246,7 +207,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(
       { ok: true, file: latest[docType] ?? { name: file.name, size: stored.size } },
-      { headers: rl.headers },
     );
   } catch (err: any) {
     recordSentryMetric("count", "escl8.upload.docs.errors", 1, {

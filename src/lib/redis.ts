@@ -154,10 +154,6 @@ export const REDIS_KEYS = {
   WEBHOOK_REPLAY: 'webhook:replay:',     // Idempotency keys
   WEBHOOK_REPLAY_TTL: 86400,             // 24 hours
   
-  // Rate limiting
-  RATE_LIMIT: 'ratelimit:',              // Rate limit counters
-  RATE_LIMIT_TTL: 60,                    // 1 minute window
-  
   // JWT token blacklist (for logout/revocation)
   TOKEN_BLACKLIST: 'token:blacklist:',   // Revoked tokens
   TOKEN_BLACKLIST_TTL: 604800,           // 7 days (match refresh token TTL)
@@ -249,75 +245,16 @@ export async function releaseLock(lockKey: string): Promise<boolean> {
   }
 }
 
-// Rate limiting with sliding window
-export interface RateLimitResult {
-  allowed: boolean;
-  remaining: number;
-  resetAt: number;
-  retryAfterMs?: number;
-  limit: number;
-  windowMs: number;
-  source: 'redis' | 'fallback';
-}
-
-export async function checkRateLimit(
-  identifier: string, 
-  limit: number, 
-  windowMs: number,
-  keyPrefix: string = 'ratelimit'
-): Promise<RateLimitResult> {
-  const client = await getRedisClient();
-  if (!client) {
-    // Allow if Redis unavailable (fail-open)
-    return { 
-      allowed: true, 
-      remaining: limit, 
-      resetAt: Date.now() + windowMs,
-      limit,
-      windowMs,
-      source: 'fallback'
-    };
+export async function withLock<T>(lockKey: string, ttlSeconds: number, fn: () => Promise<T>): Promise<T> {
+  const acquired = await acquireLock(lockKey, ttlSeconds);
+  if (!acquired) {
+    throw new Error(`Failed to acquire lock for key: ${lockKey}`);
   }
-
-  const key = `${REDIS_KEYS.RATE_LIMIT}${keyPrefix}:${identifier}`;
-  const now = Date.now();
-  const windowStart = now - windowMs;
-
   try {
-    // Use sorted set for sliding window
-    const multi = client.multi();
-    multi.zRemRangeByScore(key, 0, windowStart);
-    multi.zCard(key);
-    multi.zAdd(key, { score: now, value: `${now}:${Math.random()}` });
-    multi.expire(key, Math.ceil(windowMs / 1000) + 1);
-    
-    const results = await multi.exec();
-    // results[1] is the zCard result
-    const currentCount = Number(results[1]) || 0;
-    
-    const allowed = currentCount < limit;
-    const remaining = Math.max(0, limit - currentCount - 1);
-    const resetAt = now + windowMs;
-    
-    return {
-      allowed,
-      remaining,
-      resetAt,
-      retryAfterMs: allowed ? undefined : windowMs,
-      limit,
-      windowMs,
-      source: 'redis'
-    };
-  } catch (err) {
-    console.error('Rate limit check error:', err);
-    // Fail-open
-    return { 
-      allowed: true, 
-      remaining: limit, 
-      resetAt: Date.now() + windowMs,
-      limit,
-      windowMs,
-      source: 'fallback'
-    };
+    return await fn();
+  } finally {
+    await releaseLock(lockKey);
   }
 }
+
+

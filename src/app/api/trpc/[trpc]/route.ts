@@ -1,6 +1,6 @@
 import { appRouter } from "@/server/routers";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
-import { checkRateLimit } from "@/server/rateLimit";
+
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -16,21 +16,7 @@ function withExtraHeaders(res: Response, extra: Record<string, string>) {
 }
 
 const handler = async (req: Request) => {
-  const max = Number(process.env.RATE_LIMIT_TRPC_MAX ?? "300");
-  const windowMs = Number(process.env.RATE_LIMIT_TRPC_WINDOW_MS ?? String(60_000));
-  const rl = checkRateLimit(req, { name: "trpc", max, windowMs });
-  if (!rl.ok) {
-    return NextResponse.json(
-      { error: "Too Many Requests" },
-      {
-        status: 429,
-        headers: {
-          ...rl.headers,
-          "retry-after": String(Math.max(1, Math.ceil((rl.resetAtMs - Date.now()) / 1000))),
-        },
-      },
-    );
-  }
+
 
   const trpcPath = decodeURIComponent(new URL(req.url).pathname);
   const procedures = trpcPath.split("/api/trpc/")[1]?.split(",") ?? [];
@@ -58,7 +44,7 @@ const handler = async (req: Request) => {
     },
   });
 
-  return withExtraHeaders(res, rl.headers);
+  return res;
 };
 
 export { handler as GET, handler as POST };

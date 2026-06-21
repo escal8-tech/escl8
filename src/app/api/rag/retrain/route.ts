@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthedUserFromRequest } from "@/server/apiAuth";
-import { checkRateLimit } from "@/server/rateLimit";
+
 import { isDocType, type DocType } from "@/lib/rag-documents";
 
 export const dynamic = "force-dynamic";
@@ -8,33 +8,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const rl = checkRateLimit(request, {
-      name: "rag_retrain",
-      max: Number(process.env.RATE_LIMIT_RAG_RETRAIN_MAX ?? "10"),
-      windowMs: Number(process.env.RATE_LIMIT_RAG_RETRAIN_WINDOW_MS ?? String(60_000)),
-    });
-    if (!rl.ok) {
-      return NextResponse.json(
-        { error: "Too Many Requests" },
-        {
-          status: 429,
-          headers: {
-            ...rl.headers,
-            "retry-after": String(Math.max(1, Math.ceil((rl.resetAtMs - Date.now()) / 1000))),
-          },
-        },
-      );
-    }
-
-    const body = await request.json();
-
-    const authed = await getAuthedUserFromRequest(request);
-    const businessId = authed?.businessId || null;
-    if (!businessId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    const docType = (body.docType as DocType);
-    if (!isDocType(docType)) {
-      return NextResponse.json({ error: "Invalid docType" }, { status: 400 });
-    }
+    
 
     // Legacy endpoint: retrain is now implemented via tRPC (rag.enqueueRetrain) and blob-only indexing.
     // We intentionally do NOT spawn Python or write temp files here.
@@ -44,7 +18,7 @@ export async function POST(request: Request) {
         error: "Deprecated. Use tRPC rag.enqueueRetrain.",
         code: "DEPRECATED",
       },
-      { status: 410, headers: rl.headers },
+      { status: 410, headers: {} },
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Retrain failed";

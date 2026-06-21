@@ -35,6 +35,7 @@ import {
   flushBusinessOutbox,
   getThreadWhatsappWindowState,
   lockWorkflowKey,
+  withRedisWorkflowLock,
   logTicketEvent,
   maskPhoneNumber,
   normalizeKey,
@@ -438,9 +439,9 @@ export async function approveOrderTicket(
     priority: ticket.priority ?? null,
   };
 
-  const result = await db.transaction(async (tx) => {
-    await lockWorkflowKey(tx, `${ctx.businessId}::ticket::${ticket.id}`);
-    await enforceOrderTicketOperationThrottle(tx, ctx, "approve", ticket.id);
+  const result = await withRedisWorkflowLock(`${ctx.businessId}::ticket::${ticket.id}`, async () => {
+    return await db.transaction(async (tx) => {
+      await enforceOrderTicketOperationThrottle(tx, ctx, "approve", ticket.id);
 
     const [currentTicket] = await tx
       .select({
@@ -720,6 +721,7 @@ export async function approveOrderTicket(
       },
     };
   });
+  });
 
   if (!result.order || !result.ticket) {
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to approve order ticket." });
@@ -942,9 +944,9 @@ export async function denyOrderTicket(
     customerName: ticket.customerName,
     customerPhone: ticket.customerPhone,
   });
-  const result = await db.transaction(async (tx) => {
-    await lockWorkflowKey(tx, `${ctx.businessId}::ticket::${input.id}`);
-    await enforceOrderTicketOperationThrottle(tx, ctx, "deny", input.id);
+  const result = await withRedisWorkflowLock(`${ctx.businessId}::ticket::${input.id}`, async () => {
+    return await db.transaction(async (tx) => {
+      await enforceOrderTicketOperationThrottle(tx, ctx, "deny", input.id);
 
     const [currentTicket] = await tx
       .select({
@@ -1051,6 +1053,7 @@ export async function denyOrderTicket(
       order: deniedOrder,
       notification,
     };
+  });
   });
 
   if (!result.ticket) {

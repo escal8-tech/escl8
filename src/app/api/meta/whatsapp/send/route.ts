@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 // decryptSecret removed — prefer plaintext storage
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
 import { getAuthedUserFromRequest } from "@/server/apiAuth";
-import { checkRateLimit } from "@/server/rateLimit";
+
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { captureSentryException } from "@/lib/sentry-monitoring";
 import { getTenantModuleAccess, tenantHasFeature } from "@/server/control/access";
@@ -15,28 +15,8 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
-    const rl = checkRateLimit(req, {
-      name: "whatsapp_send",
-      max: Number(process.env.RATE_LIMIT_WHATSAPP_SEND_MAX ?? "30"),
-      windowMs: Number(process.env.RATE_LIMIT_WHATSAPP_SEND_WINDOW_MS ?? String(60_000)),
-    });
-    if (!rl.ok) {
-      return NextResponse.json(
-        { ok: false, error: "Too Many Requests" },
-        {
-          status: 429,
-          headers: {
-            ...rl.headers,
-            "retry-after": String(Math.max(1, Math.ceil((rl.resetAtMs - Date.now()) / 1000))),
-          },
-        },
-      );
-    }
-
     const authed = await getAuthedUserFromRequest(req);
-    if (!authed?.user || !authed.email) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401, headers: rl.headers });
-    }
+    if (!authed) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
     const { email, phoneNumberId, to, text } = (await req.json()) as {
       email?: string;
@@ -73,7 +53,7 @@ export async function POST(req: Request) {
           error: "Outbound WhatsApp messaging is locked for this subscription. Upgrade or activate billing to send messages.",
           code: "FEATURE_LOCKED",
         },
-        { status: 402, headers: rl.headers },
+        { status: 402, headers: {} },
       );
     }
 
@@ -133,7 +113,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ ok: true, result: res }, { headers: rl.headers });
+    return NextResponse.json({ ok: true, result: res });
   } catch (err: unknown) {
     if (err instanceof MetaGraphError) {
       recordBusinessEvent({

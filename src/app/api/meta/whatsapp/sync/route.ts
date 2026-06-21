@@ -6,7 +6,7 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import { generateSixDigitPin } from "@/server/meta/crypto";
 import { graphEndpoint, graphJson, MetaGraphError } from "@/server/meta/graph";
 import { getAuthedUserFromRequest } from "@/server/apiAuth";
-import { checkRateLimit } from "@/server/rateLimit";
+
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { captureSentryException } from "@/lib/sentry-monitoring";
 import { getTenantModuleAccess } from "@/server/control/access";
@@ -40,28 +40,8 @@ export async function POST(req: Request) {
   let embeddedSignupEventForLogs: string | undefined;
 
   try {
-    const rl = checkRateLimit(req, {
-      name: "whatsapp_sync",
-      max: Number(process.env.RATE_LIMIT_WHATSAPP_SYNC_MAX ?? "10"),
-      windowMs: Number(process.env.RATE_LIMIT_WHATSAPP_SYNC_WINDOW_MS ?? String(60_000)),
-    });
-    if (!rl.ok) {
-      return NextResponse.json(
-        { ok: false, error: "Too Many Requests" },
-        {
-          status: 429,
-          headers: {
-            ...rl.headers,
-            "retry-after": String(Math.max(1, Math.ceil((rl.resetAtMs - Date.now()) / 1000))),
-          },
-        },
-      );
-    }
-
     const authed = await getAuthedUserFromRequest(req);
-    if (!authed?.user || !authed.email) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401, headers: rl.headers });
-    }
+    if (!authed) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
     const { code, wabaId, wabaIds, phoneNumberId, email, wabaCurrency, metaBusinessPortfolioId, embeddedSignupEvent } = (await req.json()) as {
       code?: string;
@@ -99,7 +79,7 @@ export async function POST(req: Request) {
           error: "This tenant needs an active paid plan, demo grant, or partner grant before WhatsApp can be connected.",
           code: "SUBSCRIPTION_REQUIRED",
         },
-        { status: 402, headers: rl.headers },
+        { status: 402, headers: {} },
       );
     }
     const maxPhoneNumbers = numberLimit(access.limits?.["agent.whatsappNumbers.max"], 1);
@@ -124,7 +104,7 @@ export async function POST(req: Request) {
           error: `This plan allows ${maxPhoneNumbers} active WhatsApp number${maxPhoneNumbers === 1 ? "" : "s"}. Upgrade before connecting another number.`,
           code: "WHATSAPP_NUMBER_LIMIT_REACHED",
         },
-        { status: 402, headers: rl.headers },
+        { status: 402, headers: {} },
       );
     }
 
@@ -213,7 +193,7 @@ export async function POST(req: Request) {
           error: "WhatsApp setup could not be completed. Please retry the sync.",
           code: "WABA_RESOLUTION_FAILED",
         },
-        { status: 502, headers: rl.headers },
+        { status: 502, headers: {} },
       );
     }
 
@@ -253,7 +233,7 @@ export async function POST(req: Request) {
           error: "WhatsApp setup could not be completed. Please retry the sync.",
           code: "REGISTER_FAILED",
         },
-        { status: 502, headers: rl.headers },
+        { status: 502, headers: {} },
       );
     }
 
@@ -270,7 +250,7 @@ export async function POST(req: Request) {
           error: "WhatsApp setup could not be completed. Please retry the sync.",
           code: "SUBSCRIBE_FAILED",
         },
-        { status: 502, headers: rl.headers },
+        { status: 502, headers: {} },
       );
     }
 
@@ -398,7 +378,6 @@ export async function POST(req: Request) {
       message:
         "WhatsApp onboarded (token exchanged, webhooks subscribed, credit line shared, phone registered).",
       },
-      { headers: rl.headers },
     );
   } catch (err: any) {
     if (err instanceof MetaGraphError) {

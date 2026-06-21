@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { WebPubSubServiceClient } from "@azure/web-pubsub";
 import { getAuthedUserFromRequest } from "@/server/apiAuth";
-import { checkRateLimit } from "@/server/rateLimit";
+
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { captureSentryException } from "@/lib/sentry-monitoring";
 
@@ -54,38 +54,9 @@ async function getAuthedIdentity(req: Request): Promise<{ businessId: string; us
 }
 
 export async function GET(req: Request) {
-  const rl = checkRateLimit(req, {
-    name: "events_negotiate",
-    max: Number(process.env.RATE_LIMIT_EVENTS_NEGOTIATE_MAX ?? "90"),
-    windowMs: Number(process.env.RATE_LIMIT_EVENTS_NEGOTIATE_WINDOW_MS ?? String(60_000)),
-  });
-  if (!rl.ok) {
-    return NextResponse.json(
-      { error: "Too Many Requests" },
-      {
-        status: 429,
-        headers: {
-          ...rl.headers,
-          "retry-after": String(Math.max(1, Math.ceil((rl.resetAtMs - Date.now()) / 1000))),
-        },
-      },
-    );
-  }
   const startedAt = Date.now();
   const identity = await getAuthedIdentity(req);
-  if (!identity) {
-    recordBusinessEvent({
-      event: "realtime.negotiate_denied",
-      level: "warn",
-      action: "negotiate",
-      area: "realtime",
-      source: "api.events.negotiate",
-      outcome: "handled_failure",
-      status: "unauthorized",
-      entity: "realtime_session",
-    });
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: rl.headers });
-  }
+  if (!identity) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const conn = process.env.WEB_PUBSUB_CONNECTION_STRING || process.env.WEB_PUBSUB_CONN || "";
   const hub = process.env.WEB_PUBSUB_HUB || "portal";
@@ -114,7 +85,7 @@ export async function GET(req: Request) {
         "realtime.hub": hub,
       },
     });
-    return NextResponse.json({ error: "WEB_PUBSUB_CONNECTION_STRING missing" }, { status: 503, headers: rl.headers });
+    return NextResponse.json({ error: "WEB_PUBSUB_CONNECTION_STRING missing" }, { status: 503, headers: {} });
   }
 
   const group = `business.${identity.businessId}`;

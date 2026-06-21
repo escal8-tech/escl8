@@ -400,9 +400,26 @@ export async function resolveTicketContactContext(params: {
   };
 }
 
+import { acquireLock, releaseLock } from "@/lib/redis";
+
 export async function lockWorkflowKey(tx: any, key: string) {
+  // We keep the pg_advisory_xact_lock for transaction-scoped safety.
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
 }
+
+export async function withRedisWorkflowLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const lockKey = `lock:workflow:${key}`;
+  const acquired = await acquireLock(lockKey, 30);
+  if (!acquired) {
+    throw new TRPCError({ code: "CONFLICT", message: "This record is currently being modified. Please try again." });
+  }
+  try {
+    return await fn();
+  } finally {
+    await releaseLock(lockKey);
+  }
+}
+
 
 export async function flushBusinessOutbox(businessId: string) {
   await drainBusinessOutbox({ businessId, limit: 25 });

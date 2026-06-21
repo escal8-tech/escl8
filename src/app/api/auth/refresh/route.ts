@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { refreshAccessToken } from '@/lib/jwt-auth';
-import { RATE_LIMITS } from '@/lib/rate-limiter';
+
 import { setAuthCookies } from '@/lib/auth-cookies';
-import { checkRateLimit } from '@/lib/auth-rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,8 +14,6 @@ export const dynamic = 'force-dynamic';
  * Returns: Sets httpOnly cookie (new accessToken)
  */
 export async function PUT(request: NextRequest) {
-  const rateLimitError = await checkRateLimit(request, RATE_LIMITS.AUTH_TOKEN);
-  if (rateLimitError) return rateLimitError;
 
   try {
     // Prefer cookie, fallback to body
