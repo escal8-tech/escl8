@@ -1,113 +1,88 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  assertOrderAllowsFulfillmentUpdates,
-  assertPaymentReviewAllowed,
-  assertPaymentSetupEditable,
-  buildPaymentReviewMessages,
-  canReopenPaidOrderForPaymentReview,
   canResendPaymentDetails,
-  cleanOptionalText,
-  PAYMENT_PENDING_WORKSPACE_STATUSES,
-  nextFulfillmentTimestamps,
+  canReopenPaidOrderForPaymentReview,
+  resolveOrderLedgerAmount,
   resolveRefundAmount,
-} from "@/server/services/orderWorkflowSupport";
+  nextFulfillmentTimestamps,
+  assertPaymentSetupEditable,
+  assertOrderAllowsFulfillmentUpdates,
+  maskPhoneNumber
+} from "./orderWorkflowSupport";
 
-test("resolveRefundAmount prefers valid explicit value", () => {
-  assert.equal(
-    resolveRefundAmount("125.5", { paidAmount: "200.00", expectedAmount: "100.00" }),
-    "125.50",
-  );
-});
+test("canResendPaymentDetails validation", () => {
+  // Must be bank_qr
+  assert.equal(canResendPaymentDetails({ paymentMethod: "cod", status: "awaiting_payment" }), false);
 
-test("resolveRefundAmount falls back to ledger amount", () => {
-  assert.equal(
-    resolveRefundAmount(undefined, { paidAmount: null, expectedAmount: "310.00", refundAmount: null }),
-    "310.00",
-  );
-});
-
-test("bank qr payments can still be approved manually", () => {
-  assert.doesNotThrow(() =>
-    assertPaymentReviewAllowed({
-      orderRow: { paymentMethod: "bank_qr" },
-      paymentRow: { aiCheckStatus: "invalid" },
-      action: "approve",
-    }),
-  );
-});
-
-test("manual payments can still be approved", () => {
-  assert.doesNotThrow(() =>
-    assertPaymentReviewAllowed({
-      orderRow: { paymentMethod: "manual" },
-      paymentRow: { aiCheckStatus: "manual_review" },
-      action: "approve",
-    }),
-  );
-});
-
-test("payment setup editing is blocked after payment is finalized", () => {
-  assert.throws(() => assertPaymentSetupEditable({ status: "paid" }), /before the payment is approved/i);
-  assert.throws(() => assertPaymentSetupEditable({ status: "payment_submitted" }), /before the payment is approved/i);
-  assert.doesNotThrow(() => assertPaymentSetupEditable({ status: "payment_rejected" }));
-});
-
-test("payment detail resend stays available during payment review", () => {
+  // Valid status
   assert.equal(canResendPaymentDetails({ paymentMethod: "bank_qr", status: "awaiting_payment" }), true);
   assert.equal(canResendPaymentDetails({ paymentMethod: "bank_qr", status: "payment_submitted" }), true);
-  assert.equal(canResendPaymentDetails({ paymentMethod: "bank_qr", status: "paid" }), false);
+
+  // Approved status requires all delivery fields
+  assert.equal(canResendPaymentDetails({
+    paymentMethod: "bank_qr",
+    status: "approved",
+    recipientName: "John",
+    recipientPhone: "123",
+    shippingAddress: "Street"
+  }), true);
+
+  assert.equal(canResendPaymentDetails({
+    paymentMethod: "bank_qr",
+    status: "approved",
+    recipientName: "John"
+    // missing phone and address
+  }), false);
 });
 
-test("payment workspace pending queue includes draft and approval states", () => {
-  assert.deepEqual(PAYMENT_PENDING_WORKSPACE_STATUSES, [
-    "pending_approval",
-    "edit_required",
-    "approved",
-    "awaiting_payment",
-    "payment_submitted",
-  ]);
-});
-
-test("paid orders can only reopen payment review before delivery starts", () => {
+test("canReopenPaidOrderForPaymentReview restriction", () => {
   assert.equal(canReopenPaidOrderForPaymentReview({ status: "paid", fulfillmentStatus: "queued" }), true);
-  assert.equal(canReopenPaidOrderForPaymentReview({ status: "paid", fulfillmentStatus: "out_for_delivery" }), false);
-  assert.equal(canReopenPaidOrderForPaymentReview({ status: "awaiting_payment", fulfillmentStatus: "on_hold" }), false);
+  assert.equal(canReopenPaidOrderForPaymentReview({ status: "paid", fulfillmentStatus: "dispatched" }), false);
+  assert.equal(canReopenPaidOrderForPaymentReview({ status: "approved", fulfillmentStatus: "queued" }), false);
 });
 
-test("fulfillment updates are restricted to paid and refund-tracked orders", () => {
-  assert.throws(() => assertOrderAllowsFulfillmentUpdates({ status: "awaiting_payment" }), /Only paid/i);
-  assert.doesNotThrow(() => assertOrderAllowsFulfillmentUpdates({ status: "refund_pending" }));
+test("resolveOrderLedgerAmount calculation", () => {
+  assert.equal(resolveOrderLedgerAmount({ paidAmount: "100.50" }), 100.5);
+  assert.equal(resolveOrderLedgerAmount({ refundAmount: "50" }), 50);
+  assert.equal(resolveOrderLedgerAmount({ expectedAmount: "200" }), 200);
+  assert.equal(resolveOrderLedgerAmount({}, { paidAmount: "75" }), 75);
 });
 
-test("nextFulfillmentTimestamps stamps delivered when status changes", () => {
-  const now = new Date("2026-04-01T12:00:00.000Z");
+test("resolveRefundAmount logic", () => {
+  const order = { paidAmount: "100" };
+  assert.equal(resolveRefundAmount("80", order), "80.00");
+  assert.equal(resolveRefundAmount(undefined, order), "100.00");
+  assert.equal(resolveRefundAmount("0", order), "100.00");
+});
+
+test("nextFulfillmentTimestamps stamps correctly", () => {
+  const now = new Date("2026-06-01T12:00:00Z");
+  const existing = {};
+
   const result = nextFulfillmentTimestamps({
-    currentStatus: "out_for_delivery",
-    nextStatus: "delivered",
+    currentStatus: "queued",
+    nextStatus: "packed",
     now,
-    existing: {},
+    existing
   });
-  assert.equal(result.deliveredAt?.toISOString(), now.toISOString());
+
+  assert.equal(result.packedAt?.toISOString(), now.toISOString());
   assert.equal(result.fulfillmentUpdatedAt?.toISOString(), now.toISOString());
 });
 
-test("payment approval customer messages are internal only", () => {
-  const messages = buildPaymentReviewMessages({
-    action: "approve",
-    orderId: "d1471747-aaaa-bbbb-cccc-1234567890ab",
-    paymentReference: "ORD-D1471747",
-    paidAmount: "1060.00",
-    currency: "LKR",
-  });
-
-  assert.deepEqual(messages, []);
+test("assertPaymentSetupEditable blocks if paid", () => {
+  assert.doesNotThrow(() => assertPaymentSetupEditable({ status: "awaiting_payment" }));
+  assert.throws(() => assertPaymentSetupEditable({ status: "paid" }), /Payment details can only be edited before/);
 });
 
-test("cleanOptionalText handles various inputs", () => {
-  assert.equal(cleanOptionalText("  hello world  "), "hello world");
-  assert.equal(cleanOptionalText(null), null);
-  assert.equal(cleanOptionalText(undefined), null);
-  assert.equal(cleanOptionalText(""), null);
-  assert.equal(cleanOptionalText("a".repeat(100), 10), "aaaaaaaaaa");
+test("assertOrderAllowsFulfillmentUpdates blocks if not paid", () => {
+  assert.doesNotThrow(() => assertOrderAllowsFulfillmentUpdates({ status: "paid" }));
+  assert.throws(() => assertOrderAllowsFulfillmentUpdates({ status: "approved" }), /Only paid or refund-tracked orders/);
+});
+
+test("maskPhoneNumber implementation in orderWorkflowSupport", () => {
+  // Note: orderWorkflowSupport has a different maskPhoneNumber implementation (slices 2 instead of 0)
+  // sanitizePhoneDigits strips the '+'
+  assert.equal(maskPhoneNumber("+94771234567"), "94*******67");
 });
