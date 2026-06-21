@@ -127,14 +127,10 @@ function trackingBaseUrl(fallbackOrigin?: string | null): string {
   const candidates = [
     process.env.ORDER_TRACKING_BASE_URL,
     process.env.CONCIERGE_PUBLIC_URL,
-    process.env.NEXT_PUBLIC_APP_URL,
+    "https://concierge.escal8.tech",
     process.env.ESCL8_PUBLIC_APP_URL,
     process.env.ESCL8_APP_BASE_URL,
-    process.env.APP_BASE_URL,
-    process.env.NEXTAUTH_URL,
-    process.env.PUBLIC_APP_URL,
     fallbackOrigin,
-    "https://concierge.escal8.tech",
   ];
   for (const candidate of candidates) {
     const normalized = normalizePublicBaseUrl(candidate);

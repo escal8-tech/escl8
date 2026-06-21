@@ -70,9 +70,7 @@ function buildReadUrl(blobUrl: string, blobPath: string, expiresOn: Date, contai
     sharedKey,
   ).toString();
   
-  // Apply Front Door to the base URL, then re-attach the SAS query string
-  const frontDoorUrl = applyFrontDoor(blobUrl, containerName);
-  return `${frontDoorUrl}?${sas}`;
+  return `${blobUrl}?${sas}`;
 }
 
 export function buildPrivateBlobReadUrl(blobPath: string, readTtlHours = 72, containerName = AZURE_CONTAINER): string | null {
