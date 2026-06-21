@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, getTableColumns, sql } from "drizzle-orm";
 import { z } from "zod";
 import { drainBusinessOutbox } from "@/server/services/messageOutbox";
+import { acquireLock, releaseLock, getRedisClient } from "@/lib/redis";
 import { assertOperationThrottle, getStaffActorKey } from "@/server/operationalHardening";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { db } from "@/server/db/client";
@@ -400,8 +401,6 @@ export async function resolveTicketContactContext(params: {
   };
 }
 
-import { acquireLock, releaseLock } from "@/lib/redis";
-
 export async function lockWorkflowKey(tx: any, key: string) {
   // We keep the pg_advisory_xact_lock for transaction-scoped safety.
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
@@ -409,6 +408,11 @@ export async function lockWorkflowKey(tx: any, key: string) {
 
 export async function withRedisWorkflowLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const lockKey = `lock:workflow:${key}`;
+  const client = await getRedisClient();
+  if (!client) {
+    // Redis unavailable - fall back to running without distributed lock
+    return fn();
+  }
   const acquired = await acquireLock(lockKey, 30);
   if (!acquired) {
     throw new TRPCError({ code: "CONFLICT", message: "This record is currently being modified. Please try again." });
