@@ -204,7 +204,7 @@ export const requestsRouter = router({
       const conditions = [
         eq(requests.businessId, ctx.businessId),
         isNull(requests.deletedAt),
-        sql`${requests.createdAt} >= now() - (${days} || ' days')::interval`,
+        sql`${requests.createdAt} >= now() - (interval '1 day' * ${days})`,
       ];
       if (input?.source) conditions.push(eq(requests.source, input.source));
       if (customerIdsForPhone !== null) {

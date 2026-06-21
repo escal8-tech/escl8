@@ -108,24 +108,34 @@ export async function extractTextFromBuffer(params: {
     lower.endsWith(".xlsx") ||
     contentType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   ) {
-    const xlsx: any = await import("xlsx");
-    const workbook = xlsx.read(buffer, { type: "buffer" });
+    const ExcelJS = await import("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+
     const rowTexts: string[] = [];
     const structuredRows: SpreadsheetRow[] = [];
 
-    for (const sheetName of workbook.SheetNames || []) {
-      const sheet = workbook.Sheets?.[sheetName];
-      if (!sheet) continue;
-      const rows: unknown[][] = xlsx.utils.sheet_to_json(sheet, {
-        header: 1,
-        raw: false,
-        defval: "",
+    workbook.eachSheet((worksheet) => {
+      const sheetName = worksheet.name;
+      const rows: any[][] = [];
+
+      worksheet.eachRow({ includeEmpty: true }, (row) => {
+        const rowValues: any[] = [];
+        // exceljs rows are 1-indexed and might have holes.
+        // Convert to a simple array for the existing logic.
+        const rowAny = row as any;
+        const maxCol = rowAny.values ? rowAny.values.length : 0;
+        for (let i = 1; i < maxCol; i++) {
+          const cell = row.getCell(i);
+          rowValues.push(cell.value === null || cell.value === undefined ? "" : String(cell.value));
+        }
+        rows.push(rowValues);
       });
 
       const headerRowIndex = rows.findIndex((row) =>
         row.some((cell) => String(cell ?? "").trim().length > 0),
       );
-      if (headerRowIndex < 0) continue;
+      if (headerRowIndex < 0) return;
 
       const columnCount = rows.reduce((max, row) => Math.max(max, row.length), 0);
       const rawHeaders = Array.from({ length: columnCount }, (_, idx) => String(rows[headerRowIndex]?.[idx] ?? "").trim());
@@ -156,7 +166,7 @@ export async function extractTextFromBuffer(params: {
           text: finalText,
         });
       }
-    }
+    });
 
     return {
       text: rowTexts.join("\n"),
