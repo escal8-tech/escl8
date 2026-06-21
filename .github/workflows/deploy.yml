@@ -310,6 +310,7 @@ jobs:
               WEB_PUBSUB_CONNECTION_STRING=secretref:pubsub-conn \
               FIREBASE_SERVICE_ACCOUNT_JSON=secretref:firebase-service-account-json \
               AZURE_BLOB_CONNECTION_STRING=secretref:azure-blob-connection-string \
+              AZURE_FRONT_DOOR_DOMAIN=https://escal8-edge-dcdmaegna8dmhbf8.z02.azurefd.net \
               AZURE_QUEUE_CONNECTION_STRING=secretref:azure-queue-connection-string \
               META_SYSTEM_USER_TOKEN=secretref:meta-system-key \
               META_APP_SECRET=secretref:meta-app-secret \
@@ -369,6 +370,7 @@ jobs:
               WEB_PUBSUB_CONNECTION_STRING=secretref:pubsub-conn \
               FIREBASE_SERVICE_ACCOUNT_JSON=secretref:firebase-service-account-json \
               AZURE_BLOB_CONNECTION_STRING=secretref:azure-blob-connection-string \
+              AZURE_FRONT_DOOR_DOMAIN=https://escal8-edge-dcdmaegna8dmhbf8.z02.azurefd.net \
               AZURE_QUEUE_CONNECTION_STRING=secretref:azure-queue-connection-string \
               OTEL_EXPORTER_OTLP_HEADERS=secretref:otel-exporter-otlp-headers \
               GRAFANA_LOGS_USER=secretref:grafana-logs-user \
