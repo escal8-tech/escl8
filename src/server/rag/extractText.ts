@@ -110,7 +110,7 @@ export async function extractTextFromBuffer(params: {
   ) {
     const ExcelJS = await import("exceljs");
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
+    await workbook.xlsx.load(buffer as any);
 
     const rowTexts: string[] = [];
     const structuredRows: SpreadsheetRow[] = [];
