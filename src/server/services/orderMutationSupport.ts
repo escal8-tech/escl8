@@ -34,11 +34,11 @@ import {
   resolveOrderNotificationContext,
   requiresDispatchData,
 } from "@/server/services/orderWorkflowSupport";
-import {
   extractCustomerEmail,
   logTicketEvent,
   publishHydratedTicketUpsert,
   sanitizeTicketFields,
+  withRedisWorkflowLock,
 } from "@/server/services/ticketWorkflowSupport";
 import {
   ORDER_FULFILLMENT_STATUSES,
@@ -328,9 +328,10 @@ export async function sendPaymentDetails(ctx: any, input: { orderId: string }) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
   }
   const now = new Date();
-  const result = await db.transaction(async (tx) => {
-    await lockWorkflowKey(tx, `${ctx.businessId}::order::${input.orderId}`);
-    await enforceOrderOperationThrottle(tx, ctx, "sendPaymentDetails", input.orderId);
+  const lockKey = `${ctx.businessId}::order::${input.orderId}`;
+  const result = await withRedisWorkflowLock(lockKey, async () => {
+    return await db.transaction(async (tx) => {
+      await enforceOrderOperationThrottle(tx, ctx, "sendPaymentDetails", input.orderId);
 
     const [orderRow] = await tx
       .select()
@@ -484,6 +485,7 @@ export async function sendPaymentDetails(ctx: any, input: { orderId: string }) {
       botDisplayPhoneNumber: contactContext.channelIdentityId,
     };
   });
+  });
 
   let delivery = {
     ok: true,
@@ -604,9 +606,10 @@ export async function updateFulfillment(
     throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
   }
   const now = new Date();
-  const result = await db.transaction(async (tx) => {
-    await lockWorkflowKey(tx, `${ctx.businessId}::order::${input.orderId}`);
-    await enforceOrderOperationThrottle(tx, ctx, "updateFulfillment", input.orderId);
+  const lockKey = `${ctx.businessId}::order::${input.orderId}`;
+  const result = await withRedisWorkflowLock(lockKey, async () => {
+    return await db.transaction(async (tx) => {
+      await enforceOrderOperationThrottle(tx, ctx, "updateFulfillment", input.orderId);
 
     const [orderRow] = await tx
       .select()
@@ -770,6 +773,7 @@ export async function updateFulfillment(
       notification,
       emailNotification,
     };
+  });
   });
 
   await logOrderEvent({

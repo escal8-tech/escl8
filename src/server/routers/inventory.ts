@@ -31,6 +31,7 @@ import {
 } from "@/server/inventory/stockMapping";
 import { acquireInventoryBusinessLock } from "@/server/inventory/locks";
 import { setCommerceStockAbsolute } from "@/server/commerce/inventoryBridge";
+import { withRedisWorkflowLock } from "@/server/services/ticketWorkflowSupport";
 
 const sortDirectionSchema = z.enum(["asc", "desc"]);
 const itemSortKeySchema = z.enum(["name", "updatedAt", "quantity"]);
@@ -439,8 +440,10 @@ export const inventoryRouter = router({
       agentId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const row = await db.transaction(async (tx) => {
-        await acquireInventoryBusinessLock(tx, ctx.businessId);
+      const lockKey = `${ctx.businessId}::inventory::${input.productId}`;
+      const row = await withRedisWorkflowLock(lockKey, async () => {
+        return await db.transaction(async (tx) => {
+          await acquireInventoryBusinessLock(tx, ctx.businessId);
         const [updated] = await tx
           .update(inventoryProducts)
           .set({ updatedAt: new Date() })
@@ -457,6 +460,7 @@ export const inventoryRouter = router({
           });
         }
         return updated;
+      });
       });
       if (!row) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Item not found" });

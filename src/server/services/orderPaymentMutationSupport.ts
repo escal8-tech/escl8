@@ -31,6 +31,7 @@ import {
   resolveOrderNotificationContext,
   resolveRefundAmount,
 } from "@/server/services/orderWorkflowSupport";
+import { withRedisWorkflowLock } from "@/server/services/ticketWorkflowSupport";
 import {
   emailManualOrderInvoice,
   isStaffManualOrder,
@@ -50,18 +51,28 @@ export async function reviewPayment(
     throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
   }
   const now = new Date();
-  const result = await db.transaction(async (tx) => {
-    const [paymentRow] = await tx
-      .select()
-      .from(orderPayments)
-      .where(and(eq(orderPayments.businessId, ctx.businessId), eq(orderPayments.id, input.paymentId)))
-      .limit(1);
-    if (!paymentRow) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Order payment not found." });
-    }
+  const [paymentPrecheck] = await db
+    .select({ orderId: orderPayments.orderId })
+    .from(orderPayments)
+    .where(and(eq(orderPayments.businessId, ctx.businessId), eq(orderPayments.id, input.paymentId)))
+    .limit(1);
+  if (!paymentPrecheck) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Order payment not found." });
+  }
 
-    await lockWorkflowKey(tx, `${ctx.businessId}::order::${paymentRow.orderId}`);
-    await enforceOrderOperationThrottle(tx, ctx, "reviewPayment", paymentRow.orderId);
+  const lockKey = `${ctx.businessId}::order::${paymentPrecheck.orderId}`;
+  const result = await withRedisWorkflowLock(lockKey, async () => {
+    return await db.transaction(async (tx) => {
+      const [paymentRow] = await tx
+        .select()
+        .from(orderPayments)
+        .where(and(eq(orderPayments.businessId, ctx.businessId), eq(orderPayments.id, input.paymentId)))
+        .limit(1);
+      if (!paymentRow) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Order payment not found." });
+      }
+
+      await enforceOrderOperationThrottle(tx, ctx, "reviewPayment", paymentRow.orderId);
 
     const [orderRow] = await tx
       .select()
@@ -271,6 +282,7 @@ export async function reviewPayment(
       },
     };
   });
+  });
 
   let delivery: {
     ok: boolean;
@@ -464,9 +476,10 @@ export async function captureManualPayment(
     throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
   }
   const now = new Date();
-  const result = await db.transaction(async (tx) => {
-    await lockWorkflowKey(tx, `${ctx.businessId}::order::${input.orderId}`);
-    await enforceOrderOperationThrottle(tx, ctx, "captureManualPayment", input.orderId);
+  const lockKey = `${ctx.businessId}::order::${input.orderId}`;
+  const result = await withRedisWorkflowLock(lockKey, async () => {
+    return await db.transaction(async (tx) => {
+      await enforceOrderOperationThrottle(tx, ctx, "captureManualPayment", input.orderId);
 
     const [orderRow] = await tx
       .select()
@@ -604,6 +617,7 @@ export async function captureManualPayment(
         })
       : { ok: true as const, error: null, idempotencyKeys: [] as string[] };
     return { orderRow, updatedOrder: currentOrder, paidAmount, manualPaymentRow, notification, emailNotification, deliveryChannel };
+  });
   });
 
   await logOrderEvent({
@@ -785,9 +799,10 @@ export async function denyPendingPaymentOrder(
     throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
   }
   const now = new Date();
-  const result = await db.transaction(async (tx) => {
-    await lockWorkflowKey(tx, `${ctx.businessId}::order::${input.orderId}`);
-    await enforceOrderOperationThrottle(tx, ctx, "reviewPayment", input.orderId);
+  const lockKey = `${ctx.businessId}::order::${input.orderId}`;
+  const result = await withRedisWorkflowLock(lockKey, async () => {
+    return await db.transaction(async (tx) => {
+      await enforceOrderOperationThrottle(tx, ctx, "reviewPayment", input.orderId);
 
     const [orderRow] = await tx
       .select()
@@ -943,6 +958,7 @@ export async function denyPendingPaymentOrder(
       : { ok: true as const, error: null, idempotencyKeys: [] as string[] };
     return { updatedOrder, updatedPayment, notification, emailNotification, deliveryChannel };
   });
+  });
 
   await logOrderEvent({
     businessId: ctx.businessId,
@@ -997,9 +1013,10 @@ export async function reopenPaidOrderForPaymentReview(
   }
   const now = new Date();
   const normalizedReason = input.reason?.trim() || "Payment approval was reopened by staff.";
-  const result = await db.transaction(async (tx) => {
-    await lockWorkflowKey(tx, `${ctx.businessId}::order::${input.orderId}`);
-    await enforceOrderOperationThrottle(tx, ctx, "reviewPayment", input.orderId);
+  const lockKey = `${ctx.businessId}::order::${input.orderId}`;
+  const result = await withRedisWorkflowLock(lockKey, async () => {
+    return await db.transaction(async (tx) => {
+      await enforceOrderOperationThrottle(tx, ctx, "reviewPayment", input.orderId);
 
     const [orderRow] = await tx
       .select()
@@ -1076,6 +1093,7 @@ export async function reopenPaidOrderForPaymentReview(
 
     return { updatedOrder, updatedPayment };
   });
+  });
 
   await logOrderEvent({
     businessId: ctx.businessId,
@@ -1134,9 +1152,10 @@ export async function updateRefundStatus(
     throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
   }
   const now = new Date();
-  const result = await db.transaction(async (tx) => {
-    await lockWorkflowKey(tx, `${ctx.businessId}::order::${input.orderId}`);
-    await enforceOrderOperationThrottle(tx, ctx, "updateRefundStatus", input.orderId);
+  const lockKey = `${ctx.businessId}::order::${input.orderId}`;
+  const result = await withRedisWorkflowLock(lockKey, async () => {
+    return await db.transaction(async (tx) => {
+      await enforceOrderOperationThrottle(tx, ctx, "updateRefundStatus", input.orderId);
 
     const [orderRow] = await tx
       .select()
@@ -1231,6 +1250,7 @@ export async function updateRefundStatus(
       }),
     });
     return { orderRow, updatedOrder, nextRefundAmount, nextRefundReason, nextStatus, eventType, notification };
+  });
   });
 
   await logOrderEvent({

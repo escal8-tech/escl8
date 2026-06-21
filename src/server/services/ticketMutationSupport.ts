@@ -33,6 +33,8 @@ import {
 } from "@/server/services/ticketWorkflowSupport";
 import { getBusinessOrderSettingsRecord } from "@/server/services/businessSettingsStore";
 import { normalizeOptionalText } from "@/server/services/ticketLifecycleSupport";
+import { withRedisWorkflowLock } from "@/server/services/ticketWorkflowSupport";
+import { publishEvent } from "@/lib/eventgrid";
 
 export * from "./ticketLifecycleSupport";
 
@@ -301,9 +303,11 @@ export async function createManualOrderTicket(
   });
   const expectedAmount = computeOrderExpectedAmount(fields);
   const summary = `Manual ${input.channel} order: ${formatOrderItemsSummary(fields)}`;
+  const lockKey = `${ctx.businessId}::manualOrder::${externalId}`;
 
-  const result = await db.transaction(async (tx) => {
-    const [typeRow] = await tx
+  const result = await withRedisWorkflowLock(lockKey, async () => {
+    return await db.transaction(async (tx) => {
+      const [typeRow] = await tx
       .select()
       .from(supportTicketTypes)
       .where(and(eq(supportTicketTypes.businessId, ctx.businessId), eq(supportTicketTypes.key, "ordercreation")))
@@ -449,6 +453,7 @@ export async function createManualOrderTicket(
 
     return { customerRow: finalCustomerRow ?? customerRow, ticketRow, requestRow: requestRow ?? null };
   });
+  });
 
   await Promise.all([
     publishPortalEvent({
@@ -494,6 +499,14 @@ export async function createManualOrderTicket(
       request_id: result.requestRow?.id ?? null,
       expected_amount: expectedAmount,
     },
+  });
+
+  await publishEvent("order.placed", `order_${result.ticketRow.id}`, {
+    businessId: ctx.businessId,
+    ticketId: result.ticketRow.id,
+    customerId: result.customerRow.id,
+    amount: expectedAmount,
+    timestamp: new Date().toISOString()
   });
 
   return {

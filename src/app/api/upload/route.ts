@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { publishEvent } from "@/lib/eventgrid";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,14 @@ export async function POST(request: Request) {
       const filePath = path.join(uploadDir, `${Date.now()}_${safeName}`);
       await writeFile(filePath, buffer);
       saved.push({ name: path.basename(filePath), size: buffer.byteLength });
+    }
+
+    for (const file of saved) {
+      await publishEvent("file.uploaded", "file_upload", {
+        fileName: file.name,
+        fileSize: file.size,
+        timestamp: new Date().toISOString()
+      });
     }
 
     return NextResponse.json({ ok: true, files: saved });

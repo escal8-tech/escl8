@@ -12,6 +12,7 @@ import {
 } from "@/lib/business-usage";
 import { mergeCustomizationSettings, normalizeCustomizationSettings } from "@/lib/customization-settings";
 import { mergeOrderFlowSettings, normalizeOrderFlowSettings } from "@/lib/order-settings";
+import { publishEvent } from "@/lib/eventgrid";
 import { buildPrivateBlobReadUrl } from "@/lib/storage";
 import { mergeWebsiteWidgetSettings, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
 import { getBusinessAiCreditsUsedThisMonth } from "@/server/services/aiUsage";
@@ -468,6 +469,11 @@ export const businessRouter = router({
             ticket_to_order_enabled: normalized.ticketToOrderEnabled,
           },
         });
+        await publishEvent("settings.updated", `business_${ctx.businessId}`, {
+          businessId: ctx.businessId,
+          type: "order_settings",
+          settings: normalized,
+        });
       }
 
       return updated ?? null;
@@ -552,6 +558,11 @@ export const businessRouter = router({
             primary_color: normalized.primaryColor,
             secondary_color: normalized.secondaryColor,
           },
+        });
+        await publishEvent("settings.updated", `business_${ctx.businessId}`, {
+          businessId: ctx.businessId,
+          type: "customization_settings",
+          settings: normalized,
         });
       }
 
