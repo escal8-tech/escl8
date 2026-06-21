@@ -3,7 +3,7 @@ import { EventGridPublisherClient, AzureKeyCredential } from "@azure/eventgrid";
 const endpoint = process.env.EVENT_GRID_ENDPOINT || "";
 const key = process.env.EVENT_GRID_KEY || "";
 
-export const eventGridClient: EventGridPublisherClient<unknown> | null = endpoint && key
+export const eventGridClient: EventGridPublisherClient<"EventGrid"> | null = endpoint && key
   ? new EventGridPublisherClient(endpoint, 'EventGrid', new AzureKeyCredential(key))
   : null;
 
