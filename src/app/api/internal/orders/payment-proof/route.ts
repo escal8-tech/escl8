@@ -226,7 +226,7 @@ export async function POST(request: Request) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     storedProof = await storePrivateFileAtPath({
-      blobPath: `${businessId}/order-payments/${orderId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
+      blobPath: `payment-proofs/${businessId}/${orderId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
       buffer,
       fileName: file.name,
       contentType: file.type || undefined,

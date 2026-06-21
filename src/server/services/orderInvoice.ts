@@ -584,7 +584,7 @@ export async function createOrderInvoiceArtifact(input: {
   });
   const containerName = orderInvoiceContainer();
   const stored = await storePrivateFileAtPath({
-    blobPath: `${safeToken(input.businessId)}/order2-invoices/${issuedAt.toISOString().slice(0, 10)}/${safeToken(input.order.id)}/${fileName}`,
+    blobPath: `invoices/${safeToken(input.businessId)}/${issuedAt.toISOString().slice(0, 10)}/${safeToken(input.order.id)}/${fileName}`,
     buffer: pdfBuffer,
     fileName,
     contentType: "application/pdf",
