@@ -8,6 +8,7 @@ import type { DocType } from "@/lib/rag-documents";
 
 const AZURE_CONN = process.env.AZURE_BLOB_CONNECTION_STRING || "";
 const AZURE_CONTAINER = process.env.AZURE_BLOB_CONTAINER || "uploads";
+const AZURE_FRONT_DOOR_DOMAIN = process.env.AZURE_FRONT_DOOR_DOMAIN || "";
 
 export type StoredFile = {
   name: string;
@@ -31,6 +32,20 @@ function safeName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
+function applyFrontDoor(blobUrl: string): string {
+  if (AZURE_FRONT_DOOR_DOMAIN) {
+    try {
+      const url = new URL(blobUrl);
+      // Remove trailing slash from domain if present
+      const baseDomain = AZURE_FRONT_DOOR_DOMAIN.replace(/\/$/, "");
+      return `${baseDomain}${url.pathname}`;
+    } catch {
+      return blobUrl;
+    }
+  }
+  return blobUrl;
+}
+
 function parseConnectionString(connectionString: string): { accountName: string; accountKey: string } | null {
   const accountNameMatch = connectionString.match(/AccountName=([^;]+)/);
   const accountKeyMatch = connectionString.match(/AccountKey=([^;]+)/);
@@ -43,7 +58,7 @@ function parseConnectionString(connectionString: string): { accountName: string;
 
 function buildReadUrl(blobUrl: string, blobPath: string, expiresOn: Date, containerName = AZURE_CONTAINER): string {
   const creds = parseConnectionString(AZURE_CONN);
-  if (!creds) return blobUrl;
+  if (!creds) return applyFrontDoor(blobUrl);
   const sharedKey = new StorageSharedKeyCredential(creds.accountName, creds.accountKey);
   const sas = generateBlobSASQueryParameters(
     {
@@ -54,7 +69,10 @@ function buildReadUrl(blobUrl: string, blobPath: string, expiresOn: Date, contai
     },
     sharedKey,
   ).toString();
-  return `${blobUrl}?${sas}`;
+  
+  // Apply Front Door to the base URL, then re-attach the SAS query string
+  const frontDoorUrl = applyFrontDoor(blobUrl);
+  return `${frontDoorUrl}?${sas}`;
 }
 
 export function buildPrivateBlobReadUrl(blobPath: string, readTtlHours = 72, containerName = AZURE_CONTAINER): string | null {
@@ -102,7 +120,7 @@ export async function storeFile(
   return {
     name: `latest${ext}`,
     size: Number(props.contentLength || buffer.byteLength),
-    url: blockBlob.url,
+    url: applyFrontDoor(blockBlob.url),
     blobPath,
     containerName: AZURE_CONTAINER,
     contentType: contentType || props.contentType || undefined,
