@@ -12,6 +12,9 @@ const nextConfig: NextConfig = {
   // Produce a standalone build so we can deploy minimal artifacts
   output: "standalone",
   serverExternalPackages: ["@azure/web-pubsub"],
+  images: {
+    unoptimized: true,
+  },
 
   async redirects() {
     return [
