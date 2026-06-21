@@ -27,7 +27,6 @@ import {
   flushBusinessOutbox,
   getBusinessOrderSettings,
   getThreadWhatsappWindowState,
-  lockWorkflowKey,
   resolveOrderNotificationContext,
   resolveRefundAmount,
 } from "@/server/services/orderWorkflowSupport";

@@ -34,7 +34,6 @@ import {
   extractCustomerEmail,
   flushBusinessOutbox,
   getThreadWhatsappWindowState,
-  lockWorkflowKey,
   withRedisWorkflowLock,
   logTicketEvent,
   maskPhoneNumber,

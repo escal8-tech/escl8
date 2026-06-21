@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { getAuthedUserFromRequest } from "@/server/apiAuth";
 
-import { isDocType, type DocType } from "@/lib/rag-documents";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request) {
+export async function POST(_request: Request) {
   try {
     
 

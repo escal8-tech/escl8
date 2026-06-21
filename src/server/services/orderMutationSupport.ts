@@ -27,7 +27,6 @@ import {
   flushBusinessOutbox,
   getBusinessOrderSettings,
   getThreadWhatsappWindowState,
-  lockWorkflowKey,
   maskPhoneNumber,
   nextFulfillmentTimestamps,
   parseOptionalDate,
