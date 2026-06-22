@@ -848,6 +848,7 @@ export const supportTickets = pgTable(
     supportTicketsSlaDueIdx: index("support_tickets_sla_due_at_idx").on(t.slaDueAt),
     supportTicketsCreatedIdx: index("support_tickets_created_at_idx").on(t.createdAt),
     supportTicketsCustomerIdx: index("support_tickets_customer_id_idx").on(t.customerId),
+    supportTicketsThreadIdx: index("support_tickets_thread_id_idx").on(t.threadId),
     supportTicketsTicketNumberUx: uniqueIndex("support_tickets_ticket_number_ux").on(t.ticketNumber),
     supportTicketsIdempotencyUx: uniqueIndex("support_tickets_business_idempotency_uk")
       .on(t.businessId, t.idempotencyKey)
