@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { normalizeOrderFlowSettings } from "@/lib/order-settings";
 import { buildPrivateBlobReadUrl } from "@/lib/storage";
 import {
   normalizeOrderFulfillmentStatus,
-  type OrderFulfillmentStatus,
 } from "@/lib/order-operations";
 import { assertOperationThrottle, getStaffActorKey } from "@/server/operationalHardening";
 import { getBusinessOrderSettingsRecord } from "@/server/services/businessSettingsStore";
@@ -13,17 +12,20 @@ import { drainBusinessOutbox } from "@/server/services/messageOutbox";
 import { db } from "@/server/db/client";
 import {
   businesses,
-  customers,
-  messageThreads,
+  channelIdentities,
   orderPayments,
   orders,
   threadMessages,
-  channelIdentities,
   whatsappIdentityDetails,
 } from "../../../drizzle/schema";
-import { type BotSendMessage } from "@/server/services/botApi";
-import type { OrderEmailMessage } from "@/server/services/orderFlow";
-import { missingRequiredOrderDeliveryFields, sanitizePhoneDigits } from "@/server/services/orderFlow";
+import { missingRequiredOrderDeliveryFields } from "@/server/services/orderFlow";
+
+export * from "./orderBaseSupport";
+export * from "./orderNotificationSupport";
+export * from "./orderQueryUtils";
+export * from "./orderFulfillmentUtils";
+
+import { cleanOptionalText } from "./orderBaseSupport";
 
 const WHATSAPP_WINDOW_MS = 24 * 60 * 60 * 1000;
 const ORDER_OPERATION_LIMITS = {
@@ -105,7 +107,6 @@ const PAYMENT_SETUP_EDITABLE_ORDER_STATUSES = new Set([
   "awaiting_payment",
   "payment_rejected",
 ]);
-const FULFILLMENT_MUTABLE_ORDER_STATUSES = new Set(["paid", "refund_pending", "refunded"]);
 
 export function canResendPaymentDetails(orderRow: {
   paymentMethod?: string | null;
@@ -181,69 +182,6 @@ export async function getBusinessOrderSettings(businessId: string) {
   return getBusinessOrderSettingsRecord(businessId, biz?.settings);
 }
 
-export function cleanOptionalText(value: string | null | undefined, max = 500): string | null {
-  const normalized = String(value ?? "").trim();
-  if (!normalized) return null;
-  return normalized.slice(0, max);
-}
-
-export function cleanOptionalUrl(value: string | null | undefined): string | null {
-  const normalized = cleanOptionalText(value, 1000);
-  if (!normalized) return null;
-  return /^https?:\/\//i.test(normalized) ? normalized : null;
-}
-
-export function parseOptionalDate(value: string | null | undefined): Date | null {
-  const normalized = String(value ?? "").trim();
-  if (!normalized) return null;
-  const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function asNullableDate(value: Date | string | null | undefined): Date | null {
-  if (!value) return null;
-  const parsed = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-export function nextFulfillmentTimestamps(input: {
-  currentStatus: string | null | undefined;
-  nextStatus: OrderFulfillmentStatus;
-  now: Date;
-  existing: {
-    packedAt?: Date | string | null;
-    dispatchedAt?: Date | string | null;
-    outForDeliveryAt?: Date | string | null;
-    deliveredAt?: Date | string | null;
-    failedDeliveryAt?: Date | string | null;
-    returnedAt?: Date | string | null;
-  };
-}) {
-  const current = normalizeOrderFulfillmentStatus(input.currentStatus);
-  const changed = current !== input.nextStatus;
-  const next = {
-    packedAt: asNullableDate(input.existing.packedAt),
-    dispatchedAt: asNullableDate(input.existing.dispatchedAt),
-    outForDeliveryAt: asNullableDate(input.existing.outForDeliveryAt),
-    deliveredAt: asNullableDate(input.existing.deliveredAt),
-    failedDeliveryAt: asNullableDate(input.existing.failedDeliveryAt),
-    returnedAt: asNullableDate(input.existing.returnedAt),
-    fulfillmentUpdatedAt: changed ? input.now : null,
-  };
-  if (!changed) return next;
-  if (input.nextStatus === "packed" && !next.packedAt) next.packedAt = input.now;
-  if (input.nextStatus === "dispatched" && !next.dispatchedAt) next.dispatchedAt = input.now;
-  if (input.nextStatus === "out_for_delivery" && !next.outForDeliveryAt) next.outForDeliveryAt = input.now;
-  if (input.nextStatus === "delivered" && !next.deliveredAt) next.deliveredAt = input.now;
-  if (input.nextStatus === "failed_delivery" && !next.failedDeliveryAt) next.failedDeliveryAt = input.now;
-  if (input.nextStatus === "returned" && !next.returnedAt) next.returnedAt = input.now;
-  return next;
-}
-
-export function requiresDispatchData(status: OrderFulfillmentStatus): boolean {
-  return status === "dispatched" || status === "out_for_delivery";
-}
-
 export function canCaptureManualPayment(orderRow: {
   paymentMethod?: string | null;
   status?: string | null;
@@ -263,17 +201,6 @@ export function assertPaymentSetupEditable(orderRow: {
   });
 }
 
-export function assertOrderAllowsFulfillmentUpdates(orderRow: {
-  status?: string | null;
-}) {
-  const status = String(orderRow.status || "").trim().toLowerCase();
-  if (FULFILLMENT_MUTABLE_ORDER_STATUSES.has(status)) return;
-  throw new TRPCError({
-    code: "BAD_REQUEST",
-    message: "Only paid or refund-tracked orders can be updated in order status.",
-  });
-}
-
 export function assertPaymentReviewAllowed(params: {
   orderRow: {
     paymentMethod?: string | null;
@@ -286,21 +213,9 @@ export function assertPaymentReviewAllowed(params: {
   void params;
 }
 
-export function coalesceText(...values: Array<string | null | undefined>): string | null {
-  for (const value of values) {
-    const normalized = String(value ?? "").trim();
-    if (normalized) return normalized;
-  }
-  return null;
-}
-
-export function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
 function readStoredBlobPath(value: unknown): string | null {
-  const storage = asRecord(asRecord(value).storage);
-  const blobPath = String(storage.blobPath || "").trim();
+  const storage = (value as any)?.storage;
+  const blobPath = String(storage?.blobPath || "").trim();
   return blobPath || null;
 }
 
@@ -321,13 +236,13 @@ export function buildStoredOrderFlowSettings(orderRow: {
   currency?: string | null;
   paymentConfigSnapshot?: Record<string, unknown> | null;
 }) {
-  const snapshot = asRecord(orderRow.paymentConfigSnapshot);
+  const snapshot = orderRow.paymentConfigSnapshot as any || {};
   return normalizeOrderFlowSettings({
     orderFlow: {
       ticketToOrderEnabled: true,
       paymentMethod: snapshot.paymentMethod ?? orderRow.paymentMethod ?? "manual",
       currency: snapshot.currency ?? orderRow.currency ?? "LKR",
-      bankQr: asRecord(snapshot.bankQr),
+      bankQr: snapshot.bankQr || {},
     },
   });
 }
@@ -379,64 +294,6 @@ export async function getThreadWhatsappWindowState(tx: any, threadId: string | n
   const lastInboundAt = parseThreadTimestamp(agg?.lastInboundAt);
   const lastMessageAt = parseThreadTimestamp(agg?.lastMessageAt);
   return whatsappWindowState(lastInboundAt ?? lastMessageAt);
-}
-
-function getOrderRangeBounds(rangeDays: number) {
-  const rangeEnd = new Date();
-  rangeEnd.setHours(23, 59, 59, 999);
-  const rangeStart = new Date(rangeEnd);
-  rangeStart.setDate(rangeStart.getDate() - (rangeDays - 1));
-  rangeStart.setHours(0, 0, 0, 0);
-  return { rangeStart, rangeEnd };
-}
-
-function buildOrderSearchPattern(value: string | null | undefined): string | null {
-  const normalized = String(value ?? "").trim();
-  return normalized ? `%${normalized}%` : null;
-}
-
-export function buildOrderBaseConditions(params: {
-  businessId: string;
-  status?: string;
-  methodFilter?: OrderAnalyticsMethodFilter;
-  dateField?: OrderAnalyticsDateField;
-  rangeDays?: number;
-  search?: string;
-}) {
-  const conditions: any[] = [eq(orders.businessId, params.businessId)];
-
-  if (params.status) {
-    conditions.push(eq(orders.status, params.status));
-  }
-
-  if (params.methodFilter && params.methodFilter !== "all") {
-    conditions.push(eq(orders.paymentMethod, params.methodFilter));
-  }
-
-  if (params.dateField && params.rangeDays) {
-    const { rangeStart, rangeEnd } = getOrderRangeBounds(params.rangeDays);
-    const column = params.dateField === "createdAt" ? orders.createdAt : orders.updatedAt;
-    conditions.push(gte(column, rangeStart));
-    conditions.push(lte(column, rangeEnd));
-  }
-
-  const searchPattern = buildOrderSearchPattern(params.search);
-  if (searchPattern) {
-    conditions.push(
-      or(
-        ilike(orders.id, searchPattern),
-        ilike(orders.customerName, searchPattern),
-        ilike(orders.customerPhone, searchPattern),
-        ilike(orders.recipientName, searchPattern),
-        ilike(orders.recipientPhone, searchPattern),
-        ilike(orders.paymentReference, searchPattern),
-        ilike(orders.trackingNumber, searchPattern),
-        ilike(orders.dispatchReference, searchPattern),
-      ),
-    );
-  }
-
-  return conditions;
 }
 
 export async function hydrateOrderRows(businessId: string, orderRows: Array<typeof orders.$inferSelect>) {
@@ -509,111 +366,6 @@ export async function hydrateOrderRows(businessId: string, orderRows: Array<type
   });
 }
 
-function simpleFulfillmentBucketExpr() {
-  return sql<string>`case
-    when lower(coalesce(${orders.fulfillmentStatus}, '')) = 'delivered' then 'completed'
-    when lower(coalesce(${orders.fulfillmentStatus}, '')) in ('dispatched', 'out_for_delivery') then 'out_for_delivery'
-    else 'pending'
-  end`;
-}
-
-export function buildWorkspaceConditions(params: {
-  businessId: string;
-  mode: OrderWorkspaceMode;
-  queueFilter: OrderWorkspaceFilter;
-  methodFilter?: OrderAnalyticsMethodFilter;
-  dateField?: OrderAnalyticsDateField;
-  rangeDays?: number;
-  search?: string;
-}) {
-  const statusExpr = sql<string>`lower(coalesce(${orders.status}, ''))`;
-  const fulfillmentBucket = simpleFulfillmentBucketExpr();
-  const conditions = buildOrderBaseConditions({
-    businessId: params.businessId,
-    methodFilter: params.methodFilter,
-    dateField: params.dateField,
-    rangeDays: params.rangeDays,
-    search: params.search,
-  });
-
-  if (params.mode === "payments") {
-    if (params.queueFilter === "pending") {
-      conditions.push(
-        sql<boolean>`${statusExpr} in ('pending_approval', 'edit_required', 'approved', 'awaiting_payment', 'payment_submitted')`,
-      );
-    } else if (params.queueFilter === "approved") {
-      conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
-    } else if (params.queueFilter === "denied") {
-      conditions.push(sql<boolean>`${statusExpr} in ('payment_rejected', 'denied')`);
-    } else {
-      conditions.push(
-        sql<boolean>`${statusExpr} in ('pending_approval', 'edit_required', 'approved', 'awaiting_payment', 'payment_submitted', 'payment_rejected', 'denied', 'paid', 'refund_pending', 'refunded')`,
-      );
-    }
-  } else if (params.mode === "status") {
-    conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
-    if (params.queueFilter === "pending") {
-      conditions.push(sql<boolean>`${fulfillmentBucket} = 'pending'`);
-    } else if (params.queueFilter === "out_for_delivery") {
-      conditions.push(sql<boolean>`${fulfillmentBucket} = 'out_for_delivery'`);
-    } else if (params.queueFilter === "completed") {
-      conditions.push(sql<boolean>`${fulfillmentBucket} = 'completed'`);
-    }
-  } else {
-    if (params.queueFilter === "realized") {
-      conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
-    } else if (params.queueFilter === "unrealized") {
-      conditions.push(sql<boolean>`false`);
-    } else {
-      conditions.push(sql<boolean>`${statusExpr} in ('paid', 'refund_pending', 'refunded')`);
-    }
-  }
-
-  return { conditions, statusExpr, fulfillmentBucket };
-}
-
-function preferredWhatsAppNumber(source: string | null | undefined, ...values: Array<string | null | undefined>): string | null {
-  const sourceKey = String(source ?? "").trim().toLowerCase();
-  for (const value of values) {
-    const normalized = sanitizePhoneDigits(value);
-    if (normalized) return normalized;
-  }
-  if (sourceKey === "whatsapp") {
-    for (const value of values) {
-      const fallback = String(value ?? "").trim();
-      if (fallback) return fallback;
-    }
-  }
-  return null;
-}
-
-export function maskPhoneNumber(value: string | null | undefined): string | null {
-  const digits = sanitizePhoneDigits(value);
-  if (!digits) return null;
-  if (digits.length <= 4) return digits;
-  return `${digits.slice(0, 2)}${"*".repeat(Math.max(0, digits.length - 4))}${digits.slice(-2)}`;
-}
-
-type OrderCustomerContext = {
-  id: string;
-  name: string | null;
-  email: string | null;
-  phone: string | null;
-  externalId: string | null;
-  source: string | null;
-  channelIdentityId: string | null;
-};
-
-type OrderThreadContext = {
-  threadId: string;
-  channelIdentityId: string | null;
-  customerId: string;
-  customerName: string | null;
-  customerPhone: string | null;
-  customerExternalId: string | null;
-  customerSource: string | null;
-};
-
 export async function lockWorkflowKey(tx: any, key: string) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
 }
@@ -659,178 +411,4 @@ export async function enforceOrderOperationThrottle(
     windowMs: limits.entityWindowMs,
     message: limits.message,
   });
-}
-
-async function getOrderCustomerContext(businessId: string, customerId: string | null | undefined): Promise<OrderCustomerContext | null> {
-  const normalizedCustomerId = String(customerId ?? "").trim();
-  if (!normalizedCustomerId) return null;
-  const [row] = await db
-    .select({
-      id: customers.id,
-      name: customers.name,
-      email: customers.email,
-      phone: customers.phone,
-      externalId: customers.externalId,
-      source: customers.source,
-      channelIdentityId: customers.channelIdentityId,
-    })
-    .from(customers)
-    .where(and(eq(customers.businessId, businessId), eq(customers.id, normalizedCustomerId)))
-    .limit(1);
-  return row ?? null;
-}
-
-async function getOrderThreadContext(businessId: string, threadId: string | null | undefined): Promise<OrderThreadContext | null> {
-  const normalizedThreadId = String(threadId ?? "").trim();
-  if (!normalizedThreadId) return null;
-  const [row] = await db
-    .select({
-      threadId: messageThreads.id,
-      channelIdentityId: messageThreads.channelIdentityId,
-      customerId: customers.id,
-      customerName: customers.name,
-      customerPhone: customers.phone,
-      customerExternalId: customers.externalId,
-      customerSource: customers.source,
-    })
-    .from(messageThreads)
-    .innerJoin(customers, eq(messageThreads.customerId, customers.id))
-    .where(and(eq(messageThreads.businessId, businessId), eq(messageThreads.id, normalizedThreadId)))
-    .limit(1);
-  return row ?? null;
-}
-
-export async function resolveOrderNotificationContext(params: {
-  businessId: string;
-  customerId?: string | null;
-  threadId?: string | null;
-  channelIdentityId?: string | null;
-  customerName?: string | null;
-  customerEmail?: string | null;
-  customerPhone?: string | null;
-}) {
-  const directCustomer = await getOrderCustomerContext(params.businessId, params.customerId);
-  const threadContext = await getOrderThreadContext(params.businessId, params.threadId);
-
-  const customerName = coalesceText(
-    params.customerName,
-    directCustomer?.name ?? null,
-    threadContext?.customerName ?? null,
-  );
-  const customerEmail = coalesceText(
-    params.customerEmail,
-    directCustomer?.email ?? null,
-  );
-  const customerPhone = coalesceText(
-    params.customerPhone,
-    directCustomer?.phone ?? null,
-    threadContext?.customerPhone ?? null,
-    (directCustomer?.source ?? "").toLowerCase() === "whatsapp" ? directCustomer?.externalId ?? null : null,
-  );
-  const channelIdentityId = coalesceText(
-    params.channelIdentityId,
-    directCustomer?.channelIdentityId ?? null,
-    threadContext?.channelIdentityId ?? null,
-  );
-  const recipient =
-    preferredWhatsAppNumber("whatsapp", customerPhone) ??
-    preferredWhatsAppNumber(directCustomer?.source, directCustomer?.phone, directCustomer?.externalId) ??
-    preferredWhatsAppNumber(threadContext?.customerSource, threadContext?.customerPhone, threadContext?.customerExternalId);
-
-  return {
-    customerName,
-    customerEmail,
-    threadId: coalesceText(params.threadId, threadContext?.threadId ?? null),
-    channelIdentityId,
-    approvalRecipient: recipient ?? "",
-    recipientSource:
-      preferredWhatsAppNumber("whatsapp", customerPhone) != null
-        ? "order.customer_phone"
-        : preferredWhatsAppNumber(directCustomer?.source, directCustomer?.phone) != null
-          ? "customer.phone"
-          : preferredWhatsAppNumber(directCustomer?.source, directCustomer?.externalId) != null
-            ? "customer.external_id"
-            : preferredWhatsAppNumber(threadContext?.customerSource, threadContext?.customerPhone) != null
-              ? "thread.customer.phone"
-              : preferredWhatsAppNumber(threadContext?.customerSource, threadContext?.customerExternalId) != null
-                ? "thread.customer.external_id"
-                : null,
-    whatsappIdentitySource: coalesceText(params.channelIdentityId)
-      ? "order.channel_identity_id"
-      : coalesceText(directCustomer?.channelIdentityId ?? null)
-        ? "customer.channel_identity_id"
-        : coalesceText(threadContext?.channelIdentityId ?? null)
-          ? "thread.channel_identity_id"
-          : null,
-  };
-}
-
-export function buildPaymentReviewMessages(input: {
-  action: "approve" | "reject";
-  orderId: string;
-  paymentReference?: string | null;
-  paidAmount?: string | number | null;
-  currency: string;
-  notes?: string | null;
-}): BotSendMessage[] {
-  const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
-  if (input.action === "approve") {
-    return [];
-  }
-  const lines = [
-    `We could not confirm the payment for order number ${ref}, so this order has now been closed.`,
-    input.notes ? `Reason: ${String(input.notes).trim()}.` : null,
-    "If you still want this item, please message us again and we can start a fresh order.",
-  ].filter(Boolean);
-  return [{ type: "text", text: lines.join("\n") }];
-}
-
-export function buildPaymentReviewEmail(input: {
-  action: "reject";
-  orderId: string;
-  paymentReference?: string | null;
-  paidAmount?: string | number | null;
-  currency: string;
-  notes?: string | null;
-}): OrderEmailMessage {
-  const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
-  const subject = `Payment needs attention: ${ref}`;
-  const lines = [
-    `We could not confirm the payment for order number ${ref}, so this order has now been closed.`,
-    input.notes ? `Reason: ${String(input.notes).trim()}.` : null,
-    "If you still want this item, reply again and we can start a fresh order.",
-  ];
-  const text = lines.filter(Boolean).join("\n");
-  return {
-    subject,
-    text,
-    html: `<div style="font-family:Montserrat,Arial,sans-serif;max-width:640px;margin:0 auto;padding:24px;background:#0b1220;color:#e5edf6"><div style="border:1px solid #21324a;border-radius:18px;padding:24px;background:#122038"><div style="font-size:24px;font-weight:700;margin:0 0 12px">${subject}</div><pre style="margin:0;white-space:pre-wrap;font:14px/1.7 inherit;color:#f6fbff">${text}</pre></div></div>`,
-  };
-}
-
-export function buildRefundStatusMessages(input: {
-  action: "mark_pending" | "mark_refunded" | "cancel";
-  orderId: string;
-  paymentReference?: string | null;
-  refundAmount?: string | null;
-  currency: string;
-  reason?: string | null;
-}): BotSendMessage[] {
-  const ref = String(input.paymentReference || input.orderId.slice(0, 8).toUpperCase()).trim();
-  if (input.action === "mark_pending") {
-    const lines = [
-      `We have started reviewing your refund for order number ${ref}.`,
-      input.reason ? `Reason noted: ${input.reason}.` : null,
-      "We will update you again as soon as the refund is processed.",
-    ].filter(Boolean);
-    return [{ type: "text", text: lines.join("\n") }];
-  }
-  if (input.action === "mark_refunded") {
-    const lines = [
-      `Your refund for order number ${ref} has been completed.`,
-      input.refundAmount ? `Refunded amount: ${input.currency} ${input.refundAmount}.` : null,
-    ].filter(Boolean);
-    return [{ type: "text", text: lines.join("\n") }];
-  }
-  return [{ type: "text", text: `Your refund request for order number ${ref} has been cancelled, and the order remains paid.` }];
 }

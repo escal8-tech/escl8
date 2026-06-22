@@ -19,6 +19,12 @@ const TICKET_COUNTER_LABELS = new Map(
   PORTAL_TICKET_TYPES.map((type) => [type.key, type.chartLabel ?? type.label]),
 );
 
+type TicketTypeCounterRow = {
+  key: string;
+  openCount: number;
+  inProgressCount: number;
+};
+
 export default function DashboardPage() {
   const { selectedPhoneNumberId } = usePhoneFilter();
   const [recentStatusFilter, setRecentStatusFilter] = useState("all");
@@ -191,8 +197,11 @@ export default function DashboardPage() {
   const positivePct = sentimentTotal > 0 ? Math.round((positiveValue / sentimentTotal) * 100) : 0;
 
   const ticketTypeCounters = useMemo(() => {
+    const rows: TicketTypeCounterRow[] = Array.isArray(ticketCountersQ.data)
+      ? ticketCountersQ.data
+      : [];
     const counts = new Map(
-      (ticketCountersQ.data ?? []).map((row) => [
+      rows.map((row) => [
         row.key,
         { openCount: row.openCount, inProgressCount: row.inProgressCount },
       ]),

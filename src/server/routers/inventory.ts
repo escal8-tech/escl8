@@ -319,8 +319,16 @@ export const inventoryRouter = router({
     const [agent] = await db
       .select({ settings: agents.settings })
       .from(agents)
-      .where(eq(agents.id, input.agentId))
+      .where(and(eq(agents.id, input.agentId), eq(agents.businessId, ctx.businessId)))
       .limit(1);
+
+    if (!agent) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Agent not found or does not belong to your business.",
+      });
+    }
+
     const stockSettings = normalizeStockSettings(agent?.settings);
     const mapped = new Map(stockSettings.columnMapping.map((entry) => [entry.key, entry]));
 
@@ -416,7 +424,20 @@ export const inventoryRouter = router({
       agentId: z.string(),
       columns: z.array(columnMappingEntrySchema).max(200),
     }))
-    .mutation(async ({ ctx: _ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const [agent] = await db
+        .select({ id: agents.id })
+        .from(agents)
+        .where(and(eq(agents.id, input.agentId), eq(agents.businessId, ctx.businessId)))
+        .limit(1);
+
+      if (!agent) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Agent not found or does not belong to your business.",
+        });
+      }
+
       const columnMapping = normalizeMappingInput(input.columns);
       await saveAgentStockSettings({
         agentId: input.agentId,

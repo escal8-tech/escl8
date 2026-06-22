@@ -2,7 +2,7 @@ import { z } from "zod";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { channelIdentities, businesses, agents } from "../../../drizzle/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
 export const channelsRouter = router({
@@ -34,60 +34,65 @@ export const channelsRouter = router({
       agentId: z.string().optional().nullable(),
     }))
     .mutation(async ({ ctx, input }) => {
-      if (input.agentId) {
-        const [agent] = await db
-          .select({ id: agents.id })
-          .from(agents)
-          .where(and(eq(agents.id, input.agentId), eq(agents.businessId, ctx.businessId)))
-          .limit(1);
-        if (!agent) {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "The specified agent does not belong to your business.",
-          });
-        }
-      }
+      return await db.transaction(async (tx) => {
+        // Acquire advisory lock to prevent race conditions on credit limit validation
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`channels:${ctx.businessId}`}, 0))`);
 
-      if (input.monthlyCreditLimit !== undefined || input.useSharedPool !== undefined) {
-        const allChannels = await db.select().from(channelIdentities).where(eq(channelIdentities.businessId, ctx.businessId));
-        const [business] = await db.select({ creditPool: businesses.creditPool }).from(businesses).where(eq(businesses.id, ctx.businessId));
-        
-        let newTotal = 0;
-        for (const ch of allChannels) {
-          const isTarget = ch.id === input.id;
-          const limit = isTarget ? (input.monthlyCreditLimit ?? ch.monthlyCreditLimit) : ch.monthlyCreditLimit;
-          const shared = isTarget ? (input.useSharedPool ?? ch.useSharedPool) : ch.useSharedPool;
-          
-          if (!shared) {
-            newTotal += limit;
+        if (input.agentId) {
+          const [agent] = await tx
+            .select({ id: agents.id })
+            .from(agents)
+            .where(and(eq(agents.id, input.agentId), eq(agents.businessId, ctx.businessId)))
+            .limit(1);
+          if (!agent) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "The specified agent does not belong to your business.",
+            });
           }
         }
-        
-        if (newTotal > (business?.creditPool || 0)) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Total allocated credits cannot exceed business credit pool." });
+
+        if (input.monthlyCreditLimit !== undefined || input.useSharedPool !== undefined) {
+          const allChannels = await tx.select().from(channelIdentities).where(eq(channelIdentities.businessId, ctx.businessId));
+          const [business] = await tx.select({ creditPool: businesses.creditPool }).from(businesses).where(eq(businesses.id, ctx.businessId));
+          
+          let newTotal = 0;
+          for (const ch of allChannels) {
+            const isTarget = ch.id === input.id;
+            const limit = isTarget ? (input.monthlyCreditLimit ?? ch.monthlyCreditLimit) : ch.monthlyCreditLimit;
+            const shared = isTarget ? (input.useSharedPool ?? ch.useSharedPool) : ch.useSharedPool;
+
+            if (!shared) {
+              newTotal += limit;
+            }
+          }
+
+          if (newTotal > (business?.creditPool || 0)) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Total allocated credits cannot exceed business credit pool." });
+          }
         }
-      }
 
-      const [row] = await db
-        .update(channelIdentities)
-        .set({
-          ...(input.aiEnabled !== undefined ? { aiEnabled: input.aiEnabled } : {}),
-          ...(input.autoReplyPaused !== undefined ? { autoReplyPaused: input.autoReplyPaused } : {}),
-          ...(input.monthlyCreditLimit !== undefined ? { monthlyCreditLimit: input.monthlyCreditLimit } : {}),
-          ...(input.useSharedPool !== undefined ? { useSharedPool: input.useSharedPool } : {}),
-          ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(channelIdentities.businessId, ctx.businessId),
-          eq(channelIdentities.id, input.id),
-        ))
-        .returning();
+        const [row] = await tx
+          .update(channelIdentities)
+          .set({
+            ...(input.aiEnabled !== undefined ? { aiEnabled: input.aiEnabled } : {}),
+            ...(input.autoReplyPaused !== undefined ? { autoReplyPaused: input.autoReplyPaused } : {}),
+            ...(input.monthlyCreditLimit !== undefined ? { monthlyCreditLimit: input.monthlyCreditLimit } : {}),
+            ...(input.useSharedPool !== undefined ? { useSharedPool: input.useSharedPool } : {}),
+            ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(channelIdentities.businessId, ctx.businessId),
+            eq(channelIdentities.id, input.id),
+          ))
+          .returning();
 
-      if (!row) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Channel identity not found for this business." });
-      }
+        if (!row) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Channel identity not found for this business." });
+        }
 
-      return row;
+        return row;
+      });
     }),
 });

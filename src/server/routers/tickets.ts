@@ -16,7 +16,7 @@ import {
   listTicketsForBusiness,
 } from "@/server/services/ticketReadSupport";
 import * as ticketMutationSupport from "@/server/services/ticketMutationSupport";
-import { setCached } from "@/lib/redis";
+import { getCached, setCached } from "@/lib/redis";
 
 const ticketStatusSchema = z.enum(["open", "in_progress", "resolved"]);
 const ticketPrioritySchema = z.enum(["low", "normal", "high", "urgent"]);
@@ -86,7 +86,8 @@ export const ticketsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const cacheKey = `tickets:list:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = null;
+      type TicketList = Awaited<ReturnType<typeof listTicketsForBusiness>>;
+      const cached = await getCached<TicketList>(cacheKey);
       if (cached) return cached;
 
       const result = await listTicketsForBusiness({ businessId: ctx.businessId, status: input?.status, typeKey: input?.typeKey, limit: input?.limit });
@@ -109,7 +110,8 @@ export const ticketsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const cacheKey = `tickets:ledger:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = null;
+      type TicketLedger = Awaited<ReturnType<typeof listTicketLedgerForBusiness>>;
+      const cached = await getCached<TicketLedger>(cacheKey);
       if (cached) return cached;
 
       const result = await listTicketLedgerForBusiness({ businessId: ctx.businessId, ...input });
@@ -260,7 +262,8 @@ export const ticketsRouter = router({
 
   getTypeCounters: businessProcedure.query(async ({ ctx }) => {
     const cacheKey = `tickets:typeCounters:${ctx.businessId}`;
-    const cached = null;
+    type TicketTypeCounters = Awaited<ReturnType<typeof getTicketTypeCountersForBusiness>>;
+    const cached = await getCached<TicketTypeCounters>(cacheKey);
     if (cached) return cached;
 
     const result = await getTicketTypeCountersForBusiness(ctx.businessId);
@@ -279,7 +282,8 @@ export const ticketsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const cacheKey = `tickets:performance:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = null;
+      type TicketPerformance = Awaited<ReturnType<typeof getTicketPerformanceForBusiness>>;
+      const cached = await getCached<TicketPerformance>(cacheKey);
       if (cached) return cached;
 
       const result = await getTicketPerformanceForBusiness({ businessId: ctx.businessId, typeKey: input?.typeKey, windowDays: input?.windowDays });
