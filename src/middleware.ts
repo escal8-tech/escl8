@@ -17,6 +17,7 @@ const PUBLIC_PATHS = [
   '/auth',
   '/access',
   '/static',
+  '/track',
 ] as const
 
 // Exact-match public endpoints (no prefix expansion)
