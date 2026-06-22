@@ -260,7 +260,8 @@ export const ticketsRouter = router({
 
   getTypeCounters: businessProcedure.query(async ({ ctx }) => {
     const cacheKey = `tickets:typeCounters:${ctx.businessId}`;
-    const cached = await getCached<any>(cacheKey);
+    type TicketTypeCounters = Awaited<ReturnType<typeof getTicketTypeCountersForBusiness>>;
+    const cached = await getCached<TicketTypeCounters>(cacheKey);
     if (cached) return cached;
 
     const result = await getTicketTypeCountersForBusiness(ctx.businessId);
