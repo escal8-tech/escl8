@@ -11,14 +11,7 @@ import { recordAiUsageEvent } from "../services/aiUsage";
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
 const digitsOnly = (value: string) => value.replace(/\D+/g, "");
 
-const lastMessageDirectionExpr = sql<string | null>`(
-  select tm.direction
-  from thread_messages tm
-  where tm.thread_id = ${messageThreads.id}
-  order by tm.created_at desc, tm.id desc
-  limit 1
-)`;
-const lastMessageDirectionSelection = sql<string | null>`coalesce(${messageThreads.lastMessageDirection}, ${lastMessageDirectionExpr})`;
+const lastMessageDirectionSelection = messageThreads.lastMessageDirection;
 const mediaPartSchema = z.union([
   z.object({ type: z.literal("text"), text: z.string().min(1).max(4096) }),
   z.object({ type: z.literal("image"), imageUrl: z.string().url(), caption: z.string().max(1024).optional() }),
