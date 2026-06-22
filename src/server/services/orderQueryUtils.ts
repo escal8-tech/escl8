@@ -1,4 +1,4 @@
-import { and, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
+import { eq, gte, ilike, lte, or, sql, type SQL } from "drizzle-orm";
 import { orders } from "../../../drizzle/schema";
 import {
   OrderAnalyticsDateField,
@@ -29,7 +29,7 @@ export function buildOrderBaseConditions(params: {
   rangeDays?: number;
   search?: string;
 }) {
-  const conditions: any[] = [eq(orders.businessId, params.businessId)];
+  const conditions: SQL[] = [eq(orders.businessId, params.businessId)];
 
   if (params.status) {
     conditions.push(eq(orders.status, params.status));
@@ -48,18 +48,19 @@ export function buildOrderBaseConditions(params: {
 
   const searchPattern = buildOrderSearchPattern(params.search);
   if (searchPattern) {
-    conditions.push(
-      or(
-        ilike(orders.id, searchPattern),
-        ilike(orders.customerName, searchPattern),
-        ilike(orders.customerPhone, searchPattern),
-        ilike(orders.recipientName, searchPattern),
-        ilike(orders.recipientPhone, searchPattern),
-        ilike(orders.paymentReference, searchPattern),
-        ilike(orders.trackingNumber, searchPattern),
-        ilike(orders.dispatchReference, searchPattern),
-      ),
+    const searchClause = or(
+      ilike(orders.id, searchPattern),
+      ilike(orders.customerName, searchPattern),
+      ilike(orders.customerPhone, searchPattern),
+      ilike(orders.recipientName, searchPattern),
+      ilike(orders.recipientPhone, searchPattern),
+      ilike(orders.paymentReference, searchPattern),
+      ilike(orders.trackingNumber, searchPattern),
+      ilike(orders.dispatchReference, searchPattern),
     );
+    if (searchClause) {
+      conditions.push(searchClause);
+    }
   }
 
   return conditions;

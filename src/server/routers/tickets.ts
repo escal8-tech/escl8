@@ -86,7 +86,8 @@ export const ticketsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const cacheKey = `tickets:list:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = await getCached<any>(cacheKey);
+      type TicketList = Awaited<ReturnType<typeof listTicketsForBusiness>>;
+      const cached = await getCached<TicketList>(cacheKey);
       if (cached) return cached;
 
       const result = await listTicketsForBusiness({ businessId: ctx.businessId, status: input?.status, typeKey: input?.typeKey, limit: input?.limit });
@@ -109,7 +110,8 @@ export const ticketsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const cacheKey = `tickets:ledger:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = await getCached<any>(cacheKey);
+      type TicketLedger = Awaited<ReturnType<typeof listTicketLedgerForBusiness>>;
+      const cached = await getCached<TicketLedger>(cacheKey);
       if (cached) return cached;
 
       const result = await listTicketLedgerForBusiness({ businessId: ctx.businessId, ...input });
@@ -280,7 +282,8 @@ export const ticketsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const cacheKey = `tickets:performance:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = await getCached<any>(cacheKey);
+      type TicketPerformance = Awaited<ReturnType<typeof getTicketPerformanceForBusiness>>;
+      const cached = await getCached<TicketPerformance>(cacheKey);
       if (cached) return cached;
 
       const result = await getTicketPerformanceForBusiness({ businessId: ctx.businessId, typeKey: input?.typeKey, windowDays: input?.windowDays });
