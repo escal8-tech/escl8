@@ -1,10 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import type { BotSendMessage } from "@/server/services/botApi";
 import {
   buildPaymentReviewMessages,
   buildPaymentReviewEmail,
   buildRefundStatusMessages,
 } from "./orderNotificationSupport";
+
+function textBody(message: BotSendMessage): string {
+  assert.equal(message.type, "text");
+  return message.text;
+}
 
 test("buildPaymentReviewMessages returns rejection message", () => {
   const messages = buildPaymentReviewMessages({
@@ -16,8 +22,9 @@ test("buildPaymentReviewMessages returns rejection message", () => {
   });
 
   assert.equal(messages.length, 1);
-  assert.match(messages[0].text, /could not confirm the payment for order number REF123/);
-  assert.match(messages[0].text, /Reason: Proof was blurry/);
+  const body = textBody(messages[0]);
+  assert.match(body, /could not confirm the payment for order number REF123/);
+  assert.match(body, /Reason: Proof was blurry/);
 });
 
 test("buildPaymentReviewEmail returns correct email content", () => {
@@ -44,8 +51,9 @@ test("buildRefundStatusMessages for pending refund", () => {
   });
 
   assert.equal(messages.length, 1);
-  assert.match(messages[0].text, /started reviewing your refund for order number REF123/);
-  assert.match(messages[0].text, /Reason noted: Customer changed mind/);
+  const body = textBody(messages[0]);
+  assert.match(body, /started reviewing your refund for order number REF123/);
+  assert.match(body, /Reason noted: Customer changed mind/);
 });
 
 test("buildRefundStatusMessages for completed refund", () => {
@@ -58,8 +66,9 @@ test("buildRefundStatusMessages for completed refund", () => {
   });
 
   assert.equal(messages.length, 1);
-  assert.match(messages[0].text, /refund for order number REF123 has been completed/);
-  assert.match(messages[0].text, /Refunded amount: LKR 1500.00/);
+  const body = textBody(messages[0]);
+  assert.match(body, /refund for order number REF123 has been completed/);
+  assert.match(body, /Refunded amount: LKR 1500.00/);
 });
 
 test("buildRefundStatusMessages for cancelled refund", () => {
@@ -71,5 +80,6 @@ test("buildRefundStatusMessages for cancelled refund", () => {
   });
 
   assert.equal(messages.length, 1);
-  assert.match(messages[0].text, /refund request for order number REF123 has been cancelled/);
+  const body = textBody(messages[0]);
+  assert.match(body, /refund request for order number REF123 has been cancelled/);
 });
