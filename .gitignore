@@ -44,3 +44,16 @@ LOCAL_*RUNBOOK*.md
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local scratch / one-off scripts (not part of the repo)
+scratch.js
+scratch.ts
+scratch*.js
+scratch*.ts
+create_agents.js
+drop_suites.js
+fix_db.js
+test_blob.py
+scripts/cleanup_control_db.js
+scripts/restore_data.sh
+.agents/
