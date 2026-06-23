@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { TRPCError } from "@trpc/server";
 import { ticketsRouter } from "./tickets";
 import { ordersRouter } from "./orders";
 import { customersRouter } from "./customers";

@@ -1,16 +1,12 @@
 import { TRPCError } from "@trpc/server";
-import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import crypto from "crypto";
 import { db } from "../db/client";
 import { controlDb } from "@/server/control/db";
-import { businesses, businessUserInvites, users } from "../../../drizzle/schema";
+import { businesses, users } from "../../../drizzle/schema";
 import { suiteMemberships, suiteTenants, suiteUsers } from "@/server/control/schema";
 import { getTenantModuleAccess } from "@/server/control/access";
 import { syncFirebaseSuiteClaims } from "@/server/firebaseAdmin";
-import { ensureDefaultTicketTypes } from "../services/ticketDefaults";
-import { sendBusinessGmailMessage } from "../services/companyGmail";
-import { recordBusinessEvent } from "@/lib/business-monitoring";
-
 export const ACCESS_LEVELS = ["admin", "manager", "staff"] as const;
 export type AccessLevel = (typeof ACCESS_LEVELS)[number];
 

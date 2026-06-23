@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { middleware } from "./middleware";
 
 // Mock verifyAccessToken to return a valid payload
@@ -39,7 +39,7 @@ test("middleware strips internal identity headers to prevent spoofing", async ()
 
   try {
     await middleware(request);
-  } catch (e) {
+  } catch {
     // It might throw or return a redirect
   }
 
