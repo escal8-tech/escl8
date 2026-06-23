@@ -1,5 +1,6 @@
 import { and, eq, gte, sum, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
+import { withStatsCache } from "@/server/lib/statsCache";
 import { aiUsageEvents } from "@/../drizzle/schema";
 
 export async function recordAiUsageEvent(input: {
@@ -25,17 +26,20 @@ export async function recordAiUsageEvent(input: {
 }
 
 export async function getBusinessAiCreditsUsedThisMonth(businessId: string): Promise<number> {
-  const [row] = await db
-    .select({
-      used: sum(aiUsageEvents.credits),
-    })
-    .from(aiUsageEvents)
-    .where(
-      and(
-        eq(aiUsageEvents.businessId, businessId),
-        eq(aiUsageEvents.eventType, "bot_outbound_message"),
-        gte(aiUsageEvents.createdAt, sql`date_trunc('month', now())`),
-      ),
-    );
-  return Number(row?.used ?? 0);
+  const cacheKey = `business:credits:used:${businessId}`;
+  return withStatsCache(cacheKey, 60, async () => {
+    const [row] = await db
+      .select({
+        used: sum(aiUsageEvents.credits),
+      })
+      .from(aiUsageEvents)
+      .where(
+        and(
+          eq(aiUsageEvents.businessId, businessId),
+          eq(aiUsageEvents.eventType, "bot_outbound_message"),
+          gte(aiUsageEvents.createdAt, sql`date_trunc('month', now())`),
+        ),
+      );
+    return Number(row?.used ?? 0);
+  });
 }

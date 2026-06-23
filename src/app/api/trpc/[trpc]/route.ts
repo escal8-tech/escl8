@@ -9,11 +9,6 @@ export const runtime = "nodejs";
 const handler = async (req: Request) => {
 
 
-  const trpcPath = decodeURIComponent(new URL(req.url).pathname);
-  const procedures = trpcPath.split("/api/trpc/")[1]?.split(",") ?? [];
-  const ALLOWED_BYPASS_PROCEDURES = ["business.getSetupStatus", "business.completeOnboardingSetup"];
-  const _setupAccessBypass = procedures.length > 0 && procedures.every((p) => ALLOWED_BYPASS_PROCEDURES.includes(p));
-
   const res = await fetchRequestHandler({
     endpoint: "/api/trpc",
     req,
