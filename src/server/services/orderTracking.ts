@@ -11,12 +11,6 @@ import { businesses, orderEvents, orderPayments, orders } from "../../../drizzle
 import { db } from "../db/client";
 import { normalizeOrderLineItems, parseMoneyValue } from "./orderFlow";
 
-type TrackingPayload = {
-  v: 1;
-  b: string;
-  o: string;
-};
-
 type TimelineTone = "done" | "current" | "pending" | "issue";
 
 export type PublicOrderTrackingData = {
@@ -52,7 +46,6 @@ export type PublicOrderTrackingData = {
 type ParsedTrackingToken = {
   businessId: string;
   orderId: string;
-  publicReference?: string;
 };
 
 function cleanText(value: unknown, limit = 500): string {
@@ -75,11 +68,6 @@ function safeTimingEqual(actual: string, expected: string): boolean {
   const actualBuffer = Buffer.from(actual);
   const expectedBuffer = Buffer.from(expected);
   return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
-}
-
-function publicOrderReference(value: unknown): string {
-  const raw = cleanText(value, 80).replace(/^ORD[-_\s]+/i, "");
-  return raw.replace(/[^A-Za-z0-9-]/g, "").slice(0, 24).toUpperCase();
 }
 
 function trackingSecret(): string {
@@ -140,7 +128,10 @@ function trackingBaseUrl(fallbackOrigin?: string | null): string {
 }
 
 export function createOrderTrackingToken(input: { businessId: string; orderId: string }): string {
-  return publicOrderReference(input.orderId.slice(0, 8)) || cleanText(input.orderId, 160);
+  const payloadBase = Buffer.from(input.orderId).toString("base64url");
+  const payload = `o2_${payloadBase}`;
+  const sig = shortSignature(payload, trackingSecret());
+  return `${payload}_${sig}`;
 }
 
 export function parseOrderTrackingToken(token: string): ParsedTrackingToken | null {
@@ -153,30 +144,7 @@ export function parseOrderTrackingToken(token: string): ParsedTrackingToken | nu
     const orderId = cleanText(Buffer.from(compactMatch[1], "base64url").toString("utf8"), 160);
     return orderId ? { businessId: "", orderId } : null;
   }
-
-  if (!rawToken.includes(".")) {
-    const reference = publicOrderReference(rawToken);
-    return reference ? { businessId: "", orderId: "", publicReference: reference } : null;
-  }
-
-  const [payload, signature, extra] = rawToken.split(".");
-  if (!payload || !signature || extra) return null;
-  const expected = signPayload(payload, trackingSecret());
-  if (!safeTimingEqual(signature, expected)) {
-    return null;
-  }
-
-  let parsed: TrackingPayload | null = null;
-  try {
-    parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as TrackingPayload;
-  } catch {
-    return null;
-  }
-
-  if (parsed?.v !== 1) return null;
-  const businessId = cleanText(parsed.b, 160);
-  const orderId = cleanText(parsed.o, 160);
-  return businessId && orderId ? { businessId, orderId } : null;
+  return null;
 }
 
 export function buildOrderTrackingUrl(input: {
@@ -274,17 +242,10 @@ function buildTimeline(
 
 export async function getPublicOrderTrackingData(token: string): Promise<PublicOrderTrackingData | null> {
   const parsed = parseOrderTrackingToken(token);
-  if (!parsed) return null;
-  const reference = publicOrderReference(parsed.publicReference);
-  const orderPredicate = reference
-    ? or(
-        eq(orders.paymentReference, reference),
-        eq(orders.paymentReference, `ORD-${reference}`),
-        sql`upper(left(${orders.id}, 8)) = ${reference}`,
-      )
-    : parsed.businessId
-      ? and(eq(orders.businessId, parsed.businessId), eq(orders.id, parsed.orderId))
-      : eq(orders.id, parsed.orderId);
+
+  if (!parsed || !parsed.orderId) return null;
+
+  const orderPredicate = eq(orders.id, parsed.orderId);
 
   const [order] = await db
     .select()

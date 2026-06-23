@@ -6,6 +6,7 @@ import {
   resolveOrderLedgerAmount,
   resolveRefundAmount,
   nextFulfillmentTimestamps,
+  canCaptureManualPayment,
   assertPaymentSetupEditable,
   assertOrderAllowsFulfillmentUpdates,
   maskPhoneNumber
@@ -79,6 +80,14 @@ test("assertPaymentSetupEditable blocks if paid", () => {
 test("assertOrderAllowsFulfillmentUpdates blocks if not paid", () => {
   assert.doesNotThrow(() => assertOrderAllowsFulfillmentUpdates({ status: "paid" }));
   assert.throws(() => assertOrderAllowsFulfillmentUpdates({ status: "approved" }), /Only paid or refund-tracked orders/);
+});
+
+test("canCaptureManualPayment validation", () => {
+  assert.equal(canCaptureManualPayment({ status: "approved" }), true);
+  assert.equal(canCaptureManualPayment({ status: "awaiting_payment" }), true);
+  assert.equal(canCaptureManualPayment({ status: "payment_rejected" }), true);
+  assert.equal(canCaptureManualPayment({ status: "paid" }), false);
+  assert.equal(canCaptureManualPayment({ status: "refund_pending" }), false);
 });
 
 test("maskPhoneNumber implementation in orderWorkflowSupport", () => {
