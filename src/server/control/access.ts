@@ -1,5 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
-
+import { withStatsCache } from "@/server/lib/statsCache";
 import { controlDb } from "./db";
 import {
   suiteEntitlements,
@@ -268,27 +268,30 @@ export async function getTenantModuleAccess(
   suiteTenantId: string,
   module: SuiteProductModule,
 ): Promise<TenantModuleAccess> {
-  const latestSubscription = await getLatestSubscriptionRow(suiteTenantId);
-  if (latestSubscription) {
-    return normalizeSubscriptionAccess(latestSubscription, module);
-  }
-
-  let entitlement: { status: string | null } | null = null;
-  try {
-    entitlement = await controlDb
-      .select()
-      .from(suiteEntitlements)
-      .where(and(eq(suiteEntitlements.suiteTenantId, suiteTenantId), eq(suiteEntitlements.module, module)))
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
-  } catch (error) {
-    if (isMissingRelationError(error)) {
-      return readonlyFallback(module, "schema_unavailable");
+  const cacheKey = `tenant:access:${suiteTenantId}:${module}`;
+  return withStatsCache(cacheKey, 300, async () => {
+    const latestSubscription = await getLatestSubscriptionRow(suiteTenantId);
+    if (latestSubscription) {
+      return normalizeSubscriptionAccess(latestSubscription, module);
     }
-    throw error;
-  }
 
-  return readonlyFallback(module, entitlement ? "legacy_entitlement_inactive" : "subscription_missing");
+    let entitlement: { status: string | null } | null = null;
+    try {
+      entitlement = await controlDb
+        .select()
+        .from(suiteEntitlements)
+        .where(and(eq(suiteEntitlements.suiteTenantId, suiteTenantId), eq(suiteEntitlements.module, module)))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+    } catch (error) {
+      if (isMissingRelationError(error)) {
+        return readonlyFallback(module, "schema_unavailable");
+      }
+      throw error;
+    }
+
+    return readonlyFallback(module, entitlement ? "legacy_entitlement_inactive" : "subscription_missing");
+  });
 }
 
 export function tenantHasFeature(access: TenantModuleAccess | null | undefined, featureKey: SuiteFeatureKey) {
