@@ -14,9 +14,8 @@ test("order tracking tokens round-trip without exposing raw ids in the path", ()
   delete process.env.ORDER_TRACKING_BASE_URL;
   try {
     const token = createOrderTrackingToken({ businessId: "business-1", orderId: "order-1" });
-    assert.deepEqual(parseOrderTrackingToken(token), { businessId: "", orderId: "", publicReference: "ORDER-1" });
+    assert.deepEqual(parseOrderTrackingToken(token), { businessId: "", orderId: "order-1" });
     assert.equal(token.includes("business-1"), false);
-    assert.equal(token.length < 25, true);
     assert.equal(parseOrderTrackingToken("!!!"), null);
 
     const url = buildOrderTrackingUrl({

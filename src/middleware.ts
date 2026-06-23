@@ -93,6 +93,7 @@ export async function middleware(request: NextRequest) {
     'x-is-special-grant',
     'x-subscription-features',
     'x-subscription-limits',
+    'x-api-key',
   ];
   headersToStrip.forEach((header) => request.headers.delete(header));
 
