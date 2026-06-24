@@ -5,7 +5,8 @@ import Link from "next/link";
 import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
 import { useToast } from "@/components/ToastProvider";
 import { useLivePortalEvents } from "@/app/portal/hooks/useLivePortalEvents";
-import { readMediaInfo } from "@/app/portal/messages/mediaInfo";
+import { ThreadMessageBubble } from "@/app/portal/messages/components/ThreadMessageBubble";
+import { isOutboundDirection } from "@/app/portal/messages/interactiveMessage";
 import { trpc } from "@/utils/trpc";
 
 type InlineMessage = {
@@ -30,10 +31,6 @@ function formatWindow(seconds: number): string {
   const minutes = Math.floor((seconds % 3600) / 60);
   if (hours > 0) return `${hours}h ${minutes}m left`;
   return `${Math.max(1, minutes)}m left`;
-}
-
-function isOutbound(direction: string): boolean {
-  return ["outbound", "assistant", "bot", "staff", "system_out"].includes(String(direction || "").toLowerCase());
 }
 
 export function InlineThreadPanel({
@@ -160,26 +157,20 @@ export function InlineThreadPanel({
           ) : !messages.length ? (
             <div className="portal-inline-thread__empty">No messages in this thread yet.</div>
           ) : (
-            messages.map((message) => {
-              const media = readMediaInfo(message);
-              const outbound = isOutbound(message.direction);
+            messages.map((message, index) => {
+              const outbound = isOutboundDirection(message.direction);
               return (
-                <div key={message.id} className={`portal-inline-thread__bubble-row${outbound ? " is-outbound" : ""}`}>
-                  <div className={`portal-inline-thread__bubble${outbound ? " is-outbound" : ""}`}>
-                    {media.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={media.imageUrl} alt={media.caption || "Message image"} className="portal-inline-thread__image" />
-                    ) : null}
-                    {media.documentUrl ? (
-                      <a href={media.documentUrl} target="_blank" rel="noreferrer" className="portal-inline-thread__document">
-                        {media.filename || "Open document"}
-                      </a>
-                    ) : null}
-                    {media.caption || message.textBody ? (
-                      <div className="portal-inline-thread__text">{media.caption || message.textBody}</div>
-                    ) : null}
-                    <div className="portal-inline-thread__time">{formatMessageTime(message.createdAt)}</div>
-                  </div>
+                <div
+                  key={message.id}
+                  className={`wa-thread-message-row${outbound ? " is-outbound" : " is-inbound"}`}
+                >
+                  <ThreadMessageBubble
+                    message={message}
+                    allMessages={messages}
+                    messageIndex={index}
+                    timestamp={formatMessageTime(message.createdAt)}
+                    variant="inline"
+                  />
                 </div>
               );
             })
