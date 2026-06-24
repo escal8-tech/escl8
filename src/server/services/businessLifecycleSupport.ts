@@ -7,6 +7,142 @@ import {
   getBusinessPreferencesRecord,
   getBusinessWebsiteWidgetSettingsRecord,
 } from "@/server/services/businessSettingsStore";
+import { recordBusinessEvent } from "@/lib/business-monitoring";
+
+export interface BusinessContext {
+  businessId: string;
+  userId?: string | null;
+  firebaseUid?: string | null;
+}
+
+export async function setWhatsappIdentityAutoReplyPaused(
+  ctx: BusinessContext,
+  input: { phoneNumberId: string; autoReplyPaused: boolean }
+) {
+  const details = await db
+    .select({
+      channelIdentityId: whatsappIdentityDetails.channelIdentityId,
+      displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
+      phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+    })
+    .from(whatsappIdentityDetails)
+    .innerJoin(channelIdentities, eq(whatsappIdentityDetails.channelIdentityId, channelIdentities.id))
+    .where(and(
+      eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
+      eq(channelIdentities.businessId, ctx.businessId),
+    ))
+    .limit(1)
+    .then(r => r[0]);
+
+  if (!details) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
+  }
+
+  const [row] = await db
+    .update(channelIdentities)
+    .set({
+      autoReplyPaused: input.autoReplyPaused,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(channelIdentities.businessId, ctx.businessId),
+      eq(channelIdentities.id, details.channelIdentityId),
+    ))
+    .returning();
+
+  if (!row) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
+  }
+
+  recordBusinessEvent({
+    event: input.autoReplyPaused ? "whatsapp_identity.auto_reply_paused" : "whatsapp_identity.auto_reply_resumed",
+    action: "setWhatsappIdentityAutoReplyPaused",
+    area: "whatsapp_identity",
+    businessId: ctx.businessId,
+    entity: "whatsapp_identity",
+    entityId: details.phoneNumberId,
+    userId: ctx.userId || null,
+    actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+    actorType: "user",
+    outcome: "success",
+    attributes: {
+      display_phone_number: details.displayPhoneNumber ?? null,
+    },
+  });
+
+  return {
+    phoneNumberId: details.phoneNumberId,
+    displayPhoneNumber: details.displayPhoneNumber,
+    autoReplyPaused: row.autoReplyPaused,
+    isActive: row.isActive,
+    connectedAt: row.connectedAt,
+  };
+}
+
+export async function setWhatsappIdentityAiDisabled(
+  ctx: BusinessContext,
+  input: { phoneNumberId: string; aiDisabled: boolean }
+) {
+  const details = await db
+    .select({
+      channelIdentityId: whatsappIdentityDetails.channelIdentityId,
+      displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
+      phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+    })
+    .from(whatsappIdentityDetails)
+    .innerJoin(channelIdentities, eq(whatsappIdentityDetails.channelIdentityId, channelIdentities.id))
+    .where(and(
+      eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
+      eq(channelIdentities.businessId, ctx.businessId),
+    ))
+    .limit(1)
+    .then(r => r[0]);
+
+  if (!details) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
+  }
+
+  const [row] = await db
+    .update(channelIdentities)
+    .set({
+      aiEnabled: !input.aiDisabled,
+      ...(input.aiDisabled ? { autoReplyPaused: false } : {}),
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(channelIdentities.businessId, ctx.businessId),
+      eq(channelIdentities.id, details.channelIdentityId),
+    ))
+    .returning();
+
+  if (!row) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
+  }
+  recordBusinessEvent({
+    event: input.aiDisabled ? "whatsapp_identity.ai_disabled" : "whatsapp_identity.ai_enabled",
+    action: "setWhatsappIdentityAiDisabled",
+    area: "whatsapp_identity",
+    businessId: ctx.businessId,
+    entity: "whatsapp_identity",
+    entityId: details.phoneNumberId,
+    userId: ctx.userId || null,
+    actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+    actorType: "user",
+    outcome: "success",
+    attributes: {
+      display_phone_number: details.displayPhoneNumber ?? null,
+    },
+  });
+
+  return {
+    phoneNumberId: details.phoneNumberId,
+    displayPhoneNumber: details.displayPhoneNumber,
+    autoReplyPaused: row.autoReplyPaused,
+    aiDisabled: !row.aiEnabled,
+    isActive: row.isActive,
+    connectedAt: row.connectedAt,
+  };
+}
 
 export function numberLimit(value: unknown, fallback: number) {
   const parsed = Number(value);
