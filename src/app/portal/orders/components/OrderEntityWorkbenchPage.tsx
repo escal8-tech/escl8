@@ -299,6 +299,7 @@ export function OrderEntityWorkbenchPage({ forcedMode }: { forcedMode?: Operatio
           <aside className="portal-workbench-thread">
             <InlineThreadPanel
               threadId={order.threadId}
+              anchorOrderId={mode === "payments" || mode === "status" ? orderId : null}
               customerName={order.customerName || order.recipientName}
               customerPhone={order.customerPhone || order.recipientPhone}
               customerHref={

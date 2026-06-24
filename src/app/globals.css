@@ -7160,6 +7160,28 @@ html.portal-theme-light .drawer-backdrop {
   background: rgba(201, 169, 98, 0.12);
 }
 
+.portal-inline-thread__load-hint {
+  padding: 6px 10px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.portal-inline-thread__anchor-label {
+  width: 100%;
+  margin: 8px 0 4px;
+  color: #10b981;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.wa-thread-message-row.is-order-anchor {
+  position: relative;
+}
+
 .portal-inline-thread__messages {
   min-height: 0;
   display: flex;
