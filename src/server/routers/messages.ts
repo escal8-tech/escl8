@@ -2,8 +2,17 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
-import { customers, messageThreads, threadMessages, channelIdentities, whatsappIdentityDetails, SUPPORTED_SOURCES } from "@/../drizzle/schema";
-import { and, desc, eq, ilike, isNull, lt, or, sql } from "drizzle-orm";
+import {
+  customers,
+  messageThreads,
+  orders,
+  threadMessages,
+  channelIdentities,
+  whatsappIdentityDetails,
+  SUPPORTED_SOURCES,
+} from "@/../drizzle/schema";
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { ORDER_END_MESSAGE_KINDS } from "@/lib/messageFields";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { observeAssistantMessageViaBot, sendWhatsAppMessagesViaBot } from "../services/botApi";
 import { recordAiUsageEvent } from "../services/aiUsage";
@@ -19,6 +28,21 @@ const lastMessageDirectionExpr = sql<string | null>`(
   limit 1
 )`;
 const lastMessageDirectionSelection = sql<string | null>`coalesce(${messageThreads.lastMessageDirection}, ${lastMessageDirectionExpr})`;
+
+const threadMessageSelection = {
+  id: threadMessages.id,
+  direction: threadMessages.direction,
+  messageType: threadMessages.messageType,
+  textBody: threadMessages.textBody,
+  linkedOrderId: threadMessages.linkedOrderId,
+  messageKind: threadMessages.messageKind,
+  replyId: threadMessages.replyId,
+  replyTitle: threadMessages.replyTitle,
+  meta: threadMessages.meta,
+  createdAt: threadMessages.createdAt,
+};
+
+const orderEndMessageKinds = Array.from(ORDER_END_MESSAGE_KINDS);
 
 const mediaPartSchema = z.union([
   z.object({ type: z.literal("text"), text: z.string().min(1).max(4096) }),
@@ -292,14 +316,7 @@ export const messagesRouter = router({
 
       // Fetch messages older than cursor (or all if no cursor), newest first
       const rows = await db
-        .select({
-          id: threadMessages.id,
-          direction: threadMessages.direction,
-          messageType: threadMessages.messageType,
-          textBody: threadMessages.textBody,
-          meta: threadMessages.meta,
-          createdAt: threadMessages.createdAt,
-        })
+        .select(threadMessageSelection)
         .from(threadMessages)
         .where(
           cursorDate
@@ -321,6 +338,294 @@ export const messagesRouter = router({
         messages: messages.reverse(),
         nextCursor: hasMore ? messages[0]?.id : null,
         hasMore,
+      };
+    }),
+
+  getOrderThreadAnchor: businessProcedure
+    .input(z.object({ orderId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const [order] = await db
+        .select({
+          id: orders.id,
+          threadId: orders.threadId,
+          threadAnchorMessageId: orders.threadAnchorMessageId,
+        })
+        .from(orders)
+        .where(and(eq(orders.id, input.orderId), eq(orders.businessId, ctx.businessId)))
+        .limit(1);
+
+      if (!order?.threadId) {
+        return { threadId: null, anchorMessageId: null, anchorCreatedAt: null as Date | null };
+      }
+
+      if (order.threadAnchorMessageId) {
+        const [storedAnchor] = await db
+          .select({
+            id: threadMessages.id,
+            createdAt: threadMessages.createdAt,
+          })
+          .from(threadMessages)
+          .where(
+            and(
+              eq(threadMessages.id, order.threadAnchorMessageId),
+              eq(threadMessages.threadId, order.threadId),
+            ),
+          )
+          .limit(1);
+
+        if (storedAnchor) {
+          return {
+            threadId: order.threadId,
+            anchorMessageId: storedAnchor.id,
+            anchorCreatedAt: storedAnchor.createdAt,
+          };
+        }
+      }
+
+      const [linkedAnchor] = await db
+        .select({
+          id: threadMessages.id,
+          createdAt: threadMessages.createdAt,
+        })
+        .from(threadMessages)
+        .where(
+          and(
+            eq(threadMessages.threadId, order.threadId),
+            eq(threadMessages.linkedOrderId, input.orderId),
+            inArray(threadMessages.messageKind, orderEndMessageKinds),
+          ),
+        )
+        .orderBy(desc(threadMessages.createdAt), desc(threadMessages.id))
+        .limit(1);
+
+      if (linkedAnchor) {
+        return {
+          threadId: order.threadId,
+          anchorMessageId: linkedAnchor.id,
+          anchorCreatedAt: linkedAnchor.createdAt,
+        };
+      }
+
+      const [legacyAnchor] = await db
+        .select({
+          id: threadMessages.id,
+          createdAt: threadMessages.createdAt,
+        })
+        .from(threadMessages)
+        .where(
+          and(
+            eq(threadMessages.threadId, order.threadId),
+            or(
+              sql`${threadMessages.meta} -> 'orderAnchor' ->> 'orderId' = ${input.orderId}`,
+              sql`${threadMessages.meta} -> 'sourceMeta' ->> 'orderId' = ${input.orderId}`,
+            ),
+          ),
+        )
+        .orderBy(desc(threadMessages.createdAt), desc(threadMessages.id))
+        .limit(1);
+
+      return {
+        threadId: order.threadId,
+        anchorMessageId: legacyAnchor?.id ?? null,
+        anchorCreatedAt: legacyAnchor?.createdAt ?? null,
+      };
+    }),
+
+  listThreadWindow: businessProcedure
+    .input(
+      z.object({
+        threadId: z.string().min(1),
+        anchorMessageId: z.string().optional(),
+        beforeLimit: z.number().int().min(1).max(60).optional().default(24),
+        afterLimit: z.number().int().min(0).max(20).optional().default(6),
+        olderCursor: z.string().optional(),
+        newerCursor: z.string().optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const [thread] = await db
+        .select({ id: messageThreads.id })
+        .from(messageThreads)
+        .where(
+          and(
+            eq(messageThreads.id, input.threadId),
+            eq(messageThreads.businessId, ctx.businessId),
+            isNull(messageThreads.deletedAt),
+          ),
+        )
+        .limit(1);
+
+      if (!thread) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Thread not found" });
+      }
+
+      if (input.olderCursor) {
+        const [cursorMsg] = await db
+          .select({ createdAt: threadMessages.createdAt })
+          .from(threadMessages)
+          .where(eq(threadMessages.id, input.olderCursor))
+          .limit(1);
+        const cursorDate = cursorMsg?.createdAt ?? null;
+        if (!cursorDate) {
+          return {
+            messages: [],
+            anchorMessageId: input.anchorMessageId ?? null,
+            hasMoreBefore: false,
+            hasMoreAfter: false,
+            olderCursor: null,
+            newerCursor: null,
+          };
+        }
+
+        const rows = await db
+          .select(threadMessageSelection)
+          .from(threadMessages)
+          .where(and(eq(threadMessages.threadId, input.threadId), lt(threadMessages.createdAt, cursorDate)))
+          .orderBy(desc(threadMessages.createdAt))
+          .limit(input.beforeLimit + 1);
+
+        const hasMoreBefore = rows.length > input.beforeLimit;
+        const batch = hasMoreBefore ? rows.slice(0, input.beforeLimit) : rows;
+        return {
+          messages: batch.reverse(),
+          anchorMessageId: input.anchorMessageId ?? null,
+          hasMoreBefore,
+          hasMoreAfter: false,
+          olderCursor: hasMoreBefore ? batch[0]?.id ?? null : null,
+          newerCursor: null,
+        };
+      }
+
+      if (input.newerCursor) {
+        const [cursorMsg] = await db
+          .select({ createdAt: threadMessages.createdAt })
+          .from(threadMessages)
+          .where(eq(threadMessages.id, input.newerCursor))
+          .limit(1);
+        const cursorDate = cursorMsg?.createdAt ?? null;
+        if (!cursorDate) {
+          return {
+            messages: [],
+            anchorMessageId: input.anchorMessageId ?? null,
+            hasMoreBefore: false,
+            hasMoreAfter: false,
+            olderCursor: null,
+            newerCursor: null,
+          };
+        }
+
+        const rows = await db
+          .select(threadMessageSelection)
+          .from(threadMessages)
+          .where(and(eq(threadMessages.threadId, input.threadId), gt(threadMessages.createdAt, cursorDate)))
+          .orderBy(asc(threadMessages.createdAt))
+          .limit(input.afterLimit + 1);
+
+        const hasMoreAfter = rows.length > input.afterLimit;
+        const batch = hasMoreAfter ? rows.slice(0, input.afterLimit) : rows;
+        return {
+          messages: batch,
+          anchorMessageId: input.anchorMessageId ?? null,
+          hasMoreBefore: false,
+          hasMoreAfter,
+          olderCursor: null,
+          newerCursor: hasMoreAfter ? batch[batch.length - 1]?.id ?? null : null,
+        };
+      }
+
+      let anchorId = String(input.anchorMessageId || "").trim();
+      let anchorDate: Date | null = null;
+
+      if (anchorId) {
+        const [anchorMsg] = await db
+          .select({ id: threadMessages.id, createdAt: threadMessages.createdAt })
+          .from(threadMessages)
+          .where(and(eq(threadMessages.id, anchorId), eq(threadMessages.threadId, input.threadId)))
+          .limit(1);
+        anchorDate = anchorMsg?.createdAt ?? null;
+        anchorId = anchorMsg?.id ?? "";
+      }
+
+      if (!anchorDate) {
+        const [latest] = await db
+          .select({ id: threadMessages.id, createdAt: threadMessages.createdAt })
+          .from(threadMessages)
+          .where(eq(threadMessages.threadId, input.threadId))
+          .orderBy(desc(threadMessages.createdAt), desc(threadMessages.id))
+          .limit(1);
+        anchorId = latest?.id ?? "";
+        anchorDate = latest?.createdAt ?? null;
+      }
+
+      if (!anchorDate) {
+        return {
+          messages: [],
+          anchorMessageId: null,
+          hasMoreBefore: false,
+          hasMoreAfter: false,
+          olderCursor: null,
+          newerCursor: null,
+        };
+      }
+
+      const beforeRows = await db
+        .select(threadMessageSelection)
+        .from(threadMessages)
+        .where(
+          and(
+            eq(threadMessages.threadId, input.threadId),
+            or(
+              lt(threadMessages.createdAt, anchorDate),
+              and(eq(threadMessages.createdAt, anchorDate), lt(threadMessages.id, anchorId)),
+            ),
+          ),
+        )
+        .orderBy(desc(threadMessages.createdAt), desc(threadMessages.id))
+        .limit(input.beforeLimit + 1);
+
+      const anchorRow = await db
+        .select(threadMessageSelection)
+        .from(threadMessages)
+        .where(eq(threadMessages.id, anchorId))
+        .limit(1);
+
+      const afterRows =
+        input.afterLimit > 0
+          ? await db
+              .select(threadMessageSelection)
+              .from(threadMessages)
+              .where(
+                and(
+                  eq(threadMessages.threadId, input.threadId),
+                  or(
+                    gt(threadMessages.createdAt, anchorDate),
+                    and(eq(threadMessages.createdAt, anchorDate), gt(threadMessages.id, anchorId)),
+                  ),
+                ),
+              )
+              .orderBy(asc(threadMessages.createdAt), asc(threadMessages.id))
+              .limit(input.afterLimit + 1)
+          : [];
+
+      const hasMoreBefore = beforeRows.length > input.beforeLimit;
+      const beforeBatch = hasMoreBefore ? beforeRows.slice(0, input.beforeLimit) : beforeRows;
+      const hasMoreAfter = afterRows.length > input.afterLimit;
+      const afterBatch = hasMoreAfter ? afterRows.slice(0, input.afterLimit) : afterRows;
+
+      const merged = new Map<string, (typeof beforeBatch)[number]>();
+      for (const message of [...beforeBatch.reverse(), ...anchorRow, ...afterBatch]) {
+        if (message?.id) merged.set(message.id, message);
+      }
+
+      return {
+        messages: Array.from(merged.values()).sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        ),
+        anchorMessageId: anchorId || null,
+        hasMoreBefore,
+        hasMoreAfter,
+        olderCursor: hasMoreBefore ? beforeBatch[0]?.id ?? null : null,
+        newerCursor: hasMoreAfter ? afterBatch[afterBatch.length - 1]?.id ?? null : null,
       };
     }),
 
@@ -495,14 +800,7 @@ export const messagesRouter = router({
           },
           createdAt: now,
         })
-        .returning({
-          id: threadMessages.id,
-          direction: threadMessages.direction,
-          messageType: threadMessages.messageType,
-          textBody: threadMessages.textBody,
-          meta: threadMessages.meta,
-          createdAt: threadMessages.createdAt,
-        });
+        .returning(threadMessageSelection);
 
       await db
         .update(messageThreads)
@@ -699,14 +997,7 @@ export const messagesRouter = router({
       const saved = await db
         .insert(threadMessages)
         .values(rowsToInsert)
-        .returning({
-          id: threadMessages.id,
-          direction: threadMessages.direction,
-          messageType: threadMessages.messageType,
-          textBody: threadMessages.textBody,
-          meta: threadMessages.meta,
-          createdAt: threadMessages.createdAt,
-        });
+        .returning(threadMessageSelection);
 
       await db
         .update(messageThreads)

@@ -57,6 +57,27 @@ test("parseInboundInteractive prefers saved reply titles over raw ids", () => {
   assert.equal(parsed?.replyTitle, "Delivery");
 });
 
+test("parseInboundInteractive prefers typed columns over legacy meta", () => {
+  const parsed = parseInboundInteractive({
+    id: "3",
+    direction: "inbound",
+    messageType: "interactive",
+    textBody: "o2:pickup",
+    replyId: "o2:delivery",
+    replyTitle: "Delivery",
+    createdAt: new Date(),
+    meta: {
+      interactive: {
+        reply_id: "o2:pickup",
+        reply_title: "Pickup",
+      },
+    },
+  });
+
+  assert.equal(parsed?.replyId, "o2:delivery");
+  assert.equal(parsed?.replyTitle, "Delivery");
+});
+
 test("enrichInboundInteractive links a customer tap back to the prior bot prompt", () => {
   const messages = [
     {

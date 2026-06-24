@@ -33,13 +33,24 @@ function formatWindow(seconds: number): string {
   return `${Math.max(1, minutes)}m left`;
 }
 
+function mergeMessages(current: InlineMessage[], incoming: InlineMessage[]): InlineMessage[] {
+  const byId = new Map<string, InlineMessage>();
+  for (const message of current) byId.set(message.id, message);
+  for (const message of incoming) byId.set(message.id, message);
+  return Array.from(byId.values()).sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+}
+
 export function InlineThreadPanel({
   threadId,
+  anchorOrderId,
   customerName,
   customerPhone,
   customerHref,
 }: {
   threadId?: string | null;
+  anchorOrderId?: string | null;
   customerName?: string | null;
   customerPhone?: string | null;
   customerHref?: string | null;
@@ -47,29 +58,157 @@ export function InlineThreadPanel({
   const toast = useToast();
   const utils = trpc.useUtils();
   const normalizedThreadId = String(threadId || "").trim();
+  const normalizedAnchorOrderId = String(anchorOrderId || "").trim();
+  const useOrderAnchor = Boolean(normalizedAnchorOrderId);
+
   const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const prevScrollHeightRef = useRef(0);
+  const didInitialScrollRef = useRef(false);
+
   const [liveMessages, setLiveMessages] = useState<InlineMessage[]>([]);
-  const messagesQuery = trpc.messages.listMessages.useQuery(
-    { threadId: normalizedThreadId, limit: 40 },
-    { enabled: Boolean(normalizedThreadId) },
+  const [allMessages, setAllMessages] = useState<InlineMessage[]>([]);
+  const [anchorMessageId, setAnchorMessageId] = useState<string | null>(null);
+  const [hasMoreBefore, setHasMoreBefore] = useState(false);
+  const [hasMoreAfter, setHasMoreAfter] = useState(false);
+  const [olderCursor, setOlderCursor] = useState<string | null>(null);
+  const [newerCursor, setNewerCursor] = useState<string | null>(null);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const [isLoadingNewer, setIsLoadingNewer] = useState(false);
+
+  const anchorQuery = trpc.messages.getOrderThreadAnchor.useQuery(
+    { orderId: normalizedAnchorOrderId },
+    { enabled: useOrderAnchor },
   );
+
+  const resolvedAnchorMessageId = useOrderAnchor ? anchorQuery.data?.anchorMessageId ?? undefined : undefined;
+  const windowReady = Boolean(normalizedThreadId) && (!useOrderAnchor || anchorQuery.isFetched);
+
+  const windowQuery = trpc.messages.listThreadWindow.useQuery(
+    {
+      threadId: normalizedThreadId,
+      anchorMessageId: resolvedAnchorMessageId,
+      beforeLimit: 24,
+      afterLimit: 6,
+    },
+    { enabled: windowReady && !olderCursor && !newerCursor },
+  );
+
+  const olderWindowQuery = trpc.messages.listThreadWindow.useQuery(
+    {
+      threadId: normalizedThreadId,
+      anchorMessageId: anchorMessageId ?? resolvedAnchorMessageId,
+      beforeLimit: 20,
+      olderCursor: olderCursor ?? undefined,
+    },
+    { enabled: Boolean(normalizedThreadId) && isLoadingOlder && Boolean(olderCursor) },
+  );
+
+  const newerWindowQuery = trpc.messages.listThreadWindow.useQuery(
+    {
+      threadId: normalizedThreadId,
+      anchorMessageId: anchorMessageId ?? resolvedAnchorMessageId,
+      afterLimit: 12,
+      newerCursor: newerCursor ?? undefined,
+    },
+    { enabled: Boolean(normalizedThreadId) && isLoadingNewer && Boolean(newerCursor) },
+  );
+
   const sessionQuery = trpc.messages.getThreadSessionWindow.useQuery(
     { threadId: normalizedThreadId },
     { enabled: Boolean(normalizedThreadId) },
   );
   const sendText = trpc.messages.sendText.useMutation();
 
-  const messages = useMemo(() => {
-    const byId = new Map<string, InlineMessage>();
-    for (const message of messagesQuery.data?.messages ?? []) {
-      byId.set(message.id, { ...message, threadId: normalizedThreadId });
+  const resetThreadState = useCallback(() => {
+    setLiveMessages([]);
+    setAllMessages([]);
+    setAnchorMessageId(null);
+    setHasMoreBefore(false);
+    setHasMoreAfter(false);
+    setOlderCursor(null);
+    setNewerCursor(null);
+    setIsLoadingOlder(false);
+    setIsLoadingNewer(false);
+    didInitialScrollRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    const data = windowQuery.data;
+    if (!data || olderCursor || newerCursor) return;
+    queueMicrotask(() => {
+      const nextMessages = data.messages.map((message) => ({ ...message, threadId: normalizedThreadId }));
+      setAllMessages(nextMessages);
+      setAnchorMessageId(data.anchorMessageId);
+      setHasMoreBefore(data.hasMoreBefore);
+      setHasMoreAfter(data.hasMoreAfter);
+    });
+  }, [windowQuery.data, normalizedThreadId, olderCursor, newerCursor]);
+
+  useEffect(() => {
+    const data = olderWindowQuery.data;
+    if (!isLoadingOlder || !data) return;
+    const container = messagesContainerRef.current;
+    if (container) prevScrollHeightRef.current = container.scrollHeight;
+    queueMicrotask(() => {
+      setAllMessages((current) =>
+        mergeMessages(
+          current,
+          data.messages.map((message) => ({ ...message, threadId: normalizedThreadId })),
+        ),
+      );
+      setHasMoreBefore(data.hasMoreBefore);
+      setOlderCursor(null);
+      setIsLoadingOlder(false);
+      setTimeout(() => {
+        if (!container) return;
+        container.scrollTop = container.scrollHeight - prevScrollHeightRef.current;
+      }, 10);
+    });
+  }, [isLoadingOlder, normalizedThreadId, olderWindowQuery.data]);
+
+  useEffect(() => {
+    const data = newerWindowQuery.data;
+    if (!isLoadingNewer || !data) return;
+    queueMicrotask(() => {
+      setAllMessages((current) =>
+        mergeMessages(
+          current,
+          data.messages.map((message) => ({ ...message, threadId: normalizedThreadId })),
+        ),
+      );
+      setHasMoreAfter(data.hasMoreAfter);
+      setNewerCursor(null);
+      setIsLoadingNewer(false);
+    });
+  }, [isLoadingNewer, normalizedThreadId, newerWindowQuery.data]);
+
+  const messages = useMemo(
+    () => mergeMessages(allMessages, liveMessages.filter((message) => message.threadId === normalizedThreadId)),
+    [allMessages, liveMessages, normalizedThreadId],
+  );
+
+  const scrollToAnchorOrBottom = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    if (anchorMessageId) {
+      const anchorElement = container.querySelector<HTMLElement>(`[data-thread-anchor="${anchorMessageId}"]`);
+      if (anchorElement) {
+        anchorElement.scrollIntoView({ block: "end" });
+        return;
+      }
     }
-    for (const message of liveMessages) {
-      if (message.threadId === normalizedThreadId) byId.set(message.id, message);
-    }
-    return Array.from(byId.values()).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  }, [liveMessages, messagesQuery.data?.messages, normalizedThreadId]);
+
+    container.scrollTop = container.scrollHeight;
+  }, [anchorMessageId]);
+
+  useEffect(() => {
+    if (!messages.length || didInitialScrollRef.current) return;
+    didInitialScrollRef.current = true;
+    setTimeout(() => scrollToAnchorOrBottom(), 50);
+  }, [messages.length, scrollToAnchorOrBottom]);
 
   const appendMessage = useCallback((message: InlineMessage) => {
     if (!normalizedThreadId || message.threadId !== normalizedThreadId) return;
@@ -77,25 +216,55 @@ export function InlineThreadPanel({
       if (current.some((existing) => existing.id === message.id)) return current;
       return [...current, message];
     });
-  }, [normalizedThreadId]);
+    setTimeout(() => {
+      const container = messagesContainerRef.current;
+      if (!container) return;
+      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      if (distanceFromBottom < 120) scrollToAnchorOrBottom();
+    }, 30);
+  }, [normalizedThreadId, scrollToAnchorOrBottom]);
 
   useLivePortalEvents({
     activeThreadId: normalizedThreadId || null,
-    activeThreadPageSize: 40,
+    activeThreadPageSize: 24,
     onThreadMessage: appendMessage,
     onCatchup: async () => {
       if (!normalizedThreadId) return;
+      resetThreadState();
       await Promise.all([
-        utils.messages.listMessages.invalidate({ threadId: normalizedThreadId, limit: 40 }),
+        utils.messages.listThreadWindow.invalidate(),
+        utils.messages.getOrderThreadAnchor.invalidate(),
         utils.messages.getThreadSessionWindow.invalidate({ threadId: normalizedThreadId }),
       ]);
     },
   });
 
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    if (!isLoadingOlder && hasMoreBefore && container.scrollTop < 120 && messages.length > 0) {
+      setIsLoadingOlder(true);
+      setOlderCursor(messages[0]?.id ?? null);
+    }
+
+    if (!isLoadingNewer && hasMoreAfter) {
+      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      if (distanceFromBottom < 120) {
+        setIsLoadingNewer(true);
+        setNewerCursor(messages[messages.length - 1]?.id ?? null);
+      }
+    }
+  }, [hasMoreAfter, hasMoreBefore, isLoadingNewer, isLoadingOlder, messages]);
+
   const session = sessionQuery.data;
   const canSend = Boolean(normalizedThreadId && session?.channel === "whatsapp" && session.isOpen && draft.trim());
   const displayName = customerName?.trim() || customerPhone?.trim() || "Customer";
   const displayPhone = customerPhone?.trim() || "No phone linked";
+  const isLoading =
+    !normalizedThreadId ||
+    (useOrderAnchor && anchorQuery.isLoading) ||
+    (windowReady && windowQuery.isLoading && !messages.length);
 
   const handleSend = async () => {
     const text = draft.trim();
@@ -147,33 +316,52 @@ export function InlineThreadPanel({
           <span className={`portal-inline-thread__status${session?.isOpen ? " is-open" : ""}`}>{statusLabel}</span>
         </div>
 
-        <div className="portal-inline-thread__messages">
+        <div
+          ref={messagesContainerRef}
+          className="portal-inline-thread__messages"
+          onScroll={handleScroll}
+        >
           {!normalizedThreadId ? (
             <div className="portal-inline-thread__empty">
               No customer conversation is linked to this record yet.
             </div>
-          ) : messagesQuery.isLoading ? (
+          ) : isLoading ? (
             <div className="portal-inline-thread__empty">Loading conversation...</div>
           ) : !messages.length ? (
             <div className="portal-inline-thread__empty">No messages in this thread yet.</div>
           ) : (
-            messages.map((message, index) => {
-              const outbound = isOutboundDirection(message.direction);
-              return (
-                <div
-                  key={message.id}
-                  className={`wa-thread-message-row${outbound ? " is-outbound" : " is-inbound"}`}
-                >
-                  <ThreadMessageBubble
-                    message={message}
-                    allMessages={messages}
-                    messageIndex={index}
-                    timestamp={formatMessageTime(message.createdAt)}
-                    variant="inline"
-                  />
+            <>
+              {hasMoreBefore ? (
+                <div className="portal-inline-thread__load-hint">
+                  {isLoadingOlder ? "Loading earlier messages..." : "Scroll up for earlier messages"}
                 </div>
-              );
-            })
+              ) : null}
+              {messages.map((message, index) => {
+                const outbound = isOutboundDirection(message.direction);
+                const isAnchor = Boolean(anchorMessageId && message.id === anchorMessageId);
+                return (
+                  <div
+                    key={message.id}
+                    data-thread-anchor={isAnchor ? message.id : undefined}
+                    className={`wa-thread-message-row${outbound ? " is-outbound" : " is-inbound"}${isAnchor ? " is-order-anchor" : ""}`}
+                  >
+                    {isAnchor ? <div className="portal-inline-thread__anchor-label">Order end</div> : null}
+                    <ThreadMessageBubble
+                      message={message}
+                      allMessages={messages}
+                      messageIndex={index}
+                      timestamp={formatMessageTime(message.createdAt)}
+                      variant="inline"
+                    />
+                  </div>
+                );
+              })}
+              {hasMoreAfter ? (
+                <div className="portal-inline-thread__load-hint">
+                  {isLoadingNewer ? "Loading later messages..." : "Later messages available below"}
+                </div>
+              ) : null}
+            </>
           )}
         </div>
 

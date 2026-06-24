@@ -1,3 +1,5 @@
+import { resolveMessageFields } from "@/lib/messageFields";
+
 function asMetaRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -7,6 +9,10 @@ export type ThreadMessageLike = {
   direction: string;
   messageType: string | null;
   textBody: string | null;
+  linkedOrderId?: string | null;
+  messageKind?: string | null;
+  replyId?: string | null;
+  replyTitle?: string | null;
   meta: unknown;
   createdAt: string | Date;
 };
@@ -225,11 +231,12 @@ export function parseOutboundInteractive(message: ThreadMessageLike): ParsedOutb
 
 export function parseInboundInteractive(message: ThreadMessageLike): ParsedInboundInteractive | null {
   const messageType = String(message.messageType || "").trim().toLowerCase();
+  const fields = resolveMessageFields(message);
   const meta = asMetaRecord(message.meta);
   const interactive = readInteractivePayload(meta);
 
-  const replyId = String(interactive?.reply_id || "").trim();
-  const replyTitle = String(interactive?.reply_title || "").trim();
+  const replyId = fields.replyId || String(interactive?.reply_id || "").trim();
+  const replyTitle = fields.replyTitle || String(interactive?.reply_title || "").trim();
   const replyKindRaw = String(interactive?.reply_kind || "").trim().toLowerCase();
 
   const textBody = String(message.textBody || "").trim();
