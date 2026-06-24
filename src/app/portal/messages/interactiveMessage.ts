@@ -228,9 +228,9 @@ export function parseInboundInteractive(message: ThreadMessageLike): ParsedInbou
   const meta = asMetaRecord(message.meta);
   const interactive = readInteractivePayload(meta);
 
-  const replyId = String(interactive.reply_id || "").trim();
-  const replyTitle = String(interactive.reply_title || "").trim();
-  const replyKindRaw = String(interactive.reply_kind || "").trim().toLowerCase();
+  const replyId = String(interactive?.reply_id || "").trim();
+  const replyTitle = String(interactive?.reply_title || "").trim();
+  const replyKindRaw = String(interactive?.reply_kind || "").trim().toLowerCase();
 
   const textBody = String(message.textBody || "").trim();
   const looksInteractive =
