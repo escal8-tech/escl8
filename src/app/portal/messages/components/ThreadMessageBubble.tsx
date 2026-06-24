@@ -9,7 +9,7 @@ import {
   parseOutboundInteractive,
   type ThreadMessageLike,
 } from "@/app/portal/messages/interactiveMessage";
-import { InteractiveListModal } from "@/app/portal/messages/components/InteractiveListModal";
+import { InteractiveListPanel } from "@/app/portal/messages/components/InteractiveListModal";
 
 type ThreadMessageBubbleProps = {
   message: ThreadMessageLike;
@@ -28,7 +28,7 @@ export function ThreadMessageBubble({
   variant = "inbox",
   isMobile = false,
 }: ThreadMessageBubbleProps) {
-  const [listModalOpen, setListModalOpen] = useState(false);
+  const [listExpanded, setListExpanded] = useState(false);
   const outbound = isOutboundDirection(message.direction);
 
   const media = readMediaInfo(message);
@@ -87,17 +87,31 @@ export function ThreadMessageBubble({
   }
 
   if (outboundInteractive) {
+    const hasButtonOptions =
+      outboundInteractive.kind === "button" && outboundInteractive.buttons.length > 0;
+    const hasListOptions = outboundInteractive.kind === "list" && outboundInteractive.sections.length > 0;
+    const hasAttachedOptions = hasButtonOptions || hasListOptions;
+
+    const showBodyBubble = Boolean(outboundInteractive.bodyText) || (!hasButtonOptions && !hasListOptions);
+
     return (
       <div className={rowClass} style={{ maxWidth }}>
-        <div className={`wa-thread-message__bubble${outbound ? " is-outbound" : ""}`}>
-          {outboundInteractive.bodyText ? (
-            <div className="wa-thread-message__text">{outboundInteractive.bodyText}</div>
-          ) : null}
-          <div className="wa-thread-message__time">{timestamp}</div>
-        </div>
+        {showBodyBubble ? (
+          <div
+            className={`wa-thread-message__bubble${outbound ? " is-outbound" : ""}${hasAttachedOptions ? " has-attached-options" : ""}`}
+          >
+            {outboundInteractive.bodyText ? (
+              <div className="wa-thread-message__text">{outboundInteractive.bodyText}</div>
+            ) : null}
+            <div className="wa-thread-message__time">{timestamp}</div>
+          </div>
+        ) : null}
 
-        {outboundInteractive.kind === "button" && outboundInteractive.buttons.length ? (
-          <div className="wa-thread-message__interactive-stack" aria-label="Message options">
+        {hasButtonOptions ? (
+          <div
+            className={`wa-thread-message__interactive-stack${showBodyBubble ? " is-attached" : " is-standalone"}`}
+            aria-label="Message options"
+          >
             {outboundInteractive.buttons.map((button) => (
               <div key={button.id} className="wa-thread-message__interactive-option" aria-disabled="true">
                 <span className="wa-thread-message__interactive-option-icon" aria-hidden="true">
@@ -109,28 +123,30 @@ export function ThreadMessageBubble({
           </div>
         ) : null}
 
-        {outboundInteractive.kind === "list" && outboundInteractive.sections.length ? (
-          <button
-            type="button"
-            className="wa-thread-message__list-trigger"
-            onClick={() => setListModalOpen(true)}
-          >
-            <span className="wa-thread-message__list-trigger-label">
-              {outboundInteractive.listButtonLabel || "View list options"}
-            </span>
-            <span className="wa-thread-message__list-trigger-meta">
-              {outboundInteractive.sections.reduce((count, section) => count + section.rows.length, 0)} options
-            </span>
-          </button>
+        {hasListOptions ? (
+          <>
+            <button
+              type="button"
+              className={`wa-thread-message__list-trigger${showBodyBubble ? " is-attached" : " is-standalone"}${listExpanded ? " is-open" : ""}`}
+              onClick={() => setListExpanded((open) => !open)}
+              aria-expanded={listExpanded}
+            >
+              <span className="wa-thread-message__list-trigger-label">
+                {outboundInteractive.listButtonLabel || "View list options"}
+              </span>
+              <span className="wa-thread-message__list-trigger-meta">
+                {outboundInteractive.sections.reduce((count, section) => count + section.rows.length, 0)} options
+              </span>
+            </button>
+            {listExpanded ? (
+              <InteractiveListPanel
+                title={outboundInteractive.listButtonLabel || "Select an option"}
+                subtitle={outboundInteractive.bodyText || undefined}
+                sections={outboundInteractive.sections}
+              />
+            ) : null}
+          </>
         ) : null}
-
-        <InteractiveListModal
-          open={listModalOpen}
-          title={outboundInteractive.listButtonLabel || "Select an option"}
-          subtitle={outboundInteractive.bodyText || undefined}
-          sections={outboundInteractive.sections}
-          onClose={() => setListModalOpen(false)}
-        />
       </div>
     );
   }
@@ -152,24 +168,24 @@ export function ThreadMessageBubble({
         </div>
 
         {inboundInteractive.replyKind === "list_reply" && priorOutboundList ? (
-          <button
-            type="button"
-            className="wa-thread-message__list-trigger is-inbound"
-            onClick={() => setListModalOpen(true)}
-          >
-            <span className="wa-thread-message__list-trigger-label">View all list options</span>
-          </button>
-        ) : null}
-
-        {priorOutboundList ? (
-          <InteractiveListModal
-            open={listModalOpen}
-            title={priorOutboundList.listButtonLabel || "Select an option"}
-            subtitle={priorOutboundList.bodyText || inboundInteractive.promptText}
-            sections={priorOutboundList.sections}
-            selectedReplyId={inboundInteractive.replyId}
-            onClose={() => setListModalOpen(false)}
-          />
+          <>
+            <button
+              type="button"
+              className={`wa-thread-message__list-trigger is-inbound is-attached${listExpanded ? " is-open" : ""}`}
+              onClick={() => setListExpanded((open) => !open)}
+              aria-expanded={listExpanded}
+            >
+              <span className="wa-thread-message__list-trigger-label">View all list options</span>
+            </button>
+            {listExpanded ? (
+              <InteractiveListPanel
+                title={priorOutboundList.listButtonLabel || "Select an option"}
+                subtitle={priorOutboundList.bodyText || inboundInteractive.promptText}
+                sections={priorOutboundList.sections}
+                selectedReplyId={inboundInteractive.replyId}
+              />
+            ) : null}
+          </>
         ) : null}
       </div>
     );

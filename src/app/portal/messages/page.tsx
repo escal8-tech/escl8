@@ -1095,7 +1095,7 @@ export default function MessagesPage() {
                   No messages in this conversation yet.
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {allMessages.map((m, index) => {
                     const outbound = isOutboundDirection(m.direction);
                     return (
