@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db/client";
-import { messageThreads, orderEvents, threadMessages } from "../../../drizzle/schema";
+import { messageThreads, orderEvents, orders, threadMessages } from "../../../drizzle/schema";
+import { extractMessageFieldsFromMeta, isOrderEndMessageKind } from "@/lib/messageFields";
 import type { OrderFlowSettings } from "@/lib/order-settings";
 import { buildPrivateBlobReadUrl } from "@/lib/storage";
 import {
@@ -565,6 +566,12 @@ export async function persistOutboundThreadMessage(params: {
   meta?: Record<string, unknown>;
 }) {
   const now = new Date();
+  const meta = params.meta ?? {};
+  const fields = extractMessageFieldsFromMeta(meta, {
+    direction: "outbound",
+    textBody: params.textBody,
+  });
+
   if (params.externalMessageId) {
     const [existing] = await db
       .select()
@@ -583,7 +590,11 @@ export async function persistOutboundThreadMessage(params: {
       direction: "outbound",
       messageType: params.messageType,
       textBody: params.textBody ?? null,
-      meta: params.meta ?? {},
+      linkedOrderId: fields.linkedOrderId,
+      messageKind: fields.messageKind,
+      replyId: fields.replyId,
+      replyTitle: fields.replyTitle,
+      meta,
       createdAt: now,
     })
     .returning();
@@ -596,6 +607,16 @@ export async function persistOutboundThreadMessage(params: {
       updatedAt: now,
     })
     .where(eq(messageThreads.id, params.threadId));
+
+  if (saved?.id && fields.linkedOrderId && isOrderEndMessageKind(fields.messageKind)) {
+    await db
+      .update(orders)
+      .set({
+        threadAnchorMessageId: saved.id,
+        updatedAt: now,
+      })
+      .where(eq(orders.id, fields.linkedOrderId));
+  }
 
   if (saved && params.businessId) {
     await publishPortalEvent({

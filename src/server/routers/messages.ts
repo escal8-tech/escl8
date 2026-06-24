@@ -11,7 +11,8 @@ import {
   whatsappIdentityDetails,
   SUPPORTED_SOURCES,
 } from "@/../drizzle/schema";
-import { and, asc, desc, eq, gt, ilike, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { ORDER_END_MESSAGE_KINDS } from "@/lib/messageFields";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { observeAssistantMessageViaBot, sendWhatsAppMessagesViaBot } from "../services/botApi";
 import { recordAiUsageEvent } from "../services/aiUsage";
@@ -27,6 +28,21 @@ const lastMessageDirectionExpr = sql<string | null>`(
   limit 1
 )`;
 const lastMessageDirectionSelection = sql<string | null>`coalesce(${messageThreads.lastMessageDirection}, ${lastMessageDirectionExpr})`;
+
+const threadMessageSelection = {
+  id: threadMessages.id,
+  direction: threadMessages.direction,
+  messageType: threadMessages.messageType,
+  textBody: threadMessages.textBody,
+  linkedOrderId: threadMessages.linkedOrderId,
+  messageKind: threadMessages.messageKind,
+  replyId: threadMessages.replyId,
+  replyTitle: threadMessages.replyTitle,
+  meta: threadMessages.meta,
+  createdAt: threadMessages.createdAt,
+};
+
+const orderEndMessageKinds = Array.from(ORDER_END_MESSAGE_KINDS);
 
 const mediaPartSchema = z.union([
   z.object({ type: z.literal("text"), text: z.string().min(1).max(4096) }),
@@ -300,14 +316,7 @@ export const messagesRouter = router({
 
       // Fetch messages older than cursor (or all if no cursor), newest first
       const rows = await db
-        .select({
-          id: threadMessages.id,
-          direction: threadMessages.direction,
-          messageType: threadMessages.messageType,
-          textBody: threadMessages.textBody,
-          meta: threadMessages.meta,
-          createdAt: threadMessages.createdAt,
-        })
+        .select(threadMessageSelection)
         .from(threadMessages)
         .where(
           cursorDate
@@ -339,6 +348,7 @@ export const messagesRouter = router({
         .select({
           id: orders.id,
           threadId: orders.threadId,
+          threadAnchorMessageId: orders.threadAnchorMessageId,
         })
         .from(orders)
         .where(and(eq(orders.id, input.orderId), eq(orders.businessId, ctx.businessId)))
@@ -348,7 +358,55 @@ export const messagesRouter = router({
         return { threadId: null, anchorMessageId: null, anchorCreatedAt: null as Date | null };
       }
 
-      const [anchor] = await db
+      if (order.threadAnchorMessageId) {
+        const [storedAnchor] = await db
+          .select({
+            id: threadMessages.id,
+            createdAt: threadMessages.createdAt,
+          })
+          .from(threadMessages)
+          .where(
+            and(
+              eq(threadMessages.id, order.threadAnchorMessageId),
+              eq(threadMessages.threadId, order.threadId),
+            ),
+          )
+          .limit(1);
+
+        if (storedAnchor) {
+          return {
+            threadId: order.threadId,
+            anchorMessageId: storedAnchor.id,
+            anchorCreatedAt: storedAnchor.createdAt,
+          };
+        }
+      }
+
+      const [linkedAnchor] = await db
+        .select({
+          id: threadMessages.id,
+          createdAt: threadMessages.createdAt,
+        })
+        .from(threadMessages)
+        .where(
+          and(
+            eq(threadMessages.threadId, order.threadId),
+            eq(threadMessages.linkedOrderId, input.orderId),
+            inArray(threadMessages.messageKind, orderEndMessageKinds),
+          ),
+        )
+        .orderBy(desc(threadMessages.createdAt), desc(threadMessages.id))
+        .limit(1);
+
+      if (linkedAnchor) {
+        return {
+          threadId: order.threadId,
+          anchorMessageId: linkedAnchor.id,
+          anchorCreatedAt: linkedAnchor.createdAt,
+        };
+      }
+
+      const [legacyAnchor] = await db
         .select({
           id: threadMessages.id,
           createdAt: threadMessages.createdAt,
@@ -368,8 +426,8 @@ export const messagesRouter = router({
 
       return {
         threadId: order.threadId,
-        anchorMessageId: anchor?.id ?? null,
-        anchorCreatedAt: anchor?.createdAt ?? null,
+        anchorMessageId: legacyAnchor?.id ?? null,
+        anchorCreatedAt: legacyAnchor?.createdAt ?? null,
       };
     }),
 
@@ -401,15 +459,6 @@ export const messagesRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Thread not found" });
       }
 
-      const messageSelection = {
-        id: threadMessages.id,
-        direction: threadMessages.direction,
-        messageType: threadMessages.messageType,
-        textBody: threadMessages.textBody,
-        meta: threadMessages.meta,
-        createdAt: threadMessages.createdAt,
-      };
-
       if (input.olderCursor) {
         const [cursorMsg] = await db
           .select({ createdAt: threadMessages.createdAt })
@@ -429,7 +478,7 @@ export const messagesRouter = router({
         }
 
         const rows = await db
-          .select(messageSelection)
+          .select(threadMessageSelection)
           .from(threadMessages)
           .where(and(eq(threadMessages.threadId, input.threadId), lt(threadMessages.createdAt, cursorDate)))
           .orderBy(desc(threadMessages.createdAt))
@@ -466,7 +515,7 @@ export const messagesRouter = router({
         }
 
         const rows = await db
-          .select(messageSelection)
+          .select(threadMessageSelection)
           .from(threadMessages)
           .where(and(eq(threadMessages.threadId, input.threadId), gt(threadMessages.createdAt, cursorDate)))
           .orderBy(asc(threadMessages.createdAt))
@@ -520,7 +569,7 @@ export const messagesRouter = router({
       }
 
       const beforeRows = await db
-        .select(messageSelection)
+        .select(threadMessageSelection)
         .from(threadMessages)
         .where(
           and(
@@ -535,7 +584,7 @@ export const messagesRouter = router({
         .limit(input.beforeLimit + 1);
 
       const anchorRow = await db
-        .select(messageSelection)
+        .select(threadMessageSelection)
         .from(threadMessages)
         .where(eq(threadMessages.id, anchorId))
         .limit(1);
@@ -543,7 +592,7 @@ export const messagesRouter = router({
       const afterRows =
         input.afterLimit > 0
           ? await db
-              .select(messageSelection)
+              .select(threadMessageSelection)
               .from(threadMessages)
               .where(
                 and(
@@ -751,14 +800,7 @@ export const messagesRouter = router({
           },
           createdAt: now,
         })
-        .returning({
-          id: threadMessages.id,
-          direction: threadMessages.direction,
-          messageType: threadMessages.messageType,
-          textBody: threadMessages.textBody,
-          meta: threadMessages.meta,
-          createdAt: threadMessages.createdAt,
-        });
+        .returning(threadMessageSelection);
 
       await db
         .update(messageThreads)
@@ -955,14 +997,7 @@ export const messagesRouter = router({
       const saved = await db
         .insert(threadMessages)
         .values(rowsToInsert)
-        .returning({
-          id: threadMessages.id,
-          direction: threadMessages.direction,
-          messageType: threadMessages.messageType,
-          textBody: threadMessages.textBody,
-          meta: threadMessages.meta,
-          createdAt: threadMessages.createdAt,
-        });
+        .returning(threadMessageSelection);
 
       await db
         .update(messageThreads)

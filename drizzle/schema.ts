@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, integer, timestamp, jsonb, uniqueIndex, index, numeric, check, foreignKey, pgSequence } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, integer, timestamp, jsonb, uniqueIndex, index, numeric, check, foreignKey, pgSequence, type AnyPgColumn } from "drizzle-orm/pg-core";
 import crypto from "crypto";
 import { relations, sql } from "drizzle-orm";
 
@@ -629,6 +629,13 @@ export const threadMessages = pgTable(
     direction: text("direction").notNull(), // inbound | outbound
     messageType: text("message_type"), // text | audio | image | etc.
     textBody: text("text_body"),
+    linkedOrderId: text("linked_order_id").references((): AnyPgColumn => orders.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    messageKind: text("message_kind"),
+    replyId: text("reply_id"),
+    replyTitle: text("reply_title"),
 
     meta: jsonb("meta").$type<Record<string, unknown>>().default({}),
 
@@ -639,6 +646,12 @@ export const threadMessages = pgTable(
     threadMessagesCreatedIdx: index("thread_messages_created_at_idx").on(t.createdAt),
     threadMessagesThreadDirectionCreatedIdx: index("thread_messages_thread_direction_created_idx").on(t.threadId, t.direction, t.createdAt),
     threadMessagesThreadCreatedLatestIdx: index("thread_messages_thread_created_latest_idx").on(t.threadId, t.createdAt, t.id),
+    threadMessagesLinkedOrderIdx: index("thread_messages_linked_order_id_idx").on(t.linkedOrderId),
+    threadMessagesThreadLinkedOrderCreatedIdx: index("thread_messages_thread_linked_order_created_idx").on(
+      t.threadId,
+      t.linkedOrderId,
+      t.createdAt,
+    ),
     // Only enforce uniqueness when we actually have an external id.
     threadMessagesExternalUx: uniqueIndex("thread_messages_external_message_id_ux")
       .on(t.externalMessageId)
@@ -954,6 +967,10 @@ export const orders = pgTable(
       onDelete: "set null",
       onUpdate: "cascade",
     }),
+    threadAnchorMessageId: text("thread_anchor_message_id").references((): AnyPgColumn => threadMessages.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
     channelIdentityId: text("channel_identity_id"),
     customerName: text("customer_name"),
     customerPhone: text("customer_phone"),
@@ -1013,6 +1030,7 @@ export const orders = pgTable(
     ordersBusinessMethodUpdatedCreatedIdx: index("orders_business_method_updated_created_idx").on(t.businessId, t.paymentMethod, t.updatedAt, t.createdAt),
     ordersBusinessMethodCreatedIdx: index("orders_business_method_created_idx").on(t.businessId, t.paymentMethod, t.createdAt),
     ordersCustomerIdx: index("orders_customer_id_idx").on(t.customerId),
+    ordersThreadAnchorMessageIdx: index("orders_thread_anchor_message_id_idx").on(t.threadAnchorMessageId),
     ordersTicketUx: uniqueIndex("orders_support_ticket_id_ux").on(t.supportTicketId).where(sql`${t.supportTicketId} is not null`),
     ordersWhatsappIdentityFk: foreignKey({
       name: "orders_whatsapp_identity_fk",
