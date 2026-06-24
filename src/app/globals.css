@@ -7232,6 +7232,316 @@ html.portal-theme-light .drawer-backdrop {
   text-decoration: none;
 }
 
+.portal-inline-thread__messages .wa-thread-message-row {
+  display: flex;
+  width: 100%;
+}
+
+.portal-inline-thread__messages .wa-thread-message-row.is-inbound {
+  justify-content: flex-start;
+}
+
+.portal-inline-thread__messages .wa-thread-message-row.is-outbound {
+  justify-content: flex-end;
+}
+
+.wa-thread-message {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+
+.wa-thread-message.is-outbound {
+  justify-self: end;
+}
+
+.wa-thread-message.is-inbound {
+  justify-self: start;
+}
+
+.wa-thread-message__bubble {
+  display: grid;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 0 10px 10px 10px;
+  border: 1px solid rgba(100, 120, 140, 0.22);
+  background: rgba(100, 120, 140, 0.15);
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.45;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.wa-thread-message__bubble.is-outbound {
+  border-radius: 10px 0 10px 10px;
+  border-color: rgba(155, 193, 141, 0.55);
+  background: linear-gradient(180deg, rgba(214, 248, 197, 0.92) 0%, rgba(190, 235, 172, 0.92) 100%);
+  color: #102114;
+}
+
+.wa-thread-message__bubble.is-selection {
+  border-color: rgba(155, 193, 141, 0.45);
+  background: linear-gradient(180deg, rgba(214, 248, 197, 0.88) 0%, rgba(190, 235, 172, 0.88) 100%);
+  color: #102114;
+}
+
+.wa-thread-message__text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wa-thread-message__time {
+  justify-self: end;
+  font-size: 11px;
+  opacity: 0.68;
+}
+
+.wa-thread-message__selection-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.wa-thread-message__selection-value {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.wa-thread-message__reply-context {
+  max-width: 100%;
+  padding: 8px 10px;
+  border-left: 3px solid rgba(201, 169, 98, 0.75);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.wa-thread-message__reply-context-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.wa-thread-message__reply-context-text {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--foreground) 88%, var(--muted));
+}
+
+.wa-thread-message__interactive-stack {
+  display: grid;
+  gap: 2px;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid rgba(155, 193, 141, 0.45);
+  background: rgba(214, 248, 197, 0.92);
+}
+
+.wa-thread-message__interactive-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(16, 33, 20, 0.08);
+  color: #0f6f4d;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.wa-thread-message__interactive-option:first-child {
+  border-top: none;
+}
+
+.wa-thread-message__interactive-option-icon {
+  color: #0f6f4d;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.wa-thread-message__list-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid rgba(155, 193, 141, 0.45);
+  border-radius: 10px;
+  background: rgba(214, 248, 197, 0.92);
+  color: #0f6f4d;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.wa-thread-message__list-trigger.is-inbound {
+  border-color: rgba(100, 120, 140, 0.22);
+  background: rgba(100, 120, 140, 0.12);
+  color: var(--foreground);
+}
+
+.wa-thread-message__list-trigger-meta {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.72;
+}
+
+.wa-thread-message__media {
+  display: grid;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(100, 120, 140, 0.22);
+  background: rgba(100, 120, 140, 0.15);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.wa-thread-message__media.is-outbound {
+  border-color: rgba(155, 193, 141, 0.55);
+  background: linear-gradient(180deg, rgba(214, 248, 197, 0.92) 0%, rgba(190, 235, 172, 0.92) 100%);
+}
+
+.wa-thread-message__image {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.wa-thread-message__document-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.wa-thread-message__document-badge {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.wa-thread-message__document-title {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wa-thread-message__document-hint {
+  font-size: 11px;
+  opacity: 0.72;
+}
+
+.wa-list-modal-shell {
+  z-index: 80;
+}
+
+.wa-list-modal-card {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.wa-list-modal-card__body {
+  gap: 14px;
+}
+
+.wa-list-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wa-list-modal__title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.wa-list-modal__subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.wa-list-modal__sections {
+  display: grid;
+  gap: 12px;
+  max-height: min(60vh, 520px);
+  overflow: auto;
+}
+
+.wa-list-modal__section-title {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.wa-list-modal__rows {
+  display: grid;
+  gap: 8px;
+}
+
+.wa-list-modal__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--portal-border-soft);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--portal-surface) 92%, transparent);
+}
+
+.wa-list-modal__row.is-selected {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.wa-list-modal__row-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wa-list-modal__row-description {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.wa-list-modal__row-badge {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.16);
+  color: #10b981;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .portal-inline-thread__composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
