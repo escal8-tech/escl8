@@ -109,11 +109,16 @@ export function ThreadMessageBubble({
 
         {hasButtonOptions ? (
           <div
-            className={`wa-thread-message__interactive-stack${showBodyBubble ? " is-attached" : " is-standalone"}`}
-            aria-label="Message options"
+            className={`wa-thread-message__interactive-stack is-readonly${showBodyBubble ? " is-attached" : " is-standalone"}`}
+            aria-label="Options sent to customer"
           >
+            <div className="wa-thread-message__interactive-stack-label">Sent to customer</div>
             {outboundInteractive.buttons.map((button) => (
-              <div key={button.id} className="wa-thread-message__interactive-option" aria-disabled="true">
+              <div
+                key={button.id}
+                className="wa-thread-message__interactive-option is-readonly"
+                aria-disabled="true"
+              >
                 <span className="wa-thread-message__interactive-option-icon" aria-hidden="true">
                   ↩
                 </span>
@@ -127,15 +132,28 @@ export function ThreadMessageBubble({
           <>
             <button
               type="button"
-              className={`wa-thread-message__list-trigger${showBodyBubble ? " is-attached" : " is-standalone"}${listExpanded ? " is-open" : ""}`}
+              className={`wa-thread-message__list-trigger is-clickable${showBodyBubble ? " is-attached" : " is-standalone"}${listExpanded ? " is-open" : ""}`}
               onClick={() => setListExpanded((open) => !open)}
               aria-expanded={listExpanded}
             >
-              <span className="wa-thread-message__list-trigger-label">
-                {outboundInteractive.listButtonLabel || "View list options"}
+              <span className="wa-thread-message__list-trigger-leading">
+                <span className="wa-thread-message__list-trigger-icon" aria-hidden="true">
+                  ☰
+                </span>
+                <span className="wa-thread-message__list-trigger-copy">
+                  <span className="wa-thread-message__list-trigger-label">
+                    {outboundInteractive.listButtonLabel || "View list options"}
+                  </span>
+                  <span className="wa-thread-message__list-trigger-meta">
+                    {outboundInteractive.sections.reduce((count, section) => count + section.rows.length, 0)} options
+                  </span>
+                </span>
               </span>
-              <span className="wa-thread-message__list-trigger-meta">
-                {outboundInteractive.sections.reduce((count, section) => count + section.rows.length, 0)} options
+              <span className="wa-thread-message__list-trigger-action">
+                {listExpanded ? "Hide" : "View"}
+                <span className="wa-thread-message__list-trigger-chevron" aria-hidden="true">
+                  {listExpanded ? "▴" : "▾"}
+                </span>
               </span>
             </button>
             {listExpanded ? (
@@ -171,11 +189,25 @@ export function ThreadMessageBubble({
           <>
             <button
               type="button"
-              className={`wa-thread-message__list-trigger is-inbound is-attached${listExpanded ? " is-open" : ""}`}
+              className={`wa-thread-message__list-trigger is-clickable is-inbound is-attached${listExpanded ? " is-open" : ""}`}
               onClick={() => setListExpanded((open) => !open)}
               aria-expanded={listExpanded}
             >
-              <span className="wa-thread-message__list-trigger-label">View all list options</span>
+              <span className="wa-thread-message__list-trigger-leading">
+                <span className="wa-thread-message__list-trigger-icon" aria-hidden="true">
+                  ☰
+                </span>
+                <span className="wa-thread-message__list-trigger-copy">
+                  <span className="wa-thread-message__list-trigger-label">View all list options</span>
+                  <span className="wa-thread-message__list-trigger-meta">Staff preview</span>
+                </span>
+              </span>
+              <span className="wa-thread-message__list-trigger-action">
+                {listExpanded ? "Hide" : "View"}
+                <span className="wa-thread-message__list-trigger-chevron" aria-hidden="true">
+                  {listExpanded ? "▴" : "▾"}
+                </span>
+              </span>
             </button>
             {listExpanded ? (
               <InteractiveListPanel

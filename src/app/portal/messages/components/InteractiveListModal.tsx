@@ -18,7 +18,11 @@ export function InteractiveListPanel({
   return (
     <div className="wa-thread-message__list-panel" role="region" aria-label={title}>
       {subtitle ? <div className="wa-thread-message__list-panel-subtitle">{subtitle}</div> : null}
-      <div className="wa-thread-message__interactive-stack is-attached is-list-panel" aria-label={title}>
+      <div
+        className="wa-thread-message__interactive-stack is-attached is-list-panel is-readonly"
+        aria-label={title}
+      >
+        <div className="wa-thread-message__interactive-stack-label">List sent to customer</div>
         {sections.map((section, sectionIndex) =>
           section.rows.map((row) => {
             const rowId = String(row.id || "").trim().toLowerCase();
@@ -31,7 +35,7 @@ export function InteractiveListPanel({
             return (
               <div
                 key={`${section.title || "section"}-${sectionIndex}-${row.id}`}
-                className={`wa-thread-message__interactive-option${selected ? " is-selected" : ""}`}
+                className={`wa-thread-message__interactive-option is-readonly${selected ? " is-selected" : ""}`}
                 aria-current={selected ? "true" : undefined}
               >
                 <span className="wa-thread-message__interactive-option-icon" aria-hidden="true">

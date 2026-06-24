@@ -7369,13 +7369,34 @@ html.portal-theme-light .drawer-backdrop {
   background: color-mix(in srgb, rgba(201, 169, 98, 0.14) 100%, var(--portal-surface));
 }
 
+.wa-thread-message__interactive-stack.is-readonly {
+  border-style: dashed;
+  border-color: rgba(201, 169, 98, 0.28);
+  background: rgba(8, 12, 20, 0.72);
+}
+
 .wa-thread-message.is-inbound .wa-thread-message__interactive-stack {
   border-color: rgba(100, 120, 140, 0.2);
   background: color-mix(in srgb, rgba(100, 120, 140, 0.12) 100%, var(--portal-surface));
 }
 
+.wa-thread-message.is-inbound .wa-thread-message__interactive-stack.is-readonly {
+  border-color: rgba(100, 120, 140, 0.34);
+  background: rgba(8, 12, 20, 0.78);
+}
+
 .wa-thread-message__interactive-stack.is-attached {
   margin-top: -1px;
+}
+
+.wa-thread-message__interactive-stack-label {
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .wa-thread-message__interactive-option {
@@ -7390,16 +7411,30 @@ html.portal-theme-light .drawer-backdrop {
   font-weight: 700;
 }
 
+.wa-thread-message__interactive-option.is-readonly {
+  border-top-color: rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(255, 255, 255, 0.9);
+  cursor: default;
+  user-select: none;
+}
+
 .wa-thread-message.is-inbound .wa-thread-message__interactive-option {
   border-top-color: rgba(100, 120, 140, 0.16);
 }
 
-.wa-thread-message__interactive-option:first-child {
+.wa-thread-message__interactive-stack-label + .wa-thread-message__interactive-option {
   border-top: none;
 }
 
 .wa-thread-message__interactive-option.is-selected {
-  background: rgba(201, 169, 98, 0.14);
+  background: rgba(201, 169, 98, 0.22);
+  color: #f8f2e5;
+}
+
+.wa-thread-message__interactive-option.is-readonly.is-selected {
+  background: rgba(201, 169, 98, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(212, 168, 75, 0.45);
 }
 
 .wa-thread-message__interactive-option-icon {
@@ -7407,6 +7442,11 @@ html.portal-theme-light .drawer-backdrop {
   color: #d4a84b;
   font-size: 15px;
   line-height: 1;
+}
+
+.wa-thread-message__interactive-option.is-readonly .wa-thread-message__interactive-option-icon {
+  color: rgba(212, 168, 75, 0.62);
+  opacity: 0.85;
 }
 
 .wa-thread-message__interactive-option-copy {
@@ -7444,10 +7484,10 @@ html.portal-theme-light .drawer-backdrop {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  min-height: 40px;
-  padding: 9px 12px;
+  min-height: 44px;
+  padding: 10px 12px;
   border: 1px solid rgba(201, 169, 98, 0.4);
   border-top: none;
   border-radius: 0 0 8px 8px;
@@ -7455,7 +7495,75 @@ html.portal-theme-light .drawer-backdrop {
   color: var(--foreground);
   font-size: 13px;
   font-weight: 700;
+  cursor: default;
+  text-align: left;
+}
+
+.wa-thread-message__list-trigger.is-clickable {
+  border-color: rgba(212, 168, 75, 0.72);
+  background: linear-gradient(135deg, rgba(201, 169, 98, 0.58) 0%, rgba(150, 118, 58, 0.5) 100%);
+  color: #fff8eb;
   cursor: pointer;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    filter 120ms ease;
+}
+
+.wa-thread-message__list-trigger.is-clickable:hover {
+  filter: brightness(1.06);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24);
+}
+
+.wa-thread-message__list-trigger.is-clickable:active {
+  transform: translateY(1px);
+}
+
+.wa-thread-message__list-trigger-leading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.wa-thread-message__list-trigger-icon {
+  display: grid;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  color: #fff8eb;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.wa-thread-message__list-trigger-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wa-thread-message__list-trigger-action {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  color: #fff8eb;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.wa-thread-message__list-trigger-chevron {
+  font-size: 12px;
+  line-height: 1;
 }
 
 .wa-thread-message__list-trigger.is-attached {
@@ -7487,16 +7595,20 @@ html.portal-theme-light .drawer-backdrop {
   border-bottom-right-radius: 0;
 }
 
-.wa-thread-message__list-trigger.is-inbound {
-  border-color: rgba(100, 120, 140, 0.2);
-  background: color-mix(in srgb, rgba(100, 120, 140, 0.12) 100%, var(--portal-surface));
-  color: var(--foreground);
+.wa-thread-message__list-trigger.is-inbound.is-clickable {
+  border-color: rgba(120, 145, 170, 0.55);
+  background: linear-gradient(135deg, rgba(88, 108, 132, 0.82) 0%, rgba(58, 72, 92, 0.88) 100%);
+  color: rgba(255, 255, 255, 0.96);
 }
 
 .wa-thread-message__list-trigger-meta {
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.68);
   font-size: 11px;
   font-weight: 600;
+}
+
+.wa-thread-message__list-trigger.is-clickable .wa-thread-message__list-trigger-meta {
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .wa-thread-message__list-panel {
@@ -7506,18 +7618,18 @@ html.portal-theme-light .drawer-backdrop {
 
 .wa-thread-message__list-panel-subtitle {
   padding: 8px 12px 0;
-  border: 1px solid rgba(201, 169, 98, 0.4);
+  border: 1px dashed rgba(201, 169, 98, 0.28);
   border-top: none;
   border-bottom: none;
-  background: color-mix(in srgb, rgba(201, 169, 98, 0.1) 100%, var(--portal-surface));
-  color: var(--muted);
+  background: rgba(8, 12, 20, 0.72);
+  color: rgba(255, 255, 255, 0.62);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .wa-thread-message.is-inbound .wa-thread-message__list-panel-subtitle {
-  border-color: rgba(100, 120, 140, 0.2);
-  background: color-mix(in srgb, rgba(100, 120, 140, 0.08) 100%, var(--portal-surface));
+  border-color: rgba(100, 120, 140, 0.34);
+  background: rgba(8, 12, 20, 0.78);
 }
 
 .wa-thread-message__interactive-stack.is-list-panel {
