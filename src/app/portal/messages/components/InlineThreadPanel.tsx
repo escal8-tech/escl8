@@ -135,10 +135,6 @@ export function InlineThreadPanel({
   }, []);
 
   useEffect(() => {
-    resetThreadState();
-  }, [normalizedThreadId, normalizedAnchorOrderId, resetThreadState]);
-
-  useEffect(() => {
     const data = windowQuery.data;
     if (!data || olderCursor || newerCursor) return;
     queueMicrotask(() => {
