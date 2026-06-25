@@ -67,6 +67,7 @@ export function InlineThreadPanel({
   const prevScrollHeightRef = useRef(0);
   const prevScrollTopRef = useRef(0);
   const prevDistanceFromBottomRef = useRef(0);
+  const hydratedWindowKeyRef = useRef<string | null>(null);
   const pendingInitialScrollRef = useRef(false);
   const pendingScrollAdjustmentRef = useRef<"older" | "newer" | null>(null);
 
@@ -134,6 +135,7 @@ export function InlineThreadPanel({
     setNewerCursor(null);
     setIsLoadingOlder(false);
     setIsLoadingNewer(false);
+    hydratedWindowKeyRef.current = null;
     pendingInitialScrollRef.current = false;
     pendingScrollAdjustmentRef.current = null;
   }, []);
@@ -141,6 +143,9 @@ export function InlineThreadPanel({
   useEffect(() => {
     const data = windowQuery.data;
     if (!data || olderCursor || newerCursor) return;
+    const windowKey = `${normalizedThreadId}:${data.anchorMessageId || resolvedAnchorMessageId || "tail"}`;
+    if (hydratedWindowKeyRef.current === windowKey && allMessages.length > 0) return;
+    hydratedWindowKeyRef.current = windowKey;
     pendingInitialScrollRef.current = true;
     queueMicrotask(() => {
       const nextMessages = data.messages.map((message) => ({ ...message, threadId: normalizedThreadId }));
@@ -149,7 +154,7 @@ export function InlineThreadPanel({
       setHasMoreBefore(data.hasMoreBefore);
       setHasMoreAfter(data.hasMoreAfter);
     });
-  }, [windowQuery.data, normalizedThreadId, olderCursor, newerCursor]);
+  }, [allMessages.length, newerCursor, normalizedThreadId, olderCursor, resolvedAnchorMessageId, windowQuery.data]);
 
   useEffect(() => {
     const data = olderWindowQuery.data;
@@ -214,6 +219,12 @@ export function InlineThreadPanel({
     container.scrollTop = container.scrollHeight;
   }, [anchorMessageId]);
 
+  const scrollToBottom = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  }, []);
+
   useLayoutEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -247,9 +258,9 @@ export function InlineThreadPanel({
       const container = messagesContainerRef.current;
       if (!container) return;
       const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceFromBottom < 120) scrollToAnchorOrBottom();
+      if (distanceFromBottom < 120) scrollToBottom();
     }, 30);
-  }, [normalizedThreadId, scrollToAnchorOrBottom]);
+  }, [normalizedThreadId, scrollToBottom]);
 
   useLivePortalEvents({
     activeThreadId: normalizedThreadId || null,
