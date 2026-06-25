@@ -80,7 +80,7 @@ export default function UsersPermissionsPanel() {
 
   return (
     <div className="space-y-5">
-      <section className="overflow-hidden rounded-xl border border-white/10 bg-[#1A2332]/95 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
+      <section className="overflow-hidden rounded-xl border border-white/10 bg-[#1c2839]/95 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
         <div className="flex flex-col gap-4 p-6 md:flex-row md:items-start md:justify-between">
           <div>
             <div className="flex items-center gap-3">
@@ -99,8 +99,8 @@ export default function UsersPermissionsPanel() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-white/10 bg-[#1A2332]/95 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
-        <div className="border-b border-white/10 p-6">
+      <section className="overflow-hidden rounded-xl border border-white/10 bg-[#1c2839]/95 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
+        <div className="p-6">
           <div className="mb-1 flex items-center gap-3">
             <MailPlus className="h-5 w-5 text-[#d8b45a]" />
             <h3 className="text-xl font-semibold text-white">Invite Teammate</h3>
@@ -110,7 +110,7 @@ export default function UsersPermissionsPanel() {
           </p>
         </div>
 
-        <div className="space-y-5 p-6">
+        <div className="space-y-5 px-6 pb-6 pt-1">
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -200,15 +200,15 @@ export default function UsersPermissionsPanel() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-white/10 bg-[#1A2332]/95 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
-        <div className="border-b border-white/10 p-6">
+      <section className="overflow-hidden rounded-xl border border-white/10 bg-[#1c2839]/95 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
+        <div className="p-6">
           <div className="flex items-center gap-3">
             <Users className="h-5 w-5 text-[#94a3b8]" />
             <h3 className="text-xl font-semibold text-white">Active Team</h3>
           </div>
         </div>
 
-        <div className="space-y-3 p-6">
+        <div className="space-y-3 px-6 pb-6 pt-1">
           {!loading && !failed && team.length === 0 ? (
             <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.03] px-4 py-6 text-center text-sm text-slate-400">
               No team members found.
@@ -218,8 +218,8 @@ export default function UsersPermissionsPanel() {
           {team.map((member) => {
             const isLastAdmin = member.accessLevel === "admin" && adminCount <= 1;
             return (
-              <div key={member.id} className="rounded-xl border border-[#35516f] bg-[#20324a] p-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div key={member.id} className="rounded-lg border border-[#35516f] bg-[#20324a] px-4 py-3">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="truncate text-[1.05rem] font-semibold text-white">{member.email}</div>
@@ -232,12 +232,12 @@ export default function UsersPermissionsPanel() {
                         {accessLabel(member.accessLevel)}
                       </span>
                     </div>
-                    <div className="mt-2 text-sm text-slate-400">
+                    <div className="mt-1.5 text-sm text-slate-400">
                       {member.isCurrentUser ? "Current user" : `Team member · ${accessLabel(member.accessLevel)}`}
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-start gap-2 lg:min-w-[240px] lg:max-w-[280px] lg:items-end">
+                  <div className="flex flex-col items-start gap-1.5 lg:min-w-[320px] lg:max-w-[320px] lg:items-end">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#8ea7c3]">Access Level</div>
                     <div className="w-full">
                       <PortalSelect
@@ -249,15 +249,15 @@ export default function UsersPermissionsPanel() {
                         style={{ minHeight: 40, borderRadius: 12 }}
                       />
                     </div>
-                    <div className="max-w-[280px] text-xs leading-5 text-slate-500 lg:text-right">
+                    <div className="max-w-[320px] text-xs leading-5 text-slate-500 lg:text-right">
                       {isLastAdmin
-                        ? "Promote another user before removing the final admin."
+                        ? "Promote another admin before removing the final one."
                         : member.accessLevel === "admin"
-                          ? "Can invite users, approve legacy requests, and manage permissions."
-                          : "Normal day-to-day access without admin controls."}
+                          ? "Can manage users and permissions."
+                          : "Day-to-day workspace access."}
                     </div>
                     <button
-                      className="inline-flex h-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="inline-flex h-8 items-center justify-center rounded-md border border-white/10 bg-white/5 px-4 text-sm font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                       type="button"
                       disabled={removeMemberMutation.isPending || member.isCurrentUser || isLastAdmin}
                       onClick={() => removeMemberMutation.mutate({ id: member.id })}

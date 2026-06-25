@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, signOut, updatePassword } from "firebase/auth";
 import dynamic from "next/dynamic";
 import {
@@ -131,8 +131,8 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-white/10 bg-[#1A2332]/95 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
-      <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 md:flex-row md:items-start md:justify-between">
+    <section className="overflow-hidden rounded-xl border border-white/10 bg-[#1c2839]/95 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
+      <div className="flex flex-col gap-4 px-6 pb-4 pt-5 md:flex-row md:items-start md:justify-between">
         <div className="flex items-start gap-4">
           <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#d8b45a]/10 text-[#d8b45a]">{icon}</div>
           <div>
@@ -142,7 +142,7 @@ function SectionCard({
         </div>
         {action}
       </div>
-      <div className="p-6">{children}</div>
+      <div className="px-6 pb-6 pt-1">{children}</div>
     </section>
   );
 }
@@ -191,6 +191,7 @@ function ModalShell({
 export default function SettingsPage() {
   const auth = getFirebaseAuth();
   const toast = useToast();
+  const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { theme, setTheme } = usePortalTheme();
@@ -247,6 +248,7 @@ export default function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordPending, setPasswordPending] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
 
   useEffect(() => {
     if (!auth) return;
@@ -274,12 +276,16 @@ export default function SettingsPage() {
   );
 
   const requestedTab = getRequestedSettingsTab(searchParams?.get("tab"));
-  const activeTab = visibleTabs.some((tab) => tab.id === requestedTab) ? requestedTab : (visibleTabs[0]?.id ?? "profile");
   const customizationPreviewQuery = trpc.business.getCustomizationPreview.useQuery(undefined, {
     enabled: !!email && activeTab === "customization",
     refetchOnWindowFocus: false,
     staleTime: 5 * 60 * 1000,
   });
+
+  useEffect(() => {
+    const nextTab = visibleTabs.some((tab) => tab.id === requestedTab) ? requestedTab : (visibleTabs[0]?.id ?? "profile");
+    setActiveTab((current) => (current === nextTab ? current : nextTab));
+  }, [requestedTab, visibleTabs]);
 
   useEffect(() => {
     if (!businessQuery.data) return;
@@ -353,9 +359,15 @@ export default function SettingsPage() {
   }, [businessQuery, toast]);
 
   const handleTabSelect = (tab: SettingsTab) => {
+    setActiveTab(tab);
     const params = new URLSearchParams(searchParams?.toString() || "");
-    params.set("tab", tab);
-    router.replace(`/settings?${params.toString()}`, { scroll: false });
+    if (tab === "profile") {
+      params.delete("tab");
+    } else {
+      params.set("tab", tab);
+    }
+    const nextQuery = params.toString();
+    router.replace(`${pathname}${nextQuery ? `?${nextQuery}` : ""}`, { scroll: false });
   };
 
   const handleLogout = async () => {
@@ -877,7 +889,7 @@ export default function SettingsPage() {
       </SectionCard>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <section className="rounded-xl border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
+        <section className="rounded-xl border border-white/10 bg-[#1c2839]/95 p-5 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#d8b45a]/10 text-[#d8b45a]">
@@ -919,7 +931,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
+        <section className="rounded-xl border border-white/10 bg-[#1c2839]/95 p-5 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#d8b45a]/10 text-[#d8b45a]">
@@ -957,7 +969,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
+        <section className="rounded-xl border border-white/10 bg-[#1c2839]/95 p-5 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#d8b45a]/10 text-[#d8b45a]">
