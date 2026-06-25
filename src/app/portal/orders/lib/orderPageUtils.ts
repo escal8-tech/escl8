@@ -212,6 +212,18 @@ export function numericAmount(value: string | number | null | undefined): number
   return parseMoneyNumber(value) ?? 0;
 }
 
+export function normalizeInvoiceStatus(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+export function isFailedInvoice(order: Pick<OrderRow, "invoiceStatus">): boolean {
+  return normalizeInvoiceStatus(order.invoiceStatus) === "failed";
+}
+
+export function hasOpenableInvoice(order: Pick<OrderRow, "invoiceUrl">): boolean {
+  return Boolean(String(order.invoiceUrl || "").trim());
+}
+
 export function formatOrderItems(snapshot: Record<string, unknown>): string {
   const fields = resolveOrderSnapshotFields(snapshot);
   const pricedLineItems = Array.isArray(fields.priced_line_items) ? fields.priced_line_items : [];

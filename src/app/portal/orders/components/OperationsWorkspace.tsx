@@ -174,6 +174,16 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
       ]);
     },
   });
+  const regenerateInvoice = trpc.orders.regenerateInvoice.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.orders.listOrdersPage.invalidate(),
+        utils.orders.getOverview.invalidate(),
+        utils.orders.getOrderById.invalidate(),
+        utils.orders.getOrderEvents.invalidate(),
+      ]);
+    },
+  });
   useLivePortalEvents({
     orderLedgerInput,
     orderOverviewInput: overviewInput,
@@ -212,6 +222,21 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
     || updateFulfillment.isPending
     || captureManualPayment.isPending
     || denyPendingPaymentOrder.isPending;
+
+  const handleRegenerateInvoice = async (order: OrderRow) => {
+    try {
+      await regenerateInvoice.mutateAsync({ orderId: order.id });
+      showSuccessToast(toast, {
+        title: "Invoice regenerated",
+        message: "The invoice file was rebuilt. No customer message was sent.",
+      });
+    } catch (error) {
+      showErrorToast(toast, {
+        title: "Could not regenerate invoice",
+        message: error instanceof Error ? error.message : "Invoice regeneration failed.",
+      });
+    }
+  };
 
   const summaryCards = useMemo(() => {
     if (mode === "payments") {
@@ -413,6 +438,8 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
                     onApprove={(order, paymentId) => handleReview(order, paymentId, "approve")}
                     onReject={(order, paymentId) => handleReview(order, paymentId, "reject")}
                     busy={isBusy}
+                    onRegenerateInvoice={handleRegenerateInvoice}
+                    regeneratingOrderId={regenerateInvoice.variables?.orderId ?? null}
                   />
                 ) : mode === "status" ? (
                   <StatusTable
@@ -457,9 +484,16 @@ export function OrdersPageScreen({ mode }: { mode: OperationsWorkspaceMode }) {
                       });
                     }}
                     busy={isBusy}
+                    onRegenerateInvoice={handleRegenerateInvoice}
+                    regeneratingOrderId={regenerateInvoice.variables?.orderId ?? null}
                   />
                 ) : (
-                  <RevenueTable rows={rows} onOpen={openOrderWorkbench} />
+                  <RevenueTable
+                    rows={rows}
+                    onOpen={openOrderWorkbench}
+                    onRegenerateInvoice={handleRegenerateInvoice}
+                    regeneratingOrderId={regenerateInvoice.variables?.orderId ?? null}
+                  />
                 )}
               </div>
             </div>

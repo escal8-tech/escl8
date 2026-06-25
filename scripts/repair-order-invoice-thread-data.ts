@@ -1,13 +1,12 @@
 import "dotenv/config";
 
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, or } from "drizzle-orm";
 
 import { orders, threadMessages } from "../drizzle/schema";
 import { db } from "@/server/db/client";
 import { createOrderInvoiceForOrder } from "@/server/services/orderInvoice";
 
 type OrderRow = typeof orders.$inferSelect;
-type ThreadMessageRow = typeof threadMessages.$inferSelect;
 
 function parseArgs(argv: string[]) {
   const args = argv.slice(2);
@@ -18,6 +17,29 @@ function parseArgs(argv: string[]) {
 
 function shortOrderId(orderId: string): string {
   return orderId.slice(0, 8).toUpperCase();
+}
+
+function looksLikeInvoiceFailureAnchor(text: string, invoiceNumber: string | null | undefined): boolean {
+  const normalized = String(text || "").trim().toLowerCase();
+  const normalizedInvoiceNumber = String(invoiceNumber || "").trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized.includes("creating your invoice now")) return true;
+  if (normalized.includes("could not attach it") || normalized.includes("source file is currently unavailable")) return true;
+  if (normalized.includes("invoice eka") && normalized.includes("hadanna")) return true;
+  if (normalizedInvoiceNumber && normalized.includes(normalizedInvoiceNumber) && normalized.includes("document")) return true;
+  return false;
+}
+
+function looksLikePaymentPendingAnchor(text: string): boolean {
+  const normalized = String(text || "").trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized.includes("payment update")
+    && (
+      normalized.includes("staff review")
+      || normalized.includes("review ekata")
+      || normalized.includes("confirm කරන්නම්")
+      || normalized.includes("confirm karannam")
+    );
 }
 
 function pickAnchorTimestamp(order: OrderRow, originalInvoiceStatus: string | null): Date {
@@ -70,6 +92,66 @@ async function loadTrackingMessages(order: OrderRow) {
       ),
     )
     .orderBy(threadMessages.createdAt, threadMessages.id);
+}
+
+async function loadNearbyOutboundMessages(order: OrderRow) {
+  if (!order.threadId || !order.createdAt) return [];
+  const from = new Date(order.createdAt.getTime() - 60_000);
+  const [nextOrder] = await db
+    .select({ createdAt: orders.createdAt })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.threadId, order.threadId),
+      ),
+    )
+    .orderBy(asc(orders.createdAt))
+    .then((rows) =>
+      rows.filter((row) => Boolean(row.createdAt) && row.createdAt > order.createdAt).slice(0, 1),
+    );
+  const defaultTo = new Date(order.createdAt.getTime() + (15 * 60_000));
+  const nextOrderCutoff = nextOrder?.createdAt
+    ? new Date(nextOrder.createdAt.getTime() - 1)
+    : null;
+  const to = nextOrderCutoff && nextOrderCutoff < defaultTo ? nextOrderCutoff : defaultTo;
+  return db
+    .select()
+    .from(threadMessages)
+    .where(eq(threadMessages.threadId, order.threadId))
+    .orderBy(asc(threadMessages.createdAt), asc(threadMessages.id))
+    .then((rows) =>
+      rows.filter((message) =>
+        message.direction === "outbound"
+        && Boolean(message.createdAt)
+        && message.createdAt >= from
+        && message.createdAt <= to,
+      ),
+    );
+}
+
+async function findPreferredAnchorMessage(order: OrderRow) {
+  const nearby = await loadNearbyOutboundMessages(order);
+  const failureCandidates = nearby.filter((message) =>
+    looksLikeInvoiceFailureAnchor(message.textBody || "", order.invoiceNumber),
+  );
+  if (failureCandidates.length) {
+    return {
+      message: failureCandidates[failureCandidates.length - 1] ?? null,
+      kind: "order2_payment_finalize_failed" as const,
+    };
+  }
+
+  const pendingCandidates = nearby.filter((message) =>
+    looksLikePaymentPendingAnchor(message.textBody || ""),
+  );
+  if (pendingCandidates.length) {
+    return {
+      message: pendingCandidates[pendingCandidates.length - 1] ?? null,
+      kind: "order2_payment_pending" as const,
+    };
+  }
+
+  return { message: null, kind: null as "order2_payment_finalize_failed" | "order2_payment_pending" | null };
 }
 
 async function ensureInvoiceArtifact(order: OrderRow) {
@@ -152,6 +234,7 @@ async function repairOrder(orderId: string, apply: boolean) {
 
   const originalInvoiceStatus = order.invoiceStatus ?? null;
   const beforeInvoiceMessage = await loadInvoiceMessage(order.id);
+  const preferredAnchor = await findPreferredAnchorMessage(order);
   const { linkedCount } = await linkTrackingMessages(order, apply);
 
   let artifact: NonNullable<Awaited<ReturnType<typeof createOrderInvoiceForOrder>>> | null = null;
@@ -178,6 +261,19 @@ async function repairOrder(orderId: string, apply: boolean) {
   let anchorMessageId = invoiceMessage?.id ?? refreshedOrder.threadAnchorMessageId ?? null;
   let createdMessageId: string | null = null;
 
+  if (preferredAnchor.message) {
+    if (apply) {
+      await db
+        .update(threadMessages)
+        .set({
+          linkedOrderId: order.id,
+          messageKind: preferredAnchor.kind,
+        })
+        .where(eq(threadMessages.id, preferredAnchor.message.id));
+    }
+    anchorMessageId = preferredAnchor.message.id;
+  }
+
   const effectiveArtifact = artifact ?? (
     refreshedOrder.invoiceUrl && refreshedOrder.invoiceFileName && refreshedOrder.invoiceStoragePath
       ? {
@@ -190,7 +286,7 @@ async function repairOrder(orderId: string, apply: boolean) {
       : null
   );
 
-  if (!invoiceMessage && effectiveArtifact) {
+  if (!invoiceMessage && effectiveArtifact && !preferredAnchor.message) {
     if (apply) {
       const createdAt = pickAnchorTimestamp(refreshedOrder, originalInvoiceStatus);
       const created = await backfillInvoiceMessage({
@@ -227,6 +323,8 @@ async function repairOrder(orderId: string, apply: boolean) {
     anchorMessageId: afterOrder?.threadAnchorMessageId ?? anchorMessageId,
     invoiceMessageId: afterInvoiceMessage?.id ?? createdMessageId,
     createdMessageId,
+    preferredAnchorMessageId: preferredAnchor.message?.id ?? null,
+    preferredAnchorKind: preferredAnchor.kind,
     linkedTrackingMessages: linkedCount,
     dryRun: !apply,
   };

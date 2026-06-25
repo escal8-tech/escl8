@@ -193,6 +193,10 @@ export const ordersRouter = router({
     .input(z.object({ orderId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => orderMutationSupport.sendPaymentDetails(ctx, input)),
 
+  regenerateInvoice: businessProcedure
+    .input(z.object({ orderId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => orderMutationSupport.regenerateInvoice(ctx, input)),
+
   reviewPayment: businessProcedure
     .input(
       z.object({

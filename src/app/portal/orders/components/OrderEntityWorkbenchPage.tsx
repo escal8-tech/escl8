@@ -142,6 +142,16 @@ export function OrderEntityWorkbenchPage({ forcedMode }: { forcedMode?: Operatio
       ]);
     },
   });
+  const regenerateInvoice = trpc.orders.regenerateInvoice.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.orders.listOrdersPage.invalidate(),
+        utils.orders.getOverview.invalidate(),
+        utils.orders.getOrderById.invalidate(),
+        utils.orders.getOrderEvents.invalidate(),
+      ]);
+    },
+  });
 
   useLivePortalEvents({
     activeOrderId: orderId || null,
@@ -165,6 +175,21 @@ export function OrderEntityWorkbenchPage({ forcedMode }: { forcedMode?: Operatio
     || denyPendingPaymentOrder.isPending
     || updateRefundStatus.isPending
     || reopenPaidOrderForPaymentReview.isPending;
+
+  const handleRegenerateInvoice = async (row: OrderRow) => {
+    try {
+      await regenerateInvoice.mutateAsync({ orderId: row.id });
+      showSuccessToast(toast, {
+        title: "Invoice regenerated",
+        message: "The invoice file was rebuilt. No customer message was sent.",
+      });
+    } catch (error) {
+      showErrorToast(toast, {
+        title: "Could not regenerate invoice",
+        message: error instanceof Error ? error.message : "Invoice regeneration failed.",
+      });
+    }
+  };
 
   const handleReview = async (row: OrderRow, paymentId: string | undefined, action: "approve" | "reject") => {
     const rejectReason = action === "reject" ? window.prompt("Reason for denying this payment", "Payment was not approved") : null;
@@ -293,7 +318,9 @@ export function OrderEntityWorkbenchPage({ forcedMode }: { forcedMode?: Operatio
               }}
               onReopenPaidOrderForPaymentReview={handleReopenPaidOrder}
               onUpdateRefundStatus={handleRefundAction}
+              onRegenerateInvoice={handleRegenerateInvoice}
               busy={isBusy}
+              regeneratingInvoice={regenerateInvoice.isPending}
             />
           </main>
           <aside className="portal-workbench-thread">
