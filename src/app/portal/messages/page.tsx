@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/utils/trpc";
 import { usePhoneFilter } from "@/components/PhoneFilterContext";
 import { useToast } from "@/components/ToastProvider";
@@ -176,6 +176,9 @@ export default function MessagesPage() {
   const [isLoadingMoreThreads, setIsLoadingMoreThreads] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
+  const prevScrollTopRef = useRef<number>(0);
+  const pendingInitialScrollRef = useRef(false);
+  const pendingScrollAdjustmentRef = useRef(false);
 
   const threadPageInput = useMemo(
     () => ({
@@ -329,6 +332,8 @@ export default function MessagesPage() {
     setHasMore(false);
     setIsLoadingMore(false);
     setLatestTicketNotice(null);
+    pendingInitialScrollRef.current = false;
+    pendingScrollAdjustmentRef.current = false;
   }, []);
 
   // Initial messages query (newest messages first load)
@@ -350,15 +355,11 @@ export default function MessagesPage() {
   useEffect(() => {
     const data = messagesQuery.data;
     if (!data || cursor) return;
+    pendingInitialScrollRef.current = true;
     queueMicrotask(() => {
       setAllMessages(data.messages);
       setHasMore(data.hasMore);
       setCursor(null);
-      setTimeout(() => {
-        if (messagesContainerRef.current) {
-          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-        }
-      }, 50);
     });
   }, [messagesQuery.data, cursor]);
 
@@ -367,20 +368,31 @@ export default function MessagesPage() {
     if (!isLoadingMore || !data) return;
     const container = messagesContainerRef.current;
     if (container) {
+      prevScrollTopRef.current = container.scrollTop;
       prevScrollHeightRef.current = container.scrollHeight;
+      pendingScrollAdjustmentRef.current = true;
     }
     queueMicrotask(() => {
       setAllMessages((prev) => [...data.messages, ...prev]);
       setHasMore(data.hasMore);
       setIsLoadingMore(false);
-      setTimeout(() => {
-        if (container) {
-          const newScrollHeight = container.scrollHeight;
-          container.scrollTop = newScrollHeight - prevScrollHeightRef.current;
-        }
-      }, 10);
     });
   }, [olderMessagesQuery.data, isLoadingMore]);
+
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    if (pendingScrollAdjustmentRef.current) {
+      const newScrollHeight = container.scrollHeight;
+      container.scrollTop = Math.max(0, prevScrollTopRef.current + (newScrollHeight - prevScrollHeightRef.current));
+      pendingScrollAdjustmentRef.current = false;
+      return;
+    }
+    if (pendingInitialScrollRef.current && allMessages.length > 0 && !isLoadingMore && !cursor) {
+      container.scrollTop = container.scrollHeight;
+      pendingInitialScrollRef.current = false;
+    }
+  }, [allMessages, cursor, isLoadingMore]);
 
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 30_000);
@@ -582,11 +594,11 @@ export default function MessagesPage() {
         });
         return [];
       });
-      setTimeout(() => {
+      requestAnimationFrame(() => {
         if (messagesContainerRef.current) {
           messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
         }
-      }, 20);
+      });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to send message.";
       setSendError(msg);
@@ -1052,6 +1064,8 @@ export default function MessagesPage() {
               style={{
                 flex: 1,
                 overflow: "auto",
+                overflowAnchor: "none",
+                overscrollBehaviorY: "contain",
                 padding: isMobile ? "12px" : "16px 60px",
                 minHeight: 0,
                 background: "linear-gradient(180deg, rgba(0,0,0,0.1) 0%, transparent 100%)",
