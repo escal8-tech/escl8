@@ -12,11 +12,13 @@ import {
   formatEventSummary,
   formatMoney,
   formatOrderItems,
+  hasOpenableInvoice,
   fulfillmentToneClass,
   getDeliveryHint,
   getDeliverySummary,
   getFulfillmentStatus,
   getOrderStatus,
+  isFailedInvoice,
   isPickupOrder,
   normalizeStatusLabel,
   numericAmount,
@@ -106,18 +108,59 @@ function canStaffApprovePayment(order: OrderRow, latestPayment: OrderPaymentRow 
   return ["approved", "awaiting_payment", "payment_rejected"].includes(getOrderStatus(order));
 }
 
+function InvoiceActionButton({
+  order,
+  busy,
+  onRegenerate,
+}: {
+  order: OrderRow;
+  busy?: boolean;
+  onRegenerate?: (order: OrderRow) => Promise<void>;
+}) {
+  if (isFailedInvoice(order)) {
+    return (
+      <button
+        type="button"
+        className="btn btn-ghost"
+        disabled={busy || !onRegenerate}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (!onRegenerate) return;
+          void onRegenerate(order);
+        }}
+      >
+        {busy ? "Regenerating..." : "Regenerate"}
+      </button>
+    );
+  }
+
+  if (hasOpenableInvoice(order)) {
+    return (
+      <a href={order.invoiceUrl || "#"} target="_blank" rel="noreferrer" className="btn btn-ghost" onClick={(event) => event.stopPropagation()}>
+        {order.invoiceNumber || "Open Invoice"}
+      </a>
+    );
+  }
+
+  return <span className="portal-meta-text">Not sent</span>;
+}
+
 export function PaymentsTable({
   rows,
   onOpen,
   onApprove,
   onReject,
   busy,
+  onRegenerateInvoice,
+  regeneratingOrderId,
 }: {
   rows: OrderRow[];
   onOpen: (orderId: string) => void;
   onApprove: (order: OrderRow, paymentId?: string) => Promise<void>;
   onReject: (order: OrderRow, paymentId?: string) => Promise<void>;
   busy: boolean;
+  onRegenerateInvoice: (order: OrderRow) => Promise<void>;
+  regeneratingOrderId?: string | null;
 }) {
   return (
     <table className="table table-clickable portal-modern-table portal-ledger-table portal-mobile-cards" style={{ width: "100%", tableLayout: "fixed" }}>
@@ -173,13 +216,11 @@ export function PaymentsTable({
                 )}
               </td>
               <td data-label="Invoice">
-                {order.invoiceUrl ? (
-                  <a href={order.invoiceUrl} target="_blank" rel="noreferrer" className="btn btn-ghost" onClick={(event) => event.stopPropagation()}>
-                    {order.invoiceNumber || "Open Invoice"}
-                  </a>
-                ) : (
-                  <span className="portal-meta-text">Not sent</span>
-                )}
+                <InvoiceActionButton
+                  order={order}
+                  busy={regeneratingOrderId === order.id}
+                  onRegenerate={onRegenerateInvoice}
+                />
               </td>
               <td data-label="Updated" className="portal-meta-text">{formatDate(order.updatedAt)}</td>
               <td data-label="Action" style={{ textAlign: "right" }} onClick={(event) => event.stopPropagation()}>
@@ -229,12 +270,16 @@ export function StatusTable({
   onDispatch,
   onComplete,
   busy,
+  onRegenerateInvoice,
+  regeneratingOrderId,
 }: {
   rows: OrderRow[];
   onOpen: (orderId: string) => void;
   onDispatch: (order: OrderRow) => void;
   onComplete: (order: OrderRow) => void;
   busy: boolean;
+  onRegenerateInvoice: (order: OrderRow) => Promise<void>;
+  regeneratingOrderId?: string | null;
 }) {
   return (
     <table className="table table-clickable portal-modern-table portal-ledger-table portal-mobile-cards" style={{ width: "100%", tableLayout: "auto" }}>
@@ -286,13 +331,11 @@ export function StatusTable({
                 </div>
               </td>
               <td data-label="Invoice">
-                {order.invoiceUrl ? (
-                  <a href={order.invoiceUrl} target="_blank" rel="noreferrer" className="btn btn-ghost" onClick={(event) => event.stopPropagation()}>
-                    {order.invoiceNumber || "Open Invoice"}
-                  </a>
-                ) : (
-                  <span className="portal-meta-text">Not sent</span>
-                )}
+                <InvoiceActionButton
+                  order={order}
+                  busy={regeneratingOrderId === order.id}
+                  onRegenerate={onRegenerateInvoice}
+                />
               </td>
               <td data-label="Updated" className="portal-meta-text">{formatDate(order.updatedAt)}</td>
               <td data-label="Action" style={{ textAlign: "right" }} onClick={(event) => event.stopPropagation()}>
@@ -322,9 +365,13 @@ export function StatusTable({
 export function RevenueTable({
   rows,
   onOpen,
+  onRegenerateInvoice,
+  regeneratingOrderId,
 }: {
   rows: OrderRow[];
   onOpen: (orderId: string) => void;
+  onRegenerateInvoice: (order: OrderRow) => Promise<void>;
+  regeneratingOrderId?: string | null;
 }) {
   return (
     <table className="table table-clickable portal-modern-table portal-ledger-table portal-mobile-cards" style={{ width: "100%", tableLayout: "fixed" }}>
@@ -371,13 +418,11 @@ export function RevenueTable({
                 )}
               </td>
               <td data-label="Invoice">
-                {order.invoiceUrl ? (
-                  <a href={order.invoiceUrl} target="_blank" rel="noreferrer" className="btn btn-ghost" onClick={(event) => event.stopPropagation()}>
-                    {order.invoiceNumber || "Open Invoice"}
-                  </a>
-                ) : (
-                  <span className="portal-meta-text">Not sent</span>
-                )}
+                <InvoiceActionButton
+                  order={order}
+                  busy={regeneratingOrderId === order.id}
+                  onRegenerate={onRegenerateInvoice}
+                />
               </td>
               <td data-label="Updated" className="portal-meta-text">{formatDate(order.updatedAt)}</td>
             </tr>
@@ -406,7 +451,9 @@ export function OrderWorkspaceDrawer({
   onUpdatePaymentSetup,
   onReopenPaidOrderForPaymentReview,
   onUpdateRefundStatus,
+  onRegenerateInvoice,
   busy,
+  regeneratingInvoice,
   variant = "drawer",
 }: {
   mode: OperationsWorkspaceMode;
@@ -454,7 +501,9 @@ export function OrderWorkspaceDrawer({
   }) => Promise<void>;
   onReopenPaidOrderForPaymentReview: (order: OrderRow) => Promise<void>;
   onUpdateRefundStatus: (order: OrderRow, action: "mark_pending" | "mark_refunded" | "cancel") => Promise<void>;
+  onRegenerateInvoice: (order: OrderRow) => Promise<void>;
   busy: boolean;
+  regeneratingInvoice?: boolean;
   variant?: "drawer" | "page";
 }) {
   const paymentsQuery = trpc.orders.getOrderPayments.useQuery(
@@ -1103,8 +1152,10 @@ export function OrderWorkspaceDrawer({
                 <div className="card-body portal-invoice-card">
                   <div className="portal-invoice-card__header">
                     <div style={{ fontSize: 14, fontWeight: 600 }}>Invoice</div>
-                    {!order.invoiceUrl ? (
-                      <div className="text-muted" style={{ fontSize: 12 }}>Generated after payment approval.</div>
+                    {!hasOpenableInvoice(order) ? (
+                      <div className="text-muted" style={{ fontSize: 12 }}>
+                        {isFailedInvoice(order) ? "Invoice generation failed. Regenerate it for manual delivery." : "Generated after payment approval."}
+                      </div>
                     ) : null}
                   </div>
                   <div className="portal-invoice-card__grid">
@@ -1113,11 +1164,13 @@ export function OrderWorkspaceDrawer({
                     <Detail label="Generated" value={formatDate(order.invoiceGeneratedAt)} />
                     <Detail label="Sent" value={formatDate(order.invoiceSentAt)} />
                   </div>
-                  {order.invoiceUrl ? (
-                    <a href={order.invoiceUrl} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ width: "fit-content" }}>
-                      Open Invoice
-                    </a>
-                  ) : null}
+                  <div style={{ width: "fit-content" }}>
+                    <InvoiceActionButton
+                      order={order}
+                      busy={regeneratingInvoice}
+                      onRegenerate={onRegenerateInvoice}
+                    />
+                  </div>
                 </div>
               </div>
             ) : null}

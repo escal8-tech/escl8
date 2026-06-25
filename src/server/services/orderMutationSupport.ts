@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import { orders } from "../../../drizzle/schema";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import {
   formatOrderItemsSummary,
   logOrderEvent,
@@ -33,6 +34,7 @@ import {
   buildOrderApprovalMessages,
   sanitizePhoneDigits,
 } from "@/server/services/orderFlow";
+import { createOrderInvoiceForOrder } from "@/server/services/orderInvoice";
 import { isStaffManualOrder, resolveFulfillmentPrefill } from "@/server/services/orderMutationUtils";
 
 export * from "./orderMutationUtils";
@@ -293,5 +295,101 @@ export async function sendPaymentDetails(ctx: any, input: { orderId: string }) {
     deliveryChannel: delivery.channel,
     orderId: result.orderRow.id,
     windowExpiresAt: result.windowState.whatsappWindowExpiresAt,
+  };
+}
+
+export async function regenerateInvoice(ctx: any, input: { orderId: string }) {
+  const settings = await getBusinessOrderSettings(ctx.businessId);
+  if (!settings.ticketToOrderEnabled) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Ticket-to-order flow is disabled for this business." });
+  }
+
+  const lockKey = `${ctx.businessId}::order::${input.orderId}`;
+  const now = new Date();
+  const result = await withRedisWorkflowLock(lockKey, async () => {
+    const [orderRow] = await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, input.orderId)))
+      .limit(1);
+    if (!orderRow) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Order not found." });
+    }
+
+    const artifact = await createOrderInvoiceForOrder({
+      businessId: ctx.businessId,
+      orderId: orderRow.id,
+      forceRegenerate: true,
+      deliveryMethod: null,
+      trackingUrl: null,
+    });
+    if (!artifact) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Invoice generation returned no file." });
+    }
+
+    const [updatedOrder] = await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.businessId, ctx.businessId), eq(orders.id, orderRow.id)))
+      .limit(1);
+    if (!updatedOrder) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Order could not be reloaded after invoice generation." });
+    }
+
+    return {
+      orderBefore: orderRow,
+      orderAfter: updatedOrder,
+      artifact,
+    };
+  });
+
+  await logOrderEvent({
+    businessId: ctx.businessId,
+    orderId: result.orderAfter.id,
+    eventType: "invoice_regenerated",
+    actorType: "user",
+    actorId: ctx.userId ?? ctx.firebaseUid ?? null,
+    actorLabel: ctx.userEmail ?? "user",
+    payload: {
+      invoiceNumber: result.artifact.invoiceNumber,
+      fileName: result.artifact.fileName,
+      previousInvoiceStatus: result.orderBefore.invoiceStatus,
+      deliveryMethod: null,
+    },
+  });
+
+  await publishPortalEvent({
+    businessId: ctx.businessId,
+    entity: "order",
+    op: "upsert",
+    entityId: result.orderAfter.id,
+    payload: {
+      order: result.orderAfter as any,
+    },
+    createdAt: result.orderAfter.updatedAt ?? result.orderAfter.createdAt ?? now,
+  });
+
+  recordBusinessEvent({
+    event: "order.invoice_regenerated",
+    action: "regenerateInvoice",
+    area: "order",
+    businessId: ctx.businessId,
+    entity: "order",
+    entityId: result.orderAfter.id,
+    userId: ctx.userId,
+    actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+    actorType: "user",
+    outcome: "success",
+    status: result.orderAfter.invoiceStatus,
+    attributes: {
+      invoice_number: result.artifact.invoiceNumber,
+      previous_invoice_status: result.orderBefore.invoiceStatus,
+    },
+  });
+
+  return {
+    orderId: result.orderAfter.id,
+    invoiceNumber: result.artifact.invoiceNumber,
+    invoiceUrl: result.artifact.url,
   };
 }
