@@ -110,7 +110,7 @@ function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onC
 
 function FieldTile({ label, value, valueClassName }: { label: string; value: React.ReactNode; valueClassName?: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#20324a] px-4 py-3">
+    <div className="rounded-xl border border-white/10 bg-[#20324a] px-4 py-3">
       <div className="text-xs font-semibold uppercase tracking-[0.1em] text-[#8ea7c3]">{label}</div>
       <div className={`mt-2 text-base font-medium text-white ${valueClassName || ""}`}>{value}</div>
     </div>
@@ -131,10 +131,10 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-[22px] border border-white/10 bg-[#1A2332]/95 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
+    <section className="overflow-hidden rounded-xl border border-white/10 bg-[#1A2332]/95 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
       <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 md:flex-row md:items-start md:justify-between">
         <div className="flex items-start gap-4">
-          <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[#1d4ed8] text-white">{icon}</div>
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#d8b45a]/10 text-[#d8b45a]">{icon}</div>
           <div>
             <h2 className="text-[18px] font-semibold text-white">{title}</h2>
             <p className="mt-1 text-sm leading-6 text-slate-400">{description}</p>
@@ -166,7 +166,7 @@ function ModalShell({
 }) {
   return (
     <div className="fixed inset-0 z-[5000] grid place-items-center bg-slate-950/65 p-4 backdrop-blur-md">
-      <div className={`w-full ${widthClassName} overflow-hidden rounded-[24px] border border-white/10 bg-[#1A2332] shadow-[0_24px_80px_rgba(0,0,0,0.42)]`}>
+      <div className={`w-full ${widthClassName} overflow-hidden rounded-xl border border-white/10 bg-[#1A2332] shadow-[0_24px_80px_rgba(0,0,0,0.42)]`}>
         <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
           <div>
             {eyebrow ? <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#d8b45a]">{eyebrow}</div> : null}
@@ -760,13 +760,13 @@ export default function SettingsPage() {
         description="Profile access, password, and sign-out controls."
         action={
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex rounded-xl bg-[#20324a] p-1">
+            <div className="flex rounded-lg bg-[#20324a] p-1">
               {(["light", "dark"] as const).map((option) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() => setTheme(option)}
-                  className={`inline-flex min-h-10 items-center gap-2 rounded-lg px-4 text-sm font-semibold transition ${
+                  className={`inline-flex min-h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition ${
                     theme === option ? "bg-[#c7a64f] text-[#0f172a]" : "text-slate-300 hover:text-white"
                   }`}
                 >
@@ -778,7 +778,7 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={() => setPasswordModalOpen(true)}
-              className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
+              className="inline-flex h-11 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
             >
               <Lock className="mr-2 h-4 w-4" />
               Change Password
@@ -786,7 +786,7 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex h-11 items-center justify-center rounded-xl border border-red-400/25 bg-red-400/10 px-5 text-sm font-semibold text-red-300 transition hover:bg-red-400/15"
+              className="inline-flex h-11 items-center justify-center rounded-lg border border-red-400/25 bg-red-400/10 px-5 text-sm font-semibold text-red-300 transition hover:bg-red-400/15"
             >
               Sign Out
             </button>
@@ -795,7 +795,7 @@ export default function SettingsPage() {
       >
         <div className="space-y-3">
           <div className="grid gap-3 xl:grid-cols-[1fr_1fr]">
-            <div className="rounded-[18px] border border-[#35516f] bg-[#20324a] p-4">
+            <div className="rounded-xl border border-[#35516f] bg-[#20324a] p-4">
               <label className="mb-2 block text-xs font-medium text-slate-400">Display Name</label>
               <div className="flex items-center gap-3">
                 <input
@@ -806,13 +806,13 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => setProfileModalOpen(true)}
-                  className="inline-flex h-10 items-center justify-center rounded-[10px] bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110"
+                  className="inline-flex h-10 items-center justify-center rounded-md bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110"
                 >
                   Edit
                 </button>
               </div>
             </div>
-            <div className="rounded-[18px] border border-[#35516f] bg-[#20324a] p-4">
+            <div className="rounded-xl border border-[#35516f] bg-[#20324a] p-4">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <div className="text-sm font-semibold text-white">Company Access</div>
@@ -821,7 +821,7 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   disabled
-                  className="inline-flex h-10 items-center justify-center rounded-[10px] border border-[#45607d] bg-transparent px-4 text-sm font-semibold text-slate-300 opacity-80"
+                  className="inline-flex h-10 items-center justify-center rounded-md border border-[#45607d] bg-transparent px-4 text-sm font-semibold text-slate-300 opacity-80"
                 >
                   Current Workspace
                 </button>
@@ -829,7 +829,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="rounded-[18px] border border-[#35516f] bg-[#20324a] px-4 py-4">
+          <div className="rounded-xl border border-[#35516f] bg-[#20324a] px-4 py-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <div className="text-sm font-semibold text-white">Company Gmail Invoice Sender</div>
@@ -847,7 +847,7 @@ export default function SettingsPage() {
                       type="button"
                       onClick={() => void handleConnectGmail()}
                       disabled={gmailConnectPending}
-                      className="inline-flex h-10 items-center justify-center rounded-[10px] bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
+                      className="inline-flex h-10 items-center justify-center rounded-md bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
                     >
                       {gmailConnectPending ? "Connecting..." : "Reconnect"}
                     </button>
@@ -855,7 +855,7 @@ export default function SettingsPage() {
                       type="button"
                       onClick={() => void handleDisconnectGmail()}
                       disabled={disconnectGmail.isPending}
-                      className="inline-flex h-10 items-center justify-center rounded-[10px] border border-red-400/25 bg-red-400/10 px-4 text-sm font-semibold text-red-300 transition hover:bg-red-400/15 disabled:opacity-60"
+                      className="inline-flex h-10 items-center justify-center rounded-md border border-red-400/25 bg-red-400/10 px-4 text-sm font-semibold text-red-300 transition hover:bg-red-400/15 disabled:opacity-60"
                     >
                       {disconnectGmail.isPending ? "Disconnecting..." : "Disconnect"}
                     </button>
@@ -865,7 +865,7 @@ export default function SettingsPage() {
                     type="button"
                     onClick={() => void handleConnectGmail()}
                     disabled={gmailConnectPending}
-                    className="inline-flex h-10 items-center justify-center rounded-[10px] bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
+                    className="inline-flex h-10 items-center justify-center rounded-md bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
                   >
                     {gmailConnectPending ? "Connecting..." : "Connect Gmail"}
                   </button>
@@ -877,10 +877,10 @@ export default function SettingsPage() {
       </SectionCard>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <section className="rounded-[22px] border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
+        <section className="rounded-xl border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#d8b45a]/10 text-[#d8b45a]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#d8b45a]/10 text-[#d8b45a]">
                 <Building2 className="h-5 w-5" />
               </div>
               <h2 className="mt-4 text-lg font-semibold text-white">Business profile</h2>
@@ -919,10 +919,10 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section className="rounded-[22px] border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
+        <section className="rounded-xl border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#d8b45a]/10 text-[#d8b45a]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#d8b45a]/10 text-[#d8b45a]">
                 <Clock3 className="h-5 w-5" />
               </div>
               <h2 className="mt-4 text-lg font-semibold text-white">Business hours</h2>
@@ -957,10 +957,10 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section className="rounded-[22px] border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
+        <section className="rounded-xl border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#d8b45a]/10 text-[#d8b45a]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#d8b45a]/10 text-[#d8b45a]">
                 <Settings2 className="h-5 w-5" />
               </div>
               <h2 className="mt-4 text-lg font-semibold text-white">Workspace defaults</h2>
@@ -1004,45 +1004,6 @@ export default function SettingsPage() {
       </div>
 
       <SectionCard
-        icon={<Mail className="h-5 w-5" />}
-        title="Order Email Updates"
-        description="Send the payment-approved email from a company Gmail account after staff manually verify the payment."
-      >
-        <div className="flex flex-col gap-4 rounded-[18px] border border-[#35516f] bg-[#20324a] p-5 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="text-lg font-semibold text-white">
-              {gmailConnected ? "Company Gmail Connected" : "Company Gmail Not Connected"}
-            </div>
-            <div className="mt-2 text-sm leading-6 text-slate-400">
-              {gmailConnected
-                ? `Order updates are sent from ${gmailAddress || "the connected Gmail account"}.`
-                : "Connect a Gmail account so order updates continue by email after the WhatsApp 24-hour window closes."}
-            </div>
-            {gmailError ? <div className="mt-2 text-sm text-red-300">{gmailError}</div> : null}
-          </div>
-          {gmailConnected ? (
-            <button
-              type="button"
-              onClick={() => void handleDisconnectGmail()}
-              disabled={disconnectGmail.isPending}
-              className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
-            >
-              {disconnectGmail.isPending ? "Disconnecting..." : "Disconnect"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void handleConnectGmail()}
-              disabled={gmailConnectPending}
-              className="inline-flex h-11 items-center justify-center rounded-xl bg-[#1656d8] px-5 text-sm font-semibold text-white transition hover:brightness-110"
-            >
-              {gmailConnectPending ? "Connecting..." : "Connect Gmail"}
-            </button>
-          )}
-        </div>
-      </SectionCard>
-
-      <SectionCard
         icon={<CreditCard className="h-5 w-5" />}
         title="Payment Setup"
         description="Collection mode, currency, bank details, QR asset, and delivery charging rules used in order checkout."
@@ -1074,7 +1035,7 @@ export default function SettingsPage() {
                   return (
                     <div
                       key={option.id}
-                      className={`rounded-2xl border p-4 ${
+                      className={`rounded-xl border p-4 ${
                         active ? "border-[#d8b45a] bg-[#d8b45a]/10" : "border-white/10 bg-[#20324a]"
                       }`}
                     >
@@ -1092,7 +1053,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="rounded-[22px] border border-emerald-400/12 bg-[#15363b]/95 p-4">
+          <div className="rounded-xl border border-emerald-400/12 bg-[#15363b]/95 p-4">
             <div className="mb-4 flex items-center justify-between gap-4">
               <div>
                 <div className="text-lg font-semibold text-white">Bank / QR details</div>
@@ -1119,18 +1080,6 @@ export default function SettingsPage() {
         </div>
       </SectionCard>
 
-      <SectionCard
-        icon={<BookOpenText className="h-5 w-5" />}
-        title="AI Assistant Instructions"
-        description="Current system instructions used by the default concierge agent."
-      >
-        <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
-          <div className="text-xs font-semibold uppercase tracking-[0.1em] text-[#8ea7c3]">System Instructions</div>
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-300">
-            {business?.instructions || "No instructions configured yet."}
-          </p>
-        </div>
-      </SectionCard>
     </div>
   );
 
@@ -1144,20 +1093,20 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => setBookingModalOpen(true)}
-            className="inline-flex h-11 items-center justify-center rounded-xl border border-[#d8b45a]/35 bg-[#d8b45a]/12 px-5 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/18"
+            className="inline-flex h-11 items-center justify-center rounded-lg border border-[#d8b45a]/35 bg-[#d8b45a]/12 px-5 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/18"
           >
             Edit
           </button>
         }
       >
-        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-[#20324a] px-4 py-4">
+        <div className="flex items-center justify-between rounded-xl border border-white/10 bg-[#20324a] px-4 py-4">
           <div>
             <div className="text-base font-semibold text-white">Enable Bookings</div>
             <div className="mt-1 text-sm text-slate-400">Allow customers to book appointments through WhatsApp.</div>
           </div>
           <Toggle checked={bookingsEnabled} onChange={setBookingsEnabled} />
         </div>
-        <div className="mt-4 rounded-2xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
+        <div className="mt-4 rounded-xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
           {bookingsEnabled
             ? "Booking intake is active. Use the shared cards on the Profile tab to review the current slot window and workspace defaults."
             : "Bookings are disabled. Enable them here, then adjust slot length and opening window from the shared profile cards."}
@@ -1176,7 +1125,7 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => setBrandingModalOpen(true)}
-            className="inline-flex h-11 items-center justify-center rounded-xl border border-[#d8b45a]/35 bg-[#d8b45a]/12 px-5 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/18"
+            className="inline-flex h-11 items-center justify-center rounded-lg border border-[#d8b45a]/35 bg-[#d8b45a]/12 px-5 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/18"
           >
             Edit Branding
           </button>
@@ -1205,10 +1154,10 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="rounded-[22px] border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
+          <div className="rounded-xl border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
             <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
               <div className="flex items-center gap-4">
-                <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-[#20324a]">
+                <div className="h-16 w-16 overflow-hidden rounded-xl border border-white/10 bg-[#20324a]">
                   {customLogoUrl ? (
                     <Image src={customLogoUrl} alt="Brand logo" width={64} height={64} unoptimized className="h-full w-full object-contain" />
                   ) : (
@@ -1223,7 +1172,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setBrandingModalOpen(true)}
-                className="inline-flex h-11 items-center justify-center rounded-lg bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105"
+                className="inline-flex h-11 items-center justify-center rounded-md bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105"
               >
                 Edit branding
               </button>
@@ -1262,7 +1211,7 @@ export default function SettingsPage() {
               Open PDF
             </a>
           </div>
-          <div className="overflow-hidden rounded-[22px] border border-white/10 bg-[#102034]">
+          <div className="overflow-hidden rounded-xl border border-white/10 bg-[#102034]">
             {customizationPreviewQuery.isLoading ? (
               <div className="grid min-h-[720px] place-items-center text-sm text-slate-400">Generating invoice preview...</div>
             ) : customizationPreviewUrl ? (
