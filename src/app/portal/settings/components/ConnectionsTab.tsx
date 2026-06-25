@@ -305,19 +305,15 @@ export function ConnectionsTab(props: any) {
 
   return (
     <div style={styles.page}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 24 }}>
         <div style={styles.header}>
           <h1 style={styles.title}>Connections</h1>
           <p style={styles.subtitle}>
             Manage all your connected channels, unified routing settings, and monthly AI credit allocations.
           </p>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end", background: "var(--card)", padding: "16px 24px", borderRadius: 12, border: "1px solid var(--border)", minWidth: 200 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", letterSpacing: "0.05em" }}>BUSINESS POOL</span>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-            <span style={{ fontSize: 24, fontWeight: 700, color: "var(--primary)" }}>{businessCreditPool} credits</span>
-          </div>
-          <span style={{ fontSize: 12, color: "var(--muted)" }}>left in balance</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", minWidth: 200 }}>
+          <span style={{ fontSize: 20, fontWeight: 700, color: "var(--primary)" }}>{businessCreditPool} credits</span>
         </div>
       </div>
 

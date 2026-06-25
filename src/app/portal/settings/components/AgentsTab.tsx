@@ -63,7 +63,7 @@ export function AgentsTab() {
 
   return (
     <div className="space-y-6 bg-[var(--settings-page-bg)] p-6">
-      <section className="flex flex-col gap-4 rounded-[28px] border border-white/10 bg-[#1A2332]/95 p-6 shadow-[0_18px_44px_rgba(2,6,23,0.22)] md:flex-row md:items-start md:justify-between">
+      <section className="flex flex-col gap-4 rounded-xl border border-white/10 bg-[#1c2839]/95 p-6 shadow-[0_12px_28px_rgba(2,6,23,0.16)] md:flex-row md:items-start md:justify-between">
         <div>
           <h1 className="text-[22px] font-semibold text-white">Agents</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
@@ -72,15 +72,15 @@ export function AgentsTab() {
         </div>
         <button
           onClick={() => setIsCreateModalOpen(true)}
-          className="inline-flex h-12 items-center justify-center rounded-xl bg-[#1656d8] px-5 text-sm font-semibold text-white transition hover:brightness-110"
+          className="inline-flex h-12 items-center justify-center rounded-lg bg-[#1656d8] px-5 text-sm font-semibold text-white transition hover:brightness-110"
         >
           Create New Agent
         </button>
       </section>
 
       {isCreateModalOpen ? modalSurface(
-        <div className="w-full max-w-2xl rounded-[28px] border border-white/10 bg-[#1A2332] shadow-[0_24px_80px_rgba(0,0,0,0.4)]">
-          <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+        <div className="w-full max-w-2xl rounded-xl border border-white/10 bg-[#1A2332] shadow-[0_24px_80px_rgba(0,0,0,0.4)]">
+          <div className="flex items-start justify-between gap-4 px-6 py-5">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#d8b45a]">Agents</div>
               <h2 className="mt-2 text-[32px] font-semibold leading-none text-white">Create new agent</h2>
@@ -118,14 +118,14 @@ export function AgentsTab() {
           <div className="flex justify-end gap-3 border-t border-white/10 px-6 py-5">
             <button
               onClick={() => setIsCreateModalOpen(false)}
-              className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
+              className="inline-flex h-11 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
             >
               Cancel
             </button>
             <button
               onClick={handleCreateAgent}
               disabled={!newAgentName.trim() || createAgent.isPending}
-              className="inline-flex h-11 items-center justify-center rounded-xl bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-11 items-center justify-center rounded-lg bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {createAgent.isPending ? "Creating..." : "Create Agent"}
             </button>
@@ -135,16 +135,16 @@ export function AgentsTab() {
 
       <div className="space-y-4">
         {agentsQuery.isLoading ? (
-          <div className="rounded-[28px] border border-white/10 bg-[#1A2332]/95 px-6 py-10 text-center text-slate-400">Loading agents...</div>
+          <div className="rounded-xl border border-white/10 bg-[#1c2839]/95 px-6 py-10 text-center text-slate-400">Loading agents...</div>
         ) : agents.length === 0 ? (
-          <div className="rounded-[28px] border border-dashed border-white/10 bg-[#1A2332]/95 px-6 py-10 text-center text-slate-400">
+          <div className="rounded-xl border border-dashed border-white/10 bg-[#1c2839]/95 px-6 py-10 text-center text-slate-400">
             No agents found. Create one above.
           </div>
         ) : (
           agents.map((agent) => (
             <section
               key={agent.id}
-              className="rounded-[28px] border border-white/10 bg-[#1A2332]/95 p-6 shadow-[0_18px_44px_rgba(2,6,23,0.22)]"
+              className="rounded-xl border border-white/10 bg-[#1c2839]/95 p-6 shadow-[0_12px_28px_rgba(2,6,23,0.16)]"
             >
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0 flex-1">
@@ -183,7 +183,7 @@ export function AgentsTab() {
                         setMapColumnsAgentId(null);
                       }
                     }}
-                    className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                    className="inline-flex h-11 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
                   >
                     {selectedAgentId === agent.id ? "Close Training" : "Train"}
                   </button>
@@ -196,13 +196,13 @@ export function AgentsTab() {
                         setSelectedAgentId(null);
                       }
                     }}
-                    className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                    className="inline-flex h-11 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
                   >
                     {mapColumnsAgentId === agent.id ? "Close Mapping" : "Map Columns"}
                   </button>
                   <button
                     onClick={() => handleToggleAgent(agent.id, agent.isActive)}
-                    className={`inline-flex h-11 items-center justify-center rounded-xl px-4 text-sm font-semibold transition ${agent.isActive ? "border border-red-400/20 bg-red-400/10 text-red-300 hover:bg-red-400/15" : "border border-emerald-400/20 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/15"}`}
+                    className={`inline-flex h-11 items-center justify-center rounded-lg px-4 text-sm font-semibold transition ${agent.isActive ? "border border-red-400/20 bg-red-400/10 text-red-300 hover:bg-red-400/15" : "border border-emerald-400/20 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/15"}`}
                   >
                     {agent.isActive ? "Deactivate" : "Activate"}
                   </button>
