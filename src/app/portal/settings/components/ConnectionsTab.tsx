@@ -8,12 +8,11 @@ import { useToast } from "@/components/ToastProvider";
 
 const styles: Record<string, React.CSSProperties> = {
   page: {
-    padding: "24px 32px",
+    padding: "24px",
     display: "flex",
     flexDirection: "column",
-    gap: 32,
-    background: "var(--background)",
-    
+    gap: 24,
+    background: "var(--settings-page-bg)",
   },
   header: {
     display: "flex",
@@ -305,47 +304,41 @@ export function ConnectionsTab(props: any) {
 
   return (
     <div style={styles.page}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 24, flexWrap: "wrap" }}>
         <div style={styles.header}>
           <h1 style={styles.title}>Connections</h1>
           <p style={styles.subtitle}>
             Manage all your connected channels, unified routing settings, and monthly AI credit allocations.
           </p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", minWidth: 200 }}>
-          <span style={{ fontSize: 20, fontWeight: 700, color: "#d8b45a" }}>{businessCreditPool} credits</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginLeft: "auto", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: "#d8b45a", whiteSpace: "nowrap" }}>{businessCreditPool} credits</span>
+          <button
+            onClick={() => setShowAddModal(true)}
+            style={{
+              height: 42,
+              padding: "0 20px",
+              background: "#1656d8",
+              color: "white",
+              border: "none",
+              borderRadius: 10,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Add New Connection
+          </button>
         </div>
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <div>
-          <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>Active Connections</h2>
-          <p style={{ color: "var(--muted)", fontSize: 14, margin: 0 }}>Configure settings and assign AI agents to your connected channels.</p>
-        </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          style={{
-            padding: "10px 20px",
-            background: "var(--primary)",
-            color: "white",
-            border: "none",
-            borderRadius: 8,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          Add New Connection
-        </button>
       </div>
 
       {channelsQuery.isLoading ? (
         <div>Loading connections...</div>
       ) : channels.length === 0 ? (
-        <div style={styles.emptyState}>
+        <div style={{ ...styles.emptyState, background: "#1c2839", border: "1px dashed rgba(148, 163, 184, 0.18)", color: "#94a3b8" }}>
           No channels connected yet. Click &quot;Add New Connection&quot; to connect your first account.
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, background: "#1c2839", border: "1px solid rgba(148, 163, 184, 0.14)", borderRadius: 16, padding: 16, boxShadow: "0 12px 28px rgba(2,6,23,0.16)" }}>
           {channels.map(channel => {
             const isWhatsapp = channel.provider === "whatsapp";
             const isInstagram = channel.provider === "instagram";
@@ -353,7 +346,7 @@ export function ConnectionsTab(props: any) {
             const assignedAgent = agents.find(a => a.id === channel.agentId);
 
             return (
-              <div key={channel.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 24px" }}>
+              <div key={channel.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#20324a", border: "1px solid rgba(148, 163, 184, 0.16)", borderRadius: 12, padding: "16px 20px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
                   <span style={{ ...styles.providerBadge, ...badgeStyle, width: 90, textAlign: "center" }}>
                     {channel.provider}
@@ -366,11 +359,11 @@ export function ConnectionsTab(props: any) {
                 
                 <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>Agent</span>
-                    <span style={{ fontSize: 14, color: "var(--foreground)", fontWeight: 500 }}>{assignedAgent?.name || "None"}</span>
+                    <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 500 }}>Agent</span>
+                    <span style={{ fontSize: 14, color: "#f8fafc", fontWeight: 500 }}>{assignedAgent?.name || "None"}</span>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>Status</span>
+                    <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 500 }}>Status</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <div style={{ width: 8, height: 8, borderRadius: "50%", background: channel.isActive ? "#10b981" : "#ef4444" }} />
                       <span style={{ fontSize: 14, color: channel.isActive ? "#10b981" : "#ef4444", fontWeight: 500 }}>{channel.status}</span>
@@ -381,9 +374,9 @@ export function ConnectionsTab(props: any) {
                     style={{
                       padding: "8px 16px",
                       background: "transparent",
-                      color: "var(--foreground)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
+                      color: "#f8fafc",
+                      border: "1px solid rgba(148, 163, 184, 0.16)",
+                      borderRadius: 10,
                       fontWeight: 500,
                       cursor: "pointer",
                     }}
