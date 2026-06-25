@@ -245,6 +245,7 @@ export function StatusTable({
           <th style={{ textAlign: "left" }}>Items</th>
           <th style={{ textAlign: "left" }}>Status</th>
           <th style={{ textAlign: "left" }}>Delivery</th>
+          <th style={{ textAlign: "left" }}>Invoice</th>
           <th style={{ textAlign: "left" }}>Updated</th>
           <th style={{ textAlign: "right", whiteSpace: "nowrap" }}>Action</th>
         </tr>
@@ -284,6 +285,15 @@ export function StatusTable({
                   <div className="portal-meta-text">{getDeliveryHint(order)}</div>
                 </div>
               </td>
+              <td data-label="Invoice">
+                {order.invoiceUrl ? (
+                  <a href={order.invoiceUrl} target="_blank" rel="noreferrer" className="btn btn-ghost" onClick={(event) => event.stopPropagation()}>
+                    {order.invoiceNumber || "Open Invoice"}
+                  </a>
+                ) : (
+                  <span className="portal-meta-text">Not sent</span>
+                )}
+              </td>
               <td data-label="Updated" className="portal-meta-text">{formatDate(order.updatedAt)}</td>
               <td data-label="Action" style={{ textAlign: "right" }} onClick={(event) => event.stopPropagation()}>
                 {bucket === "pending" ? (
@@ -301,7 +311,7 @@ export function StatusTable({
         })}
         {!rows.length ? (
           <tr>
-            <td colSpan={7} style={{ textAlign: "center", padding: "24px 10px", color: "var(--muted)" }}>No paid orders match this filter.</td>
+            <td colSpan={8} style={{ textAlign: "center", padding: "24px 10px", color: "var(--muted)" }}>No paid orders match this filter.</td>
           </tr>
         ) : null}
       </tbody>
@@ -502,7 +512,7 @@ export function OrderWorkspaceDrawer({
   const snapshotFields = resolveOrderSnapshotFields(snapshot);
   const paymentSetupEditable = canEditPaymentSetup(order);
   const showDeliveryDetails = mode === "status";
-  const showInvoicePanel = mode !== "status" && !isDraftOrder;
+  const showInvoicePanel = !isDraftOrder;
   const statusOrderLines = showDeliveryDetails
     ? draftOrderLines.filter((line) => !isDeliveryLineItemName(line.item))
     : draftOrderLines;

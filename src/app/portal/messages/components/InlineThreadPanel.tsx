@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
 import { useToast } from "@/components/ToastProvider";
@@ -65,7 +65,10 @@ export function InlineThreadPanel({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const prevScrollHeightRef = useRef(0);
-  const didInitialScrollRef = useRef(false);
+  const prevScrollTopRef = useRef(0);
+  const prevDistanceFromBottomRef = useRef(0);
+  const pendingInitialScrollRef = useRef(false);
+  const pendingScrollAdjustmentRef = useRef<"older" | "newer" | null>(null);
 
   const [liveMessages, setLiveMessages] = useState<InlineMessage[]>([]);
   const [allMessages, setAllMessages] = useState<InlineMessage[]>([]);
@@ -131,12 +134,14 @@ export function InlineThreadPanel({
     setNewerCursor(null);
     setIsLoadingOlder(false);
     setIsLoadingNewer(false);
-    didInitialScrollRef.current = false;
+    pendingInitialScrollRef.current = false;
+    pendingScrollAdjustmentRef.current = null;
   }, []);
 
   useEffect(() => {
     const data = windowQuery.data;
     if (!data || olderCursor || newerCursor) return;
+    pendingInitialScrollRef.current = true;
     queueMicrotask(() => {
       const nextMessages = data.messages.map((message) => ({ ...message, threadId: normalizedThreadId }));
       setAllMessages(nextMessages);
@@ -150,7 +155,11 @@ export function InlineThreadPanel({
     const data = olderWindowQuery.data;
     if (!isLoadingOlder || !data) return;
     const container = messagesContainerRef.current;
-    if (container) prevScrollHeightRef.current = container.scrollHeight;
+    if (container) {
+      prevScrollTopRef.current = container.scrollTop;
+      prevScrollHeightRef.current = container.scrollHeight;
+      pendingScrollAdjustmentRef.current = "older";
+    }
     queueMicrotask(() => {
       setAllMessages((current) =>
         mergeMessages(
@@ -161,16 +170,17 @@ export function InlineThreadPanel({
       setHasMoreBefore(data.hasMoreBefore);
       setOlderCursor(null);
       setIsLoadingOlder(false);
-      setTimeout(() => {
-        if (!container) return;
-        container.scrollTop = container.scrollHeight - prevScrollHeightRef.current;
-      }, 10);
     });
   }, [isLoadingOlder, normalizedThreadId, olderWindowQuery.data]);
 
   useEffect(() => {
     const data = newerWindowQuery.data;
     if (!isLoadingNewer || !data) return;
+    const container = messagesContainerRef.current;
+    if (container) {
+      prevDistanceFromBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight;
+      pendingScrollAdjustmentRef.current = "newer";
+    }
     queueMicrotask(() => {
       setAllMessages((current) =>
         mergeMessages(
@@ -204,11 +214,28 @@ export function InlineThreadPanel({
     container.scrollTop = container.scrollHeight;
   }, [anchorMessageId]);
 
-  useEffect(() => {
-    if (!messages.length || didInitialScrollRef.current) return;
-    didInitialScrollRef.current = true;
-    setTimeout(() => scrollToAnchorOrBottom(), 50);
-  }, [messages.length, scrollToAnchorOrBottom]);
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const pendingAdjustment = pendingScrollAdjustmentRef.current;
+    if (pendingAdjustment) {
+      if (pendingAdjustment === "older") {
+        const heightDelta = container.scrollHeight - prevScrollHeightRef.current;
+        container.scrollTop = Math.max(0, prevScrollTopRef.current + heightDelta);
+      } else {
+        const nextScrollTop = container.scrollHeight - container.clientHeight - prevDistanceFromBottomRef.current;
+        container.scrollTop = Math.max(0, nextScrollTop);
+      }
+      pendingScrollAdjustmentRef.current = null;
+      return;
+    }
+
+    if (pendingInitialScrollRef.current && allMessages.length > 0) {
+      scrollToAnchorOrBottom();
+      pendingInitialScrollRef.current = false;
+    }
+  }, [allMessages, scrollToAnchorOrBottom]);
 
   const appendMessage = useCallback((message: InlineMessage) => {
     if (!normalizedThreadId || message.threadId !== normalizedThreadId) return;
@@ -320,6 +347,10 @@ export function InlineThreadPanel({
           ref={messagesContainerRef}
           className="portal-inline-thread__messages"
           onScroll={handleScroll}
+          style={{
+            overflowAnchor: "none",
+            overscrollBehaviorY: "contain",
+          }}
         >
           {!normalizedThreadId ? (
             <div className="portal-inline-thread__empty">
