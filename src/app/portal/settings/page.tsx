@@ -4,1005 +4,73 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, signOut, updatePassword } from "firebase/auth";
-import { fetchWithFirebaseAuth, getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
-import { describeCompanyGmailError } from "@/lib/company-gmail";
-import { getFirebaseAuth } from "@/lib/firebaseClient";
-import { trpc } from "@/utils/trpc";
-import { PortalSelect } from "@/app/portal/components/PortalSelect";
-import { useToast } from "@/components/ToastProvider";
-import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
-import { recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
-import type { OrderDeliveryChargeType, OrderPaymentMethod } from "@/lib/order-settings";
-import { DEFAULT_CUSTOMIZATION_SETTINGS } from "@/lib/customization-settings";
-import { buildWebsiteWidgetSnippet, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
 import dynamic from "next/dynamic";
-const FlowBuilderContent = dynamic(() => import("@/app/portal/flowbuilder/FlowBuilderContent").then(mod => mod.FlowBuilderContent), {
-  loading: () => <div className="p-8 text-center text-gray-500 dark:text-gray-400">Loading Flow Builder...</div>
-});
-import { usePortalTheme } from "@/app/portal/components/PortalThemeProvider";
-import UsersPermissionsPanel from "@/app/portal/settings/components/UsersPermissionsPanel";
-import { SubscriptionContent } from "@/components/subscription/SubscriptionContent";
+import {
+  BookOpenText,
+  Bot,
+  Building2,
+  Calendar,
+  CreditCard,
+  ExternalLink,
+  Link2,
+  Lock,
+  Mail,
+  Palette,
+  Shield,
+  Sun,
+  Moon,
+  Ticket,
+  User,
+  Users,
+  Workflow,
+} from "lucide-react";
 import { ConnectionsTab } from "@/app/portal/settings/components/ConnectionsTab";
 import { AgentsTab } from "@/app/portal/settings/components/AgentsTab";
+import UsersPermissionsPanel from "@/app/portal/settings/components/UsersPermissionsPanel";
+import { PortalSelect } from "@/app/portal/components/PortalSelect";
+import { usePortalTheme } from "@/app/portal/components/PortalThemeProvider";
+import { fetchWithFirebaseAuth, getFirebaseIdTokenOrThrow } from "@/lib/client-auth-ops";
+import { describeCompanyGmailError } from "@/lib/company-gmail";
+import { recordClientBusinessEvent, shouldCaptureUnexpectedClientError } from "@/lib/client-business-monitoring";
+import { DEFAULT_CUSTOMIZATION_SETTINGS } from "@/lib/customization-settings";
+import { getFirebaseAuth } from "@/lib/firebaseClient";
+import type { OrderDeliveryChargeType, OrderPaymentMethod } from "@/lib/order-settings";
+import { buildWebsiteWidgetSnippet, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
+import { showErrorToast, showSuccessToast } from "@/components/toast-utils";
+import { SubscriptionContent } from "@/components/subscription/SubscriptionContent";
+import { useToast } from "@/components/ToastProvider";
+import { trpc } from "@/utils/trpc";
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   ICONS (inline SVGs for clean dependency-free icons)
-───────────────────────────────────────────────────────────────────────────── */
-const Icons = {
-  user: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  ),
-  calendar: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-      <line x1="16" y1="2" x2="16" y2="6" />
-      <line x1="8" y1="2" x2="8" y2="6" />
-      <line x1="3" y1="10" x2="21" y2="10" />
-    </svg>
-  ),
-  whatsapp: (
-    <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-    </svg>
-  ),
-  bell: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-    </svg>
-  ),
-  shield: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  ),
-  bot: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <rect x="3" y="11" width="18" height="10" rx="2" />
-      <circle cx="12" cy="5" r="2" />
-      <path d="M12 7v4" />
-      <line x1="8" y1="16" x2="8" y2="16" />
-      <line x1="16" y1="16" x2="16" y2="16" />
-    </svg>
-  ),
-  clock: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
-  ),
-  sun: (
-    <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2" />
-      <path d="M12 20v2" />
-      <path d="m4.93 4.93 1.41 1.41" />
-      <path d="m17.66 17.66 1.41 1.41" />
-      <path d="M2 12h2" />
-      <path d="M20 12h2" />
-      <path d="m6.34 17.66-1.41 1.41" />
-      <path d="m19.07 4.93-1.41 1.41" />
-    </svg>
-  ),
-  moon: (
-    <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <path d="M12 3a7 7 0 1 0 9 9 9 9 0 0 1-9-9Z" />
-    </svg>
-  ),
-  lock: (
-    <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <rect x="3" y="11" width="18" height="10" rx="2" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  ),
-  check: (
-    <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  ),
-  link: (
-    <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-    </svg>
-  ),
-  logout: (
-    <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  ),
-  save: (
-    <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1-2 2h11l5 5v11a2 2 0 0 1-2 2z" />
-      <polyline points="17 21 17 13 7 13 7 21" />
-      <polyline points="7 3 7 8 15 8" />
-    </svg>
-  ),
-  users: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  ),
-  building: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
-      <path d="M9 22v-4h6v4" />
-      <path d="M8 6h.01" />
-      <path d="M16 6h.01" />
-      <path d="M12 6h.01" />
-      <path d="M12 10h.01" />
-      <path d="M12 14h.01" />
-      <path d="M16 10h.01" />
-      <path d="M16 14h.01" />
-      <path d="M8 10h.01" />
-      <path d="M8 14h.01" />
-    </svg>
-  ),
-  toggle: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <rect x="1" y="5" width="22" height="14" rx="7" ry="7" />
-      <circle cx="8" cy="12" r="3" />
-    </svg>
-  ),
-  ticket: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V9z" />
-      <path d="M9 9v12" />
-    </svg>
-  ),
-  upload: (
-    <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" y1="3" x2="12" y2="15" />
-    </svg>
-  ),
+const FlowBuilderContent = dynamic(
+  () => import("@/app/portal/flowbuilder/FlowBuilderContent").then((mod) => mod.FlowBuilderContent),
+  {
+    loading: () => <div className="p-8 text-center text-gray-500 dark:text-gray-400">Loading Flow Builder...</div>,
+  },
+);
 
-  flow: (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="6" height="6" rx="2" />
-      <rect x="15" y="4" width="6" height="6" rx="2" />
-      <rect x="9" y="15" width="6" height="6" rx="2" />
-      <path d="M9 7h6" />
-      <path d="M12 10v5" />
-      <path d="M18 10v2a3 3 0 0 1-3 3" />
-    </svg>
-  ),
-  chevronRight: (
-    <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-      <path d="m9 18 6-6-6-6" />
-    </svg>
-  ),
-};
+type SettingsTab = "profile" | "booking" | "customization" | "connections" | "agents" | "users" | "flowbuilder" | "subscription";
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   STYLES (inline CSS in this file for the settings page)
-───────────────────────────────────────────────────────────────────────────── */
-const styles: Record<string, React.CSSProperties> = {
-  page: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 24,
-    width: "100%",
-    padding: "0 24px",
-    minHeight: "calc(100vh - 80px)", // Account for header/tab bar
-  },
-  header: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
-    gap: 16,
-    paddingTop: 8,
-  },
-  headerTitle: {
-    margin: 0,
-    fontSize: 28,
-    fontWeight: 700,
-    color: "var(--foreground)",
-    letterSpacing: "-0.025em",
-  },
-  headerSubtitle: {
-    marginTop: 6,
-    color: "var(--muted)",
-    fontSize: 15,
-    lineHeight: 1.5,
-  },
-  tabs: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 6,
-    padding: "4px",
-    background: "var(--card-muted)",
-    borderRadius: 12,
-    width: "fit-content",
-    maxWidth: "100%",
-  },
-  tab: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    minHeight: 44,
-    padding: "8px 16px",
-    border: "none",
-    borderRadius: 8,
-    fontSize: 14,
-    fontWeight: 500,
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-    background: "transparent",
-    color: "var(--muted)",
-  },
-  tabActive: {
-    background: "var(--card)",
-    color: "var(--foreground)",
-    boxShadow: "var(--shadow-sm)",
-  },
-  overview: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
-    gap: 16,
-    alignItems: "stretch",
-    gridTemplateRows: "repeat(2, minmax(250px, 1fr))",
-    height: "100%",
-    minHeight: "100%",
-    flex: 1,
-  },
-  overviewCard: {
-    padding: 20,
-    border: "1px solid var(--border)",
-    borderRadius: 12,
-    background: "var(--card)",
-    boxShadow: "var(--shadow-sm)",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-    textAlign: "left",
-    color: "var(--foreground)",
-    cursor: "pointer",
-    transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
-    minHeight: 0, // Allow stretching in grid
-    height: "100%",
-  },
-  overviewIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "var(--primary-light)",
-    color: "var(--primary)",
-    marginBottom: 16,
-    flexShrink: 0,
-  },
-  overviewTitle: {
-    margin: 0,
-    fontSize: 22,
-    fontWeight: 700,
-    color: "var(--foreground)",
-    letterSpacing: 0,
-    lineHeight: 1.2,
-    flexShrink: 0,
-  },
-  overviewDescription: {
-    marginTop: 8,
-    color: "var(--muted)",
-    fontSize: 14,
-    lineHeight: 1.5,
-    flexShrink: 0,
-  },
-  overviewPointList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-    marginTop: 16,
-    flexShrink: 0,
-  },
-  overviewPoint: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "6px 10px",
-    borderRadius: 8,
-    background: "var(--card-muted)",
-    color: "var(--foreground)",
-    fontSize: 13,
-    fontWeight: 500,
-    flexShrink: 0,
-  },
-  overviewDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 999,
-    background: "var(--gold-light)",
-    flexShrink: 0,
-  },
-  overviewAction: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    marginTop: "auto", // Push to bottom
-    color: "var(--primary)",
-    fontSize: 13,
-    fontWeight: 700,
-    flexShrink: 0,
-  },
-  section: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 20,
-  },
-  card: {
-    background: "var(--card)",
-    borderRadius: 16,
-    border: "1px solid var(--border)",
-    overflow: "hidden",
-    boxShadow: "var(--shadow-sm)",
-  },
-  cardHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 14,
-    padding: "20px 24px",
-    borderBottom: "1px solid var(--border)",
-    background: "linear-gradient(to right, var(--card), var(--card-muted))",
-  },
-  cardIcon: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    background: "linear-gradient(135deg, var(--primary), var(--primary-hover))",
-    color: "#fff",
-  },
-  cardIconSecondary: {
-    background: "linear-gradient(135deg, var(--accent), var(--cyan-600))",
-  },
-  cardTitle: {
-    margin: 0,
-    fontSize: 17,
-    fontWeight: 600,
-    color: "var(--foreground)",
-  },
-  cardDescription: {
-    margin: "4px 0 0",
-    fontSize: 13,
-    color: "var(--muted)",
-  },
-  cardBody: {
-    padding: 24,
-    display: "flex",
-    flexDirection: "column",
-    gap: 20,
-  },
-  profileInfo: {
-    display: "flex",
-    alignItems: "center",
-    gap: 20,
-  },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: "50%",
-    background: "linear-gradient(135deg, var(--primary), var(--accent))",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 26,
-    fontWeight: 700,
-    color: "#fff",
-    flexShrink: 0,
-  },
-  profileDetails: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-  },
-  profileName: {
-    fontSize: 18,
-    fontWeight: 600,
-    color: "var(--foreground)",
-  },
-  profileEmail: {
-    fontSize: 14,
-    color: "var(--muted)",
-  },
-  profileBadge: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "4px 10px",
-    borderRadius: 20,
-    fontSize: 12,
-    fontWeight: 500,
-    background: "rgba(0, 212, 255, 0.1)",
-    color: "var(--accent)",
-    marginTop: 6,
-    width: "fit-content",
-  },
-  usageCard: {
-    gridColumn: "1 / -1",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    padding: 14,
-    borderRadius: 12,
-    border: "1px solid var(--border)",
-    background: "var(--background)",
-  },
-  usageRow: {
-    display: "flex",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  usageTitle: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: "var(--foreground)",
-  },
-  usageValue: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: "var(--foreground)",
-    fontFamily: "monospace",
-  },
-  usageHint: {
-    margin: 0,
-    fontSize: 12,
-    color: "var(--muted)",
-  },
-  usageTrack: {
-    width: "100%",
-    height: 8,
-    borderRadius: 999,
-    background: "var(--card-muted)",
-    overflow: "hidden",
-  },
-  usageFill: {
-    height: "100%",
-    borderRadius: 999,
-    background: "linear-gradient(90deg, var(--accent), var(--primary))",
-    transition: "width 0.25s ease",
-  },
-  formGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-    gap: 20,
-  },
-  formGroup: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: "var(--foreground)",
-    letterSpacing: "0.01em",
-  },
-  labelHint: {
-    fontSize: 12,
-    color: "var(--muted)",
-    fontWeight: 400,
-    marginTop: 2,
-  },
-  input: {
-    width: "100%",
-    height: 46,
-    boxSizing: "border-box",
-    padding: "12px 16px",
-    borderRadius: 10,
-    border: "1px solid var(--border)",
-    background: "var(--background)",
-    fontSize: 14,
-    color: "var(--foreground)",
-    outline: "none",
-    transition: "all 0.2s ease",
-  },
-  select: {
-    width: "100%",
-    height: 46,
-    minHeight: 46,
-    boxSizing: "border-box",
-    padding: "0 16px",
-    borderRadius: 10,
-    border: "1px solid var(--border)",
-    background: "var(--background)",
-    fontSize: 14,
-    color: "var(--foreground)",
-    outline: "none",
-    cursor: "pointer",
-  },
-  textarea: {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: "12px 16px",
-    borderRadius: 10,
-    border: "1px solid var(--border)",
-    background: "var(--background)",
-    fontSize: 14,
-    color: "var(--foreground)",
-    outline: "none",
-    resize: "vertical" as const,
-    minHeight: 120,
-    fontFamily: "inherit",
-    lineHeight: 1.5,
-  },
-  toggle: {
-    position: "relative" as const,
-    width: 52,
-    height: 28,
-    borderRadius: 14,
-    background: "var(--border)",
-    cursor: "pointer",
-    transition: "all 0.3s ease",
-    flexShrink: 0,
-  },
-  toggleActive: {
-    background: "var(--accent)",
-  },
-  toggleKnob: {
-    position: "absolute" as const,
-    top: 2,
-    left: 2,
-    width: 24,
-    height: 24,
-    borderRadius: "50%",
-    background: "#fff",
-    boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-    transition: "all 0.3s ease",
-  },
-  toggleKnobActive: {
-    left: 26,
-  },
-  toggleRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "16px 0",
-    borderBottom: "1px solid var(--border)",
-  },
-  toggleRowLast: {
-    borderBottom: "none",
-  },
-  toggleInfo: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-  },
-  toggleLabel: {
-    fontSize: 14,
-    fontWeight: 500,
-    color: "var(--foreground)",
-  },
-  toggleDescription: {
-    fontSize: 13,
-    color: "var(--muted)",
-  },
-  actions: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 12,
-    padding: "16px 24px",
-    borderTop: "1px solid var(--border)",
-    background: "var(--card-muted)",
-  },
-  btnPrimary: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "12px 24px",
-    borderRadius: 10,
-    border: "none",
-    background: "linear-gradient(135deg, var(--primary), var(--primary-hover))",
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-    boxShadow: "0 4px 14px rgba(0, 51, 160, 0.3)",
-  },
-  btnSecondary: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "12px 24px",
-    borderRadius: 10,
-    border: "1px solid var(--border)",
-    background: "var(--background)",
-    color: "var(--foreground)",
-    fontSize: 14,
-    fontWeight: 500,
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-  },
-  btnDanger: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "12px 24px",
-    borderRadius: 10,
-    border: "none",
-    background: "var(--danger)",
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: 500,
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-  },
-  statusCard: {
-    display: "flex",
-    alignItems: "center",
-    gap: 16,
-    padding: 20,
-    borderRadius: 12,
-    border: "1px solid var(--border)",
-    background: "var(--background)",
-  },
-  statusIcon: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    flexShrink: 0,
-  },
-  statusConnected: {
-    background: "rgba(16, 185, 129, 0.1)",
-    color: "var(--success)",
-  },
-  statusDisconnected: {
-    background: "rgba(239, 68, 68, 0.1)",
-    color: "var(--danger)",
-  },
-  statusInfo: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-  },
-  statusTitle: {
-    fontSize: 15,
-    fontWeight: 600,
-    color: "var(--foreground)",
-  },
-  statusDescription: {
-    fontSize: 13,
-    color: "var(--muted)",
-  },
-  timeInputs: {
-    display: "grid",
-    gridTemplateColumns: "1fr auto 1fr",
-    alignItems: "end",
-    gap: 16,
-  },
-  timeSeparator: {
-    padding: "12px 0",
-    fontSize: 14,
-    color: "var(--muted)",
-    fontWeight: 500,
-  },
-  splitGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-    gap: 20,
-  },
-  helperCard: {
-    padding: 16,
-    borderRadius: 12,
-    border: "1px solid var(--border)",
-    background: "var(--background)",
-    display: "grid",
-    gap: 10,
-  },
-  helperTitle: {
-    fontSize: 14,
-    fontWeight: 600,
-    color: "var(--foreground)",
-  },
-  helperText: {
-    fontSize: 13,
-    color: "var(--muted)",
-    lineHeight: 1.5,
-  },
-  badgePositive: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "5px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 600,
-    color: "#34d399",
-    background: "rgba(16, 185, 129, 0.12)",
-    border: "1px solid rgba(16, 185, 129, 0.24)",
-    width: "fit-content",
-  },
-  integrationGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-    gap: 20,
-    alignItems: "stretch",
-  },
-  integrationTile: {
-    border: "1px solid var(--border)",
-    borderRadius: 16,
-    background: "var(--background)",
-    overflow: "hidden",
-    display: "flex",
-    flexDirection: "column",
-    minWidth: 0,
-  },
-  integrationTileHeader: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 14,
-    padding: 18,
-    flex: "1 1 auto",
-  },
-  integrationTileIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    fontWeight: 700,
-    color: "#fff",
-  },
-  integrationTileBody: {
-    display: "grid",
-    gap: 8,
-    minWidth: 0,
-    flex: 1,
-  },
-  integrationTileTitleRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  integrationTileTitle: {
-    fontSize: 17,
-    fontWeight: 600,
-    color: "var(--foreground)",
-    margin: 0,
-  },
-  integrationTileDescription: {
-    fontSize: 13,
-    color: "var(--muted)",
-    lineHeight: 1.5,
-    margin: 0,
-  },
-  integrationTileFooter: {
-    marginTop: "auto",
-    minHeight: 64,
-    padding: "12px 18px",
-    borderTop: "1px solid var(--border)",
-    background: "var(--card-muted)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-end",
-  },
-  integrationBadge: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "5px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 600,
-    border: "1px solid var(--border)",
-    background: "var(--card-muted)",
-    color: "var(--muted)",
-  },
-  qrPreview: {
-    maxWidth: 220,
-    width: "100%",
-    borderRadius: 14,
-    border: "1px solid var(--border)",
-    display: "block",
-    background: "#fff",
-  },
-  modalBackdrop: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(7, 10, 24, 0.68)",
-    backdropFilter: "blur(8px)",
-    display: "grid",
-    placeItems: "center",
-    padding: 24,
-    zIndex: 5000,
-  },
-  modalCard: {
-    width: "min(760px, 100%)",
-    background: "var(--card)",
-    border: "1px solid var(--border)",
-    borderRadius: 24,
-    boxShadow: "0 24px 80px rgba(0,0,0,0.35)",
-    padding: 28,
-    display: "grid",
-    gap: 18,
-  },
-  modalHeader: {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 16,
-  },
-  modalTitleWrap: {
-    display: "grid",
-    gap: 6,
-  },
-  modalTitle: {
-    margin: 0,
-    fontSize: 22,
-    fontWeight: 700,
-    color: "var(--foreground)",
-    letterSpacing: "-0.02em",
-  },
-  modalDesc: {
-    margin: 0,
-    color: "var(--muted)",
-    fontSize: 14,
-    lineHeight: 1.6,
-  },
-  closeIconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    border: "1px solid var(--border)",
-    background: "var(--card-muted)",
-    color: "var(--foreground)",
-    cursor: "pointer",
-    fontSize: 18,
-  },
-  codeLabel: {
-    margin: 0,
-    fontSize: 13,
-    fontWeight: 600,
-    color: "var(--foreground)",
-  },
-  codeBox: {
-    width: "100%",
-    minHeight: 110,
-    resize: "vertical" as const,
-    borderRadius: 16,
-    border: "1px solid var(--border)",
-    background: "#071124",
-    color: "#dbeafe",
-    padding: 16,
-    fontSize: 13,
-    lineHeight: 1.6,
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  },
-  modalActions: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  modalHint: {
-    color: "var(--muted)",
-    fontSize: 13,
-    lineHeight: 1.5,
-  },
-};
-
-/* ─────────────────────────────────────────────────────────────────────────────
-   TOGGLE COMPONENT
-───────────────────────────────────────────────────────────────────────────── */
-function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onChange: (val: boolean) => void; disabled?: boolean }) {
-  return (
-    <div
-      style={{
-        ...styles.toggle,
-        ...(checked ? styles.toggleActive : {}),
-        ...(disabled ? { opacity: 0.45, cursor: "not-allowed" } : {}),
-      }}
-      onClick={() => {
-        if (disabled) return;
-        onChange(!checked);
-      }}
-      role="switch"
-      aria-checked={checked}
-      aria-disabled={disabled}
-      tabIndex={disabled ? -1 : 0}
-      onKeyDown={(e) => {
-        if (disabled) return;
-        if (e.key === "Enter") onChange(!checked);
-      }}
-    >
-      <div style={{ ...styles.toggleKnob, ...(checked ? styles.toggleKnobActive : {}) }} />
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
-   SETTINGS PAGE TABS
-───────────────────────────────────────────────────────────────────────────── */
-type SettingsTab = "profile" | "booking" | "payments" | "customization" | "connections" | "agents" | "users" | "flowbuilder" | "subscription";
-type ActiveSettingsView = SettingsTab | "overview";
-
-const tabConfig: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-  { id: "profile", label: "Profile", icon: Icons.user },
-  { id: "booking", label: "Booking", icon: Icons.calendar },
-  { id: "payments", label: "Payments", icon: Icons.ticket },
-  { id: "customization", label: "Customization", icon: Icons.building },
-  { id: "connections", label: "Connections", icon: Icons.whatsapp },
-  { id: "agents", label: "Agents", icon: Icons.upload },
-  { id: "users", label: "Users & Permissions", icon: Icons.user },
-  { id: "flowbuilder", label: "Flow Builder", icon: Icons.flow },
-  { id: "subscription", label: "Subscription", icon: Icons.shield },
+const TAB_CONFIG: Array<{ id: SettingsTab; label: string; icon: React.ReactNode }> = [
+  { id: "profile", label: "Profile", icon: <User className="h-5 w-5" /> },
+  { id: "booking", label: "Booking", icon: <Calendar className="h-5 w-5" /> },
+  { id: "customization", label: "Customization", icon: <Palette className="h-5 w-5" /> },
+  { id: "connections", label: "Connections", icon: <Link2 className="h-5 w-5" /> },
+  { id: "agents", label: "Agents", icon: <Bot className="h-5 w-5" /> },
+  { id: "users", label: "Users & Permissions", icon: <Users className="h-5 w-5" /> },
+  { id: "flowbuilder", label: "Flow Builder", icon: <Workflow className="h-5 w-5" /> },
+  { id: "subscription", label: "Subscription", icon: <Shield className="h-5 w-5" /> },
 ];
 
-const settingsTabFeatureMap: Partial<Record<SettingsTab, string>> = {
+const TAB_FEATURE_MAP: Record<SettingsTab, string> = {
   profile: "agent.settings.basic",
   booking: "agent.settings.basic",
-  payments: "agent.settings.basic",
   customization: "agent.settings.basic",
   connections: "agent.whatsapp.connect",
   agents: "agent.settings.basic",
-
   users: "agent.settings.basic",
   flowbuilder: "agent.messages.view",
   subscription: "agent.settings.basic",
 };
-
-const settingsTabDescriptions: Record<SettingsTab, string> = {
-  profile: "Business identity, account access, password, theme, and sign-out controls.",
-  booking: "Customer booking availability, operating hours, slot capacity, and appointment timing.",
-  payments: "Order payment collection, bank QR, payment slips, delivery charge, and currency settings.",
-  customization: "Invoice branding, business logo, colors, address, and customer-facing footer notes.",
-  connections: "WhatsApp numbers, embedded signup, and automation controls.",
-
-  users: "Invite teammates, manage roles, and remove users from this business workspace.",
-  flowbuilder: "Conversation routing, automation rules, message flows, and AI handoff logic.",
-  agents: "Manage and configure autonomous AI agents that handle reservations, customer support, and sales inquiries.",
-  subscription: "View subscription status, plan details, credits usage, billing history, and manage upgrades.",
-};
-
-const settingsTabPoints: Record<SettingsTab, string[]> = {
-  profile: ["Business identity and account", "Password, theme, and access", "Connected company basics"],
-  booking: ["Availability and operating hours", "Slot capacity and timing", "Appointment intake defaults"],
-  payments: ["Payment method and currency", "Bank QR and transfer details", "Slip checks and delivery charge"],
-  customization: ["Invoice branding and logo", "Business colors and footer", "Customer-facing contact details"],
-  connections: ["WhatsApp number connection", "Embedded signup", "Automation connection health"],
-
-  users: ["Invite teammates", "Roles and permissions", "Remove workspace access"],
-  flowbuilder: ["Routing rules and handoffs", "Message flow automation", "AI control logic"],
-  agents: ["Create AI agents", "Configure personalities and roles", "Connect channels to agents"],
-  subscription: ["Current plan and billing cycle", "Monthly credits and usage", "Next payment date and history", "Upgrade or change plans"],
-};
-
-function isSettingsTab(value: string): value is SettingsTab {
-  return tabConfig.some((tab) => tab.id === value);
-}
-
-function getRequestedSettingsTab(rawValue: string | null): SettingsTab | "overview" {
-  const normalized = String(rawValue || "").trim().toLowerCase();
-  if (!normalized) return "overview";
-  const requestedTab = normalized === "tickets" ? "payments" : normalized;
-  return isSettingsTab(requestedTab) ? requestedTab : "overview";
-}
 
 function readAccessFeatures(value: unknown): Record<string, boolean> | undefined {
   if (!value || typeof value !== "object" || !("features" in value)) return undefined;
@@ -1011,25 +79,133 @@ function readAccessFeatures(value: unknown): Record<string, boolean> | undefined
   return features as Record<string, boolean>;
 }
 
+function getRequestedSettingsTab(rawValue: string | null): SettingsTab {
+  const normalized = String(rawValue || "").trim().toLowerCase();
+  if (!normalized) return "profile";
+  if (normalized === "tickets" || normalized === "payments") return "profile";
+  return (TAB_CONFIG.find((tab) => tab.id === normalized)?.id ?? "profile") as SettingsTab;
+}
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   MAIN SETTINGS PAGE
-───────────────────────────────────────────────────────────────────────────── */
+function getInitials(email: string | null) {
+  if (!email) return "?";
+  return email.substring(0, 2).toUpperCase();
+}
+
+function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => !disabled && onChange(!checked)}
+      className={`relative inline-flex h-8 w-14 items-center rounded-full border transition ${
+        checked ? "border-cyan-400/40 bg-cyan-400/90" : "border-white/10 bg-white/10"
+      } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+    >
+      <span
+        className={`inline-block h-6 w-6 rounded-full bg-white shadow transition ${checked ? "translate-x-7" : "translate-x-1"}`}
+      />
+    </button>
+  );
+}
+
+function FieldTile({ label, value, valueClassName }: { label: string; value: React.ReactNode; valueClassName?: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#20324a] px-4 py-3">
+      <div className="text-xs font-semibold uppercase tracking-[0.1em] text-[#8ea7c3]">{label}</div>
+      <div className={`mt-2 text-base font-medium text-white ${valueClassName || ""}`}>{value}</div>
+    </div>
+  );
+}
+
+function SectionCard({
+  icon,
+  title,
+  description,
+  action,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[28px] border border-white/10 bg-[#1A2332]/95 shadow-[0_18px_44px_rgba(2,6,23,0.22)]">
+      <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 md:flex-row md:items-start md:justify-between">
+        <div className="flex items-start gap-4">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#1d4ed8] text-white">{icon}</div>
+          <div>
+            <h2 className="text-[18px] font-semibold text-white">{title}</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-400">{description}</p>
+          </div>
+        </div>
+        {action}
+      </div>
+      <div className="p-6">{children}</div>
+    </section>
+  );
+}
+
+function ModalShell({
+  title,
+  eyebrow,
+  description,
+  onClose,
+  children,
+  footer,
+  widthClassName = "max-w-4xl",
+}: {
+  title: string;
+  eyebrow?: string;
+  description: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  footer: React.ReactNode;
+  widthClassName?: string;
+}) {
+  return (
+    <div className="fixed inset-0 z-[5000] grid place-items-center bg-slate-950/65 p-4 backdrop-blur-md">
+      <div className={`w-full ${widthClassName} overflow-hidden rounded-[30px] border border-white/10 bg-[#1A2332] shadow-[0_24px_80px_rgba(0,0,0,0.42)]`}>
+        <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+          <div>
+            {eyebrow ? <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#d8b45a]">{eyebrow}</div> : null}
+            <h2 className="mt-2 text-[34px] font-semibold leading-none text-white">{title}</h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">{description}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#45607d] bg-[#20324a] text-2xl leading-none text-slate-300 transition hover:text-white"
+          >
+            ×
+          </button>
+        </div>
+        <div className="max-h-[calc(100vh-240px)] overflow-y-auto p-6">{children}</div>
+        <div className="flex items-center justify-end gap-3 border-t border-white/10 px-6 py-5">{footer}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const auth = getFirebaseAuth();
   const toast = useToast();
-  const { theme, setTheme } = usePortalTheme();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { theme, setTheme } = usePortalTheme();
+
   const [email, setEmail] = useState<string | null>(null);
 
-  // Booking settings state
-  const [unitCapacity, setUnitCapacity] = useState<number>(1);
-  const [timeslotMinutes, setTimeslotMinutes] = useState<number>(60);
-  const [openTime, setOpenTime] = useState<string>("");
-  const [closeTime, setCloseTime] = useState<string>("");
+  const [unitCapacity, setUnitCapacity] = useState(1);
+  const [timeslotMinutes, setTimeslotMinutes] = useState(60);
+  const [openTime, setOpenTime] = useState("");
+  const [closeTime, setCloseTime] = useState("");
   const [bookingsEnabled, setBookingsEnabled] = useState(false);
   const [timezone, setTimezone] = useState("UTC");
+
   const [orderPaymentMethod, setOrderPaymentMethod] = useState<OrderPaymentMethod>("manual");
   const [paymentProofAiEnabled, setPaymentProofAiEnabled] = useState(true);
   const [paymentSlipRequired, setPaymentSlipRequired] = useState(true);
@@ -1043,6 +219,7 @@ export default function SettingsPage() {
   const [accountName, setAccountName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountInstructions, setAccountInstructions] = useState("");
+
   const [customBusinessName, setCustomBusinessName] = useState("");
   const [customLogoBlobPath, setCustomLogoBlobPath] = useState("");
   const [customLogoContainer, setCustomLogoContainer] = useState("");
@@ -1054,12 +231,19 @@ export default function SettingsPage() {
   const [customEmail, setCustomEmail] = useState("");
   const [customWebsite, setCustomWebsite] = useState("");
   const [customInvoiceFooterNote, setCustomInvoiceFooterNote] = useState(DEFAULT_CUSTOMIZATION_SETTINGS.invoiceFooterNote);
+
   const [gmailConnectPending, setGmailConnectPending] = useState(false);
   const [qrUploadPending, setQrUploadPending] = useState(false);
   const [logoUploadPending, setLogoUploadPending] = useState(false);
+
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [brandingModalOpen, setBrandingModalOpen] = useState(false);
   const [widgetModalOpen, setWidgetModalOpen] = useState(false);
-  const [widgetSnippet, setWidgetSnippet] = useState("");
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+
+  const [widgetSnippet, setWidgetSnippet] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -1068,176 +252,72 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!auth) return;
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setEmail(user?.email ?? null);
-    });
+    const unsub = onAuthStateChanged(auth, (user) => setEmail(user?.email ?? null));
     return () => unsub();
   }, [auth]);
 
   const businessQuery = trpc.business.getMine.useQuery({ email: email ?? "" }, { enabled: !!email });
   const phoneNumbersQuery = trpc.business.listPhoneNumbers.useQuery(undefined, { enabled: !!email });
   const accessStatusQuery = trpc.user.getAccessStatus.useQuery({ email: email ?? "" }, { enabled: !!email });
+  const ensureWebsiteWidget = trpc.business.ensureWebsiteWidget.useMutation();
+  const updateBooking = trpc.business.updateBookingConfig.useMutation();
+  const updateTimezone = trpc.business.updateTimezone.useMutation();
+  const updateOrderSettings = trpc.business.updateOrderSettings.useMutation();
+  const updateCustomizationSettings = trpc.business.updateCustomizationSettings.useMutation();
+  const disconnectGmail = trpc.business.disconnectGmailConnection.useMutation();
+
   const accessFeatures = readAccessFeatures(accessStatusQuery.data);
   const visibleTabs = useMemo(
-    () => tabConfig.filter((tab) => (
-      accessFeatures
-        ? accessFeatures[settingsTabFeatureMap[tab.id] ?? "agent.settings.basic"] !== false
-        : true
-    )),
+    () =>
+      TAB_CONFIG.filter((tab) => (
+        accessFeatures ? accessFeatures[TAB_FEATURE_MAP[tab.id]] !== false : true
+      )),
     [accessFeatures],
   );
 
-  const primaryOverviewTabs = visibleTabs.slice(0, 6);
-  const additionalOverviewTabs = visibleTabs.slice(6);
   const requestedTab = getRequestedSettingsTab(searchParams?.get("tab"));
-  
-  // Use all possible tabs for validation so URL deep-links work even before accessFeatures loads
-  const allTabIds = tabConfig.map(t => t.id) as SettingsTab[];
-  const activeTab: ActiveSettingsView = requestedTab === "overview"
-    || allTabIds.includes(requestedTab)
-    ? requestedTab
-    : "overview";
-  const ensureWebsiteWidget = trpc.business.ensureWebsiteWidget.useMutation();
-  const updateBooking = trpc.business.updateBookingConfig.useMutation({
-    onSuccess: () => {
-      showSuccessToast(toast, {
-        title: "Settings updated",
-        message: "Booking settings saved successfully.",
-      });
-      businessQuery.refetch();
-    },
-  });
-  const updateTimezone = trpc.business.updateTimezone.useMutation({
-    onSuccess: () => {
-      showSuccessToast(toast, {
-        title: "Timezone updated",
-        message: "Timezone saved successfully.",
-      });
-      businessQuery.refetch();
-    },
-  });
-  const updateOrderSettings = trpc.business.updateOrderSettings.useMutation({
-    onSuccess: () => {
-      showSuccessToast(toast, {
-        title: "Order settings updated",
-        message: "Order flow settings saved successfully.",
-      });
-      businessQuery.refetch();
-    },
-  });
-  const updateCustomizationSettings = trpc.business.updateCustomizationSettings.useMutation({
-    onSuccess: () => {
-      showSuccessToast(toast, {
-        title: "Customization updated",
-        message: "Invoice branding and contact details were saved successfully.",
-      });
-      businessQuery.refetch();
-    },
-  });
-  const disconnectGmail = trpc.business.disconnectGmailConnection.useMutation({
-    onSuccess: () => {
-      showSuccessToast(toast, {
-        title: "Gmail disconnected",
-        message: "Order emails will pause until a company Gmail account is connected again.",
-      });
-      businessQuery.refetch();
-    },
-    onError: () => {
-      showErrorToast(toast, {
-        title: "Disconnect failed",
-        message: "The Gmail connection could not be removed.",
-      });
-    },
-  });
-  const _setWhatsappIdentityAutoReplyPaused = trpc.business.setWhatsappIdentityAutoReplyPaused.useMutation({
-    onSuccess: (row) => {
-      showSuccessToast(toast, {
-        title: row.autoReplyPaused ? "Auto replies paused" : "Auto replies resumed",
-        message: row.autoReplyPaused
-          ? "The bot will keep processing messages for this number, but it will not send replies."
-          : "The bot can now reply automatically again for this number.",
-      });
-      void phoneNumbersQuery.refetch();
-    },
-    onError: () => {
-      showErrorToast(toast, {
-        title: "Update failed",
-        message: "The WhatsApp number automation setting could not be saved.",
-      });
-    },
-  });
-  const _setWhatsappIdentityAiDisabled = trpc.business.setWhatsappIdentityAiDisabled.useMutation({
-    onSuccess: (row) => {
-      showSuccessToast(toast, {
-        title: row.aiDisabled ? "AI disabled" : "AI enabled",
-        message: row.aiDisabled
-          ? "This number now runs in manual-only mode. No AI processing or auto replies will run."
-          : "This number can use AI again.",
-      });
-      void phoneNumbersQuery.refetch();
-    },
-    onError: () => {
-      showErrorToast(toast, {
-        title: "Update failed",
-        message: "The WhatsApp number AI mode could not be saved.",
-      });
-    },
-  });
+  const activeTab = visibleTabs.some((tab) => tab.id === requestedTab) ? requestedTab : (visibleTabs[0]?.id ?? "profile");
 
   useEffect(() => {
-    if (businessQuery.data) {
-      setUnitCapacity(businessQuery.data.bookingUnitCapacity ?? 1);
-      setTimeslotMinutes(businessQuery.data.bookingTimeslotMinutes ?? 60);
-      setOpenTime(businessQuery.data.bookingOpenTime ?? "");
-      setCloseTime(businessQuery.data.bookingCloseTime ?? "");
-      setBookingsEnabled(businessQuery.data.bookingsEnabled ?? false);
-      const settingsTz = (businessQuery.data.settings as Record<string, unknown> | null | undefined)?.timezone;
-      const businessTz = String((businessQuery.data as { timezone?: unknown }).timezone ?? "").trim();
-      const tz = businessTz || (typeof settingsTz === "string" ? settingsTz : "");
-      setTimezone(tz || "UTC");
-      const orderSettings = businessQuery.data.orderSettings;
-      setOrderPaymentMethod((orderSettings?.paymentMethod as OrderPaymentMethod | undefined) ?? "manual");
-      setPaymentProofAiEnabled(orderSettings?.paymentProofAiEnabled ?? true);
-      setPaymentSlipRequired(orderSettings?.paymentSlipRequired ?? true);
-      setOrderCurrency(orderSettings?.currency ?? "LKR");
-      setDeliveryChargeEnabled(orderSettings?.deliveryCharge?.enabled ?? false);
-      setDeliveryChargeType((orderSettings?.deliveryCharge?.type as OrderDeliveryChargeType | undefined) ?? "fixed");
-      setDeliveryChargeValue(orderSettings?.deliveryCharge?.value ?? "0");
-      setQrBlobPath(orderSettings?.bankQr?.qrBlobPath ?? "");
-      setBankQrImageUrl(orderSettings?.bankQr?.qrImageUrl ?? "");
-      setBankName(orderSettings?.bankQr?.bankName ?? "");
-      setAccountName(orderSettings?.bankQr?.accountName ?? "");
-      setAccountNumber(orderSettings?.bankQr?.accountNumber ?? "");
-      setAccountInstructions(orderSettings?.bankQr?.accountInstructions ?? "");
-      const customization = businessQuery.data.customizationSettings;
-      setCustomBusinessName(customization?.businessName || businessQuery.data.name || "");
-      setCustomLogoBlobPath(customization?.logoBlobPath ?? "");
-      setCustomLogoContainer(customization?.logoContainer ?? "");
-      setCustomLogoUrl(customization?.logoUrl ?? "");
-      setCustomPrimaryColor(customization?.primaryColor ?? DEFAULT_CUSTOMIZATION_SETTINGS.primaryColor);
-      setCustomSecondaryColor(customization?.secondaryColor ?? DEFAULT_CUSTOMIZATION_SETTINGS.secondaryColor);
-      setCustomAddress(customization?.address ?? "");
-      setCustomPhone(customization?.phone ?? "");
-      setCustomEmail(customization?.email ?? "");
-      setCustomWebsite(customization?.website ?? "");
-      setCustomInvoiceFooterNote(customization?.invoiceFooterNote ?? DEFAULT_CUSTOMIZATION_SETTINGS.invoiceFooterNote);
-    }
+    if (!businessQuery.data) return;
+    setUnitCapacity(businessQuery.data.bookingUnitCapacity ?? 1);
+    setTimeslotMinutes(businessQuery.data.bookingTimeslotMinutes ?? 60);
+    setOpenTime(businessQuery.data.bookingOpenTime ?? "");
+    setCloseTime(businessQuery.data.bookingCloseTime ?? "");
+    setBookingsEnabled(businessQuery.data.bookingsEnabled ?? false);
+
+    const settingsTz = (businessQuery.data.settings as Record<string, unknown> | null | undefined)?.timezone;
+    const businessTz = String((businessQuery.data as { timezone?: unknown }).timezone ?? "").trim();
+    setTimezone(businessTz || (typeof settingsTz === "string" ? settingsTz : "") || "UTC");
+
+    const orderSettings = businessQuery.data.orderSettings;
+    setOrderPaymentMethod((orderSettings?.paymentMethod as OrderPaymentMethod | undefined) ?? "manual");
+    setPaymentProofAiEnabled(orderSettings?.paymentProofAiEnabled ?? true);
+    setPaymentSlipRequired(orderSettings?.paymentSlipRequired ?? true);
+    setOrderCurrency(orderSettings?.currency ?? "LKR");
+    setDeliveryChargeEnabled(orderSettings?.deliveryCharge?.enabled ?? false);
+    setDeliveryChargeType((orderSettings?.deliveryCharge?.type as OrderDeliveryChargeType | undefined) ?? "fixed");
+    setDeliveryChargeValue(orderSettings?.deliveryCharge?.value ?? "0");
+    setQrBlobPath(orderSettings?.bankQr?.qrBlobPath ?? "");
+    setBankQrImageUrl(orderSettings?.bankQr?.qrImageUrl ?? "");
+    setBankName(orderSettings?.bankQr?.bankName ?? "");
+    setAccountName(orderSettings?.bankQr?.accountName ?? "");
+    setAccountNumber(orderSettings?.bankQr?.accountNumber ?? "");
+    setAccountInstructions(orderSettings?.bankQr?.accountInstructions ?? "");
+
+    const customization = businessQuery.data.customizationSettings;
+    setCustomBusinessName(customization?.businessName || businessQuery.data.name || "");
+    setCustomLogoBlobPath(customization?.logoBlobPath ?? "");
+    setCustomLogoContainer(customization?.logoContainer ?? "");
+    setCustomLogoUrl(customization?.logoUrl ?? "");
+    setCustomPrimaryColor(customization?.primaryColor ?? DEFAULT_CUSTOMIZATION_SETTINGS.primaryColor);
+    setCustomSecondaryColor(customization?.secondaryColor ?? DEFAULT_CUSTOMIZATION_SETTINGS.secondaryColor);
+    setCustomAddress(customization?.address ?? "");
+    setCustomPhone(customization?.phone ?? "");
+    setCustomEmail(customization?.email ?? "");
+    setCustomWebsite(customization?.website ?? "");
+    setCustomInvoiceFooterNote(customization?.invoiceFooterNote ?? DEFAULT_CUSTOMIZATION_SETTINGS.invoiceFooterNote);
   }, [businessQuery.data]);
-
-  const handleTabSelect = (tab: SettingsTab) => {
-    const params = new URLSearchParams(searchParams?.toString() || "");
-    params.set("tab", tab);
-    router.push(`/settings?${params.toString()}`, { scroll: false });
-  };
-
-  // If URL tab is not in visibleTabs (permission issue), redirect to overview
-  useEffect(() => {
-    if (activeTab !== "overview" && !visibleTabs.some((t) => t.id === activeTab)) {
-      const params = new URLSearchParams(searchParams?.toString() || "");
-      params.delete("tab");
-      router.replace(`/settings?${params.toString()}`, { scroll: false });
-    }
-  }, [activeTab, visibleTabs, router, searchParams]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1269,6 +349,12 @@ export default function SettingsPage() {
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   }, [businessQuery, toast]);
 
+  const handleTabSelect = (tab: SettingsTab) => {
+    const params = new URLSearchParams(searchParams?.toString() || "");
+    params.set("tab", tab);
+    router.replace(`/settings?${params.toString()}`, { scroll: false });
+  };
+
   const handleLogout = async () => {
     if (!auth) {
       recordClientBusinessEvent({
@@ -1286,13 +372,6 @@ export default function SettingsPage() {
     }
     try {
       await signOut(auth);
-      recordClientBusinessEvent({
-        event: "auth.logout",
-        action: "portal-logout",
-        area: "auth",
-        outcome: "success",
-        route: "/settings",
-      });
       window.location.href = "/";
     } catch (err: unknown) {
       const captureInSentry = shouldCaptureUnexpectedClientError(err);
@@ -1308,14 +387,6 @@ export default function SettingsPage() {
       });
       throw err;
     }
-  };
-
-  const openPasswordModal = () => {
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    setPasswordError(null);
-    setPasswordModalOpen(true);
   };
 
   const handleChangePassword = async () => {
@@ -1364,7 +435,7 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSaveBookingSettings = () => {
+  const handleSaveBookingSettings = async () => {
     if (!email || !businessQuery.data?.id) return;
     if (bookingsEnabled && (!openTime || !closeTime)) {
       showErrorToast(toast, {
@@ -1373,27 +444,68 @@ export default function SettingsPage() {
       });
       return;
     }
-    updateBooking.mutate({
-      email,
-      businessId: businessQuery.data.id,
-      bookingsEnabled,
-      unitCapacity,
-      timeslotMinutes,
-      openTime: openTime || "09:00",
-      closeTime: closeTime || "17:00",
-    });
+    try {
+      await updateBooking.mutateAsync({
+        email,
+        businessId: businessQuery.data.id,
+        bookingsEnabled,
+        unitCapacity,
+        timeslotMinutes,
+        openTime: openTime || "09:00",
+        closeTime: closeTime || "17:00",
+      });
+      await businessQuery.refetch();
+      setBookingModalOpen(false);
+      showSuccessToast(toast, {
+        title: "Settings updated",
+        message: "Booking settings saved successfully.",
+      });
+    } catch {
+      showErrorToast(toast, {
+        title: "Save failed",
+        message: "Booking settings could not be saved.",
+      });
+    }
   };
 
-  const handleSaveTimezone = () => {
+  const handleSaveProfileDetails = async () => {
     if (!email || !businessQuery.data?.id) return;
-    updateTimezone.mutate({
-      email,
-      businessId: businessQuery.data.id,
-      timezone,
-    });
+    try {
+      await updateCustomizationSettings.mutateAsync({
+        email,
+        businessId: businessQuery.data.id,
+        businessName: customBusinessName.trim(),
+        logoBlobPath: customLogoBlobPath.trim(),
+        logoContainer: customLogoContainer.trim(),
+        logoUrl: customLogoUrl.trim(),
+        primaryColor: customPrimaryColor.trim() || DEFAULT_CUSTOMIZATION_SETTINGS.primaryColor,
+        secondaryColor: customSecondaryColor.trim() || DEFAULT_CUSTOMIZATION_SETTINGS.secondaryColor,
+        address: customAddress.trim(),
+        phone: customPhone.trim(),
+        emailAddress: customEmail.trim(),
+        website: customWebsite.trim(),
+        invoiceFooterNote: customInvoiceFooterNote.trim(),
+      });
+      await updateTimezone.mutateAsync({
+        email,
+        businessId: businessQuery.data.id,
+        timezone,
+      });
+      await businessQuery.refetch();
+      setProfileModalOpen(false);
+      showSuccessToast(toast, {
+        title: "Profile updated",
+        message: "Business details and timezone were saved successfully.",
+      });
+    } catch {
+      showErrorToast(toast, {
+        title: "Save failed",
+        message: "Business profile details could not be saved.",
+      });
+    }
   };
 
-  const handleSaveOrderSettings = () => {
+  const handleSaveOrderSettings = async () => {
     if (!email || !businessQuery.data?.id) return;
     const normalizedBankName = bankName.trim();
     const normalizedAccountName = accountName.trim();
@@ -1403,30 +515,76 @@ export default function SettingsPage() {
     const hasBankDetails = Boolean(
       normalizedBankName || normalizedAccountName || normalizedAccountNumber || normalizedInstructions,
     );
-    updateOrderSettings.mutate({
-      email,
-      businessId: businessQuery.data.id,
-      ticketToOrderEnabled: true,
-      paymentMethod: orderPaymentMethod,
-      paymentProofAiEnabled,
-      paymentSlipRequired,
-      currency: orderCurrency.trim() || "LKR",
-      deliveryCharge: {
-        enabled: deliveryChargeEnabled,
-        type: deliveryChargeEnabled ? deliveryChargeType : "fixed",
-        value: deliveryChargeEnabled ? deliveryChargeValue.trim() || "0" : "0",
-      },
-      bankQr: {
-        showQr: orderPaymentMethod === "bank_qr" && hasQr,
-        showBankDetails: orderPaymentMethod === "bank_qr" && hasBankDetails,
-        qrBlobPath: qrBlobPath.trim(),
-        qrImageUrl: bankQrImageUrl.trim(),
-        bankName: normalizedBankName,
-        accountName: normalizedAccountName,
-        accountNumber: normalizedAccountNumber,
-        accountInstructions: normalizedInstructions,
-      },
-    });
+
+    try {
+      await updateOrderSettings.mutateAsync({
+        email,
+        businessId: businessQuery.data.id,
+        ticketToOrderEnabled: true,
+        paymentMethod: orderPaymentMethod,
+        paymentProofAiEnabled,
+        paymentSlipRequired,
+        currency: orderCurrency.trim() || "LKR",
+        deliveryCharge: {
+          enabled: deliveryChargeEnabled,
+          type: deliveryChargeEnabled ? deliveryChargeType : "fixed",
+          value: deliveryChargeEnabled ? deliveryChargeValue.trim() || "0" : "0",
+        },
+        bankQr: {
+          showQr: orderPaymentMethod === "bank_qr" && hasQr,
+          showBankDetails: orderPaymentMethod === "bank_qr" && hasBankDetails,
+          qrBlobPath: qrBlobPath.trim(),
+          qrImageUrl: bankQrImageUrl.trim(),
+          bankName: normalizedBankName,
+          accountName: normalizedAccountName,
+          accountNumber: normalizedAccountNumber,
+          accountInstructions: normalizedInstructions,
+        },
+      });
+      await businessQuery.refetch();
+      setPaymentModalOpen(false);
+      showSuccessToast(toast, {
+        title: "Payment settings updated",
+        message: "Order payment settings were saved successfully.",
+      });
+    } catch {
+      showErrorToast(toast, {
+        title: "Save failed",
+        message: "Payment settings could not be saved.",
+      });
+    }
+  };
+
+  const handleSaveBranding = async () => {
+    if (!email || !businessQuery.data?.id) return;
+    try {
+      await updateCustomizationSettings.mutateAsync({
+        email,
+        businessId: businessQuery.data.id,
+        businessName: customBusinessName.trim(),
+        logoBlobPath: customLogoBlobPath.trim(),
+        logoContainer: customLogoContainer.trim(),
+        logoUrl: customLogoUrl.trim(),
+        primaryColor: customPrimaryColor.trim() || DEFAULT_CUSTOMIZATION_SETTINGS.primaryColor,
+        secondaryColor: customSecondaryColor.trim() || DEFAULT_CUSTOMIZATION_SETTINGS.secondaryColor,
+        address: customAddress.trim(),
+        phone: customPhone.trim(),
+        emailAddress: customEmail.trim(),
+        website: customWebsite.trim(),
+        invoiceFooterNote: customInvoiceFooterNote.trim(),
+      });
+      await businessQuery.refetch();
+      setBrandingModalOpen(false);
+      showSuccessToast(toast, {
+        title: "Customization updated",
+        message: "Invoice branding was saved successfully.",
+      });
+    } catch {
+      showErrorToast(toast, {
+        title: "Save failed",
+        message: "Invoice branding could not be saved.",
+      });
+    }
   };
 
   const handleUploadQrImage = async (file: File) => {
@@ -1437,25 +595,16 @@ export default function SettingsPage() {
       form.set("file", file);
       const response = await fetchWithFirebaseAuth(
         "/api/settings/order-flow/qr-upload",
-        {
-          method: "POST",
-          body: form,
-        },
-        {
-          action: "settings-upload-order-qr",
-          area: "business",
-          route: "/settings",
-        },
+        { method: "POST", body: form },
+        { action: "settings-upload-order-qr", area: "business", route: "/settings" },
       );
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(String(payload?.error || "QR upload failed."));
-      }
+      if (!response.ok) throw new Error(String(payload?.error || "QR upload failed."));
       setQrBlobPath(String(payload?.qrBlobPath || "").trim());
       setBankQrImageUrl(String(payload?.qrImageUrl || "").trim());
       showSuccessToast(toast, {
         title: "QR image uploaded",
-        message: "The QR image is ready to be sent with bank / QR payment instructions.",
+        message: "The QR image is ready to be used in payment instructions.",
       });
     } catch (error) {
       showErrorToast(toast, {
@@ -1467,25 +616,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSaveCustomizationSettings = () => {
-    if (!email || !businessQuery.data?.id) return;
-    updateCustomizationSettings.mutate({
-      email,
-      businessId: businessQuery.data.id,
-      businessName: customBusinessName.trim(),
-      logoBlobPath: customLogoBlobPath.trim(),
-      logoContainer: customLogoContainer.trim(),
-      logoUrl: customLogoUrl.trim(),
-      primaryColor: customPrimaryColor.trim() || DEFAULT_CUSTOMIZATION_SETTINGS.primaryColor,
-      secondaryColor: customSecondaryColor.trim() || DEFAULT_CUSTOMIZATION_SETTINGS.secondaryColor,
-      address: customAddress.trim(),
-      phone: customPhone.trim(),
-      emailAddress: customEmail.trim(),
-      website: customWebsite.trim(),
-      invoiceFooterNote: customInvoiceFooterNote.trim(),
-    });
-  };
-
   const handleUploadLogoImage = async (file: File) => {
     if (!file) return;
     setLogoUploadPending(true);
@@ -1494,26 +624,17 @@ export default function SettingsPage() {
       form.set("file", file);
       const response = await fetchWithFirebaseAuth(
         "/api/settings/customization/logo-upload",
-        {
-          method: "POST",
-          body: form,
-        },
-        {
-          action: "settings-upload-custom-logo",
-          area: "business",
-          route: "/settings",
-        },
+        { method: "POST", body: form },
+        { action: "settings-upload-custom-logo", area: "business", route: "/settings" },
       );
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(String(payload?.error || "Logo upload failed."));
-      }
+      if (!response.ok) throw new Error(String(payload?.error || "Logo upload failed."));
       setCustomLogoBlobPath(String(payload?.logoBlobPath || "").trim());
       setCustomLogoContainer(String(payload?.logoContainer || "").trim());
       setCustomLogoUrl(String(payload?.logoUrl || "").trim());
       showSuccessToast(toast, {
         title: "Logo uploaded",
-        message: "The invoice logo is ready for branded order PDFs.",
+        message: "The invoice logo is ready for previews and PDFs.",
       });
     } catch (error) {
       showErrorToast(toast, {
@@ -1539,10 +660,9 @@ export default function SettingsPage() {
       nextUrl.searchParams.set("returnTo", "/settings");
       window.location.assign(nextUrl.toString());
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not start Gmail connection.";
       showErrorToast(toast, {
         title: "Gmail connection failed",
-        message,
+        message: error instanceof Error ? error.message : "Could not start Gmail connection.",
       });
       setGmailConnectPending(false);
     }
@@ -1550,12 +670,19 @@ export default function SettingsPage() {
 
   const handleDisconnectGmail = async () => {
     if (!email || !businessQuery.data?.id) return;
-    await disconnectGmail.mutateAsync({ email, businessId: businessQuery.data.id });
-  };
-
-  const getInitials = (email: string | null) => {
-    if (!email) return "?";
-    return email.substring(0, 2).toUpperCase();
+    try {
+      await disconnectGmail.mutateAsync({ email, businessId: businessQuery.data.id });
+      await businessQuery.refetch();
+      showSuccessToast(toast, {
+        title: "Gmail disconnected",
+        message: "Order emails will pause until a company Gmail account is connected again.",
+      });
+    } catch {
+      showErrorToast(toast, {
+        title: "Disconnect failed",
+        message: "The Gmail connection could not be removed.",
+      });
+    }
   };
 
   const openWebsiteWidgetModal = async () => {
@@ -1566,15 +693,9 @@ export default function SettingsPage() {
       });
       return;
     }
-
     try {
-      const result = await ensureWebsiteWidget.mutateAsync({
-        email,
-        businessId: businessQuery.data.id,
-      });
-      if (!result.key) {
-        throw new Error("Widget key was not generated.");
-      }
+      const result = await ensureWebsiteWidget.mutateAsync({ email, businessId: businessQuery.data.id });
+      if (!result.key) throw new Error("Widget key was not generated.");
       setWidgetSnippet(buildWebsiteWidgetSnippet(window.location.origin, result.key));
       setWidgetModalOpen(true);
     } catch (error) {
@@ -1600,769 +721,880 @@ export default function SettingsPage() {
     }
   };
 
-  const responsesUsed = Number(businessQuery.data?.responseUsage?.used ?? 0);
-  const responsesMax = Number(businessQuery.data?.responseUsage?.max ?? 50_000);
-  const responsesPercent = Math.min(100, Math.max(0, ((Math.max(0, responsesMax - responsesUsed)) / Math.max(1, responsesMax)) * 100));
-  const websiteWidget = (businessQuery.data as { websiteWidgetSettings?: ReturnType<typeof normalizeWebsiteWidgetSettings> } | undefined)
-    ?.websiteWidgetSettings ?? normalizeWebsiteWidgetSettings(businessQuery.data?.settings);
+  const business = businessQuery.data;
+  const gmailConnected = Boolean(business?.gmailConnected);
+  const gmailAddress = String(business?.gmailEmail || "").trim();
+  const gmailError = describeCompanyGmailError(business?.gmailError);
+  const websiteWidget = (business as { websiteWidgetSettings?: ReturnType<typeof normalizeWebsiteWidgetSettings> } | undefined)
+    ?.websiteWidgetSettings ?? normalizeWebsiteWidgetSettings(business?.settings);
   const whatsappConnected = (phoneNumbersQuery.data?.length ?? 0) > 0;
-  const fmtInt = (value: number) => value.toLocaleString("en-US");
-  
-  const accessStatus = accessStatusQuery.data;
-  const gmailConnected = Boolean(businessQuery.data?.gmailConnected);
-  const gmailAddress = String(businessQuery.data?.gmailEmail || "").trim();
-  const gmailError = describeCompanyGmailError(businessQuery.data?.gmailError);
-  const whatsappConnectBlocked = Boolean(accessStatus && !accessStatus.canConnectWhatsapp);
+  const whatsappConnectBlocked = Boolean(accessStatusQuery.data && !accessStatusQuery.data.canConnectWhatsapp);
   const whatsappConnectReason = whatsappConnectBlocked
     ? "WhatsApp connection is blocked until this tenant has an active paid plan, demo grant, or partner grant."
     : null;
+
+  const paymentMethodLabel = {
+    manual: "Manual review",
+    bank_qr: "Bank / QR",
+    cod: "Cash on delivery",
+  }[orderPaymentMethod];
+
+  const profileDisplayName = customBusinessName || business?.name || "Business";
+  const profilePhone = customPhone || "No phone";
+  const profileEmail = customEmail || email || "No email";
+  const profileAddress = customAddress || "No address";
+  const profileWebsite = customWebsite || "No website";
+  const bookingWindow = openTime && closeTime ? `${openTime} - ${closeTime}` : "Not configured";
+
   const renderProfileTab = () => (
-    <div style={styles.section}>
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <div style={styles.cardIcon}>{Icons.user}</div>
-          <div>
-            <h3 style={styles.cardTitle}>Account Details</h3>
-            <p style={styles.cardDescription}>Profile access, password, and sign-out controls</p>
+    <div className="space-y-6 p-6">
+      <SectionCard
+        icon={<User className="h-5 w-5" />}
+        title="Account Details"
+        description="Profile access, password, and sign-out controls."
+        action={
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex rounded-xl bg-[#20324a] p-1">
+              {(["light", "dark"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setTheme(option)}
+                  className={`inline-flex min-h-10 items-center gap-2 rounded-lg px-4 text-sm font-semibold transition ${
+                    theme === option ? "bg-[#c7a64f] text-[#0f172a]" : "text-slate-300 hover:text-white"
+                  }`}
+                >
+                  {option === "light" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  {option === "light" ? "Light" : "Dark"}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setPasswordModalOpen(true)}
+              className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
+            >
+              <Lock className="mr-2 h-4 w-4" />
+              Change Password
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex h-11 items-center justify-center rounded-xl border border-red-400/25 bg-red-400/10 px-5 text-sm font-semibold text-red-300 transition hover:bg-red-400/15"
+            >
+              Sign Out
+            </button>
           </div>
-        </div>
-        <div style={styles.cardBody}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
-            <div style={styles.profileInfo}>
-              <div style={styles.avatar}>{getInitials(email)}</div>
-              <div style={styles.profileDetails}>
-                <div style={styles.profileName}>{email?.split("@")[0] || "User"}</div>
-                <div style={styles.profileEmail}>{email || "No email"}</div>
-                <div style={styles.profileBadge}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }} />
+        }
+      >
+        <div className="grid gap-5 lg:grid-cols-[1.3fr_0.9fr]">
+          <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
+            <div className="flex items-center gap-5">
+              <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-gradient-to-br from-[#1957dd] to-[#1aa7df] text-[30px] font-bold text-white">
+                {getInitials(email)}
+              </div>
+              <div>
+                <div className="text-2xl font-semibold text-white">{email?.split("@")[0] || "User"}</div>
+                <div className="mt-2 text-sm text-slate-400">{email || "No email"}</div>
+                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
+                  <span className="h-2 w-2 rounded-full bg-emerald-300" />
                   Active Account
                 </div>
               </div>
             </div>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button type="button" style={styles.btnSecondary} onClick={openPasswordModal}>
-                {Icons.lock}
-                Change Password
-              </button>
-              <button type="button" style={styles.btnDanger} onClick={handleLogout}>
-                {Icons.logout}
-                Sign Out
-              </button>
-            </div>
           </div>
-        </div>
-      </div>
-
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <div style={{ ...styles.cardIcon, ...styles.cardIconSecondary }}>{Icons.sun}</div>
-          <div>
-            <h3 style={styles.cardTitle}>Preferences</h3>
-            <p style={styles.cardDescription}>Theme and business timezone used across this dashboard</p>
-          </div>
-        </div>
-        <div style={styles.cardBody}>
-          <div style={styles.formGrid}>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Theme</label>
-              <div
-                role="group"
-                aria-label="Portal theme"
-                style={{
-                  display: "inline-flex",
-                  width: "fit-content",
-                  padding: 4,
-                  borderRadius: 12,
-                  background: "var(--card-muted)",
-                  border: "1px solid var(--border)",
-                  gap: 4,
-                }}
+          <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-lg font-semibold text-white">Company Access</div>
+                <div className="mt-2 text-sm text-slate-400">Currently connected to {business?.name || "your business"}.</div>
+              </div>
+              <button
+                type="button"
+                disabled
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-slate-400 opacity-70"
               >
-                {(["light", "dark"] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setTheme(option)}
-                    aria-pressed={theme === option}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 7,
-                      minHeight: 34,
-                      padding: "0 13px",
-                      borderRadius: 9,
-                      border: "none",
-                      background: theme === option ? "var(--card)" : "transparent",
-                      color: theme === option ? "var(--foreground)" : "var(--muted)",
-                      boxShadow: theme === option ? "var(--shadow-sm)" : "none",
-                      fontSize: 13,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {option === "light" ? Icons.sun : Icons.moon}
-                    {option === "light" ? "Light" : "Dark"}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Business Timezone (IANA)</label>
-              <input
-                type="text"
-                style={{ ...styles.input, maxWidth: 360 }}
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                placeholder="e.g. Asia/Colombo"
-              />
+                Current Workspace
+              </button>
             </div>
           </div>
         </div>
-        <div style={styles.actions}>
+      </SectionCard>
+
+      <SectionCard
+        icon={<Building2 className="h-5 w-5" />}
+        title="Business Profile"
+        description="Business identity, invoice contact details, and timezone used across the concierge workspace."
+        action={
           <button
-            style={styles.btnPrimary}
-            onClick={handleSaveTimezone}
-            disabled={updateTimezone.isPending}
+            type="button"
+            onClick={() => setProfileModalOpen(true)}
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-[#d8b45a]/35 bg-[#d8b45a]/12 px-5 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/18"
           >
-            {Icons.save}
-            {updateTimezone.isPending ? "Saving..." : "Save Timezone"}
+            Edit
           </button>
-        </div>
-      </div>
-
-      <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <div style={{ ...styles.cardIcon, background: "linear-gradient(135deg, #ea4335, #fbbc05)" }}>
-              {Icons.bell}
-            </div>
-            <div>
-              <h3 style={styles.cardTitle}>Order Email Updates</h3>
-              <p style={styles.cardDescription}>Send the payment-approved email from a company Gmail account after staff manually verify the payment.</p>
-            </div>
-          </div>
-          <div style={styles.cardBody}>
-            <div style={styles.statusCard}>
-              <div style={{ ...styles.statusIcon, ...(gmailConnected ? styles.statusConnected : styles.statusDisconnected) }}>
-                {gmailConnected ? Icons.check : Icons.bell}
-              </div>
-              <div style={styles.statusInfo}>
-                <span style={styles.statusTitle}>
-                  {gmailConnected ? "Company Gmail Connected" : "Company Gmail Not Connected"}
-                </span>
-                <span style={styles.statusDescription}>
-                  {gmailConnected
-                    ? `Order updates are sent from ${gmailAddress || "the connected Gmail account"}.`
-                    : "Connect a Gmail account so all order updates can continue by email after the WhatsApp 24-hour window closes."}
-                </span>
-                {gmailError ? (
-                  <span style={{ ...styles.statusDescription, color: "var(--danger)" }}>
-                    {gmailError}
-                  </span>
-                ) : null}
-              </div>
-              {gmailConnected ? (
-                <button
-                  style={styles.btnSecondary}
-                  onClick={() => void handleDisconnectGmail()}
-                  disabled={disconnectGmail.isPending}
-                >
-                  {disconnectGmail.isPending ? "Disconnecting..." : "Disconnect"}
-                </button>
-              ) : (
-                <button
-                  style={styles.btnPrimary}
-                  onClick={() => void handleConnectGmail()}
-                  disabled={gmailConnectPending}
-                >
-                  {gmailConnectPending ? "Connecting..." : "Connect Gmail"}
-                </button>
-              )}
-            </div>
+        }
+      >
+        <div className="grid gap-4 xl:grid-cols-2">
+          <FieldTile label="Business Name" value={profileDisplayName} />
+          <FieldTile label="Timezone" value={timezone} />
+          <FieldTile label="Phone" value={profilePhone} />
+          <FieldTile label="Email" value={profileEmail} />
+          <FieldTile label="Website" value={profileWebsite} />
+          <FieldTile label="Business ID" value={business?.id || "-"} valueClassName="font-mono text-sm text-slate-300" />
+          <div className="xl:col-span-2">
+            <FieldTile label="Address" value={profileAddress} />
           </div>
         </div>
+      </SectionCard>
 
-
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <div style={{ ...styles.cardIcon, ...styles.cardIconSecondary }}>{Icons.building}</div>
+      <SectionCard
+        icon={<Mail className="h-5 w-5" />}
+        title="Order Email Updates"
+        description="Send the payment-approved email from a company Gmail account after staff manually verify the payment."
+      >
+        <div className="flex flex-col gap-4 rounded-[24px] border border-white/10 bg-[#20324a] p-5 md:flex-row md:items-center md:justify-between">
           <div>
-            <h3 style={styles.cardTitle}>Business Details</h3>
-            <p style={styles.cardDescription}>Your organization information</p>
+            <div className="text-lg font-semibold text-white">
+              {gmailConnected ? "Company Gmail Connected" : "Company Gmail Not Connected"}
+            </div>
+            <div className="mt-2 text-sm leading-6 text-slate-400">
+              {gmailConnected
+                ? `Order updates are sent from ${gmailAddress || "the connected Gmail account"}.`
+                : "Connect a Gmail account so order updates continue by email after the WhatsApp 24-hour window closes."}
+            </div>
+            {gmailError ? <div className="mt-2 text-sm text-red-300">{gmailError}</div> : null}
           </div>
+          {gmailConnected ? (
+            <button
+              type="button"
+              onClick={() => void handleDisconnectGmail()}
+              disabled={disconnectGmail.isPending}
+              className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
+            >
+              {disconnectGmail.isPending ? "Disconnecting..." : "Disconnect"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void handleConnectGmail()}
+              disabled={gmailConnectPending}
+              className="inline-flex h-11 items-center justify-center rounded-xl bg-[#1656d8] px-5 text-sm font-semibold text-white transition hover:brightness-110"
+            >
+              {gmailConnectPending ? "Connecting..." : "Connect Gmail"}
+            </button>
+          )}
         </div>
-        <div style={styles.cardBody}>
-          <div style={styles.formGrid}>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Business Name</label>
-              <input
-                type="text"
-                style={styles.input}
-                value={businessQuery.data?.name || ""}
-                readOnly
-                placeholder="Business name"
-              />
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Business ID</label>
-              <input
-                type="text"
-                style={{ ...styles.input, fontFamily: "monospace", fontSize: 12 }}
-                value={businessQuery.data?.id || ""}
-                readOnly
-              />
-            </div>
-            <div style={styles.usageCard}>
-              <div style={styles.usageRow}>
-                <span style={styles.usageTitle}>AI Credits Remaining</span>
-                <span style={styles.usageValue}>
-                  {fmtInt(Math.max(0, responsesMax - responsesUsed))}
-                </span>
-              </div>
-              <div style={styles.usageTrack}>
-                <div style={{ ...styles.usageFill, width: `${responsesPercent}%` }} />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      </SectionCard>
 
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <div style={styles.cardIcon}>{Icons.bot}</div>
-          <div>
-            <h3 style={styles.cardTitle}>AI Assistant Instructions</h3>
-            <p style={styles.cardDescription}>Customize your AI bot&apos;s behavior and personality</p>
-          </div>
+      <SectionCard
+        icon={<CreditCard className="h-5 w-5" />}
+        title="Payment Setup"
+        description="Collection mode, currency, bank details, QR asset, and delivery charging rules used in order checkout."
+        action={
+          <button
+            type="button"
+            onClick={() => setPaymentModalOpen(true)}
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-[#d8b45a]/35 bg-[#d8b45a]/12 px-5 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/18"
+          >
+            Edit Payment
+          </button>
+        }
+      >
+        <div className="grid gap-4 xl:grid-cols-2">
+          <FieldTile label="Collection Method" value={paymentMethodLabel} />
+          <FieldTile label="Currency" value={orderCurrency || "LKR"} />
+          <FieldTile label="Delivery Charge" value={deliveryChargeEnabled ? `${deliveryChargeType === "percentage" ? `${deliveryChargeValue}%` : deliveryChargeValue}` : "Disabled"} />
+          <FieldTile label="Proof Requirement" value={paymentSlipRequired ? "Slip required" : "Plain text confirmations allowed"} />
+          {orderPaymentMethod === "bank_qr" ? (
+            <>
+              <FieldTile label="Bank" value={bankName || "Not set"} />
+              <FieldTile label="Account Name" value={accountName || "Not set"} />
+              <FieldTile label="Account Number" value={accountNumber || "Not set"} />
+              <div className="xl:col-span-2">
+                <FieldTile label="Transfer Instructions" value={accountInstructions || "No transfer instructions configured."} />
+              </div>
+            </>
+          ) : (
+            <div className="xl:col-span-2 rounded-2xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
+              {orderPaymentMethod === "manual"
+                ? "Staff will review payment manually from the queue."
+                : "Customers pay when the order is delivered."}
+            </div>
+          )}
         </div>
-        <div style={styles.cardBody}>
-          <div style={styles.formGroup}>
-            <label style={styles.label}>
-              System Instructions
-              <p style={styles.labelHint}>These instructions guide how your AI assistant responds to customers</p>
-            </label>
-            <textarea
-              style={styles.textarea}
-              value={businessQuery.data?.instructions || ""}
-              readOnly
-              placeholder="AI instructions..."
-            />
-          </div>
+      </SectionCard>
+
+      <SectionCard
+        icon={<BookOpenText className="h-5 w-5" />}
+        title="AI Assistant Instructions"
+        description="Current system instructions used by the default concierge agent."
+      >
+        <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
+          <div className="text-xs font-semibold uppercase tracking-[0.1em] text-[#8ea7c3]">System Instructions</div>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-300">
+            {business?.instructions || "No instructions configured yet."}
+          </p>
         </div>
-      </div>
+      </SectionCard>
     </div>
   );
 
   const renderBookingTab = () => (
-    <div style={styles.section}>
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <div style={styles.cardIcon}>{Icons.calendar}</div>
-          <div>
-            <h3 style={styles.cardTitle}>Booking Configuration</h3>
-            <p style={styles.cardDescription}>Configure your booking system settings</p>
-          </div>
-        </div>
-        <div style={styles.cardBody}>
-          {/* Toggle Section */}
-          <div style={{ ...styles.toggleRow }}>
-            <div style={styles.toggleInfo}>
-              <span style={styles.toggleLabel}>Enable Bookings</span>
-              <span style={styles.toggleDescription}>Allow customers to book appointments through WhatsApp</span>
-            </div>
-            <Toggle checked={bookingsEnabled} onChange={setBookingsEnabled} />
-          </div>
-
-          {bookingsEnabled ? (
-            <>
-              <div style={styles.formGrid}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>
-                    Slot Capacity
-                    <p style={styles.labelHint}>Max bookings per time slot</p>
-                  </label>
-                  <input
-                    type="number"
-                    style={styles.input}
-                    min={1}
-                    value={unitCapacity}
-                    onChange={(e) => setUnitCapacity(parseInt(e.target.value) || 1)}
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>
-                    Timeslot Duration
-                    <p style={styles.labelHint}>Length of each booking slot</p>
-                  </label>
-                  <PortalSelect
-                    value={String(timeslotMinutes)}
-                    onValueChange={(value) => setTimeslotMinutes(parseInt(value, 10))}
-                    options={[
-                      { value: "15", label: "15 minutes" },
-                      { value: "30", label: "30 minutes" },
-                      { value: "45", label: "45 minutes" },
-                      { value: "60", label: "1 hour" },
-                      { value: "90", label: "1.5 hours" },
-                      { value: "120", label: "2 hours" },
-                    ]}
-                    style={styles.select}
-                    ariaLabel="Timeslot duration"
-                  />
-                </div>
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>
-                  Business Hours
-                  <p style={styles.labelHint}>When customers can book appointments</p>
-                </label>
-                <div style={styles.timeInputs}>
-                  <div style={styles.formGroup}>
-                    <label style={{ ...styles.label, fontSize: 12, color: "var(--muted)" }}>Opening Time</label>
-                    <input
-                      type="time"
-                      style={styles.input}
-                      value={openTime}
-                      onChange={(e) => setOpenTime(e.target.value)}
-                      placeholder="Not configured"
-                    />
-                  </div>
-                  <span style={styles.timeSeparator}>to</span>
-                  <div style={styles.formGroup}>
-                    <label style={{ ...styles.label, fontSize: 12, color: "var(--muted)" }}>Closing Time</label>
-                    <input
-                      type="time"
-                      style={styles.input}
-                      value={closeTime}
-                      onChange={(e) => setCloseTime(e.target.value)}
-                      placeholder="Not configured"
-                    />
-                  </div>
-                </div>
-                {(!openTime || !closeTime) && (
-                  <p style={{ ...styles.labelHint, color: "#b45309", marginTop: 12 }}>
-                    Booking hours are not configured yet. Set both times so staff and customers are not misled.
-                  </p>
-                )}
-              </div>
-            </>
-          ) : (
-            <div style={styles.helperCard}>
-              <div style={styles.helperTitle}>Bookings are disabled</div>
-              <div style={styles.helperText}>
-                Turn bookings on to configure appointment capacity, time slot duration, and operating hours.
-              </div>
-            </div>
-          )}
-        </div>
-        <div style={styles.actions}>
-          <button style={styles.btnSecondary} onClick={() => businessQuery.refetch()}>
-            Cancel
-          </button>
-          <button 
-            style={styles.btnPrimary} 
-            onClick={handleSaveBookingSettings}
-            disabled={updateBooking.isPending}
+    <div className="space-y-6 p-6">
+      <SectionCard
+        icon={<Calendar className="h-5 w-5" />}
+        title="Booking Configuration"
+        description="Configure appointment intake, timeslot duration, capacity, and operating hours."
+        action={
+          <button
+            type="button"
+            onClick={() => setBookingModalOpen(true)}
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-[#d8b45a]/35 bg-[#d8b45a]/12 px-5 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/18"
           >
-            {Icons.save}
-            {updateBooking.isPending ? "Saving..." : "Save Changes"}
+            Edit
           </button>
+        }
+      >
+        <div className="grid gap-4 xl:grid-cols-4">
+          <FieldTile label="Bookings" value={bookingsEnabled ? "Enabled" : "Disabled"} />
+          <FieldTile label="Slot Capacity" value={String(unitCapacity)} />
+          <FieldTile label="Slot Length" value={`${timeslotMinutes} min`} />
+          <FieldTile label="Open Window" value={bookingWindow} />
         </div>
-      </div>
+        {!bookingsEnabled ? (
+          <div className="mt-4 rounded-2xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
+            Turn bookings on to configure appointment capacity, time slot duration, and operating hours.
+          </div>
+        ) : null}
+      </SectionCard>
     </div>
   );
 
-  const renderPaymentsTab = () => (
-    <div style={styles.section}>
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <div style={styles.cardIcon}>{Icons.ticket}</div>
-          <div>
-            <h3 style={styles.cardTitle}>Payment Settings</h3>
-            <p style={styles.cardDescription}>Configure order payment collection, bank QR instructions, currency, and delivery charges.</p>
+  const renderCustomizationTab = () => (
+    <div className="space-y-6 p-6">
+      <SectionCard
+        icon={<Palette className="h-5 w-5" />}
+        title="Invoice Customization"
+        description="Brand the invoice PDF and tracking experience with logo, palette, and footer styling."
+        action={
+          <button
+            type="button"
+            onClick={() => setBrandingModalOpen(true)}
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-[#d8b45a]/35 bg-[#d8b45a]/12 px-5 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/18"
+          >
+            Edit Branding
+          </button>
+        }
+      >
+        <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
+            <div className="mb-5 flex items-center gap-4">
+              <div className="h-20 w-20 overflow-hidden rounded-2xl border border-white/10 bg-[#13263c]">
+                {customLogoUrl ? (
+                  <Image src={customLogoUrl} alt="Invoice logo" width={80} height={80} unoptimized className="h-full w-full object-contain" />
+                ) : (
+                  <div className="grid h-full w-full place-items-center text-xs text-slate-500">No logo</div>
+                )}
+              </div>
+              <div>
+                <div className="text-lg font-semibold text-white">{profileDisplayName}</div>
+                <div className="mt-2 text-sm text-slate-400">{profileAddress}</div>
+                <div className="mt-2 text-sm text-slate-400">{[customPhone, customEmail].filter(Boolean).join(" | ") || "Phone | Email"}</div>
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <FieldTile
+                label="Primary"
+                value={<div className="flex items-center gap-3"><span className="h-6 w-6 rounded-md border border-white/10" style={{ backgroundColor: customPrimaryColor }} />{customPrimaryColor}</div>}
+              />
+              <FieldTile
+                label="Accent"
+                value={<div className="flex items-center gap-3"><span className="h-6 w-6 rounded-md border border-white/10" style={{ backgroundColor: customSecondaryColor }} />{customSecondaryColor}</div>}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.1em] text-[#8ea7c3]">Invoice Footer</div>
+            <p className="mt-3 text-sm leading-7 text-slate-300">{customInvoiceFooterNote || "No footer note configured."}</p>
           </div>
         </div>
-        <div style={styles.cardBody}>
-          <div style={styles.formGrid}>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Payment Method</label>
-              <PortalSelect
-                value={orderPaymentMethod}
-                onValueChange={(value) => setOrderPaymentMethod(value as OrderPaymentMethod)}
-                options={[
-                  { value: "manual", label: "Manual Collection" },
-                  { value: "cod", label: "Cash on Delivery" },
-                  { value: "bank_qr", label: "Bank / QR" },
-                ]}
-                style={styles.select}
-                ariaLabel="Order payment method"
-              />
+      </SectionCard>
+
+      <SectionCard
+        icon={<Ticket className="h-5 w-5" />}
+        title="Invoice Preview"
+        description="Preview the invoice look with sample data before sending real order documents."
+      >
+        <div className="rounded-[28px] border border-white/10 bg-[#102034] p-6">
+          <div className="h-2 rounded-full" style={{ background: `linear-gradient(90deg, ${customPrimaryColor}, ${customSecondaryColor})` }} />
+          <div className="mt-6 flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-[#13263c]">
+                {customLogoUrl ? (
+                  <Image src={customLogoUrl} alt="Brand logo" width={64} height={64} unoptimized className="h-full w-full object-contain" />
+                ) : null}
+              </div>
+              <div>
+                <div className="text-2xl font-semibold text-white">{profileDisplayName}</div>
+                <div className="mt-2 text-sm text-slate-400">{profileAddress}</div>
+                <div className="mt-2 text-sm text-slate-400">{[customPhone, customEmail, customWebsite].filter(Boolean).join(" | ")}</div>
+              </div>
             </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Currency</label>
-              <input
-                type="text"
-                style={styles.input}
-                value={orderCurrency}
-                onChange={(e) => setOrderCurrency(e.target.value.toUpperCase())}
-                placeholder="LKR"
-              />
+            <div className="rounded-2xl border border-white/10 bg-[#1A2332] px-4 py-3 text-right">
+              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8ea7c3]">Invoice</div>
+              <div className="mt-2 text-xl font-semibold text-white">INV-20260625-TEST001</div>
+              <div className="mt-2 text-sm text-slate-400">Manual review pending</div>
             </div>
           </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-4">
+            <FieldTile label="Customer" value="John Perera" />
+            <FieldTile label="Amount" value={`${orderCurrency} 36,300.00`} />
+            <FieldTile label="Method" value={paymentMethodLabel} />
+            <FieldTile label="Date" value="Jun 25, 2026" />
+          </div>
+          <div className="mt-6 rounded-2xl border border-white/10 bg-[#1A2332] p-4">
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3 text-sm font-semibold text-slate-300">
+              <span>TIANDY 4CH POE NVR TC-R3104</span>
+              <span>3 x 12,100.00</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 pt-3 text-base font-semibold text-white">
+              <span>Total</span>
+              <span>{orderCurrency} 36,300.00</span>
+            </div>
+          </div>
+        </div>
+      </SectionCard>
 
-          <div style={styles.helperCard}>
-            <div
-              style={{
-                ...styles.toggleRow,
-                padding: deliveryChargeEnabled ? "0 0 16px" : 0,
-                borderBottom: deliveryChargeEnabled ? "1px solid var(--border)" : "none",
-              }}
-            >
-              <div style={styles.toggleInfo}>
-                <span style={styles.toggleLabel}>Delivery Charge</span>
-                <span style={styles.toggleDescription}>
-                  Disabled means the checkout still asks delivery or pickup, but delivery is treated as free. Enable only when this business charges delivery.
-                </span>
-              </div>
-              <Toggle
-                checked={deliveryChargeEnabled}
-                onChange={(checked) => {
-                  setDeliveryChargeEnabled(checked);
-                  if (checked) {
-                    setDeliveryChargeType("fixed");
-                    setDeliveryChargeValue("0");
-                  }
-                }}
+      <SectionCard
+        icon={<ExternalLink className="h-5 w-5" />}
+        title="Tracking Link Preview"
+        description="This reflects the branded order tracking page customers open from a shared link."
+      >
+        <div className="rounded-[28px] border border-white/10 bg-[#102034] p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8ea7c3]">Track Order</div>
+              <div className="mt-2 text-2xl font-semibold text-white">{profileDisplayName}</div>
+              <div className="mt-2 text-sm text-slate-400">https://concierge.escal8.tech/track/orders/sample-token</div>
+            </div>
+            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm font-semibold text-emerald-300">
+              Status: Payment Under Review
+            </div>
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <FieldTile label="Order" value="#f8dec23f" />
+            <FieldTile label="Delivery" value="Fiero by prime residence" />
+            <FieldTile label="Contact" value={profilePhone} />
+          </div>
+        </div>
+      </SectionCard>
+    </div>
+  );
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case "profile":
+        return renderProfileTab();
+      case "booking":
+        return renderBookingTab();
+      case "customization":
+        return renderCustomizationTab();
+      case "connections":
+        return (
+          <ConnectionsTab
+            businessQuery={businessQuery}
+            email={email}
+            whatsappConnected={whatsappConnected}
+            whatsappConnectBlocked={whatsappConnectBlocked}
+            whatsappConnectReason={whatsappConnectReason}
+            phoneNumbersQuery={phoneNumbersQuery}
+            openWebsiteWidgetModal={openWebsiteWidgetModal}
+            websiteWidget={websiteWidget}
+            ensureWebsiteWidget={ensureWebsiteWidget}
+          />
+        );
+      case "agents":
+        return <AgentsTab />;
+      case "users":
+        return <UsersPermissionsPanel />;
+      case "flowbuilder":
+        return <FlowBuilderContent />;
+      case "subscription":
+        return <SubscriptionContent />;
+      default:
+        return null;
+    }
+  };
+
+  if (!email) {
+    return (
+      <div className="grid h-full place-items-center bg-[var(--settings-page-bg)] text-slate-300">
+        Loading settings...
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--settings-page-bg)]">
+      {passwordModalOpen ? (
+        <ModalShell
+          eyebrow="Account"
+          title="Change password"
+          description="Confirm your current password, then set a new one for this account."
+          onClose={() => !passwordPending && setPasswordModalOpen(false)}
+          widthClassName="max-w-2xl"
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => setPasswordModalOpen(false)}
+                disabled={passwordPending}
+                className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleChangePassword()}
+                disabled={passwordPending}
+                className="inline-flex h-11 items-center justify-center rounded-xl bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:opacity-60"
+              >
+                {passwordPending ? "Updating..." : "Update Password"}
+              </button>
+            </>
+          }
+        >
+          <div className="grid gap-4">
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Current Password</label>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30"
               />
             </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">New Password</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Confirm New Password</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30"
+              />
+            </div>
+            {passwordError ? (
+              <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-300">{passwordError}</div>
+            ) : null}
+          </div>
+        </ModalShell>
+      ) : null}
 
-            {deliveryChargeEnabled ? (
-              <div style={styles.formGrid}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Delivery Cost Type</label>
-                  <PortalSelect
-                    value={deliveryChargeType}
-                    onValueChange={(value) => setDeliveryChargeType(value as OrderDeliveryChargeType)}
-                    options={[
-                      { value: "fixed", label: "Fixed Amount" },
-                      { value: "percentage", label: "Percentage" },
-                    ]}
-                    style={styles.select}
-                    ariaLabel="Order delivery cost type"
-                  />
+      {profileModalOpen ? (
+        <ModalShell
+          eyebrow="Profile"
+          title="Edit business profile"
+          description="Keep the profile page clean by editing business details, invoice contact information, and timezone here."
+          onClose={() => setProfileModalOpen(false)}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => setProfileModalOpen(false)}
+                className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveProfileDetails()}
+                disabled={updateCustomizationSettings.isPending || updateTimezone.isPending}
+                className="inline-flex h-11 items-center justify-center rounded-xl bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:opacity-60"
+              >
+                Save Profile
+              </button>
+            </>
+          }
+        >
+          <div className="grid gap-5 xl:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Business Name</label>
+              <input value={customBusinessName} onChange={(e) => setCustomBusinessName(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Business Timezone (IANA)</label>
+              <input value={timezone} onChange={(e) => setTimezone(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Phone</label>
+              <input value={customPhone} onChange={(e) => setCustomPhone(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Email</label>
+              <input value={customEmail} onChange={(e) => setCustomEmail(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+            </div>
+            <div className="xl:col-span-2">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Website</label>
+              <input value={customWebsite} onChange={(e) => setCustomWebsite(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+            </div>
+            <div className="xl:col-span-2">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Address</label>
+              <textarea value={customAddress} onChange={(e) => setCustomAddress(e.target.value)} className="min-h-[120px] w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 py-3 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+            </div>
+            <div className="xl:col-span-2">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Invoice Footer Note</label>
+              <textarea value={customInvoiceFooterNote} onChange={(e) => setCustomInvoiceFooterNote(e.target.value)} className="min-h-[120px] w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 py-3 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+            </div>
+          </div>
+        </ModalShell>
+      ) : null}
+
+      {bookingModalOpen ? (
+        <ModalShell
+          eyebrow="Booking"
+          title="Edit booking configuration"
+          description="Adjust appointment intake rules without exposing all controls on the main page."
+          onClose={() => setBookingModalOpen(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setBookingModalOpen(false)} className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10">
+                Cancel
+              </button>
+              <button type="button" onClick={() => void handleSaveBookingSettings()} disabled={updateBooking.isPending} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:opacity-60">
+                Save Changes
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-6">
+            <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-[#20324a] px-4 py-4">
+              <div>
+                <div className="text-base font-semibold text-white">Enable Bookings</div>
+                <div className="mt-1 text-sm text-slate-400">Allow customers to book appointments through WhatsApp.</div>
+              </div>
+              <Toggle checked={bookingsEnabled} onChange={setBookingsEnabled} />
+            </div>
+            {bookingsEnabled ? (
+              <>
+                <div className="grid gap-5 xl:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Slot Capacity</label>
+                    <input type="number" min={1} value={unitCapacity} onChange={(e) => setUnitCapacity(parseInt(e.target.value, 10) || 1)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Slot Length</label>
+                    <PortalSelect
+                      value={String(timeslotMinutes)}
+                      onValueChange={(value) => setTimeslotMinutes(parseInt(value, 10))}
+                      options={[
+                        { value: "15", label: "15 minutes" },
+                        { value: "30", label: "30 minutes" },
+                        { value: "45", label: "45 minutes" },
+                        { value: "60", label: "1 hour" },
+                        { value: "90", label: "1.5 hours" },
+                        { value: "120", label: "2 hours" },
+                      ]}
+                      ariaLabel="Timeslot duration"
+                      style={{ minHeight: 48, borderRadius: 14 }}
+                    />
+                  </div>
                 </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>
-                    {deliveryChargeType === "percentage" ? "Delivery Percentage" : "Delivery Amount"}
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step={deliveryChargeType === "percentage" ? "0.1" : "1"}
-                    style={styles.input}
-                    value={deliveryChargeValue}
-                    onChange={(e) => setDeliveryChargeValue(e.target.value)}
-                    placeholder={deliveryChargeType === "percentage" ? "5" : "450"}
-                  />
+                <div className="grid gap-5 xl:grid-cols-[1fr_auto_1fr] xl:items-end">
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Opening Time</label>
+                    <input type="time" value={openTime} onChange={(e) => setOpenTime(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+                  </div>
+                  <div className="pb-3 text-sm font-semibold text-slate-400">to</div>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Closing Time</label>
+                    <input type="time" value={closeTime} onChange={(e) => setCloseTime(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+                  </div>
                 </div>
+              </>
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
+                Turn bookings on to configure appointment capacity, time slot duration, and operating hours.
+              </div>
+            )}
+          </div>
+        </ModalShell>
+      ) : null}
+
+      {paymentModalOpen ? (
+        <ModalShell
+          eyebrow="Payment Setup"
+          title="Set up payment collection"
+          description="Keep the main settings page simple while editing collection mode, bank details, QR image, and checkout rules here."
+          onClose={() => setPaymentModalOpen(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setPaymentModalOpen(false)} className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10">
+                Cancel
+              </button>
+              <button type="button" onClick={() => void handleSaveOrderSettings()} disabled={updateOrderSettings.isPending || qrUploadPending} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:opacity-60">
+                Use {paymentMethodLabel}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-6">
+            <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Currency</label>
+                <input value={orderCurrency} onChange={(e) => setOrderCurrency(e.target.value.toUpperCase())} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+              </div>
+              <div>
+                <label className="mb-3 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Collection Method</label>
+                <div className="grid gap-4 xl:grid-cols-3">
+                  {[
+                    { value: "manual", title: "Manual review", copy: "Let staff confirm cash, POS, or custom payment notes manually." },
+                    { value: "bank_qr", title: "Bank / QR", copy: "Show transfer instructions, bank details, and optional QR in checkout." },
+                    { value: "cod", title: "Cash on delivery", copy: "Let customers pay when the delivered order reaches them." },
+                  ].map((option) => {
+                    const active = orderPaymentMethod === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setOrderPaymentMethod(option.value as OrderPaymentMethod)}
+                        className={`rounded-2xl border px-5 py-4 text-left transition ${active ? "border-[#d8b45a] bg-[#d8b45a]/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]" : "border-white/10 bg-[#20324a] hover:border-white/20"}`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-lg font-semibold text-white">{option.title}</div>
+                          <span className={`h-4 w-4 rounded-full border ${active ? "border-[#d8b45a] bg-[#d8b45a]" : "border-slate-500"}`} />
+                        </div>
+                        <div className="mt-3 text-sm leading-6 text-slate-400">{option.copy}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-white/10 bg-[#173244] p-5">
+              <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
+                <div>
+                  <div className="text-lg font-semibold text-white">Delivery Charge</div>
+                  <div className="mt-1 text-sm text-slate-400">Disabled means checkout still asks delivery or pickup, but delivery stays free.</div>
+                </div>
+                <Toggle
+                  checked={deliveryChargeEnabled}
+                  onChange={(checked) => {
+                    setDeliveryChargeEnabled(checked);
+                    if (checked) {
+                      setDeliveryChargeType("fixed");
+                      setDeliveryChargeValue("0");
+                    }
+                  }}
+                />
+              </div>
+              {deliveryChargeEnabled ? (
+                <div className="mt-5 grid gap-5 xl:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Delivery Cost Type</label>
+                    <PortalSelect
+                      value={deliveryChargeType}
+                      onValueChange={(value) => setDeliveryChargeType(value as OrderDeliveryChargeType)}
+                      options={[
+                        { value: "fixed", label: "Fixed Amount" },
+                        { value: "percentage", label: "Percentage" },
+                      ]}
+                      ariaLabel="Delivery charge type"
+                      style={{ minHeight: 48, borderRadius: 14 }}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">
+                      {deliveryChargeType === "percentage" ? "Delivery Percentage" : "Delivery Amount"}
+                    </label>
+                    <input value={deliveryChargeValue} onChange={(e) => setDeliveryChargeValue(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {orderPaymentMethod === "bank_qr" ? (
+              <>
+                <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+                  <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
+                    <div className="text-lg font-semibold text-white">QR Payment</div>
+                    <div className="mt-2 text-sm leading-6 text-slate-400">
+                      Upload the QR image once. It is stored privately and can be reused in payment instructions.
+                    </div>
+                    <div className="mt-5 space-y-4">
+                      <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#14304b] px-4 py-4">
+                        <div>
+                          <div className="font-medium text-white">Payment Proof AI Check</div>
+                          <div className="mt-1 text-sm text-slate-400">Check uploaded bank slips with AI before staff review.</div>
+                        </div>
+                        <Toggle checked={paymentProofAiEnabled} onChange={setPaymentProofAiEnabled} />
+                      </div>
+                      <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#14304b] px-4 py-4">
+                        <div>
+                          <div className="font-medium text-white">Require Payment Slip</div>
+                          <div className="mt-1 text-sm text-slate-400">Customers must send a payment slip image or PDF.</div>
+                        </div>
+                        <Toggle checked={paymentSlipRequired} onChange={setPaymentSlipRequired} />
+                      </div>
+                      <div className="rounded-2xl border border-dashed border-white/10 bg-[#14304b] p-4">
+                        {bankQrImageUrl ? (
+                          <Image src={bankQrImageUrl} alt="Uploaded QR" width={260} height={260} unoptimized className="mx-auto rounded-2xl border border-white/10 bg-white object-contain" />
+                        ) : (
+                          <div className="grid min-h-[220px] place-items-center text-sm text-slate-500">No QR image uploaded yet.</div>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <label className="inline-flex h-11 cursor-pointer items-center justify-center rounded-xl bg-[#1656d8] px-5 text-sm font-semibold text-white transition hover:brightness-110">
+                          {qrUploadPending ? "Uploading..." : bankQrImageUrl ? "Replace QR" : "Upload QR"}
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/jpg,image/webp"
+                            className="hidden"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) void handleUploadQrImage(file);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                        {(bankQrImageUrl || qrBlobPath) ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQrBlobPath("");
+                              setBankQrImageUrl("");
+                            }}
+                            className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
+                          >
+                            Remove QR
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
+                    <div className="text-lg font-semibold text-white">Bank Transfer Details</div>
+                    <div className="mt-2 text-sm leading-6 text-slate-400">
+                      These details are included with payment instructions whenever Bank / QR is selected.
+                    </div>
+                    <div className="mt-5 grid gap-5 xl:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Bank Name</label>
+                        <input value={bankName} onChange={(e) => setBankName(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Account Name</label>
+                        <input value={accountName} onChange={(e) => setAccountName(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+                      </div>
+                      <div className="xl:col-span-2">
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Account Number</label>
+                        <input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+                      </div>
+                      <div className="xl:col-span-2">
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Transfer Instructions</label>
+                        <textarea value={accountInstructions} onChange={(e) => setAccountInstructions(e.target.value)} className="min-h-[120px] w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 py-3 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : null}
+
+            {orderPaymentMethod === "manual" ? (
+              <div className="rounded-2xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
+                Staff will confirm payment manually from the operations queue. No QR or bank instructions will be sent.
+              </div>
+            ) : null}
+
+            {orderPaymentMethod === "cod" ? (
+              <div className="rounded-2xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
+                Customers will pay when the order is delivered. Bank instructions stay hidden in this flow.
               </div>
             ) : null}
           </div>
+        </ModalShell>
+      ) : null}
 
-          {orderPaymentMethod === "manual" ? (
-            <div style={styles.helperCard}>
-              <div style={styles.helperTitle}>Manual collection</div>
-              <div style={styles.helperText}>
-                Staff will confirm payment manually from the operations queue. No bank instructions or QR image will be sent to the customer.
-              </div>
-            </div>
-          ) : null}
-
-          {orderPaymentMethod === "cod" ? (
-            <div style={styles.helperCard}>
-              <div style={styles.helperTitle}>Cash on delivery</div>
-              <div style={styles.helperText}>
-                Customers will pay when the order is delivered. Payment instruction fields stay hidden because they are not used in this flow.
-              </div>
-            </div>
-          ) : null}
-
-          {orderPaymentMethod === "bank_qr" ? (
-            <div style={styles.splitGrid}>
-              <div style={styles.helperCard}>
-                <div style={styles.helperTitle}>QR Payment</div>
-                <div style={styles.helperText}>
-                  Upload the QR image once. It is stored privately and sent to the customer as an image in WhatsApp and email-ready payment instructions.
-                </div>
-                <div style={{ ...styles.toggleRow, marginTop: 14 }}>
-                  <div style={styles.toggleInfo}>
-                    <span style={styles.toggleLabel}>Payment Proof AI Check</span>
-                    <span style={styles.toggleDescription}>
-                      When enabled, the system checks uploaded bank slips with AI and tags them as confirmed or invalid before staff review.
-                    </span>
-                  </div>
-                  <Toggle checked={paymentProofAiEnabled} onChange={setPaymentProofAiEnabled} />
-                </div>
-                <div style={{ ...styles.toggleRow, marginTop: 14 }}>
-                  <div style={styles.toggleInfo}>
-                    <span style={styles.toggleLabel}>Require Payment Slip</span>
-                    <span style={styles.toggleDescription}>
-                      When enabled, customers must send a payment slip image or PDF. When disabled, staff can also track plain
-                      text confirmations like &quot;payment done&quot; in the payment review queue.
-                    </span>
-                  </div>
-                  <Toggle checked={paymentSlipRequired} onChange={setPaymentSlipRequired} />
-                </div>
-                {bankQrImageUrl ? (
-                  <Image
-                    src={bankQrImageUrl}
-                    alt="Uploaded payment QR"
-                    width={220}
-                    height={220}
-                    unoptimized
-                    style={styles.qrPreview}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      ...styles.helperText,
-                      border: "1px dashed var(--border)",
-                      borderRadius: 14,
-                      padding: "18px 16px",
-                      textAlign: "center",
-                    }}
-                  >
-                    No QR image uploaded yet.
-                  </div>
-                )}
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <label style={{ ...styles.btnPrimary, position: "relative", overflow: "hidden" }}>
-                    {qrUploadPending ? "Uploading..." : bankQrImageUrl ? "Replace QR Image" : "Upload QR Image"}
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/jpg,image/webp"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) {
-                          void handleUploadQrImage(file);
-                        }
-                        event.currentTarget.value = "";
-                      }}
-                      disabled={qrUploadPending}
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        opacity: 0,
-                        cursor: qrUploadPending ? "not-allowed" : "pointer",
-                      }}
-                    />
-                  </label>
-                  {(bankQrImageUrl || qrBlobPath) ? (
-                    <button
-                      type="button"
-                      style={styles.btnSecondary}
-                      onClick={() => {
-                        setQrBlobPath("");
-                        setBankQrImageUrl("");
-                      }}
-                    >
-                      Remove QR
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
-              <div style={styles.helperCard}>
-                <div style={styles.helperTitle}>Bank Transfer Details</div>
-                <div style={styles.helperText}>
-                  These details are included with the payment instructions whenever Bank / QR is selected.
-                </div>
-                <div style={styles.formGrid}>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Bank Name</label>
-                    <input
-                      type="text"
-                      style={styles.input}
-                      value={bankName}
-                      onChange={(e) => setBankName(e.target.value)}
-                      placeholder="Commercial Bank"
-                    />
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Account Name</label>
-                    <input
-                      type="text"
-                      style={styles.input}
-                      value={accountName}
-                      onChange={(e) => setAccountName(e.target.value)}
-                      placeholder="Escal8 Pvt Ltd"
-                    />
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Account Number</label>
-                    <input
-                      type="text"
-                      style={styles.input}
-                      value={accountNumber}
-                      onChange={(e) => setAccountNumber(e.target.value)}
-                      placeholder="1234567890"
-                    />
+      {brandingModalOpen ? (
+        <ModalShell
+          eyebrow="Customization"
+          title="Edit invoice branding"
+          description="Only branding controls stay here. Business identity and invoice contact details now live in the business profile section."
+          onClose={() => setBrandingModalOpen(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setBrandingModalOpen(false)} className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10">
+                Cancel
+              </button>
+              <button type="button" onClick={() => void handleSaveBranding()} disabled={updateCustomizationSettings.isPending || logoUploadPending} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:opacity-60">
+                Save Branding
+              </button>
+            </>
+          }
+        >
+          <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+            <div className="space-y-5">
+              <div className="grid gap-5 xl:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Primary Color</label>
+                  <div className="flex gap-3">
+                    <input type="color" value={customPrimaryColor} onChange={(e) => setCustomPrimaryColor(e.target.value)} className="h-12 w-14 rounded-xl border border-[#45607d] bg-[#14304b]" />
+                    <input value={customPrimaryColor} onChange={(e) => setCustomPrimaryColor(e.target.value)} className="h-12 flex-1 rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
                   </div>
                 </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Transfer Instructions</label>
-                  <textarea
-                    style={{ ...styles.textarea, minHeight: 110 }}
-                    value={accountInstructions}
-                    onChange={(e) => setAccountInstructions(e.target.value)}
-                    placeholder="Use the order number as the transfer reference and send the payment slip in the same chat."
-                  />
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </div>
-        <div style={styles.actions}>
-          <button
-            style={styles.btnPrimary}
-            onClick={handleSaveOrderSettings}
-            disabled={updateOrderSettings.isPending || qrUploadPending}
-          >
-            {Icons.save}
-            {updateOrderSettings.isPending ? "Saving..." : "Save Payments"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-    const renderAgentsTab = () => <AgentsTab />;
-
-  const renderCustomizationTab = () => (
-    <div style={styles.section}>
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <div style={{ ...styles.cardIcon, ...styles.cardIconSecondary }}>{Icons.building}</div>
-          <div>
-            <h3 style={styles.cardTitle}>Invoice Customization</h3>
-            <p style={styles.cardDescription}>Brand the ORDER2 invoice PDF with your logo, colors, address, and contact details.</p>
-          </div>
-        </div>
-        <div style={styles.cardBody}>
-          <div style={styles.splitGrid}>
-            <div style={styles.helperCard}>
-              <div style={styles.helperTitle}>Brand Identity</div>
-              <div style={styles.helperText}>These values are used on the invoice header, footer, and WhatsApp PDF sent after payment is marked complete.</div>
-              <div style={styles.formGrid}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Display Name</label>
-                  <input
-                    type="text"
-                    style={styles.input}
-                    value={customBusinessName}
-                    onChange={(e) => setCustomBusinessName(e.target.value)}
-                    placeholder="Transasia"
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Website</label>
-                  <input
-                    type="text"
-                    style={styles.input}
-                    value={customWebsite}
-                    onChange={(e) => setCustomWebsite(e.target.value)}
-                    placeholder="https://example.com"
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Primary Color</label>
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <input
-                      type="color"
-                      value={customPrimaryColor}
-                      onChange={(e) => setCustomPrimaryColor(e.target.value)}
-                      style={{ width: 52, height: 44, border: "1px solid var(--border)", borderRadius: 12, background: "transparent" }}
-                    />
-                    <input
-                      type="text"
-                      style={styles.input}
-                      value={customPrimaryColor}
-                      onChange={(e) => setCustomPrimaryColor(e.target.value)}
-                      placeholder="#0E1B40"
-                    />
-                  </div>
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Secondary Color</label>
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <input
-                      type="color"
-                      value={customSecondaryColor}
-                      onChange={(e) => setCustomSecondaryColor(e.target.value)}
-                      style={{ width: 52, height: 44, border: "1px solid var(--border)", borderRadius: 12, background: "transparent" }}
-                    />
-                    <input
-                      type="text"
-                      style={styles.input}
-                      value={customSecondaryColor}
-                      onChange={(e) => setCustomSecondaryColor(e.target.value)}
-                      placeholder="#D4A457"
-                    />
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Secondary Color</label>
+                  <div className="flex gap-3">
+                    <input type="color" value={customSecondaryColor} onChange={(e) => setCustomSecondaryColor(e.target.value)} className="h-12 w-14 rounded-xl border border-[#45607d] bg-[#14304b]" />
+                    <input value={customSecondaryColor} onChange={(e) => setCustomSecondaryColor(e.target.value)} className="h-12 flex-1 rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
                   </div>
                 </div>
               </div>
-
-              <div style={{ ...styles.formGroup, marginTop: 18 }}>
-                <label style={styles.label}>Logo</label>
-                <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                  <div
-                    style={{
-                      width: 96,
-                      height: 96,
-                      border: "1px solid var(--border)",
-                      borderRadius: 18,
-                      background: "var(--card-muted)",
-                      display: "grid",
-                      placeItems: "center",
-                      overflow: "hidden",
-                    }}
-                  >
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Logo</label>
+                <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-white/10 bg-[#20324a] p-4">
+                  <div className="grid h-24 w-24 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-[#13263c]">
                     {customLogoUrl ? (
-                      <Image src={customLogoUrl} alt="Invoice logo" width={96} height={96} unoptimized style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                      <Image src={customLogoUrl} alt="Invoice logo" width={96} height={96} unoptimized className="h-full w-full object-contain" />
                     ) : (
-                      <span style={{ color: "var(--muted)", fontSize: 12 }}>No logo</span>
+                      <span className="text-xs text-slate-500">No logo</span>
                     )}
                   </div>
-                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                    <label style={{ ...styles.btnPrimary, position: "relative", overflow: "hidden" }}>
+                  <div className="flex flex-wrap gap-3">
+                    <label className="inline-flex h-11 cursor-pointer items-center justify-center rounded-xl bg-[#1656d8] px-5 text-sm font-semibold text-white transition hover:brightness-110">
                       {logoUploadPending ? "Uploading..." : customLogoUrl ? "Replace Logo" : "Upload Logo"}
                       <input
                         type="file"
                         accept="image/png,image/jpeg,image/jpg,image/webp"
+                        className="hidden"
                         onChange={(event) => {
                           const file = event.target.files?.[0];
-                          if (file) {
-                            void handleUploadLogoImage(file);
-                          }
+                          if (file) void handleUploadLogoImage(file);
                           event.currentTarget.value = "";
-                        }}
-                        disabled={logoUploadPending}
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          opacity: 0,
-                          cursor: logoUploadPending ? "not-allowed" : "pointer",
                         }}
                       />
                     </label>
-                    {customLogoUrl || customLogoBlobPath ? (
+                    {(customLogoUrl || customLogoBlobPath) ? (
                       <button
                         type="button"
-                        style={styles.btnSecondary}
                         onClick={() => {
                           setCustomLogoBlobPath("");
                           setCustomLogoContainer("");
                           setCustomLogoUrl("");
                         }}
+                        className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
                       >
                         Remove Logo
                       </button>
@@ -2371,356 +1603,70 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
-
-            <div style={styles.helperCard}>
-              <div style={styles.helperTitle}>Invoice Contact Details</div>
-              <div style={styles.helperText}>Shown under the logo and in the invoice footer so customers can identify the seller clearly.</div>
-              <div style={styles.formGrid}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Phone Number</label>
-                  <input type="text" style={styles.input} value={customPhone} onChange={(e) => setCustomPhone(e.target.value)} placeholder="+94..." />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Email</label>
-                  <input type="email" style={styles.input} value={customEmail} onChange={(e) => setCustomEmail(e.target.value)} placeholder="sales@example.com" />
-                </div>
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Address</label>
-                <textarea
-                  style={{ ...styles.textarea, minHeight: 92 }}
-                  value={customAddress}
-                  onChange={(e) => setCustomAddress(e.target.value)}
-                  placeholder="Business address shown on invoice"
-                />
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Invoice Footer Note</label>
-                <textarea
-                  style={{ ...styles.textarea, minHeight: 92 }}
-                  value={customInvoiceFooterNote}
-                  onChange={(e) => setCustomInvoiceFooterNote(e.target.value)}
-                  placeholder="Thank you note or invoice terms"
-                />
-              </div>
-              <div
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 18,
-                  overflow: "hidden",
-                  background: "var(--card)",
-                }}
-              >
-                <div style={{ height: 10, background: `linear-gradient(90deg, ${customPrimaryColor}, ${customSecondaryColor})` }} />
-                <div style={{ padding: 18 }}>
-                  <div style={{ fontWeight: 700, fontSize: 18 }}>{customBusinessName || "Invoice Preview"}</div>
-                  <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 8 }}>{customAddress || "Business address"}</div>
-                  <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>{[customPhone, customEmail].filter(Boolean).join(" | ") || "Phone | Email"}</div>
-                </div>
+            <div className="rounded-[28px] border border-white/10 bg-[#102034] p-6">
+              <div className="h-2 rounded-full" style={{ background: `linear-gradient(90deg, ${customPrimaryColor}, ${customSecondaryColor})` }} />
+              <div className="mt-5 text-xl font-semibold text-white">{profileDisplayName}</div>
+              <div className="mt-3 text-sm text-slate-400">{profileAddress}</div>
+              <div className="mt-2 text-sm text-slate-400">{[customPhone, customEmail].filter(Boolean).join(" | ")}</div>
+              <div className="mt-6 rounded-2xl border border-white/10 bg-[#1A2332] p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8ea7c3]">Footer Preview</div>
+                <p className="mt-3 text-sm leading-7 text-slate-300">{customInvoiceFooterNote || "No footer note configured."}</p>
               </div>
             </div>
           </div>
-        </div>
-        <div style={styles.actions}>
-          <button
-            style={styles.btnPrimary}
-            onClick={handleSaveCustomizationSettings}
-            disabled={updateCustomizationSettings.isPending || logoUploadPending}
-          >
-            {Icons.save}
-            {updateCustomizationSettings.isPending ? "Saving..." : "Save Customization"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderFlowBuilderTab = () => <FlowBuilderContent />;
-
-  const renderOverviewCard = (tab: (typeof tabConfig)[number], additional = false) => (
-    <button
-      key={tab.id}
-      type="button"
-      onClick={() => handleTabSelect(tab.id)}
-      className={`group flex flex-col justify-between rounded-xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-900/25 dark:border-dark-800 dark:bg-dark-900/70 dark:hover:border-dark-700 2xl:p-6 ${
-        additional ? "min-h-[250px]" : "min-h-[232px] lg:min-h-0"
-      }`}
-    >
-      <div>
-        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary-50 text-primary-900 dark:bg-accent-gold/10 dark:text-accent-gold [&>svg]:h-5 [&>svg]:w-5">
-          {tab.icon}
-        </div>
-        <h3 className="font-heading text-[22px] font-bold leading-tight text-gray-950 dark:text-luxury-50 2xl:text-2xl">
-          {tab.label}
-        </h3>
-        <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-accent-grey">
-          {settingsTabDescriptions[tab.id]}
-        </p>
-        <div className="mt-4 space-y-2">
-          {settingsTabPoints[tab.id].map((point) => (
-            <div
-              key={point}
-              className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-1.5 text-[13px] font-medium leading-5 text-gray-700 dark:bg-dark-800/60 dark:text-luxury-100"
-            >
-              <span className="h-1.5 w-1.5 flex-none rounded-full bg-primary-900 dark:bg-accent-gold" />
-              <span>{point}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-primary-900 dark:text-accent-gold">
-        Open section
-        {Icons.chevronRight}
-      </div>
-    </button>
-  );
-
-  const renderOverview = () => (
-    <div className="h-full min-h-full bg-gray-50 dark:bg-dark-950">
-      <div className="min-h-full w-full px-4 py-4 sm:px-5 lg:h-full lg:px-6 lg:py-4">
-        <div className="grid min-h-full grid-cols-1 items-stretch gap-4 md:grid-cols-2 lg:h-full lg:grid-cols-3 lg:[grid-template-rows:repeat(2,minmax(250px,1fr))]">
-          {primaryOverviewTabs.map((tab) => renderOverviewCard(tab))}
-        </div>
-        {additionalOverviewTabs.length ? (
-          <div className="mt-4 grid grid-cols-1 items-stretch gap-4 pb-4 md:grid-cols-2 lg:grid-cols-3">
-            {additionalOverviewTabs.map((tab) => renderOverviewCard(tab, true))}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-
-  const renderTabContent = () => {
-    if (activeTab === "overview") return renderOverview();
-    switch (activeTab) {
-      case "profile":
-        return renderProfileTab();
-      case "booking":
-        return renderBookingTab();
-      case "payments":
-        return renderPaymentsTab();
-      case "customization":
-        return renderCustomizationTab();
-      case "connections":
-        return <ConnectionsTab
-          businessQuery={businessQuery}
-          email={email}
-          whatsappConnected={whatsappConnected}
-          whatsappConnectBlocked={whatsappConnectBlocked}
-          whatsappConnectReason={whatsappConnectReason}
-          phoneNumbersQuery={phoneNumbersQuery}
-          openWebsiteWidgetModal={openWebsiteWidgetModal}
-          websiteWidget={websiteWidget}
-          ensureWebsiteWidget={ensureWebsiteWidget}
-        />;
-      case "agents":
-        return renderAgentsTab();
-      case "users":
-        return <UsersPermissionsPanel />;
-      case "flowbuilder":
-        return renderFlowBuilderTab();
-      case "subscription":
-        return <SubscriptionContent />;
-      default:
-        return null;
-    }
-  };
-
-  // Base page styles with scrolling enabled for all tabs
-  const pageStyle = useMemo(
-    () => ({
-      ...styles.page,
-      overflowY: "auto" as const,
-      minHeight: 0,
-      height: "100%",
-      background: "var(--settings-page-bg)",
-    }),
-    []
-  );
-
-  if (!email) {
-    return (
-      <div style={{ ...styles.page, paddingTop: 80, textAlign: "center" }}>
-        <div className="card" style={{ padding: 40 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
-          <h2 style={{ marginBottom: 8 }}>Loading...</h2>
-          <p style={{ color: "var(--muted)" }}>Please wait while we load your settings</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={pageStyle}>
-      {passwordModalOpen ? (
-        <div
-          style={styles.modalBackdrop}
-          onClick={() => {
-            if (!passwordPending) setPasswordModalOpen(false);
-          }}
-        >
-          <div
-            style={{ ...styles.modalCard, width: "min(520px, 100%)" }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div style={styles.modalHeader}>
-              <div style={styles.modalTitleWrap}>
-                <h2 style={styles.modalTitle}>Change Password</h2>
-                <p style={styles.modalDesc}>Confirm your current password, then set a new one for this account.</p>
-              </div>
-              <button
-                type="button"
-                style={styles.closeIconButton}
-                onClick={() => setPasswordModalOpen(false)}
-                aria-label="Close password modal"
-                disabled={passwordPending}
-              >
-                ×
-              </button>
-            </div>
-
-            <div style={{ display: "grid", gap: 14 }}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Current Password</label>
-                <input
-                  type="password"
-                  style={styles.input}
-                  value={currentPassword}
-                  onChange={(event) => setCurrentPassword(event.target.value)}
-                  autoComplete="current-password"
-                />
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>New Password</label>
-                <input
-                  type="password"
-                  style={styles.input}
-                  value={newPassword}
-                  onChange={(event) => setNewPassword(event.target.value)}
-                  autoComplete="new-password"
-                />
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Confirm New Password</label>
-                <input
-                  type="password"
-                  style={styles.input}
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  autoComplete="new-password"
-                />
-              </div>
-              {passwordError ? (
-                <div style={{ ...styles.helperCard, borderColor: "rgba(239, 68, 68, 0.28)", color: "var(--danger)" }}>
-                  <div style={{ ...styles.helperText, color: "var(--danger)" }}>{passwordError}</div>
-                </div>
-              ) : null}
-            </div>
-
-            <div style={styles.modalActions}>
-              <button
-                type="button"
-                style={styles.btnSecondary}
-                onClick={() => setPasswordModalOpen(false)}
-                disabled={passwordPending}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                style={styles.btnPrimary}
-                onClick={() => void handleChangePassword()}
-                disabled={passwordPending}
-              >
-                {passwordPending ? "Updating..." : "Update Password"}
-              </button>
-            </div>
-          </div>
-        </div>
+        </ModalShell>
       ) : null}
 
       {widgetModalOpen ? (
-        <div
-          style={styles.modalBackdrop}
-          onClick={() => setWidgetModalOpen(false)}
-        >
-          <div
-            style={styles.modalCard}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div style={styles.modalHeader}>
-              <div style={styles.modalTitleWrap}>
-                <h2 style={styles.modalTitle}>Website Widget Snippet</h2>
-                <p style={styles.modalDesc}>
-                  Paste this script into your website, Wix custom code, or before the closing
-                  <code> {"</body>"} </code>
-                  tag to load the floating AI chat widget.
-                </p>
-              </div>
+        <ModalShell
+          eyebrow="Connections"
+          title="Website widget snippet"
+          description="Paste this script into your website or Wix custom code block to load the floating AI chat widget."
+          onClose={() => setWidgetModalOpen(false)}
+          widthClassName="max-w-4xl"
+          footer={
+            <>
+              <div className="mr-auto text-sm text-slate-400">This snippet injects the floating chat bubble directly into the site. No iframe is required.</div>
               <button
                 type="button"
-                style={styles.closeIconButton}
-                onClick={() => setWidgetModalOpen(false)}
-                aria-label="Close website widget modal"
-              >
-                ×
-              </button>
-            </div>
-
-            <p style={styles.codeLabel}>Script snippet</p>
-            <textarea
-              readOnly
-              value={widgetSnippet}
-              style={styles.codeBox}
-              aria-label="Website widget snippet"
-            />
-
-            <div style={styles.modalActions}>
-              <div style={styles.modalHint}>
-                This snippet injects the floating chat bubble directly into the site. No iframe setup is needed on the customer side.
-              </div>
-              <button
-                type="button"
-                style={styles.btnSecondary}
-                onClick={() => {
-                  void copyWidgetSnippet();
-                }}
+                onClick={() => void copyWidgetSnippet()}
+                className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
               >
                 Copy Snippet
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <textarea
+            readOnly
+            value={widgetSnippet}
+            className="min-h-[180px] w-full rounded-2xl border border-white/10 bg-[#071124] p-4 font-mono text-sm leading-7 text-sky-100 outline-none"
+          />
+        </ModalShell>
       ) : null}
 
-      {activeTab !== "overview" ? (
-        <div style={styles.tabs}>
-          {visibleTabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              style={{
-                ...styles.tab,
-                ...(activeTab === tab.id ? styles.tabActive : {}),
-              }}
-              onClick={() => handleTabSelect(tab.id)}
-            >
-              <span style={{ opacity: activeTab === tab.id ? 1 : 0.6 }}>{tab.icon}</span>
-              {tab.label}
-            </button>
-          ))}
+      <div className="border-b border-white/10 bg-[var(--settings-page-bg)] px-6 pb-4 pt-3">
+        <div className="flex w-fit max-w-full flex-wrap gap-1.5 rounded-xl bg-[#20324a] p-1">
+          {visibleTabs.map((tab) => {
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => handleTabSelect(tab.id)}
+                className={`flex min-h-11 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                  active ? "bg-[#0f1c2f] text-white shadow-sm" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <span className={active ? "opacity-100" : "opacity-60"}>{tab.icon}</span>
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
-      ) : null}
-
-      {/* Tab Content */}
-      <div
-        style={{
-          animation: "fadeIn 0.3s ease",
-          ...(activeTab === "overview" ? { height: "100%", minHeight: 0 } : {}),
-        }}
-      >
-        {renderTabContent()}
       </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">{renderTabContent()}</div>
     </div>
   );
 }
