@@ -80,7 +80,7 @@ export default function UsersPermissionsPanel() {
 
   return (
     <div className="space-y-5">
-      <section className="overflow-hidden rounded-[22px] border border-white/10 bg-[#1A2332]/95 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
+      <section className="overflow-hidden rounded-xl border border-white/10 bg-[#1A2332]/95 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
         <div className="flex flex-col gap-4 p-6 md:flex-row md:items-start md:justify-between">
           <div>
             <div className="flex items-center gap-3">
@@ -99,7 +99,7 @@ export default function UsersPermissionsPanel() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-[22px] border border-white/10 bg-[#1A2332]/95 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
+      <section className="overflow-hidden rounded-xl border border-white/10 bg-[#1A2332]/95 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
         <div className="border-b border-white/10 p-6">
           <div className="mb-1 flex items-center gap-3">
             <MailPlus className="h-5 w-5 text-[#d8b45a]" />
@@ -124,7 +124,7 @@ export default function UsersPermissionsPanel() {
             className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem_auto]"
           >
             <input
-              className="h-11 rounded-xl border border-[#35516f] bg-[#14304b] px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30"
+              className="h-11 rounded-lg border border-[#35516f] bg-[#14304b] px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30"
               type="email"
               value={inviteEmail}
               onChange={(event) => setInviteEmail(event.target.value)}
@@ -138,7 +138,7 @@ export default function UsersPermissionsPanel() {
               style={{ minHeight: 44, borderRadius: 12 }}
             />
             <button
-              className="inline-flex h-11 items-center justify-center rounded-lg bg-[#c7a64f] px-6 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-11 items-center justify-center rounded-md bg-[#c7a64f] px-6 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
               type="submit"
               disabled={inviteMutation.isPending}
             >
@@ -147,16 +147,16 @@ export default function UsersPermissionsPanel() {
           </form>
 
           {message ? (
-            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+            <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
               {message}
             </div>
           ) : null}
 
           {latestInviteUrl ? (
-            <div className="rounded-xl border border-[#d8b45a]/20 bg-[#d8b45a]/8 p-4">
+            <div className="rounded-lg border border-[#d8b45a]/20 bg-[#d8b45a]/8 p-4">
               <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-[#d8b45a]">Latest invite link</label>
               <input
-                className="h-11 w-full rounded-xl border border-white/10 bg-[#13263c] px-4 text-xs text-slate-200 outline-none"
+                className="h-11 w-full rounded-lg border border-white/10 bg-[#13263c] px-4 text-xs text-slate-200 outline-none"
                 value={latestInviteUrl}
                 readOnly
                 onFocus={(event) => event.currentTarget.select()}
@@ -169,15 +169,15 @@ export default function UsersPermissionsPanel() {
               <h4 className="text-sm font-semibold text-white">Pending Invites</h4>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">{invites.length}</span>
             </div>
-            {loading ? <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-sm text-slate-400">Loading users...</div> : null}
-            {failed ? <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-6 text-sm text-red-300">User permissions could not be loaded.</div> : null}
+            {loading ? <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-6 text-sm text-slate-400">Loading users...</div> : null}
+            {failed ? <div className="rounded-lg border border-red-500/25 bg-red-500/10 px-4 py-6 text-sm text-red-300">User permissions could not be loaded.</div> : null}
             {!loading && !failed && invites.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-6 text-center text-sm text-slate-400">
+              <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.03] px-4 py-6 text-center text-sm text-slate-400">
                 No pending invites right now.
               </div>
             ) : null}
             {!loading && !failed && invites.map((invite) => (
-              <div key={invite.id} className="rounded-2xl border border-white/10 bg-[#20324a] p-4">
+              <div key={invite.id} className="rounded-xl border border-white/10 bg-[#20324a] p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div>
                     <div className="font-medium text-white">{invite.email}</div>
@@ -186,7 +186,7 @@ export default function UsersPermissionsPanel() {
                     </div>
                   </div>
                   <button
-                    className="inline-flex h-10 items-center justify-center rounded-xl border border-red-400/20 bg-red-400/10 px-4 text-sm font-medium text-red-300 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-10 items-center justify-center rounded-lg border border-red-400/20 bg-red-400/10 px-4 text-sm font-medium text-red-300 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-60"
                     type="button"
                     onClick={() => cancelInviteMutation.mutate({ id: invite.id })}
                     disabled={cancelInviteMutation.isPending}
@@ -200,7 +200,7 @@ export default function UsersPermissionsPanel() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-[22px] border border-white/10 bg-[#1A2332]/95 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
+      <section className="overflow-hidden rounded-xl border border-white/10 bg-[#1A2332]/95 shadow-[0_12px_28px_rgba(2,6,23,0.16)]">
         <div className="border-b border-white/10 p-6">
           <div className="flex items-center gap-3">
             <Users className="h-5 w-5 text-[#94a3b8]" />
@@ -210,7 +210,7 @@ export default function UsersPermissionsPanel() {
 
         <div className="space-y-3 p-6">
           {!loading && !failed && team.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-6 text-center text-sm text-slate-400">
+            <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.03] px-4 py-6 text-center text-sm text-slate-400">
               No team members found.
             </div>
           ) : null}
@@ -218,8 +218,8 @@ export default function UsersPermissionsPanel() {
           {team.map((member) => {
             const isLastAdmin = member.accessLevel === "admin" && adminCount <= 1;
             return (
-              <div key={member.id} className="rounded-[18px] border border-[#35516f] bg-[#20324a] p-4">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div key={member.id} className="rounded-xl border border-[#35516f] bg-[#20324a] p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="truncate text-[1.05rem] font-semibold text-white">{member.email}</div>
@@ -237,9 +237,9 @@ export default function UsersPermissionsPanel() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-2 xl:min-w-[290px] xl:items-end">
+                  <div className="flex flex-col items-start gap-2 lg:min-w-[240px] lg:max-w-[280px] lg:items-end">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#8ea7c3]">Access Level</div>
-                    <div className="w-full xl:max-w-[250px]">
+                    <div className="w-full">
                       <PortalSelect
                         value={member.accessLevel}
                         onValueChange={(value) => setRoleMutation.mutate({ id: member.id, accessLevel: value as AccessLevel })}
@@ -249,13 +249,15 @@ export default function UsersPermissionsPanel() {
                         style={{ minHeight: 40, borderRadius: 12 }}
                       />
                     </div>
-                    <div className="text-right text-xs leading-5 text-slate-500">
-                      {member.accessLevel === "admin"
-                        ? "Can invite users, approve legacy requests, and manage permissions."
-                        : "Normal day-to-day access without admin controls."}
+                    <div className="max-w-[280px] text-xs leading-5 text-slate-500 lg:text-right">
+                      {isLastAdmin
+                        ? "Promote another user before removing the final admin."
+                        : member.accessLevel === "admin"
+                          ? "Can invite users, approve legacy requests, and manage permissions."
+                          : "Normal day-to-day access without admin controls."}
                     </div>
                     <button
-                      className="inline-flex h-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                       type="button"
                       disabled={removeMemberMutation.isPending || member.isCurrentUser || isLastAdmin}
                       onClick={() => removeMemberMutation.mutate({ id: member.id })}
