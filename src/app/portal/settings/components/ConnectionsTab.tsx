@@ -313,7 +313,7 @@ export function ConnectionsTab(props: any) {
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", minWidth: 200 }}>
-          <span style={{ fontSize: 20, fontWeight: 700, color: "var(--primary)" }}>{businessCreditPool} credits</span>
+          <span style={{ fontSize: 20, fontWeight: 700, color: "#d8b45a" }}>{businessCreditPool} credits</span>
         </div>
       </div>
 

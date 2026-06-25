@@ -1809,7 +1809,7 @@ export default function SettingsPage() {
         </ModalShell>
       ) : null}
 
-      <div className="border-b border-white/10 bg-[var(--settings-page-bg)] px-6 pb-4 pt-3">
+      <div className="bg-[var(--settings-page-bg)] px-6 pb-4 pt-3">
         <div className="flex w-fit max-w-full flex-wrap gap-1.5 rounded-xl bg-[#20324a] p-1">
           {visibleTabs.map((tab) => {
             const active = activeTab === tab.id;

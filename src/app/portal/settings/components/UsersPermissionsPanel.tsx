@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MailPlus, UserCog, Users } from "lucide-react";
+import { MailPlus, Shield, UserCog, Users } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { PortalSelect } from "@/app/portal/components/PortalSelect";
 
@@ -219,7 +219,7 @@ export default function UsersPermissionsPanel() {
             const isLastAdmin = member.accessLevel === "admin" && adminCount <= 1;
             return (
               <div key={member.id} className="rounded-lg border border-[#35516f] bg-[#20324a] px-4 py-3">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="truncate text-[1.05rem] font-semibold text-white">{member.email}</div>
@@ -228,42 +228,53 @@ export default function UsersPermissionsPanel() {
                           You
                         </span>
                       ) : null}
-                      <span className="rounded-full border border-[#d8b45a]/28 bg-[#d8b45a]/10 px-2.5 py-1 text-[11px] font-medium text-[#d8b45a]">
-                        {accessLabel(member.accessLevel)}
-                      </span>
+                      {member.accessLevel === "admin" ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[#d8b45a]/28 bg-[#d8b45a]/10 px-2.5 py-1 text-[11px] font-medium text-[#d8b45a]">
+                          <Shield className="h-3 w-3" />
+                          Admin
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-[#d8b45a]/22 bg-[#d8b45a]/8 px-2.5 py-1 text-[11px] font-medium text-[#cdb36a]">
+                          {accessLabel(member.accessLevel)}
+                        </span>
+                      )}
                     </div>
                     <div className="mt-1.5 text-sm text-slate-400">
                       {member.isCurrentUser ? "Current user" : `Team member · ${accessLabel(member.accessLevel)}`}
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-start gap-1.5 lg:min-w-[320px] lg:max-w-[320px] lg:items-end">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#8ea7c3]">Access Level</div>
-                    <div className="w-full">
-                      <PortalSelect
-                        value={member.accessLevel}
-                        onValueChange={(value) => setRoleMutation.mutate({ id: member.id, accessLevel: value as AccessLevel })}
-                        options={ACCESS_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
-                        ariaLabel={`Access level for ${member.email}`}
-                        disabled={setRoleMutation.isPending || isLastAdmin}
-                        style={{ minHeight: 40, borderRadius: 12 }}
-                      />
+                  <div className="flex w-full flex-col items-start gap-2 lg:w-[360px] lg:min-w-[360px] lg:flex-none lg:items-end">
+                    <div className="w-full text-[11px] font-semibold uppercase tracking-[0.1em] text-[#8ea7c3] lg:text-right">Access Level</div>
+                    <div className="flex w-full items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <PortalSelect
+                          value={member.accessLevel}
+                          onValueChange={(value) => setRoleMutation.mutate({ id: member.id, accessLevel: value as AccessLevel })}
+                          options={ACCESS_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                          ariaLabel={`Access level for ${member.email}`}
+                          disabled={setRoleMutation.isPending || isLastAdmin}
+                          style={{ minHeight: 42, borderRadius: 10, width: "100%" }}
+                        />
+                      </div>
+                      {!member.isCurrentUser ? (
+                        <button
+                          className="inline-flex h-10 items-center justify-center rounded-md border border-white/10 bg-white/5 px-4 text-sm font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                          type="button"
+                          disabled={removeMemberMutation.isPending || isLastAdmin}
+                          onClick={() => removeMemberMutation.mutate({ id: member.id })}
+                        >
+                          Remove
+                        </button>
+                      ) : null}
                     </div>
-                    <div className="max-w-[320px] text-xs leading-5 text-slate-500 lg:text-right">
+                    <div className="w-full text-xs leading-5 text-slate-500 lg:text-right">
                       {isLastAdmin
                         ? "Promote another admin before removing the final one."
                         : member.accessLevel === "admin"
                           ? "Can manage users and permissions."
                           : "Day-to-day workspace access."}
                     </div>
-                    <button
-                      className="inline-flex h-8 items-center justify-center rounded-md border border-white/10 bg-white/5 px-4 text-sm font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                      type="button"
-                      disabled={removeMemberMutation.isPending || member.isCurrentUser || isLastAdmin}
-                      onClick={() => removeMemberMutation.mutate({ id: member.id })}
-                    >
-                      Remove
-                    </button>
                   </div>
                 </div>
               </div>

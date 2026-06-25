@@ -146,7 +146,7 @@ export function AgentsTab() {
               key={agent.id}
               className="rounded-xl border border-white/10 bg-[#1c2839]/95 p-6 shadow-[0_12px_28px_rgba(2,6,23,0.16)]"
             >
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-3">
                     <h3 className="text-xl font-semibold text-white">{agent.name}</h3>
