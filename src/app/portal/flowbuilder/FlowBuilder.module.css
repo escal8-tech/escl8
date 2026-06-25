@@ -2,10 +2,11 @@
   display: grid;
   gap: 20px;
   padding: 20px;
-  border: 1px solid var(--portal-border);
-  border-radius: 12px;
-  background: var(--portal-card-plain);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 16px;
+  background: #1c2839;
   min-width: 0;
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.16);
 }
 
 .emptyState {
@@ -86,8 +87,8 @@
   min-width: min(100%, 220px);
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid var(--portal-border);
-  background: var(--portal-surface-muted);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: #20324a;
 }
 
 .routeChip strong {
@@ -122,9 +123,9 @@
   align-content: start;
   gap: 14px;
   padding: 18px;
-  border: 1px solid var(--portal-border);
+  border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 12px;
-  background: var(--portal-surface);
+  background: #20324a;
   color: var(--portal-text);
   text-align: left;
   transition:
@@ -135,14 +136,14 @@
 }
 
 .moduleCard:hover {
-  border-color: color-mix(in srgb, var(--portal-primary) 40%, var(--portal-border));
-  background: color-mix(in srgb, var(--portal-surface) 82%, white 18%);
+  border-color: color-mix(in srgb, var(--portal-primary) 40%, rgba(148, 163, 184, 0.14));
+  background: #243b53;
   transform: translateY(-1px);
 }
 
 .moduleCardActive {
-  border-color: color-mix(in srgb, var(--portal-primary) 58%, var(--portal-border));
-  background: color-mix(in srgb, var(--portal-surface) 74%, white 26%);
+  border-color: color-mix(in srgb, var(--portal-primary) 58%, rgba(148, 163, 184, 0.14));
+  background: #243b53;
   box-shadow: 0 0 0 1px rgba(8, 55, 116, 0.16);
 }
 
@@ -254,8 +255,8 @@
   width: 26px;
   height: 26px;
   border-radius: 999px;
-  border: 1px solid var(--portal-border);
-  background: var(--portal-card-plain);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: #1c2839;
   color: var(--portal-text-soft);
   font-size: 12px;
   font-weight: 700;
@@ -265,9 +266,9 @@
   display: grid;
   gap: 12px;
   padding: 16px;
-  border: 1px solid var(--portal-border);
+  border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 16px;
-  background: var(--portal-surface);
+  background: #20324a;
 }
 
 .drawerSectionTitle {
@@ -287,8 +288,8 @@
   align-items: center;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid var(--portal-border);
-  background: var(--portal-surface-muted);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: #243b53;
   color: var(--portal-text);
   font-size: 13px;
   line-height: 1.4;

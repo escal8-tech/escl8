@@ -1810,7 +1810,7 @@ export default function SettingsPage() {
       ) : null}
 
       <div className="bg-[var(--settings-page-bg)] px-6 pb-4 pt-3">
-        <div className="flex w-fit max-w-full flex-wrap gap-1.5 rounded-xl bg-[#20324a] p-1">
+        <div className="flex w-fit max-w-full flex-wrap gap-1.5 rounded-xl bg-[#243b53] p-1">
           {visibleTabs.map((tab) => {
             const active = activeTab === tab.id;
             return (
@@ -1819,7 +1819,7 @@ export default function SettingsPage() {
                 type="button"
                 onClick={() => handleTabSelect(tab.id)}
                 className={`flex min-h-11 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                  active ? "bg-[#0f1c2f] text-white shadow-sm" : "text-slate-400 hover:text-white"
+                  active ? "bg-[#1a2332] text-white shadow-sm" : "text-slate-300 hover:text-white"
                 }`}
               >
                 <span className={active ? "opacity-100" : "opacity-60"}>{tab.icon}</span>
