@@ -18,6 +18,7 @@ import { mergeWebsiteWidgetSettings, normalizeWebsiteWidgetSettings } from "@/li
 import { getBusinessAiCreditsUsedThisMonth } from "@/server/services/aiUsage";
 import { getTenantModuleAccess, tenantHasFeature } from "@/server/control/access";
 import { SUITE_FEATURES } from "@/server/control/subscription-features";
+import { createOrderInvoicePreviewArtifact } from "@/server/services/orderInvoice";
 import {
   getBusinessCustomizationSettingsRecord,
   getBusinessOrderSettingsRecord,
@@ -262,6 +263,42 @@ export const businessRouter = router({
         },
       };
     }),
+
+  getCustomizationPreview: businessProcedure.query(async ({ ctx }) => {
+    const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId)).limit(1);
+    if (!biz) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
+    }
+
+    const [customizationSettings, orderSettings] = await Promise.all([
+      getBusinessCustomizationSettingsRecord(ctx.businessId, biz.settings),
+      getBusinessOrderSettingsRecord(ctx.businessId, biz.settings),
+    ]);
+
+    const previewBase = String(process.env.CONCIERGE_PUBLIC_URL || "https://concierge.escal8.tech").replace(/\/+$/, "");
+    const trackingPreviewUrl = `${previewBase}/track/orders/preview/${encodeURIComponent(ctx.businessId)}`;
+
+    const invoicePreview = await createOrderInvoicePreviewArtifact({
+      businessId: ctx.businessId,
+      business: {
+        id: biz.id,
+        name: biz.name,
+        settings: {
+          ...((biz.settings ?? {}) as Record<string, unknown>),
+          customization: customizationSettings ?? {},
+        },
+      },
+      currency: orderSettings.currency,
+      trackingUrl: trackingPreviewUrl,
+    });
+
+    return {
+      invoicePreviewUrl: invoicePreview.url,
+      invoicePreviewFileName: invoicePreview.fileName,
+      trackingPreviewUrl,
+      generatedAt: invoicePreview.generatedAt,
+    };
+  }),
 
   updateMessageUsageTier: businessProcedure
     .input(

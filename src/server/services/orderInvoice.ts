@@ -24,6 +24,10 @@ export type OrderInvoiceArtifact = {
   generatedAt: Date;
 };
 
+export type OrderInvoicePreviewArtifact = OrderInvoiceArtifact & {
+  trackingPreviewUrl: string | null;
+};
+
 export type OrderInvoiceDocumentMessage = {
   type: "document";
   document: {
@@ -597,6 +601,118 @@ export async function createOrderInvoiceArtifact(input: {
     url: stored.url,
     storagePath: stored.blobPath,
     generatedAt: issuedAt,
+  };
+}
+
+export async function createOrderInvoicePreviewArtifact(input: {
+  businessId: string;
+  business?: BusinessInvoiceConfig | null;
+  currency?: string | null;
+  trackingUrl?: string | null;
+}): Promise<OrderInvoicePreviewArtifact> {
+  const businessId = cleanText(input.businessId, 160);
+  const issuedAt = new Date();
+  const invoiceNumber = `INV-${issuedAt.toISOString().slice(0, 10).replace(/-/g, "")}-PREVIEW`;
+  const fileName = `${safeToken(invoiceNumber, "invoice-preview")}.pdf`;
+  const business = input.business ?? {
+    id: businessId,
+    name: "Business",
+    settings: null,
+  };
+  const previewOrder: OrderRow = {
+    id: `preview-${safeToken(businessId, "business")}`,
+    businessId,
+    agentId: null,
+    supportTicketId: null,
+    source: "portal_preview",
+    customerId: null,
+    threadId: null,
+    threadAnchorMessageId: null,
+    channelIdentityId: null,
+    customerName: "John Perera",
+    customerPhone: "0772222666",
+    customerEmail: "john@example.com",
+    status: "payment_submitted",
+    fulfillmentStatus: "queued",
+    fulfillmentUpdatedAt: issuedAt,
+    recipientName: "John Perera",
+    recipientPhone: "0772222666",
+    shippingAddress: "Fiero by prime residence",
+    deliveryArea: "Colombo 11",
+    deliveryNotes: "Ring the bell on arrival.",
+    courierName: null,
+    trackingNumber: null,
+    trackingUrl: input.trackingUrl ?? null,
+    dispatchReference: null,
+    scheduledDeliveryAt: null,
+    fulfillmentNotes: null,
+    packedAt: null,
+    dispatchedAt: null,
+    outForDeliveryAt: null,
+    deliveredAt: null,
+    failedDeliveryAt: null,
+    returnedAt: null,
+    paymentMethod: "bank_qr",
+    currency: cleanText(input.currency || "LKR", 12) || "LKR",
+    expectedAmount: "36300.00",
+    paidAmount: null,
+    paymentReference: "ORD-PREVIEW",
+    ticketSnapshot: {
+      fields: {
+        orderItems: [
+          {
+            item: "TIANDY 4CH POE NVR TC-R3104",
+            quantity: "3",
+            unitPrice: "12100.00",
+            lineTotal: "36300.00",
+          },
+        ],
+      },
+    },
+    paymentConfigSnapshot: {},
+    notes: "Preview invoice generated from current customization settings.",
+    approvedAt: null,
+    paymentApprovedAt: null,
+    paymentRejectedAt: null,
+    invoiceNumber: null,
+    invoiceUrl: null,
+    invoiceStoragePath: null,
+    invoiceFileName: null,
+    invoiceStatus: "generated",
+    invoiceDeliveryMethod: null,
+    invoiceGeneratedAt: issuedAt,
+    invoiceSentAt: null,
+    refundRequestedAt: null,
+    refundedAt: null,
+    refundAmount: null,
+    refundReason: null,
+    createdAt: issuedAt,
+    updatedAt: issuedAt,
+  };
+  const pdfBuffer = await buildOrderInvoicePdf({
+    order: previewOrder,
+    business,
+    invoiceNumber,
+    issuedAt,
+    trackingUrl: input.trackingUrl ?? null,
+  });
+  const containerName = orderInvoiceContainer();
+  const stored = await storePrivateFileAtPath({
+    blobPath: `previews/${safeToken(businessId)}/invoice-preview/${fileName}`,
+    buffer: pdfBuffer,
+    fileName,
+    contentType: "application/pdf",
+    readTtlHours: LONG_READ_TTL_HOURS,
+    containerName,
+  });
+
+  return {
+    invoiceNumber,
+    fileName,
+    url: stored.url,
+    storagePath: stored.blobPath,
+    generatedAt: issuedAt,
+    trackingPreviewUrl: input.trackingUrl ?? null,
   };
 }
 

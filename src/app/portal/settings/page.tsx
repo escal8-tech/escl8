@@ -10,16 +10,19 @@ import {
   Bot,
   Building2,
   Calendar,
+  Clock3,
   CreditCard,
   ExternalLink,
   Link2,
   Lock,
   Mail,
+  MapPin,
   Palette,
+  Phone,
+  Settings2,
   Shield,
   Sun,
   Moon,
-  Ticket,
   User,
   Users,
   Workflow,
@@ -86,11 +89,6 @@ function getRequestedSettingsTab(rawValue: string | null): SettingsTab {
   return (TAB_CONFIG.find((tab) => tab.id === normalized)?.id ?? "profile") as SettingsTab;
 }
 
-function getInitials(email: string | null) {
-  if (!email) return "?";
-  return email.substring(0, 2).toUpperCase();
-}
-
 function Toggle({ checked, onChange, disabled = false }: { checked: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
   return (
     <button
@@ -133,10 +131,10 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-[28px] border border-white/10 bg-[#1A2332]/95 shadow-[0_18px_44px_rgba(2,6,23,0.22)]">
+    <section className="overflow-hidden rounded-[22px] border border-white/10 bg-[#1A2332]/95 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
       <div className="flex flex-col gap-4 border-b border-white/10 px-6 py-5 md:flex-row md:items-start md:justify-between">
         <div className="flex items-start gap-4">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#1d4ed8] text-white">{icon}</div>
+          <div className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-[#1d4ed8] text-white">{icon}</div>
           <div>
             <h2 className="text-[18px] font-semibold text-white">{title}</h2>
             <p className="mt-1 text-sm leading-6 text-slate-400">{description}</p>
@@ -168,7 +166,7 @@ function ModalShell({
 }) {
   return (
     <div className="fixed inset-0 z-[5000] grid place-items-center bg-slate-950/65 p-4 backdrop-blur-md">
-      <div className={`w-full ${widthClassName} overflow-hidden rounded-[30px] border border-white/10 bg-[#1A2332] shadow-[0_24px_80px_rgba(0,0,0,0.42)]`}>
+      <div className={`w-full ${widthClassName} overflow-hidden rounded-[24px] border border-white/10 bg-[#1A2332] shadow-[0_24px_80px_rgba(0,0,0,0.42)]`}>
         <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
           <div>
             {eyebrow ? <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#d8b45a]">{eyebrow}</div> : null}
@@ -277,6 +275,11 @@ export default function SettingsPage() {
 
   const requestedTab = getRequestedSettingsTab(searchParams?.get("tab"));
   const activeTab = visibleTabs.some((tab) => tab.id === requestedTab) ? requestedTab : (visibleTabs[0]?.id ?? "profile");
+  const customizationPreviewQuery = trpc.business.getCustomizationPreview.useQuery(undefined, {
+    enabled: !!email && activeTab === "customization",
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 1000,
+  });
 
   useEffect(() => {
     if (!businessQuery.data) return;
@@ -492,6 +495,7 @@ export default function SettingsPage() {
         timezone,
       });
       await businessQuery.refetch();
+      await customizationPreviewQuery.refetch();
       setProfileModalOpen(false);
       showSuccessToast(toast, {
         title: "Profile updated",
@@ -574,6 +578,7 @@ export default function SettingsPage() {
         invoiceFooterNote: customInvoiceFooterNote.trim(),
       });
       await businessQuery.refetch();
+      await customizationPreviewQuery.refetch();
       setBrandingModalOpen(false);
       showSuccessToast(toast, {
         title: "Customization updated",
@@ -743,8 +748,9 @@ export default function SettingsPage() {
   const profilePhone = customPhone || "No phone";
   const profileEmail = customEmail || email || "No email";
   const profileAddress = customAddress || "No address";
-  const profileWebsite = customWebsite || "No website";
   const bookingWindow = openTime && closeTime ? `${openTime} - ${closeTime}` : "Not configured";
+  const customizationPreviewUrl = customizationPreviewQuery.data?.invoicePreviewUrl || "";
+  const trackingPreviewUrl = customizationPreviewQuery.data?.trackingPreviewUrl || "";
 
   const renderProfileTab = () => (
     <div className="space-y-6 p-6">
@@ -787,73 +793,222 @@ export default function SettingsPage() {
           </div>
         }
       >
-        <div className="grid gap-5 lg:grid-cols-[1.3fr_0.9fr]">
-          <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
-            <div className="flex items-center gap-5">
-              <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-gradient-to-br from-[#1957dd] to-[#1aa7df] text-[30px] font-bold text-white">
-                {getInitials(email)}
+        <div className="space-y-3">
+          <div className="grid gap-3 xl:grid-cols-[1fr_1fr]">
+            <div className="rounded-[18px] border border-[#35516f] bg-[#20324a] p-4">
+              <label className="mb-2 block text-xs font-medium text-slate-400">Display Name</label>
+              <div className="flex items-center gap-3">
+                <input
+                  readOnly
+                  value={email?.split("@")[0] || "User"}
+                  className="h-10 flex-1 rounded-[10px] border border-[#35516f] bg-[#14304b] px-4 text-sm text-slate-200 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setProfileModalOpen(true)}
+                  className="inline-flex h-10 items-center justify-center rounded-[10px] bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110"
+                >
+                  Edit
+                </button>
               </div>
-              <div>
-                <div className="text-2xl font-semibold text-white">{email?.split("@")[0] || "User"}</div>
-                <div className="mt-2 text-sm text-slate-400">{email || "No email"}</div>
-                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
-                  <span className="h-2 w-2 rounded-full bg-emerald-300" />
-                  Active Account
+            </div>
+            <div className="rounded-[18px] border border-[#35516f] bg-[#20324a] p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm font-semibold text-white">Company Access</div>
+                  <div className="mt-1 text-sm text-slate-400">Currently connected to {business?.name || "your business"}.</div>
                 </div>
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex h-10 items-center justify-center rounded-[10px] border border-[#45607d] bg-transparent px-4 text-sm font-semibold text-slate-300 opacity-80"
+                >
+                  Current Workspace
+                </button>
               </div>
             </div>
           </div>
-          <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
-            <div className="flex items-center justify-between gap-4">
+
+          <div className="rounded-[18px] border border-[#35516f] bg-[#20324a] px-4 py-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <div className="text-lg font-semibold text-white">Company Access</div>
-                <div className="mt-2 text-sm text-slate-400">Currently connected to {business?.name || "your business"}.</div>
+                <div className="text-sm font-semibold text-white">Company Gmail Invoice Sender</div>
+                <div className="mt-1 text-sm text-slate-400">
+                  {gmailConnected
+                    ? `Connected for this company as ${gmailAddress || "the connected Gmail account"}`
+                    : "No company Gmail connected for invoice updates yet."}
+                </div>
+                {gmailError ? <div className="mt-2 text-sm text-red-300">{gmailError}</div> : null}
               </div>
-              <button
-                type="button"
-                disabled
-                className="inline-flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-slate-400 opacity-70"
-              >
-                Current Workspace
-              </button>
+              <div className="flex flex-wrap gap-3">
+                {gmailConnected ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void handleConnectGmail()}
+                      disabled={gmailConnectPending}
+                      className="inline-flex h-10 items-center justify-center rounded-[10px] bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
+                    >
+                      {gmailConnectPending ? "Connecting..." : "Reconnect"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDisconnectGmail()}
+                      disabled={disconnectGmail.isPending}
+                      className="inline-flex h-10 items-center justify-center rounded-[10px] border border-red-400/25 bg-red-400/10 px-4 text-sm font-semibold text-red-300 transition hover:bg-red-400/15 disabled:opacity-60"
+                    >
+                      {disconnectGmail.isPending ? "Disconnecting..." : "Disconnect"}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleConnectGmail()}
+                    disabled={gmailConnectPending}
+                    className="inline-flex h-10 items-center justify-center rounded-[10px] bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
+                  >
+                    {gmailConnectPending ? "Connecting..." : "Connect Gmail"}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </SectionCard>
 
-      <SectionCard
-        icon={<Building2 className="h-5 w-5" />}
-        title="Business Profile"
-        description="Business identity, invoice contact details, and timezone used across the concierge workspace."
-        action={
-          <button
-            type="button"
-            onClick={() => setProfileModalOpen(true)}
-            className="inline-flex h-11 items-center justify-center rounded-xl border border-[#d8b45a]/35 bg-[#d8b45a]/12 px-5 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/18"
-          >
-            Edit
-          </button>
-        }
-      >
-        <div className="grid gap-4 xl:grid-cols-2">
-          <FieldTile label="Business Name" value={profileDisplayName} />
-          <FieldTile label="Timezone" value={timezone} />
-          <FieldTile label="Phone" value={profilePhone} />
-          <FieldTile label="Email" value={profileEmail} />
-          <FieldTile label="Website" value={profileWebsite} />
-          <FieldTile label="Business ID" value={business?.id || "-"} valueClassName="font-mono text-sm text-slate-300" />
-          <div className="xl:col-span-2">
-            <FieldTile label="Address" value={profileAddress} />
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <section className="rounded-[22px] border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#d8b45a]/10 text-[#d8b45a]">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <h2 className="mt-4 text-lg font-semibold text-white">Business profile</h2>
+              <p className="mt-1 text-sm text-slate-400">Customer-facing identity and contact details.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setProfileModalOpen(true)}
+              className="rounded-full border border-[#d8b45a]/35 px-3 py-2 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/10"
+            >
+              Edit
+            </button>
           </div>
-        </div>
-      </SectionCard>
+          <div className="mt-5 space-y-3 text-sm">
+            <div className="flex items-start gap-3">
+              <Building2 className="mt-0.5 h-4 w-4 text-slate-500" />
+              <div>
+                <p className="font-semibold text-white">{profileDisplayName}</p>
+                <p className="text-slate-400">Agent concierge workspace</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <MapPin className="mt-0.5 h-4 w-4 text-slate-500" />
+              <p className="text-slate-300">{profileAddress}</p>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="flex items-center gap-2 rounded-lg bg-[#20324a] px-3 py-2">
+                <Phone className="h-4 w-4 text-slate-500" />
+                <span className="truncate text-slate-300">{profilePhone}</span>
+              </div>
+              <div className="flex items-center gap-2 rounded-lg bg-[#20324a] px-3 py-2">
+                <Mail className="h-4 w-4 text-slate-500" />
+                <span className="truncate text-slate-300">{profileEmail}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-[22px] border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#d8b45a]/10 text-[#d8b45a]">
+                <Clock3 className="h-5 w-5" />
+              </div>
+              <h2 className="mt-4 text-lg font-semibold text-white">Business hours</h2>
+              <p className="mt-1 text-sm text-slate-400">Opening window used by the widget and calendar.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBookingModalOpen(true)}
+              className="rounded-full border border-[#d8b45a]/35 px-3 py-2 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/10"
+            >
+              Edit
+            </button>
+          </div>
+          <div className="mt-5 rounded-xl border border-white/10 bg-[#20324a] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Open window</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{bookingWindow}</p>
+            <p className="mt-2 text-sm text-slate-400">{bookingsEnabled ? "Bookings follow the configured concierge intake window." : "Bookings are disabled right now."}</p>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+              <span
+                key={day}
+                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  bookingsEnabled
+                    ? "bg-emerald-400/10 text-emerald-300"
+                    : "bg-[#20324a] text-slate-500"
+                }`}
+              >
+                {day}
+              </span>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-[22px] border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#d8b45a]/10 text-[#d8b45a]">
+                <Settings2 className="h-5 w-5" />
+              </div>
+              <h2 className="mt-4 text-lg font-semibold text-white">Workspace defaults</h2>
+              <p className="mt-1 text-sm text-slate-400">Timezone, flow, payment, and invoice basics.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPaymentModalOpen(true)}
+              className="rounded-full border border-[#d8b45a]/35 px-3 py-2 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/10"
+            >
+              Edit
+            </button>
+          </div>
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="rounded-xl bg-[#20324a] p-3">
+              <p className="text-xs text-slate-400">Timezone</p>
+              <p className="mt-1 truncate font-semibold text-white">{timezone}</p>
+            </div>
+            <div className="rounded-xl bg-[#20324a] p-3">
+              <p className="text-xs text-slate-400">Slot length</p>
+              <p className="mt-1 font-semibold text-white">{timeslotMinutes} min</p>
+            </div>
+            <div className="rounded-xl bg-[#20324a] p-3">
+              <p className="text-xs text-slate-400">Flow</p>
+              <p className="mt-1 font-semibold text-white">Order queue</p>
+            </div>
+            <div className="rounded-xl bg-[#20324a] p-3">
+              <p className="text-xs text-slate-400">Invoices</p>
+              <p className="mt-1 font-semibold text-white">Enabled</p>
+            </div>
+            <div className="rounded-xl bg-[#20324a] p-3">
+              <p className="text-xs text-slate-400">Payment</p>
+              <p className="mt-1 font-semibold text-white">{paymentMethodLabel}</p>
+            </div>
+            <div className="rounded-xl bg-[#20324a] p-3">
+              <p className="text-xs text-slate-400">Delivery charge</p>
+              <p className="mt-1 font-semibold text-white">{deliveryChargeEnabled ? "Enabled" : "Disabled"}</p>
+            </div>
+          </div>
+        </section>
+      </div>
 
       <SectionCard
         icon={<Mail className="h-5 w-5" />}
         title="Order Email Updates"
         description="Send the payment-approved email from a company Gmail account after staff manually verify the payment."
       >
-        <div className="flex flex-col gap-4 rounded-[24px] border border-white/10 bg-[#20324a] p-5 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-4 rounded-[18px] border border-[#35516f] bg-[#20324a] p-5 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="text-lg font-semibold text-white">
               {gmailConnected ? "Company Gmail Connected" : "Company Gmail Not Connected"}
@@ -895,33 +1050,72 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => setPaymentModalOpen(true)}
-            className="inline-flex h-11 items-center justify-center rounded-xl border border-[#d8b45a]/35 bg-[#d8b45a]/12 px-5 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/18"
+            className="inline-flex h-10 items-center justify-center rounded-lg bg-[#c7a64f] px-4 text-sm font-semibold text-[#0f172a] transition hover:brightness-105"
           >
-            Edit Payment
+            Save Payment
           </button>
         }
       >
-        <div className="grid gap-4 xl:grid-cols-2">
-          <FieldTile label="Collection Method" value={paymentMethodLabel} />
-          <FieldTile label="Currency" value={orderCurrency || "LKR"} />
-          <FieldTile label="Delivery Charge" value={deliveryChargeEnabled ? `${deliveryChargeType === "percentage" ? `${deliveryChargeValue}%` : deliveryChargeValue}` : "Disabled"} />
-          <FieldTile label="Proof Requirement" value={paymentSlipRequired ? "Slip required" : "Plain text confirmations allowed"} />
-          {orderPaymentMethod === "bank_qr" ? (
-            <>
+        <div className="space-y-5">
+          <div className="grid gap-4 xl:grid-cols-[220px_1fr]">
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Currency</div>
+              <div className="rounded-xl border border-white/10 bg-[#20324a] px-4 py-3 text-white">{orderCurrency || "LKR"}</div>
+            </div>
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Collection method</div>
+              <div className="grid gap-3 md:grid-cols-3">
+                {[
+                  { id: "manual", label: "Manual review", desc: "Let staff confirm cash, POS, or custom payment notes manually." },
+                  { id: "bank_qr", label: "Bank / QR", desc: "Show transfer instructions, bank details, and optional QR in checkout." },
+                  { id: "cod", label: "No upfront collection", desc: "Let customers complete the order without payment instructions." },
+                ].map((option) => {
+                  const active = orderPaymentMethod === option.id;
+                  return (
+                    <div
+                      key={option.id}
+                      className={`rounded-2xl border p-4 ${
+                        active ? "border-[#d8b45a] bg-[#d8b45a]/10" : "border-white/10 bg-[#20324a]"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-white">{option.label}</div>
+                          <div className="mt-2 text-sm leading-6 text-slate-400">{option.desc}</div>
+                        </div>
+                        <span className={`mt-1 h-3 w-3 rounded-full border ${active ? "border-[#d8b45a] bg-[#d8b45a]" : "border-[#6482a8]"}`} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[22px] border border-emerald-400/12 bg-[#15363b]/95 p-4">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div>
+                <div className="text-lg font-semibold text-white">Bank / QR details</div>
+                <div className="mt-1 text-sm text-slate-400">These instructions are shown when customers choose Bank / QR.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaymentModalOpen(true)}
+                className="rounded-full border border-[#d8b45a]/35 px-3 py-2 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/10"
+              >
+                Edit
+              </button>
+            </div>
+            <div className="grid gap-4 xl:grid-cols-3">
               <FieldTile label="Bank" value={bankName || "Not set"} />
               <FieldTile label="Account Name" value={accountName || "Not set"} />
               <FieldTile label="Account Number" value={accountNumber || "Not set"} />
-              <div className="xl:col-span-2">
-                <FieldTile label="Transfer Instructions" value={accountInstructions || "No transfer instructions configured."} />
-              </div>
-            </>
-          ) : (
-            <div className="xl:col-span-2 rounded-2xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
-              {orderPaymentMethod === "manual"
-                ? "Staff will review payment manually from the queue."
-                : "Customers pay when the order is delivered."}
             </div>
-          )}
+            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+              <FieldTile label="QR Image" value={bankQrImageUrl ? "Uploaded" : "Not uploaded"} />
+              <FieldTile label="Instructions" value={accountInstructions || "No transfer instructions configured."} />
+            </div>
+          </div>
         </div>
       </SectionCard>
 
@@ -945,7 +1139,7 @@ export default function SettingsPage() {
       <SectionCard
         icon={<Calendar className="h-5 w-5" />}
         title="Booking Configuration"
-        description="Configure appointment intake, timeslot duration, capacity, and operating hours."
+        description="Toggle concierge booking intake here. Shared defaults stay in the profile workspace cards."
         action={
           <button
             type="button"
@@ -956,17 +1150,18 @@ export default function SettingsPage() {
           </button>
         }
       >
-        <div className="grid gap-4 xl:grid-cols-4">
-          <FieldTile label="Bookings" value={bookingsEnabled ? "Enabled" : "Disabled"} />
-          <FieldTile label="Slot Capacity" value={String(unitCapacity)} />
-          <FieldTile label="Slot Length" value={`${timeslotMinutes} min`} />
-          <FieldTile label="Open Window" value={bookingWindow} />
-        </div>
-        {!bookingsEnabled ? (
-          <div className="mt-4 rounded-2xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
-            Turn bookings on to configure appointment capacity, time slot duration, and operating hours.
+        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-[#20324a] px-4 py-4">
+          <div>
+            <div className="text-base font-semibold text-white">Enable Bookings</div>
+            <div className="mt-1 text-sm text-slate-400">Allow customers to book appointments through WhatsApp.</div>
           </div>
-        ) : null}
+          <Toggle checked={bookingsEnabled} onChange={setBookingsEnabled} />
+        </div>
+        <div className="mt-4 rounded-2xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
+          {bookingsEnabled
+            ? "Booking intake is active. Use the shared cards on the Profile tab to review the current slot window and workspace defaults."
+            : "Bookings are disabled. Enable them here, then adjust slot length and opening window from the shared profile cards."}
+        </div>
       </SectionCard>
     </div>
   );
@@ -975,8 +1170,8 @@ export default function SettingsPage() {
     <div className="space-y-6 p-6">
       <SectionCard
         icon={<Palette className="h-5 w-5" />}
-        title="Invoice Customization"
-        description="Brand the invoice PDF and tracking experience with logo, palette, and footer styling."
+        title="Customization"
+        description="Keep the branding summary lightweight here, then open the editor modal to update logo and palette."
         action={
           <button
             type="button"
@@ -987,23 +1182,53 @@ export default function SettingsPage() {
           </button>
         }
       >
-        <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
-            <div className="mb-5 flex items-center gap-4">
-              <div className="h-20 w-20 overflow-hidden rounded-2xl border border-white/10 bg-[#13263c]">
-                {customLogoUrl ? (
-                  <Image src={customLogoUrl} alt="Invoice logo" width={80} height={80} unoptimized className="h-full w-full object-contain" />
-                ) : (
-                  <div className="grid h-full w-full place-items-center text-xs text-slate-500">No logo</div>
-                )}
-              </div>
-              <div>
-                <div className="text-lg font-semibold text-white">{profileDisplayName}</div>
-                <div className="mt-2 text-sm text-slate-400">{profileAddress}</div>
-                <div className="mt-2 text-sm text-slate-400">{[customPhone, customEmail].filter(Boolean).join(" | ") || "Phone | Email"}</div>
-              </div>
+        <div className="space-y-5">
+          <div>
+            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Tracking link preview</div>
+            <div className="flex flex-col gap-3 lg:flex-row">
+              <input
+                readOnly
+                value={trackingPreviewUrl || "Generating tracking preview..."}
+                className="h-12 flex-1 rounded-xl border border-white/10 bg-[#14304b] px-4 text-sm text-slate-200 outline-none"
+              />
+              <a
+                href={trackingPreviewUrl || undefined}
+                target="_blank"
+                rel="noreferrer"
+                className={`inline-flex h-12 items-center justify-center rounded-lg px-5 text-sm font-semibold transition ${
+                  trackingPreviewUrl ? "bg-[#1656d8] text-white hover:brightness-110" : "pointer-events-none bg-white/10 text-slate-500"
+                }`}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Open Preview
+              </a>
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
+          </div>
+
+          <div className="rounded-[22px] border border-white/10 bg-[#1A2332]/95 p-5 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-[#20324a]">
+                  {customLogoUrl ? (
+                    <Image src={customLogoUrl} alt="Brand logo" width={64} height={64} unoptimized className="h-full w-full object-contain" />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center text-xs text-slate-500">No logo</div>
+                  )}
+                </div>
+                <div>
+                  <div className="text-xl font-semibold text-white">{profileDisplayName}</div>
+                  <div className="mt-2 text-sm text-slate-400">/track/orders/preview/{business?.id || "workspace"}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBrandingModalOpen(true)}
+                className="inline-flex h-11 items-center justify-center rounded-lg bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105"
+              >
+                Edit branding
+              </button>
+            </div>
+            <div className="mt-5 grid gap-4 md:grid-cols-3">
               <FieldTile
                 label="Primary"
                 value={<div className="flex items-center gap-3"><span className="h-6 w-6 rounded-md border border-white/10" style={{ backgroundColor: customPrimaryColor }} />{customPrimaryColor}</div>}
@@ -1012,81 +1237,43 @@ export default function SettingsPage() {
                 label="Accent"
                 value={<div className="flex items-center gap-3"><span className="h-6 w-6 rounded-md border border-white/10" style={{ backgroundColor: customSecondaryColor }} />{customSecondaryColor}</div>}
               />
+              <FieldTile label="Assets" value={customLogoUrl ? "Logo set" : "No logo"} />
             </div>
-          </div>
-
-          <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
-            <div className="text-xs font-semibold uppercase tracking-[0.1em] text-[#8ea7c3]">Invoice Footer</div>
-            <p className="mt-3 text-sm leading-7 text-slate-300">{customInvoiceFooterNote || "No footer note configured."}</p>
           </div>
         </div>
       </SectionCard>
 
       <SectionCard
-        icon={<Ticket className="h-5 w-5" />}
+        icon={<BookOpenText className="h-5 w-5" />}
         title="Invoice Preview"
-        description="Preview the invoice look with sample data before sending real order documents."
+        description="This uses the real invoice generator with sample order data and the current workspace branding."
       >
-        <div className="rounded-[28px] border border-white/10 bg-[#102034] p-6">
-          <div className="h-2 rounded-full" style={{ background: `linear-gradient(90deg, ${customPrimaryColor}, ${customSecondaryColor})` }} />
-          <div className="mt-6 flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-[#13263c]">
-                {customLogoUrl ? (
-                  <Image src={customLogoUrl} alt="Brand logo" width={64} height={64} unoptimized className="h-full w-full object-contain" />
-                ) : null}
-              </div>
-              <div>
-                <div className="text-2xl font-semibold text-white">{profileDisplayName}</div>
-                <div className="mt-2 text-sm text-slate-400">{profileAddress}</div>
-                <div className="mt-2 text-sm text-slate-400">{[customPhone, customEmail, customWebsite].filter(Boolean).join(" | ")}</div>
-              </div>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-[#1A2332] px-4 py-3 text-right">
-              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8ea7c3]">Invoice</div>
-              <div className="mt-2 text-xl font-semibold text-white">INV-20260625-TEST001</div>
-              <div className="mt-2 text-sm text-slate-400">Manual review pending</div>
-            </div>
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <a
+              href={customizationPreviewUrl || undefined}
+              target="_blank"
+              rel="noreferrer"
+              className={`inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold transition ${
+                customizationPreviewUrl ? "bg-[#1656d8] text-white hover:brightness-110" : "pointer-events-none bg-white/10 text-slate-500"
+              }`}
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Open PDF
+            </a>
           </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-4">
-            <FieldTile label="Customer" value="John Perera" />
-            <FieldTile label="Amount" value={`${orderCurrency} 36,300.00`} />
-            <FieldTile label="Method" value={paymentMethodLabel} />
-            <FieldTile label="Date" value="Jun 25, 2026" />
-          </div>
-          <div className="mt-6 rounded-2xl border border-white/10 bg-[#1A2332] p-4">
-            <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3 text-sm font-semibold text-slate-300">
-              <span>TIANDY 4CH POE NVR TC-R3104</span>
-              <span>3 x 12,100.00</span>
-            </div>
-            <div className="flex items-center justify-between gap-3 pt-3 text-base font-semibold text-white">
-              <span>Total</span>
-              <span>{orderCurrency} 36,300.00</span>
-            </div>
-          </div>
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        icon={<ExternalLink className="h-5 w-5" />}
-        title="Tracking Link Preview"
-        description="This reflects the branded order tracking page customers open from a shared link."
-      >
-        <div className="rounded-[28px] border border-white/10 bg-[#102034] p-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8ea7c3]">Track Order</div>
-              <div className="mt-2 text-2xl font-semibold text-white">{profileDisplayName}</div>
-              <div className="mt-2 text-sm text-slate-400">https://concierge.escal8.tech/track/orders/sample-token</div>
-            </div>
-            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm font-semibold text-emerald-300">
-              Status: Payment Under Review
-            </div>
-          </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <FieldTile label="Order" value="#f8dec23f" />
-            <FieldTile label="Delivery" value="Fiero by prime residence" />
-            <FieldTile label="Contact" value={profilePhone} />
+          <div className="overflow-hidden rounded-[22px] border border-white/10 bg-[#102034]">
+            {customizationPreviewQuery.isLoading ? (
+              <div className="grid min-h-[720px] place-items-center text-sm text-slate-400">Generating invoice preview...</div>
+            ) : customizationPreviewUrl ? (
+              <iframe
+                title="Invoice preview PDF"
+                src={`${customizationPreviewUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                className="h-[920px] w-full bg-white"
+              />
+            ) : (
+              <div className="grid min-h-[720px] place-items-center text-sm text-slate-400">Invoice preview could not be generated.</div>
+            )}
           </div>
         </div>
       </SectionCard>
@@ -1605,12 +1792,28 @@ export default function SettingsPage() {
             </div>
             <div className="rounded-[28px] border border-white/10 bg-[#102034] p-6">
               <div className="h-2 rounded-full" style={{ background: `linear-gradient(90deg, ${customPrimaryColor}, ${customSecondaryColor})` }} />
-              <div className="mt-5 text-xl font-semibold text-white">{profileDisplayName}</div>
-              <div className="mt-3 text-sm text-slate-400">{profileAddress}</div>
-              <div className="mt-2 text-sm text-slate-400">{[customPhone, customEmail].filter(Boolean).join(" | ")}</div>
-              <div className="mt-6 rounded-2xl border border-white/10 bg-[#1A2332] p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[#8ea7c3]">Footer Preview</div>
-                <p className="mt-3 text-sm leading-7 text-slate-300">{customInvoiceFooterNote || "No footer note configured."}</p>
+              <div className="mt-5 flex items-center gap-4">
+                <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-[#1A2332]">
+                  {customLogoUrl ? (
+                    <Image src={customLogoUrl} alt="Brand logo preview" width={64} height={64} unoptimized className="h-full w-full object-contain" />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center text-xs text-slate-500">Logo</div>
+                  )}
+                </div>
+                <div>
+                  <div className="text-xl font-semibold text-white">{profileDisplayName}</div>
+                  <div className="mt-2 text-sm text-slate-400">Tracking and invoice previews reuse this branding.</div>
+                </div>
+              </div>
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <FieldTile
+                  label="Primary"
+                  value={<div className="flex items-center gap-3"><span className="h-6 w-6 rounded-md border border-white/10" style={{ backgroundColor: customPrimaryColor }} />{customPrimaryColor}</div>}
+                />
+                <FieldTile
+                  label="Accent"
+                  value={<div className="flex items-center gap-3"><span className="h-6 w-6 rounded-md border border-white/10" style={{ backgroundColor: customSecondaryColor }} />{customSecondaryColor}</div>}
+                />
               </div>
             </div>
           </div>

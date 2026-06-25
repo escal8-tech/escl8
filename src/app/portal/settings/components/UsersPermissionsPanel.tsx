@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { MailPlus, UserCog, Users } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { PortalSelect } from "@/app/portal/components/PortalSelect";
 
@@ -78,11 +79,14 @@ export default function UsersPermissionsPanel() {
   const failed = teamQuery.isError || invitesQuery.isError;
 
   return (
-    <div className="space-y-6 bg-[var(--settings-page-bg)] p-6">
-      <section className="overflow-hidden rounded-[28px] border border-white/10 bg-[#1A2332]/95 shadow-[0_18px_44px_rgba(2,6,23,0.22)]">
+    <div className="space-y-5">
+      <section className="overflow-hidden rounded-[22px] border border-white/10 bg-[#1A2332]/95 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
         <div className="flex flex-col gap-4 p-6 md:flex-row md:items-start md:justify-between">
           <div>
-            <h2 className="text-[22px] font-semibold text-white">Users & Permissions</h2>
+            <div className="flex items-center gap-3">
+              <UserCog className="h-6 w-6 text-[#94a3b8]" />
+              <h2 className="text-[22px] font-semibold text-white">Users & Permissions</h2>
+            </div>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
               Invite teammates directly. Users cannot pick a business from a selector; they either own a new business or join through an invite.
             </p>
@@ -95,9 +99,12 @@ export default function UsersPermissionsPanel() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-[28px] border border-white/10 bg-[#1A2332]/95 shadow-[0_18px_44px_rgba(2,6,23,0.22)]">
+      <section className="overflow-hidden rounded-[22px] border border-white/10 bg-[#1A2332]/95 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
         <div className="border-b border-white/10 p-6">
-          <h3 className="text-xl font-semibold text-white">Invite Teammate</h3>
+          <div className="mb-1 flex items-center gap-3">
+            <MailPlus className="h-5 w-5 text-[#d8b45a]" />
+            <h3 className="text-xl font-semibold text-white">Invite Teammate</h3>
+          </div>
           <p className="mt-2 text-sm leading-6 text-slate-400">
             The invite link binds the user to this workspace. If Gmail is connected, the system sends the email automatically.
           </p>
@@ -114,10 +121,10 @@ export default function UsersPermissionsPanel() {
               }
               inviteMutation.mutate({ email, accessLevel: inviteAccess });
             }}
-            className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_220px]"
+            className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem_auto]"
           >
             <input
-              className="h-12 rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30"
+              className="h-11 rounded-xl border border-[#35516f] bg-[#14304b] px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30"
               type="email"
               value={inviteEmail}
               onChange={(event) => setInviteEmail(event.target.value)}
@@ -128,10 +135,10 @@ export default function UsersPermissionsPanel() {
               onValueChange={(value) => setInviteAccess(value as AccessLevel)}
               options={ACCESS_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
               ariaLabel="Invite access level"
-              style={{ minHeight: 48, borderRadius: 14 }}
+              style={{ minHeight: 44, borderRadius: 12 }}
             />
             <button
-              className="inline-flex h-12 items-center justify-center rounded-xl bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-11 items-center justify-center rounded-lg bg-[#c7a64f] px-6 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
               type="submit"
               disabled={inviteMutation.isPending}
             >
@@ -193,9 +200,12 @@ export default function UsersPermissionsPanel() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-[28px] border border-white/10 bg-[#1A2332]/95 shadow-[0_18px_44px_rgba(2,6,23,0.22)]">
+      <section className="overflow-hidden rounded-[22px] border border-white/10 bg-[#1A2332]/95 shadow-[0_14px_34px_rgba(2,6,23,0.18)]">
         <div className="border-b border-white/10 p-6">
-          <h3 className="text-xl font-semibold text-white">Active Team</h3>
+          <div className="flex items-center gap-3">
+            <Users className="h-5 w-5 text-[#94a3b8]" />
+            <h3 className="text-xl font-semibold text-white">Active Team</h3>
+          </div>
         </div>
 
         <div className="space-y-3 p-6">
@@ -208,28 +218,44 @@ export default function UsersPermissionsPanel() {
           {team.map((member) => {
             const isLastAdmin = member.accessLevel === "admin" && adminCount <= 1;
             return (
-              <div key={member.id} className="rounded-2xl border border-white/10 bg-[#20324a] p-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div key={member.id} className="rounded-[18px] border border-[#35516f] bg-[#20324a] p-4">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0">
-                    <div className="truncate text-lg font-semibold text-white">{member.email}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="truncate text-[1.05rem] font-semibold text-white">{member.email}</div>
+                      {member.isCurrentUser ? (
+                        <span className="rounded-full border border-[#2563eb]/25 bg-[#2563eb]/14 px-2.5 py-1 text-[11px] font-medium text-[#9fc1ff]">
+                          You
+                        </span>
+                      ) : null}
+                      <span className="rounded-full border border-[#d8b45a]/28 bg-[#d8b45a]/10 px-2.5 py-1 text-[11px] font-medium text-[#d8b45a]">
+                        {accessLabel(member.accessLevel)}
+                      </span>
+                    </div>
                     <div className="mt-2 text-sm text-slate-400">
-                      {member.isCurrentUser ? "Current user" : "Team member"} · {accessLabel(member.accessLevel)}
+                      {member.isCurrentUser ? "Current user" : `Team member · ${accessLabel(member.accessLevel)}`}
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-3 lg:min-w-[260px] lg:items-end">
-                    <div className="w-full lg:max-w-[250px]">
+                  <div className="flex flex-col gap-2 xl:min-w-[290px] xl:items-end">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#8ea7c3]">Access Level</div>
+                    <div className="w-full xl:max-w-[250px]">
                       <PortalSelect
                         value={member.accessLevel}
                         onValueChange={(value) => setRoleMutation.mutate({ id: member.id, accessLevel: value as AccessLevel })}
                         options={ACCESS_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
                         ariaLabel={`Access level for ${member.email}`}
                         disabled={setRoleMutation.isPending || isLastAdmin}
-                        style={{ minHeight: 48, borderRadius: 14 }}
+                        style={{ minHeight: 40, borderRadius: 12 }}
                       />
                     </div>
+                    <div className="text-right text-xs leading-5 text-slate-500">
+                      {member.accessLevel === "admin"
+                        ? "Can invite users, approve legacy requests, and manage permissions."
+                        : "Normal day-to-day access without admin controls."}
+                    </div>
                     <button
-                      className="inline-flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="inline-flex h-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                       type="button"
                       disabled={removeMemberMutation.isPending || member.isCurrentUser || isLastAdmin}
                       onClick={() => removeMemberMutation.mutate({ id: member.id })}
