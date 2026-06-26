@@ -175,6 +175,28 @@ const styles: Record<string, React.CSSProperties> = {
   }
 };
 
+const modalOverlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15, 23, 42, 0.65)",
+  backdropFilter: "blur(8px)",
+  WebkitBackdropFilter: "blur(8px)",
+  zIndex: 5000,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 16,
+  cursor: "pointer",
+};
+
+const modalPanelStyle: React.CSSProperties = {
+  background: "#1A2332",
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.1)",
+  boxShadow: "0 24px 80px rgba(0,0,0,0.42)",
+  cursor: "default",
+};
+
 import { WhatsAppEmbeddedSignupButton } from "@/components/WhatsAppEmbeddedSignup";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -392,9 +414,15 @@ export function ConnectionsTab(props: any) {
 
       {/* Add Connection Modal */}
       {showAddModal && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--background)", borderRadius: 16, border: "1px solid var(--border)", width: "100%", maxWidth: 800, maxHeight: "90vh", overflowY: "auto", display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: 24, borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: "var(--background)", zIndex: 10 }}>
+        <div
+          onClick={() => setShowAddModal(false)}
+          style={modalOverlayStyle}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{ ...modalPanelStyle, width: "100%", maxWidth: 800, maxHeight: "90vh", overflowY: "auto", display: "flex", flexDirection: "column" }}
+          >
+            <div style={{ padding: 24, borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, background: "#1A2332", zIndex: 10 }}>
               <h2 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>Add New Connection</h2>
               <button onClick={() => setShowAddModal(false)} style={{ background: "transparent", border: "none", fontSize: 24, color: "var(--muted)", cursor: "pointer" }}>&times;</button>
             </div>
@@ -456,8 +484,14 @@ export function ConnectionsTab(props: any) {
 
       {/* Edit Connection Modal */}
       {editingChannel && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", width: "100%", maxWidth: 500, padding: 32 }}>
+        <div
+          onClick={() => setEditingChannel(null)}
+          style={modalOverlayStyle}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{ ...modalPanelStyle, width: "100%", maxWidth: 500, padding: 32 }}
+          >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
               <div>
                 <h2 style={{ fontSize: 20, fontWeight: 600, margin: "0 0 4px 0" }}>Edit Connection</h2>
@@ -470,7 +504,7 @@ export function ConnectionsTab(props: any) {
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <label style={{ fontSize: 14, fontWeight: 500, color: "var(--foreground)" }}>Assigned Agent</label>
                 <select
-                  style={{ ...styles.input, width: "100%", textAlign: "left" }}
+                  style={{ ...styles.input, width: "100%", textAlign: "left", cursor: "pointer" }}
                   value={editingChannel.agentId || ""}
                   onChange={async (e) => {
                     await handleAssignAgent(editingChannel.id, e.target.value);

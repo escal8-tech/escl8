@@ -165,8 +165,14 @@ function ModalShell({
   widthClassName?: string;
 }) {
   return (
-    <div className="fixed inset-0 z-[5000] grid place-items-center bg-slate-950/65 p-4 backdrop-blur-md">
-      <div className={`w-full ${widthClassName} overflow-hidden rounded-xl border border-white/10 bg-[#1A2332] shadow-[0_24px_80px_rgba(0,0,0,0.42)]`}>
+    <div
+      className="fixed inset-0 z-[5000] grid place-items-center bg-slate-950/65 p-4 backdrop-blur-md cursor-pointer"
+      onClick={onClose}
+    >
+      <div
+        className={`w-full ${widthClassName} overflow-hidden rounded-xl border border-white/10 bg-[#1A2332] shadow-[0_24px_80px_rgba(0,0,0,0.42)] cursor-default`}
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
           <div>
             {eyebrow ? <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[#d8b45a]">{eyebrow}</div> : null}
@@ -212,6 +218,8 @@ export default function SettingsPage() {
   const [deliveryChargeEnabled, setDeliveryChargeEnabled] = useState(false);
   const [deliveryChargeType, setDeliveryChargeType] = useState<OrderDeliveryChargeType>("fixed");
   const [deliveryChargeValue, setDeliveryChargeValue] = useState("0");
+  const [bankTransferEnabled, setBankTransferEnabled] = useState(false);
+  const [qrPaymentEnabled, setQrPaymentEnabled] = useState(false);
   const [qrBlobPath, setQrBlobPath] = useState("");
   const [bankQrImageUrl, setBankQrImageUrl] = useState("");
   const [bankName, setBankName] = useState("");
@@ -237,7 +245,9 @@ export default function SettingsPage() {
 
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
+  const [bankDetailsModalOpen, setBankDetailsModalOpen] = useState(false);
+  const [qrSettingsModalOpen, setQrSettingsModalOpen] = useState(false);
   const [brandingModalOpen, setBrandingModalOpen] = useState(false);
   const [widgetModalOpen, setWidgetModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
@@ -307,6 +317,8 @@ export default function SettingsPage() {
     setDeliveryChargeEnabled(orderSettings?.deliveryCharge?.enabled ?? false);
     setDeliveryChargeType((orderSettings?.deliveryCharge?.type as OrderDeliveryChargeType | undefined) ?? "fixed");
     setDeliveryChargeValue(orderSettings?.deliveryCharge?.value ?? "0");
+    setBankTransferEnabled(orderSettings?.bankQr?.showBankDetails ?? false);
+    setQrPaymentEnabled(orderSettings?.bankQr?.showQr ?? false);
     setQrBlobPath(orderSettings?.bankQr?.qrBlobPath ?? "");
     setBankQrImageUrl(orderSettings?.bankQr?.qrImageUrl ?? "");
     setBankName(orderSettings?.bankQr?.bankName ?? "");
@@ -521,8 +533,11 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSaveOrderSettings = async () => {
-    if (!email || !businessQuery.data?.id) return;
+  const handleSaveOrderSettings = async (
+    options: { silent?: boolean; closeBankModal?: boolean; closeQrModal?: boolean } = {},
+  ) => {
+    if (!email || !businessQuery.data?.id) return false;
+    const { silent = false, closeBankModal = false, closeQrModal = false } = options;
     const normalizedBankName = bankName.trim();
     const normalizedAccountName = accountName.trim();
     const normalizedAccountNumber = accountNumber.trim();
@@ -531,13 +546,18 @@ export default function SettingsPage() {
     const hasBankDetails = Boolean(
       normalizedBankName || normalizedAccountName || normalizedAccountNumber || normalizedInstructions,
     );
+    const resolvedPaymentMethod: OrderPaymentMethod = orderPaymentMethod === "cod"
+      ? "cod"
+      : bankTransferEnabled || qrPaymentEnabled
+        ? "bank_qr"
+        : "manual";
 
     try {
       await updateOrderSettings.mutateAsync({
         email,
         businessId: businessQuery.data.id,
         ticketToOrderEnabled: true,
-        paymentMethod: orderPaymentMethod,
+        paymentMethod: resolvedPaymentMethod,
         paymentProofAiEnabled,
         paymentSlipRequired,
         currency: orderCurrency.trim() || "LKR",
@@ -547,8 +567,8 @@ export default function SettingsPage() {
           value: deliveryChargeEnabled ? deliveryChargeValue.trim() || "0" : "0",
         },
         bankQr: {
-          showQr: orderPaymentMethod === "bank_qr" && hasQr,
-          showBankDetails: orderPaymentMethod === "bank_qr" && hasBankDetails,
+          showQr: resolvedPaymentMethod === "bank_qr" && qrPaymentEnabled && hasQr,
+          showBankDetails: resolvedPaymentMethod === "bank_qr" && bankTransferEnabled && hasBankDetails,
           qrBlobPath: qrBlobPath.trim(),
           qrImageUrl: bankQrImageUrl.trim(),
           bankName: normalizedBankName,
@@ -558,15 +578,55 @@ export default function SettingsPage() {
         },
       });
       await businessQuery.refetch();
-      setPaymentModalOpen(false);
+      if (closeBankModal) setBankDetailsModalOpen(false);
+      if (closeQrModal) setQrSettingsModalOpen(false);
+      if (!silent) {
+        showSuccessToast(toast, {
+          title: "Payment settings updated",
+          message: "Order payment settings were saved successfully.",
+        });
+      }
+      return true;
+    } catch {
+      if (!silent) {
+        showErrorToast(toast, {
+          title: "Save failed",
+          message: "Payment settings could not be saved.",
+        });
+      }
+      return false;
+    }
+  };
+
+  const handleSaveWorkspaceDefaults = async () => {
+    if (!email || !businessQuery.data?.id) return;
+
+    try {
+      await updateBooking.mutateAsync({
+        email,
+        businessId: businessQuery.data.id,
+        bookingsEnabled,
+        unitCapacity,
+        timeslotMinutes,
+        openTime: openTime || "09:00",
+        closeTime: closeTime || "17:00",
+      });
+      await updateTimezone.mutateAsync({
+        email,
+        businessId: businessQuery.data.id,
+        timezone,
+      });
+      const orderSettingsSaved = await handleSaveOrderSettings({ silent: true });
+      if (!orderSettingsSaved) throw new Error("order-settings-save-failed");
+      setWorkspaceModalOpen(false);
       showSuccessToast(toast, {
-        title: "Payment settings updated",
-        message: "Order payment settings were saved successfully.",
+        title: "Workspace defaults updated",
+        message: "Timezone, booking defaults, and checkout rules were saved.",
       });
     } catch {
       showErrorToast(toast, {
         title: "Save failed",
-        message: "Payment settings could not be saved.",
+        message: "Workspace defaults could not be saved.",
       });
     }
   };
@@ -750,11 +810,15 @@ export default function SettingsPage() {
     ? "WhatsApp connection is blocked until this tenant has an active paid plan, demo grant, or partner grant."
     : null;
 
-  const paymentMethodLabel = {
-    manual: "Manual review",
-    bank_qr: "Bank / QR",
-    cod: "Cash on delivery",
-  }[orderPaymentMethod];
+  const paymentMethodLabel = orderPaymentMethod === "cod"
+    ? "No upfront collection"
+    : bankTransferEnabled && qrPaymentEnabled
+      ? "Bank transfer + QR payment"
+      : bankTransferEnabled
+        ? "Bank transfer only"
+        : qrPaymentEnabled
+          ? "QR payment only"
+          : "Manual review";
 
   const profileDisplayName = customBusinessName || business?.name || "Business";
   const profilePhone = customPhone || "No phone";
@@ -763,6 +827,37 @@ export default function SettingsPage() {
   const bookingWindow = openTime && closeTime ? `${openTime} - ${closeTime}` : "Not configured";
   const customizationPreviewUrl = customizationPreviewQuery.data?.invoicePreviewUrl || "";
   const trackingPreviewUrl = customizationPreviewQuery.data?.trackingPreviewUrl || "";
+  const handleSelectManualReview = () => {
+    setOrderPaymentMethod("manual");
+    setBankTransferEnabled(false);
+    setQrPaymentEnabled(false);
+  };
+
+  const handleSelectNoUpfrontCollection = () => {
+    setOrderPaymentMethod("cod");
+    setBankTransferEnabled(false);
+    setQrPaymentEnabled(false);
+  };
+
+  const handleToggleBankTransfer = () => {
+    const next = !bankTransferEnabled;
+    setBankTransferEnabled(next);
+    setOrderPaymentMethod(next || qrPaymentEnabled ? "bank_qr" : "manual");
+  };
+
+  const handleToggleQrPayment = () => {
+    const next = !qrPaymentEnabled;
+    setQrPaymentEnabled(next);
+    setOrderPaymentMethod(bankTransferEnabled || next ? "bank_qr" : "manual");
+  };
+
+  const handleSaveBankTransferDetails = async () => {
+    await handleSaveOrderSettings({ closeBankModal: true });
+  };
+
+  const handleSaveQrPaymentDetails = async () => {
+    await handleSaveOrderSettings({ closeQrModal: true });
+  };
 
   const renderProfileTab = () => (
     <div className="space-y-6 p-6">
@@ -818,7 +913,7 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => setProfileModalOpen(true)}
-                  className="inline-flex h-10 items-center justify-center rounded-md bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110"
+                  className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110"
                 >
                   Edit
                 </button>
@@ -859,7 +954,7 @@ export default function SettingsPage() {
                       type="button"
                       onClick={() => void handleConnectGmail()}
                       disabled={gmailConnectPending}
-                      className="inline-flex h-10 items-center justify-center rounded-md bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
+                      className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
                     >
                       {gmailConnectPending ? "Connecting..." : "Reconnect"}
                     </button>
@@ -867,7 +962,7 @@ export default function SettingsPage() {
                       type="button"
                       onClick={() => void handleDisconnectGmail()}
                       disabled={disconnectGmail.isPending}
-                      className="inline-flex h-10 items-center justify-center rounded-md border border-red-400/25 bg-red-400/10 px-4 text-sm font-semibold text-red-300 transition hover:bg-red-400/15 disabled:opacity-60"
+                      className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-red-400/25 bg-red-400/10 px-4 text-sm font-semibold text-red-300 transition hover:bg-red-400/15 disabled:opacity-60"
                     >
                       {disconnectGmail.isPending ? "Disconnecting..." : "Disconnect"}
                     </button>
@@ -877,7 +972,7 @@ export default function SettingsPage() {
                     type="button"
                     onClick={() => void handleConnectGmail()}
                     disabled={gmailConnectPending}
-                    className="inline-flex h-10 items-center justify-center rounded-md bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
+                    className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md bg-[#1656d8] px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
                   >
                     {gmailConnectPending ? "Connecting..." : "Connect Gmail"}
                   </button>
@@ -901,7 +996,7 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={() => setProfileModalOpen(true)}
-              className="rounded-full border border-[#d8b45a]/35 px-3 py-2 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/10"
+              className="relative z-10 cursor-pointer rounded-full border border-[#d8b45a]/35 px-3 py-2 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/10"
             >
               Edit
             </button>
@@ -943,7 +1038,7 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={() => setBookingModalOpen(true)}
-              className="rounded-full border border-[#d8b45a]/35 px-3 py-2 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/10"
+              className="cursor-pointer rounded-full border border-[#d8b45a]/35 px-3 py-2 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/10"
             >
               Edit
             </button>
@@ -980,8 +1075,8 @@ export default function SettingsPage() {
             </div>
             <button
               type="button"
-              onClick={() => setPaymentModalOpen(true)}
-              className="rounded-full border border-[#d8b45a]/35 px-3 py-2 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/10"
+              onClick={() => setWorkspaceModalOpen(true)}
+              className="cursor-pointer rounded-full border border-[#d8b45a]/35 px-3 py-2 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/10"
             >
               Edit
             </button>
@@ -1008,6 +1103,10 @@ export default function SettingsPage() {
               <p className="mt-1 font-semibold text-white">{paymentMethodLabel}</p>
             </div>
             <div className="rounded-xl bg-[#20324a] p-3">
+              <p className="text-xs text-slate-400">Currency</p>
+              <p className="mt-1 font-semibold text-white">{orderCurrency || "LKR"}</p>
+            </div>
+            <div className="rounded-xl bg-[#20324a] p-3">
               <p className="text-xs text-slate-400">Delivery charge</p>
               <p className="mt-1 font-semibold text-white">{deliveryChargeEnabled ? "Enabled" : "Disabled"}</p>
             </div>
@@ -1018,77 +1117,181 @@ export default function SettingsPage() {
       <SectionCard
         icon={<CreditCard className="h-5 w-5" />}
         title="Payment Setup"
-        description="Collection mode, currency, bank details, QR asset, and delivery charging rules used in order checkout."
+        description="Choose which payment methods are available during checkout. Currency and delivery charge now live under workspace defaults."
         action={
           <button
             type="button"
-            onClick={() => setPaymentModalOpen(true)}
-            className="inline-flex h-10 items-center justify-center rounded-lg bg-[#c7a64f] px-4 text-sm font-semibold text-[#0f172a] transition hover:brightness-105"
+            onClick={() => void handleSaveOrderSettings()}
+            className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg bg-[#c7a64f] px-4 text-sm font-semibold text-[#0f172a] transition hover:brightness-105"
           >
             Save Payment
           </button>
         }
       >
         <div className="space-y-5">
-          <div className="grid gap-4 xl:grid-cols-[220px_1fr]">
-            <div>
-              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Currency</div>
-              <div className="rounded-xl border border-white/10 bg-[#20324a] px-4 py-3 text-white">{orderCurrency || "LKR"}</div>
-            </div>
-            <div>
-              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Collection method</div>
-              <div className="grid gap-3 md:grid-cols-3">
-                {[
-                  { id: "manual", label: "Manual review", desc: "Let staff confirm cash, POS, or custom payment notes manually." },
-                  { id: "bank_qr", label: "Bank / QR", desc: "Show transfer instructions, bank details, and optional QR in checkout." },
-                  { id: "cod", label: "No upfront collection", desc: "Let customers complete the order without payment instructions." },
-                ].map((option) => {
-                  const active = orderPaymentMethod === option.id;
-                  return (
-                    <div
-                      key={option.id}
-                      className={`rounded-xl border p-4 ${
-                        active ? "border-[#d8b45a] bg-[#d8b45a]/10" : "border-white/10 bg-[#20324a]"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-semibold text-white">{option.label}</div>
-                          <div className="mt-2 text-sm leading-6 text-slate-400">{option.desc}</div>
-                        </div>
-                        <span className={`mt-1 h-3 w-3 rounded-full border ${active ? "border-[#d8b45a] bg-[#d8b45a]" : "border-[#6482a8]"}`} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+          <div className="space-y-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Checkout flow</div>
+            <div className="grid gap-3 xl:grid-cols-2">
+              <button
+                type="button"
+                onClick={handleSelectManualReview}
+                className={`cursor-pointer rounded-xl border px-4 py-4 text-left transition ${
+                  orderPaymentMethod !== "cod" && !bankTransferEnabled && !qrPaymentEnabled
+                    ? "border-[#d8b45a] bg-[#d8b45a]/10"
+                    : "border-white/10 bg-[#20324a] hover:border-white/20 hover:bg-[#223650]"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold text-white">Manual review</div>
+                    <div className="mt-2 text-sm leading-6 text-slate-400">Let staff confirm cash, POS, or custom payment notes manually.</div>
+                  </div>
+                  <span
+                    className={`mt-1 h-5 w-5 rounded-md border transition ${
+                      orderPaymentMethod !== "cod" && !bankTransferEnabled && !qrPaymentEnabled
+                        ? "border-[#d8b45a] bg-[#d8b45a]"
+                        : "border-[#6482a8] bg-transparent"
+                    }`}
+                  />
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSelectNoUpfrontCollection}
+                className={`cursor-pointer rounded-xl border px-4 py-4 text-left transition ${
+                  orderPaymentMethod === "cod"
+                    ? "border-[#d8b45a] bg-[#d8b45a]/10"
+                    : "border-white/10 bg-[#20324a] hover:border-white/20 hover:bg-[#223650]"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold text-white">No upfront collection</div>
+                    <div className="mt-2 text-sm leading-6 text-slate-400">Let customers complete checkout without payment instructions.</div>
+                  </div>
+                  <span
+                    className={`mt-1 h-5 w-5 rounded-md border transition ${
+                      orderPaymentMethod === "cod" ? "border-[#d8b45a] bg-[#d8b45a]" : "border-[#6482a8] bg-transparent"
+                    }`}
+                  />
+                </div>
+              </button>
             </div>
           </div>
 
-          <div className="rounded-xl border border-emerald-400/12 bg-[#15363b]/95 p-4">
-            <div className="mb-4 flex items-center justify-between gap-4">
-              <div>
-                <div className="text-lg font-semibold text-white">Bank / QR details</div>
-                <div className="mt-1 text-sm text-slate-400">These instructions are shown when customers choose Bank / QR.</div>
-              </div>
+          <div className="space-y-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Available payment methods</div>
+            <div className="grid gap-3 xl:grid-cols-2">
               <button
                 type="button"
-                onClick={() => setPaymentModalOpen(true)}
-                className="rounded-full border border-[#d8b45a]/35 px-3 py-2 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/10"
+                onClick={handleToggleBankTransfer}
+                className={`cursor-pointer rounded-xl border px-4 py-4 text-left transition ${
+                  bankTransferEnabled
+                    ? "border-[#d8b45a] bg-[#d8b45a]/10"
+                    : "border-white/10 bg-[#20324a] hover:border-white/20 hover:bg-[#223650]"
+                }`}
               >
-                Edit
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold text-white">Bank transfer</div>
+                    <div className="mt-2 text-sm leading-6 text-slate-400">Show bank transfer details and instructions during checkout.</div>
+                  </div>
+                  <span
+                    className={`mt-1 h-5 w-5 rounded-md border transition ${
+                      bankTransferEnabled ? "border-[#d8b45a] bg-[#d8b45a]" : "border-[#6482a8] bg-transparent"
+                    }`}
+                  />
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleToggleQrPayment}
+                className={`cursor-pointer rounded-xl border px-4 py-4 text-left transition ${
+                  qrPaymentEnabled
+                    ? "border-[#d8b45a] bg-[#d8b45a]/10"
+                    : "border-white/10 bg-[#20324a] hover:border-white/20 hover:bg-[#223650]"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold text-white">QR payment</div>
+                    <div className="mt-2 text-sm leading-6 text-slate-400">Show a QR payment option and collect slips inside the payment flow.</div>
+                  </div>
+                  <span
+                    className={`mt-1 h-5 w-5 rounded-md border transition ${
+                      qrPaymentEnabled ? "border-[#d8b45a] bg-[#d8b45a]" : "border-[#6482a8] bg-transparent"
+                    }`}
+                  />
+                </div>
               </button>
             </div>
-            <div className="grid gap-4 xl:grid-cols-3">
-              <FieldTile label="Bank" value={bankName || "Not set"} />
-              <FieldTile label="Account Name" value={accountName || "Not set"} />
-              <FieldTile label="Account Number" value={accountNumber || "Not set"} />
-            </div>
-            <div className="mt-4 grid gap-4 xl:grid-cols-2">
-              <FieldTile label="QR Image" value={bankQrImageUrl ? "Uploaded" : "Not uploaded"} />
-              <FieldTile label="Instructions" value={accountInstructions || "No transfer instructions configured."} />
-            </div>
+            <p className="text-sm leading-6 text-slate-400">
+              Enable one or both payment methods above. Each enabled option appears below with its own summary and dedicated edit modal.
+            </p>
           </div>
+
+          {bankTransferEnabled ? (
+            <div className="rounded-xl border border-emerald-400/12 bg-[#15363b]/95 p-4">
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-lg font-semibold text-white">Bank transfer details</div>
+                  <div className="mt-1 text-sm text-slate-400">Shown when bank transfer is enabled for checkout.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBankDetailsModalOpen(true)}
+                  className="cursor-pointer rounded-full border border-[#d8b45a]/35 px-3 py-2 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/10"
+                >
+                  Edit
+                </button>
+              </div>
+              <div className="grid gap-4 xl:grid-cols-3">
+                <FieldTile label="Bank" value={bankName || "Not set"} />
+                <FieldTile label="Account Name" value={accountName || "Not set"} />
+                <FieldTile label="Account Number" value={accountNumber || "Not set"} />
+              </div>
+              <div className="mt-4">
+                <FieldTile label="Instructions" value={accountInstructions || "No transfer instructions configured."} />
+              </div>
+            </div>
+          ) : null}
+
+          {qrPaymentEnabled ? (
+            <div className="rounded-xl border border-cyan-400/12 bg-[#153244]/95 p-4">
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-lg font-semibold text-white">QR payment details</div>
+                  <div className="mt-1 text-sm text-slate-400">Shown when QR payment is enabled for checkout.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setQrSettingsModalOpen(true)}
+                  className="cursor-pointer rounded-full border border-[#d8b45a]/35 px-3 py-2 text-sm font-semibold text-[#d8b45a] transition hover:bg-[#d8b45a]/10"
+                >
+                  Edit
+                </button>
+              </div>
+              <div className="grid gap-4 xl:grid-cols-3">
+                <FieldTile label="QR Image" value={bankQrImageUrl ? "Uploaded" : "Not uploaded"} />
+                <FieldTile label="Proof AI" value={paymentProofAiEnabled ? "Enabled" : "Disabled"} />
+                <FieldTile label="Payment Slip" value={paymentSlipRequired ? "Required" : "Optional"} />
+              </div>
+            </div>
+          ) : null}
+
+          {!bankTransferEnabled && !qrPaymentEnabled && orderPaymentMethod !== "cod" ? (
+            <div className="rounded-2xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
+              Manual review is active. Enable bank transfer or QR payment above if you want checkout payment instructions to appear.
+            </div>
+          ) : null}
+
+          {orderPaymentMethod === "cod" ? (
+            <div className="rounded-2xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
+              Customers will pay later in the fulfillment flow. No bank or QR instructions are shown during checkout.
+            </div>
+          ) : null}
         </div>
       </SectionCard>
 
@@ -1479,53 +1682,69 @@ export default function SettingsPage() {
         </ModalShell>
       ) : null}
 
-      {paymentModalOpen ? (
+      {workspaceModalOpen ? (
         <ModalShell
-          eyebrow="Payment Setup"
-          title="Set up payment collection"
-          description="Keep the main settings page simple while editing collection mode, bank details, QR image, and checkout rules here."
-          onClose={() => setPaymentModalOpen(false)}
+          eyebrow="Workspace Defaults"
+          title="Set up workspace defaults"
+          description="Manage timezone, booking slots, currency, delivery charge, and shared checkout defaults from one place."
+          onClose={() => setWorkspaceModalOpen(false)}
           footer={
             <>
-              <button type="button" onClick={() => setPaymentModalOpen(false)} className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10">
+              <button type="button" onClick={() => setWorkspaceModalOpen(false)} className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10">
                 Cancel
               </button>
-              <button type="button" onClick={() => void handleSaveOrderSettings()} disabled={updateOrderSettings.isPending || qrUploadPending} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:opacity-60">
-                Use {paymentMethodLabel}
+              <button type="button" onClick={() => void handleSaveWorkspaceDefaults()} disabled={updateBooking.isPending || updateTimezone.isPending || updateOrderSettings.isPending} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:opacity-60">
+                Save defaults
               </button>
             </>
           }
         >
           <div className="space-y-6">
-            <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
+            <div className="grid gap-5 xl:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Timezone</label>
+                <PortalSelect
+                  value={timezone}
+                  onValueChange={setTimezone}
+                  options={[
+                    { value: "UTC", label: "UTC" },
+                    { value: "Asia/Colombo", label: "Asia/Colombo" },
+                    { value: "Asia/Kuala_Lumpur", label: "Asia/Kuala_Lumpur" },
+                  ]}
+                  ariaLabel="Workspace timezone"
+                  style={{ minHeight: 48, borderRadius: 14 }}
+                />
+              </div>
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Currency</label>
                 <input value={orderCurrency} onChange={(e) => setOrderCurrency(e.target.value.toUpperCase())} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
               </div>
-              <div>
-                <label className="mb-3 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Collection Method</label>
-                <div className="grid gap-4 xl:grid-cols-3">
-                  {[
-                    { value: "manual", title: "Manual review", copy: "Let staff confirm cash, POS, or custom payment notes manually." },
-                    { value: "bank_qr", title: "Bank / QR", copy: "Show transfer instructions, bank details, and optional QR in checkout." },
-                    { value: "cod", title: "Cash on delivery", copy: "Let customers pay when the delivered order reaches them." },
-                  ].map((option) => {
-                    const active = orderPaymentMethod === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setOrderPaymentMethod(option.value as OrderPaymentMethod)}
-                        className={`rounded-2xl border px-5 py-4 text-left transition ${active ? "border-[#d8b45a] bg-[#d8b45a]/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]" : "border-white/10 bg-[#20324a] hover:border-white/20"}`}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-lg font-semibold text-white">{option.title}</div>
-                          <span className={`h-4 w-4 rounded-full border ${active ? "border-[#d8b45a] bg-[#d8b45a]" : "border-slate-500"}`} />
-                        </div>
-                        <div className="mt-3 text-sm leading-6 text-slate-400">{option.copy}</div>
-                      </button>
-                    );
-                  })}
+            </div>
+
+            <div className="rounded-[24px] border border-white/10 bg-[#173244] p-5">
+              <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
+                <div>
+                  <div className="text-lg font-semibold text-white">Booking availability</div>
+                  <div className="mt-1 text-sm text-slate-400">Configure the shared booking slot rules used by the concierge workflow.</div>
+                </div>
+                <Toggle checked={bookingsEnabled} onChange={setBookingsEnabled} />
+              </div>
+              <div className="mt-5 grid gap-5 xl:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Slot Capacity</label>
+                  <input type="number" min={1} value={unitCapacity} onChange={(e) => setUnitCapacity(Number(e.target.value) || 1)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+                </div>
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Slot Length</label>
+                  <input type="number" min={15} step={15} value={timeslotMinutes} onChange={(e) => setTimeslotMinutes(Number(e.target.value) || 60)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+                </div>
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Open Time</label>
+                  <input type="time" value={openTime} onChange={(e) => setOpenTime(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+                </div>
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Close Time</label>
+                  <input type="time" value={closeTime} onChange={(e) => setCloseTime(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
                 </div>
               </div>
             </div>
@@ -1540,7 +1759,7 @@ export default function SettingsPage() {
                   checked={deliveryChargeEnabled}
                   onChange={(checked) => {
                     setDeliveryChargeEnabled(checked);
-                    if (checked) {
+                    if (checked && !deliveryChargeValue.trim()) {
                       setDeliveryChargeType("fixed");
                       setDeliveryChargeValue("0");
                     }
@@ -1572,105 +1791,128 @@ export default function SettingsPage() {
               ) : null}
             </div>
 
-            {orderPaymentMethod === "bank_qr" ? (
-              <>
-                <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
-                  <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
-                    <div className="text-lg font-semibold text-white">QR Payment</div>
-                    <div className="mt-2 text-sm leading-6 text-slate-400">
-                      Upload the QR image once. It is stored privately and can be reused in payment instructions.
-                    </div>
-                    <div className="mt-5 space-y-4">
-                      <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#14304b] px-4 py-4">
-                        <div>
-                          <div className="font-medium text-white">Payment Proof AI Check</div>
-                          <div className="mt-1 text-sm text-slate-400">Check uploaded bank slips with AI before staff review.</div>
-                        </div>
-                        <Toggle checked={paymentProofAiEnabled} onChange={setPaymentProofAiEnabled} />
-                      </div>
-                      <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#14304b] px-4 py-4">
-                        <div>
-                          <div className="font-medium text-white">Require Payment Slip</div>
-                          <div className="mt-1 text-sm text-slate-400">Customers must send a payment slip image or PDF.</div>
-                        </div>
-                        <Toggle checked={paymentSlipRequired} onChange={setPaymentSlipRequired} />
-                      </div>
-                      <div className="rounded-2xl border border-dashed border-white/10 bg-[#14304b] p-4">
-                        {bankQrImageUrl ? (
-                          <Image src={bankQrImageUrl} alt="Uploaded QR" width={260} height={260} unoptimized className="mx-auto rounded-2xl border border-white/10 bg-white object-contain" />
-                        ) : (
-                          <div className="grid min-h-[220px] place-items-center text-sm text-slate-500">No QR image uploaded yet.</div>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-3">
-                        <label className="inline-flex h-11 cursor-pointer items-center justify-center rounded-xl bg-[#1656d8] px-5 text-sm font-semibold text-white transition hover:brightness-110">
-                          {qrUploadPending ? "Uploading..." : bankQrImageUrl ? "Replace QR" : "Upload QR"}
-                          <input
-                            type="file"
-                            accept="image/png,image/jpeg,image/jpg,image/webp"
-                            className="hidden"
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              if (file) void handleUploadQrImage(file);
-                              event.currentTarget.value = "";
-                            }}
-                          />
-                        </label>
-                        {(bankQrImageUrl || qrBlobPath) ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setQrBlobPath("");
-                              setBankQrImageUrl("");
-                            }}
-                            className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
-                          >
-                            Remove QR
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[24px] border border-white/10 bg-[#20324a] p-5">
-                    <div className="text-lg font-semibold text-white">Bank Transfer Details</div>
-                    <div className="mt-2 text-sm leading-6 text-slate-400">
-                      These details are included with payment instructions whenever Bank / QR is selected.
-                    </div>
-                    <div className="mt-5 grid gap-5 xl:grid-cols-2">
-                      <div>
-                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Bank Name</label>
-                        <input value={bankName} onChange={(e) => setBankName(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
-                      </div>
-                      <div>
-                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Account Name</label>
-                        <input value={accountName} onChange={(e) => setAccountName(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
-                      </div>
-                      <div className="xl:col-span-2">
-                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Account Number</label>
-                        <input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
-                      </div>
-                      <div className="xl:col-span-2">
-                        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Transfer Instructions</label>
-                        <textarea value={accountInstructions} onChange={(e) => setAccountInstructions(e.target.value)} className="min-h-[120px] w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 py-3 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </>
-            ) : null}
-
-            {orderPaymentMethod === "manual" ? (
-              <div className="rounded-2xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
-                Staff will confirm payment manually from the operations queue. No QR or bank instructions will be sent.
+            <div className="rounded-[24px] border border-white/10 bg-[#173244] p-5">
+              <div className="border-b border-white/10 pb-4">
+                <div className="text-lg font-semibold text-white">Invoice Defaults</div>
+                <div className="mt-1 text-sm text-slate-400">Shared invoice and tracking behavior used across concierge orders.</div>
               </div>
-            ) : null}
-
-            {orderPaymentMethod === "cod" ? (
-              <div className="rounded-2xl border border-white/10 bg-[#20324a] px-4 py-5 text-sm leading-6 text-slate-400">
-                Customers will pay when the order is delivered. Bank instructions stay hidden in this flow.
+              <div className="mt-5 grid gap-4 xl:grid-cols-3">
+                <FieldTile label="Invoices" value="Enabled" />
+                <FieldTile label="Tracking link" value="Enabled" />
+                <FieldTile label="Payment flow" value={paymentMethodLabel} />
               </div>
-            ) : null}
+              <p className="mt-4 text-sm leading-6 text-slate-400">
+                Branding, preview, and document styling stay under Customization. This workspace modal only manages the shared operational defaults.
+              </p>
+            </div>
+          </div>
+        </ModalShell>
+      ) : null}
+
+      {bankDetailsModalOpen ? (
+        <ModalShell
+          eyebrow="Payment Setup"
+          title="Set up bank transfer details"
+          description="Keep bank transfer instructions focused here so staff can update them without touching other payment methods."
+          onClose={() => setBankDetailsModalOpen(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setBankDetailsModalOpen(false)} className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10">
+                Cancel
+              </button>
+              <button type="button" onClick={() => void handleSaveBankTransferDetails()} disabled={updateOrderSettings.isPending} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:opacity-60">
+                Save Bank Details
+              </button>
+            </>
+          }
+        >
+          <div className="grid gap-5 xl:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Bank Name</label>
+              <input value={bankName} onChange={(e) => setBankName(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Account Name</label>
+              <input value={accountName} onChange={(e) => setAccountName(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+            </div>
+            <div className="xl:col-span-2">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Account Number</label>
+              <input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} className="h-12 w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+            </div>
+            <div className="xl:col-span-2">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#9db7d3]">Transfer Instructions</label>
+              <textarea value={accountInstructions} onChange={(e) => setAccountInstructions(e.target.value)} className="min-h-[140px] w-full rounded-xl border border-[#45607d] bg-[#14304b] px-4 py-3 text-sm text-white outline-none transition focus:border-[#5c7ba0] focus:ring-2 focus:ring-[#2f6bb2]/30" />
+            </div>
+          </div>
+        </ModalShell>
+      ) : null}
+
+      {qrSettingsModalOpen ? (
+        <ModalShell
+          eyebrow="Payment Setup"
+          title="Set up QR payment"
+          description="Configure proof collection, upload the QR image, and control how customers confirm payment."
+          onClose={() => setQrSettingsModalOpen(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setQrSettingsModalOpen(false)} className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10">
+                Cancel
+              </button>
+              <button type="button" onClick={() => void handleSaveQrPaymentDetails()} disabled={updateOrderSettings.isPending || qrUploadPending} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#c7a64f] px-5 text-sm font-semibold text-[#0f172a] transition hover:brightness-105 disabled:opacity-60">
+                Save QR Settings
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-5">
+            <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#14304b] px-4 py-4">
+              <div>
+                <div className="font-medium text-white">Payment Proof AI Check</div>
+                <div className="mt-1 text-sm text-slate-400">Check uploaded bank slips with AI before staff review.</div>
+              </div>
+              <Toggle checked={paymentProofAiEnabled} onChange={setPaymentProofAiEnabled} />
+            </div>
+            <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#14304b] px-4 py-4">
+              <div>
+                <div className="font-medium text-white">Require Payment Slip</div>
+                <div className="mt-1 text-sm text-slate-400">Customers must send a payment slip image or PDF.</div>
+              </div>
+              <Toggle checked={paymentSlipRequired} onChange={setPaymentSlipRequired} />
+            </div>
+            <div className="rounded-2xl border border-dashed border-white/10 bg-[#14304b] p-4">
+              {bankQrImageUrl ? (
+                <Image src={bankQrImageUrl} alt="Uploaded QR" width={260} height={260} unoptimized className="mx-auto rounded-2xl border border-white/10 bg-white object-contain" />
+              ) : (
+                <div className="grid min-h-[220px] place-items-center text-sm text-slate-500">No QR image uploaded yet.</div>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <label className="inline-flex h-11 cursor-pointer items-center justify-center rounded-xl bg-[#1656d8] px-5 text-sm font-semibold text-white transition hover:brightness-110">
+                {qrUploadPending ? "Uploading..." : bankQrImageUrl ? "Replace QR" : "Upload QR"}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleUploadQrImage(file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+              {(bankQrImageUrl || qrBlobPath) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQrBlobPath("");
+                    setBankQrImageUrl("");
+                  }}
+                  className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  Remove QR
+                </button>
+              ) : null}
+            </div>
           </div>
         </ModalShell>
       ) : null}
