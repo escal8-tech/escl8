@@ -86,7 +86,7 @@ export async function updateRefundStatus(
         refundedAt: input.action === "mark_refunded" ? now : null,
         updatedAt: now,
       })
-      .where(eq(orders.id, orderRow.id))
+      .where(and(eq(orders.id, orderRow.id), eq(orders.businessId, ctx.businessId)))
       .returning();
 
     if (!updatedOrder) {

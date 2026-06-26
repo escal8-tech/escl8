@@ -102,7 +102,7 @@ export async function captureManualPayment(
         deliveryArea: fulfillmentPrefill.deliveryArea,
         updatedAt: now,
       })
-      .where(eq(orders.id, orderRow.id))
+      .where(and(eq(orders.id, orderRow.id), eq(orders.businessId, ctx.businessId)))
       .returning();
 
     if (!updatedOrder) {
@@ -403,7 +403,7 @@ export async function denyPendingPaymentOrder(
           aiCheckNotes: normalizedReason,
           updatedAt: now,
         })
-        .where(eq(orderPayments.id, latestPayment.id))
+        .where(and(eq(orderPayments.id, latestPayment.id), eq(orderPayments.businessId, ctx.businessId)))
         .returning();
       updatedPayment = rejectedPayment ?? latestPayment;
     } else if (!latestPayment) {
@@ -438,7 +438,7 @@ export async function denyPendingPaymentOrder(
         paymentRejectedAt: now,
         updatedAt: now,
       })
-      .where(eq(orders.id, orderRow.id))
+      .where(and(eq(orders.id, orderRow.id), eq(orders.businessId, ctx.businessId)))
       .returning();
     if (!updatedOrder) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to deny order." });
@@ -626,7 +626,7 @@ export async function reopenPaidOrderForPaymentReview(
           aiCheckNotes: nextNotes || null,
           updatedAt: now,
         })
-        .where(eq(orderPayments.id, latestPayment.id))
+        .where(and(eq(orderPayments.id, latestPayment.id), eq(orderPayments.businessId, ctx.businessId)))
         .returning();
       updatedPayment = reopenedPayment ?? latestPayment;
     }
@@ -653,7 +653,7 @@ export async function reopenPaidOrderForPaymentReview(
         invoiceSentAt: null,
         updatedAt: now,
       })
-      .where(eq(orders.id, orderRow.id))
+      .where(and(eq(orders.id, orderRow.id), eq(orders.businessId, ctx.businessId)))
       .returning();
 
     if (!updatedOrder) {
