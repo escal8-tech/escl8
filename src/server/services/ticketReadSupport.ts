@@ -1,6 +1,7 @@
 import { and, desc, eq, getTableColumns, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/server/db/client";
 import { withStatsCache } from "@/server/lib/statsCache";
+import { withCache } from "@/lib/redis";
 import { orders, supportTicketTypes, supportTickets, threadMessages } from "@/../drizzle/schema";
 import { whatsappWindowState } from "@/server/services/orderWorkflowSupport";
 import { ensureDefaultTicketTypes } from "@/server/services/ticketDefaults";
@@ -99,26 +100,33 @@ export async function listTicketLedgerForBusiness(args: {
     );
   }
 
-  const [countRow] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(supportTickets)
-    .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
-    .where(and(...conditions));
-
-  const rows = await db
-    .select({
-      ...getTableColumns(supportTickets),
-      orderId: orders.id,
-      orderStatus: orders.status,
-      orderPaymentMethod: orders.paymentMethod,
-      orderUpdatedAt: orders.updatedAt,
-    })
-    .from(supportTickets)
-    .leftJoin(orders, and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)))
-    .where(and(...conditions))
-    .orderBy(desc(supportTickets.updatedAt), desc(supportTickets.createdAt))
-    .limit(args.limit)
-    .offset(args.offset);
+  const [[countRow], rows] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(supportTickets)
+      .leftJoin(
+        orders,
+        and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)),
+      )
+      .where(and(...conditions)),
+    db
+      .select({
+        ...getTableColumns(supportTickets),
+        orderId: orders.id,
+        orderStatus: orders.status,
+        orderPaymentMethod: orders.paymentMethod,
+        orderUpdatedAt: orders.updatedAt,
+      })
+      .from(supportTickets)
+      .leftJoin(
+        orders,
+        and(eq(orders.businessId, supportTickets.businessId), eq(orders.supportTicketId, supportTickets.id)),
+      )
+      .where(and(...conditions))
+      .orderBy(desc(supportTickets.updatedAt), desc(supportTickets.createdAt))
+      .limit(args.limit)
+      .offset(args.offset),
+  ]);
 
   const threadIds = [...new Set(rows.map((row) => String(row.threadId || "").trim()).filter(Boolean))];
   const threadWindowRows = threadIds.length
@@ -158,21 +166,23 @@ export async function getHydratedTicketByIdForBusiness(args: { businessId: strin
 }
 
 export async function getTicketTypeCountersForBusiness(businessId: string) {
-  const rows = await db
-    .select({
-      key: supportTickets.ticketTypeKey,
-      openCount: sql<number>`count(*) filter (where lower(coalesce(${supportTickets.status}, '')) = 'open')::int`,
-      inProgressCount: sql<number>`count(*) filter (where lower(coalesce(${supportTickets.status}, '')) in ('in_progress', 'pending'))::int`,
-    })
-    .from(supportTickets)
-    .where(eq(supportTickets.businessId, businessId))
-    .groupBy(supportTickets.ticketTypeKey);
+  return withCache(`ticket:counters:${businessId}`, 60, async () => {
+    const rows = await db
+      .select({
+        key: supportTickets.ticketTypeKey,
+        openCount: sql<number>`count(*) filter (where lower(coalesce(${supportTickets.status}, '')) = 'open')::int`,
+        inProgressCount: sql<number>`count(*) filter (where lower(coalesce(${supportTickets.status}, '')) in ('in_progress', 'pending'))::int`,
+      })
+      .from(supportTickets)
+      .where(eq(supportTickets.businessId, businessId))
+      .groupBy(supportTickets.ticketTypeKey);
 
-  return rows.map((row) => ({
-    key: row.key,
-    openCount: Number(row.openCount ?? 0),
-    inProgressCount: Number(row.inProgressCount ?? 0),
-  }));
+    return rows.map((row) => ({
+      key: row.key,
+      openCount: Number(row.openCount ?? 0),
+      inProgressCount: Number(row.inProgressCount ?? 0),
+    }));
+  });
 }
 
 export async function getTicketPerformanceForBusiness(args: {
