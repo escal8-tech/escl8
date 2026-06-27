@@ -28,6 +28,14 @@ export async function POST(request: Request) {
 
     for (const f of files) {
       if (!(f instanceof File)) continue;
+
+      if (f.size > 10 * 1024 * 1024) {
+        return NextResponse.json(
+          { error: `File too large: ${f.name}. Max size is 10MB.` },
+          { status: 413 }
+        );
+      }
+
       const mime = f.type || "";
       if (mime && !ALLOWED_MIME.has(mime)) {
         return NextResponse.json(
