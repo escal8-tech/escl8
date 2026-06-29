@@ -20,8 +20,6 @@ export const bookingsRouter = router({
 
   create: businessProcedure
     .input(z.object({
-      userId: z.string(),
-      businessId: z.string(),
       startTime: z.string(), // ISO
       durationMinutes: z.number().int().min(5).max(600).default(60),
       unitsBooked: z.number().int().min(1),
@@ -31,7 +29,7 @@ export const bookingsRouter = router({
     .mutation(async ({ input, ctx }) => {
       const [row] = await db.insert(bookings).values({
         businessId: ctx.businessId,
-        userId: input.userId,
+        userId: ctx.userId ?? ctx.firebaseUid ?? "unknown",
         startTime: new Date(input.startTime),
         durationMinutes: input.durationMinutes,
         unitsBooked: input.unitsBooked,
