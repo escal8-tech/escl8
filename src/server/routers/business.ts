@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
+import { withStatsCache } from "@/server/lib/statsCache";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { businesses, users, channelIdentities, whatsappIdentityDetails, agents } from "../../../drizzle/schema";
@@ -78,64 +79,7 @@ export const businessRouter = router({
       autoReplyPaused: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const details = await db
-        .select({
-          channelIdentityId: whatsappIdentityDetails.channelIdentityId,
-          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-        })
-        .from(whatsappIdentityDetails)
-        .innerJoin(channelIdentities, eq(whatsappIdentityDetails.channelIdentityId, channelIdentities.id))
-        .where(and(
-          eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
-          eq(channelIdentities.businessId, ctx.businessId),
-        ))
-        .limit(1)
-        .then(r => r[0]);
-
-      if (!details) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-
-      const [row] = await db
-        .update(channelIdentities)
-        .set({
-          autoReplyPaused: input.autoReplyPaused,
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(channelIdentities.businessId, ctx.businessId),
-          eq(channelIdentities.id, details.channelIdentityId),
-        ))
-        .returning();
-
-      if (!row) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-
-      recordBusinessEvent({
-        event: input.autoReplyPaused ? "whatsapp_identity.auto_reply_paused" : "whatsapp_identity.auto_reply_resumed",
-        action: "setWhatsappIdentityAutoReplyPaused",
-        area: "whatsapp_identity",
-        businessId: ctx.businessId,
-        entity: "whatsapp_identity",
-        entityId: details.phoneNumberId,
-        userId: ctx.userId,
-        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-        actorType: "user",
-        outcome: "success",
-        attributes: {
-          display_phone_number: details.displayPhoneNumber ?? null,
-        },
-      });
-
-      return {
-        phoneNumberId: details.phoneNumberId,
-        displayPhoneNumber: details.displayPhoneNumber,
-        autoReplyPaused: row.autoReplyPaused,
-        isActive: row.isActive,
-        connectedAt: row.connectedAt,
-      };
+      return support.setWhatsappIdentityAutoReplyPaused(ctx, input);
     }),
 
   setWhatsappIdentityAiDisabled: businessProcedure
@@ -144,65 +88,7 @@ export const businessRouter = router({
       aiDisabled: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const details = await db
-        .select({
-          channelIdentityId: whatsappIdentityDetails.channelIdentityId,
-          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-        })
-        .from(whatsappIdentityDetails)
-        .innerJoin(channelIdentities, eq(whatsappIdentityDetails.channelIdentityId, channelIdentities.id))
-        .where(and(
-          eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
-          eq(channelIdentities.businessId, ctx.businessId),
-        ))
-        .limit(1)
-        .then(r => r[0]);
-
-      if (!details) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-
-      const [row] = await db
-        .update(channelIdentities)
-        .set({
-          aiEnabled: !input.aiDisabled,
-          ...(input.aiDisabled ? { autoReplyPaused: false } : {}),
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(channelIdentities.businessId, ctx.businessId),
-          eq(channelIdentities.id, details.channelIdentityId),
-        ))
-        .returning();
-
-      if (!row) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-      recordBusinessEvent({
-        event: input.aiDisabled ? "whatsapp_identity.ai_disabled" : "whatsapp_identity.ai_enabled",
-        action: "setWhatsappIdentityAiDisabled",
-        area: "whatsapp_identity",
-        businessId: ctx.businessId,
-        entity: "whatsapp_identity",
-        entityId: details.phoneNumberId,
-        userId: ctx.userId,
-        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-        actorType: "user",
-        outcome: "success",
-        attributes: {
-          display_phone_number: details.displayPhoneNumber ?? null,
-        },
-      });
-      
-      return {
-        phoneNumberId: details.phoneNumberId,
-        displayPhoneNumber: details.displayPhoneNumber,
-        autoReplyPaused: row.autoReplyPaused,
-        aiDisabled: !row.aiEnabled,
-        isActive: row.isActive,
-        connectedAt: row.connectedAt,
-      };
+      return support.setWhatsappIdentityAiDisabled(ctx, input);
     }),
 
   getMine: businessProcedure
@@ -215,10 +101,16 @@ export const businessRouter = router({
       const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId));
       if (!biz) return null;
 
-      const creditsUsed = await getBusinessAiCreditsUsedThisMonth(ctx.businessId);
-      const access = biz.suiteTenantId ? await getTenantModuleAccess(biz.suiteTenantId, "agent") : null;
-
-      const [orderSettings, customizationSettings, preferences, websiteWidgetSettings] = await Promise.all([
+      const [
+        creditsUsed,
+        access,
+        orderSettings,
+        customizationSettings,
+        preferences,
+        websiteWidgetSettings,
+      ] = await Promise.all([
+        getBusinessAiCreditsUsedThisMonth(ctx.businessId),
+        biz.suiteTenantId ? getTenantModuleAccess(biz.suiteTenantId, "agent") : Promise.resolve(null),
         getBusinessOrderSettingsRecord(ctx.businessId, biz.settings),
         getBusinessCustomizationSettingsRecord(ctx.businessId, biz.settings),
         getBusinessPreferencesRecord(ctx.businessId, biz.settings),
@@ -818,40 +710,17 @@ export const businessRouter = router({
     }),
 
   getSubscription: businessProcedure.query(async ({ ctx }) => {
-    const [biz] = await db
-      .select({
-        suiteTenantId: businesses.suiteTenantId,
-        creditPool: businesses.creditPool,
-      })
-      .from(businesses)
-      .where(eq(businesses.id, ctx.businessId))
-      .limit(1);
+    return withStatsCache(`business:subscription:v2:${ctx.businessId}`, 300, async () => {
+      const [biz] = await db
+        .select({
+          suiteTenantId: businesses.suiteTenantId,
+          creditPool: businesses.creditPool,
+        })
+        .from(businesses)
+        .where(eq(businesses.id, ctx.businessId))
+        .limit(1);
 
-    if (!biz?.suiteTenantId) {
-      return {
-        hasSubscription: false,
-        status: "none",
-        planCode: null,
-        planName: null,
-        grantKind: null,
-        subscriptionStatus: null,
-        lastPaidAt: null,
-        nextDueAt: null,
-        monthlyCredits: 0,
-        creditsUsed: 0,
-        creditsBalance: 0,
-        priceAmount: 0,
-        currency: "MYR",
-        features: {},
-        limits: {},
-        isActive: false,
-        isSpecialGrant: false,
-      };
-    }
-
-    try {
-      const access = await getTenantModuleAccess(biz.suiteTenantId, "agent");
-      if (!access) {
+      if (!biz?.suiteTenantId) {
         return {
           hasSubscription: false,
           status: "none",
@@ -873,55 +742,80 @@ export const businessRouter = router({
         };
       }
 
-      const planCode = access.planCode;
-      const planName = access.planName;
-      const isActive = access.workspaceMode === "full";
-      const isSpecialGrant = access.grantKind === "partner" || access.grantKind === "demo";
+      try {
+        const access = await getTenantModuleAccess(biz.suiteTenantId, "agent");
+        if (!access) {
+          return {
+            hasSubscription: false,
+            status: "none",
+            planCode: null,
+            planName: null,
+            grantKind: null,
+            subscriptionStatus: null,
+            lastPaidAt: null,
+            nextDueAt: null,
+            monthlyCredits: 0,
+            creditsUsed: 0,
+            creditsBalance: 0,
+            priceAmount: 0,
+            currency: "MYR",
+            features: {},
+            limits: {},
+            isActive: false,
+            isSpecialGrant: false,
+          };
+        }
 
-      const monthlyCredits = Number(access.limits["agent.messages.monthly"] || 0);
-      const creditsUsed = await getBusinessAiCreditsUsedThisMonth(ctx.businessId);
+        const planCode = access.planCode;
+        const planName = access.planName;
+        const isActive = access.workspaceMode === "full";
+        const isSpecialGrant = access.grantKind === "partner" || access.grantKind === "demo";
 
-      return {
-        hasSubscription: true,
-        status: access.subscriptionStatus || "none",
-        planCode,
-        planName,
-        grantKind: access.grantKind,
-        subscriptionStatus: access.subscriptionStatus,
-        lastPaidAt: access.lastPaidAt,
-        nextDueAt: access.nextDueAt,
-        monthlyCredits,
-        creditsUsed,
-        creditsBalance: Math.max(0, biz.creditPool ?? (monthlyCredits - creditsUsed)),
-        priceAmount: 0,
-        currency: "MYR",
-        features: filterSubscriptionRecord(access.features, "agent."),
-        limits: filterSubscriptionRecord(access.limits, "agent."),
-        isActive,
-        isSpecialGrant,
-      };
-    } catch (error) {
-      console.error("Error fetching subscription:", error);
-      return {
-        hasSubscription: false,
-        status: "error",
-        planCode: null,
-        planName: null,
-        grantKind: null,
-        subscriptionStatus: null,
-        lastPaidAt: null,
-        nextDueAt: null,
-        monthlyCredits: 0,
-        creditsUsed: 0,
-        creditsBalance: 0,
-        priceAmount: 0,
-        currency: "MYR",
-        features: {},
-        limits: {},
-        isActive: false,
-        isSpecialGrant: false,
-      };
-    }
+        const monthlyCredits = Number(access.limits["agent.messages.monthly"] || 0);
+        const creditsUsed = await getBusinessAiCreditsUsedThisMonth(ctx.businessId);
+
+        return {
+          hasSubscription: true,
+          status: access.subscriptionStatus || "none",
+          planCode,
+          planName,
+          grantKind: access.grantKind,
+          subscriptionStatus: access.subscriptionStatus,
+          lastPaidAt: access.lastPaidAt,
+          nextDueAt: access.nextDueAt,
+          monthlyCredits,
+          creditsUsed,
+          creditsBalance: Math.max(0, biz.creditPool ?? (monthlyCredits - creditsUsed)),
+          priceAmount: 0,
+          currency: "MYR",
+          features: filterSubscriptionRecord(access.features, "agent."),
+          limits: filterSubscriptionRecord(access.limits, "agent."),
+          isActive,
+          isSpecialGrant,
+        };
+      } catch (error) {
+        console.error("Error fetching subscription:", error);
+        return {
+          hasSubscription: false,
+          status: "error",
+          planCode: null,
+          planName: null,
+          grantKind: null,
+          subscriptionStatus: null,
+          lastPaidAt: null,
+          nextDueAt: null,
+          monthlyCredits: 0,
+          creditsUsed: 0,
+          creditsBalance: 0,
+          priceAmount: 0,
+          currency: "MYR",
+          features: {},
+          limits: {},
+          isActive: false,
+          isSpecialGrant: false,
+        };
+      }
+    });
   }),
 });
 
