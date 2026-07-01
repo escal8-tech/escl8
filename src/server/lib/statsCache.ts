@@ -44,3 +44,14 @@ export function clearStatsCache(): void {
 export function invalidateStatsCache(key: string): void {
   cache.delete(key);
 }
+
+/**
+ * Removes all keys from the cache that start with the given prefix.
+ */
+export function invalidateStatsCacheByPrefix(prefix: string): void {
+  for (const key of cache.keys()) {
+    if (key.startsWith(prefix)) {
+      cache.delete(key);
+    }
+  }
+}

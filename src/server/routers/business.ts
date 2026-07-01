@@ -2,74 +2,33 @@ import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
-import { businesses, users, channelIdentities, whatsappIdentityDetails, agents } from "../../../drizzle/schema";
-import { and, eq } from "drizzle-orm";
+import { businesses, users } from "../../../drizzle/schema";
+import { eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
-import {
-  getBusinessMessageUsageLimit,
-  normalizeBusinessMessageUsageTier,
-} from "@/lib/business-usage";
 import { mergeCustomizationSettings, normalizeCustomizationSettings } from "@/lib/customization-settings";
 import { mergeOrderFlowSettings, normalizeOrderFlowSettings } from "@/lib/order-settings";
 import { publishEvent } from "@/lib/eventgrid";
-import { buildPrivateBlobReadUrl } from "@/lib/storage";
 import { mergeWebsiteWidgetSettings, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
-import { getBusinessAiCreditsUsedThisMonth } from "@/server/services/aiUsage";
 import { getTenantModuleAccess, tenantHasFeature } from "@/server/control/access";
 import { SUITE_FEATURES } from "@/server/control/subscription-features";
-import { createOrderInvoicePreviewArtifact } from "@/server/services/orderInvoice";
 import {
   getBusinessCustomizationSettingsRecord,
-  getBusinessOrderSettingsRecord,
-  getBusinessPreferencesRecord,
   getBusinessWebsiteWidgetSettingsRecord,
   upsertBusinessCustomizationSettings,
   upsertBusinessOrderSettings,
   upsertBusinessTimezone,
   upsertBusinessWebsiteWidgetSettings,
 } from "@/server/services/businessSettingsStore";
+import { invalidateStatsCache } from "../lib/statsCache";
 import * as support from "@/server/services/businessLifecycleSupport";
+import * as whatsappSupport from "@/server/services/whatsappLifecycleSupport";
 
 const businessMessageUsageTierSchema = z.enum(["minimum", "standard", "enterprise"]);
 
-function numberLimit(value: unknown, fallback: number) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
 export const businessRouter = router({
   listPhoneNumbers: businessProcedure.query(async ({ ctx }) => {
-    const rows = await db
-      .select({
-        phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-        displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-        botType: agents.botType,
-        isActive: channelIdentities.isActive,
-        autoReplyPaused: channelIdentities.autoReplyPaused,
-        aiEnabled: channelIdentities.aiEnabled,
-        connectedAt: channelIdentities.connectedAt,
-      })
-      .from(channelIdentities)
-      .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
-      .innerJoin(agents, eq(channelIdentities.agentId, agents.id))
-      .where(
-        and(
-          eq(channelIdentities.businessId, ctx.businessId),
-          eq(channelIdentities.isActive, true),
-        ),
-      )
-      .orderBy(channelIdentities.connectedAt);
-
-    return rows.map(r => ({
-      phoneNumberId: r.phoneNumberId,
-      displayPhoneNumber: r.displayPhoneNumber,
-      botType: r.botType,
-      isActive: r.isActive,
-      autoReplyPaused: r.autoReplyPaused,
-      aiDisabled: !r.aiEnabled,
-      connectedAt: r.connectedAt,
-    }));
+    return whatsappSupport.listPhoneNumbers(ctx);
   }),
 
   setWhatsappIdentityAutoReplyPaused: businessProcedure
@@ -78,64 +37,7 @@ export const businessRouter = router({
       autoReplyPaused: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const details = await db
-        .select({
-          channelIdentityId: whatsappIdentityDetails.channelIdentityId,
-          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-        })
-        .from(whatsappIdentityDetails)
-        .innerJoin(channelIdentities, eq(whatsappIdentityDetails.channelIdentityId, channelIdentities.id))
-        .where(and(
-          eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
-          eq(channelIdentities.businessId, ctx.businessId),
-        ))
-        .limit(1)
-        .then(r => r[0]);
-
-      if (!details) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-
-      const [row] = await db
-        .update(channelIdentities)
-        .set({
-          autoReplyPaused: input.autoReplyPaused,
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(channelIdentities.businessId, ctx.businessId),
-          eq(channelIdentities.id, details.channelIdentityId),
-        ))
-        .returning();
-
-      if (!row) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-
-      recordBusinessEvent({
-        event: input.autoReplyPaused ? "whatsapp_identity.auto_reply_paused" : "whatsapp_identity.auto_reply_resumed",
-        action: "setWhatsappIdentityAutoReplyPaused",
-        area: "whatsapp_identity",
-        businessId: ctx.businessId,
-        entity: "whatsapp_identity",
-        entityId: details.phoneNumberId,
-        userId: ctx.userId,
-        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-        actorType: "user",
-        outcome: "success",
-        attributes: {
-          display_phone_number: details.displayPhoneNumber ?? null,
-        },
-      });
-
-      return {
-        phoneNumberId: details.phoneNumberId,
-        displayPhoneNumber: details.displayPhoneNumber,
-        autoReplyPaused: row.autoReplyPaused,
-        isActive: row.isActive,
-        connectedAt: row.connectedAt,
-      };
+      return whatsappSupport.setWhatsappIdentityAutoReplyPaused(ctx, input);
     }),
 
   setWhatsappIdentityAiDisabled: businessProcedure
@@ -144,65 +46,7 @@ export const businessRouter = router({
       aiDisabled: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const details = await db
-        .select({
-          channelIdentityId: whatsappIdentityDetails.channelIdentityId,
-          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-        })
-        .from(whatsappIdentityDetails)
-        .innerJoin(channelIdentities, eq(whatsappIdentityDetails.channelIdentityId, channelIdentities.id))
-        .where(and(
-          eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
-          eq(channelIdentities.businessId, ctx.businessId),
-        ))
-        .limit(1)
-        .then(r => r[0]);
-
-      if (!details) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-
-      const [row] = await db
-        .update(channelIdentities)
-        .set({
-          aiEnabled: !input.aiDisabled,
-          ...(input.aiDisabled ? { autoReplyPaused: false } : {}),
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(channelIdentities.businessId, ctx.businessId),
-          eq(channelIdentities.id, details.channelIdentityId),
-        ))
-        .returning();
-
-      if (!row) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-      recordBusinessEvent({
-        event: input.aiDisabled ? "whatsapp_identity.ai_disabled" : "whatsapp_identity.ai_enabled",
-        action: "setWhatsappIdentityAiDisabled",
-        area: "whatsapp_identity",
-        businessId: ctx.businessId,
-        entity: "whatsapp_identity",
-        entityId: details.phoneNumberId,
-        userId: ctx.userId,
-        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-        actorType: "user",
-        outcome: "success",
-        attributes: {
-          display_phone_number: details.displayPhoneNumber ?? null,
-        },
-      });
-      
-      return {
-        phoneNumberId: details.phoneNumberId,
-        displayPhoneNumber: details.displayPhoneNumber,
-        autoReplyPaused: row.autoReplyPaused,
-        aiDisabled: !row.aiEnabled,
-        isActive: row.isActive,
-        connectedAt: row.connectedAt,
-      };
+      return whatsappSupport.setWhatsappIdentityAiDisabled(ctx, input);
     }),
 
   getMine: businessProcedure
@@ -211,93 +55,11 @@ export const businessRouter = router({
       if (ctx.userEmail && input.email && input.email !== ctx.userEmail) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
       }
-
-      const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId));
-      if (!biz) return null;
-
-      const creditsUsed = await getBusinessAiCreditsUsedThisMonth(ctx.businessId);
-      const access = biz.suiteTenantId ? await getTenantModuleAccess(biz.suiteTenantId, "agent") : null;
-
-      const [orderSettings, customizationSettings, preferences, websiteWidgetSettings] = await Promise.all([
-        getBusinessOrderSettingsRecord(ctx.businessId, biz.settings),
-        getBusinessCustomizationSettingsRecord(ctx.businessId, biz.settings),
-        getBusinessPreferencesRecord(ctx.businessId, biz.settings),
-        getBusinessWebsiteWidgetSettingsRecord(ctx.businessId, biz.settings),
-      ]);
-      const qrPreviewUrl = orderSettings.bankQr.qrBlobPath
-        ? buildPrivateBlobReadUrl(orderSettings.bankQr.qrBlobPath, 24 * 30)
-        : null;
-      const logoPreviewUrl = customizationSettings.logoBlobPath
-        ? buildPrivateBlobReadUrl(
-            customizationSettings.logoBlobPath,
-            24 * 30,
-            customizationSettings.logoContainer || undefined,
-          )
-        : null;
-
-      return {
-        ...biz,
-        timezone: preferences.timezone,
-        websiteWidgetSettings,
-        orderSettings: {
-          ...orderSettings,
-          ticketToOrderEnabled: true,
-          bankQr: {
-            ...orderSettings.bankQr,
-            qrImageUrl: qrPreviewUrl || orderSettings.bankQr.qrImageUrl,
-          },
-        },
-        customizationSettings: {
-          ...customizationSettings,
-          logoUrl: logoPreviewUrl || customizationSettings.logoUrl,
-        },
-        gmailConnected: Boolean(biz.gmailConnected),
-        gmailEmail: biz.gmailEmail ?? null,
-        gmailConnectedAt: biz.gmailConnectedAt ?? null,
-        gmailError: biz.gmailError ?? null,
-        subscriptionAccess: access,
-        responseUsage: {
-          used: creditsUsed,
-          max: numberLimit(access?.limits?.["agent.messages.monthly"], getBusinessMessageUsageLimit(biz.messageUsageTier)),
-          tier: normalizeBusinessMessageUsageTier(biz.messageUsageTier),
-        },
-      };
+      return support.getMine(ctx);
     }),
 
   getCustomizationPreview: businessProcedure.query(async ({ ctx }) => {
-    const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId)).limit(1);
-    if (!biz) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
-    }
-
-    const [customizationSettings, orderSettings] = await Promise.all([
-      getBusinessCustomizationSettingsRecord(ctx.businessId, biz.settings),
-      getBusinessOrderSettingsRecord(ctx.businessId, biz.settings),
-    ]);
-
-    const previewBase = String(process.env.CONCIERGE_PUBLIC_URL || "https://concierge.escal8.tech").replace(/\/+$/, "");
-    const trackingPreviewUrl = `${previewBase}/track/orders/preview/${encodeURIComponent(ctx.businessId)}`;
-
-    const invoicePreview = await createOrderInvoicePreviewArtifact({
-      businessId: ctx.businessId,
-      business: {
-        id: biz.id,
-        name: biz.name,
-        settings: {
-          ...((biz.settings ?? {}) as Record<string, unknown>),
-          customization: customizationSettings ?? {},
-        },
-      },
-      currency: orderSettings.currency,
-      trackingUrl: trackingPreviewUrl,
-    });
-
-    return {
-      invoicePreviewUrl: invoicePreview.url,
-      invoicePreviewFileName: invoicePreview.fileName,
-      trackingPreviewUrl,
-      generatedAt: invoicePreview.generatedAt,
-    };
+    return support.getCustomizationPreview(ctx);
   }),
 
   updateMessageUsageTier: businessProcedure
@@ -359,6 +121,7 @@ export const businessRouter = router({
         })
         .where(eq(businesses.id, input.businessId))
         .returning();
+      invalidateStatsCache(`business:mine:${input.businessId}`);
       if (updated) {
         recordBusinessEvent({
           event: "business.booking_config_updated",
@@ -422,6 +185,7 @@ export const businessRouter = router({
         .where(eq(businesses.id, input.businessId))
         .returning();
       await upsertBusinessTimezone(input.businessId, tz);
+      invalidateStatsCache(`business:mine:${input.businessId}`);
       if (updated) {
         recordBusinessEvent({
           event: "business.timezone_updated",
@@ -499,6 +263,7 @@ export const businessRouter = router({
       });
 
       await upsertBusinessOrderSettings(input.businessId, normalized);
+      invalidateStatsCache(`business:mine:${input.businessId}`);
 
       const [updated] = await db
         .update(businesses)
@@ -589,6 +354,7 @@ export const businessRouter = router({
       });
 
       await upsertBusinessCustomizationSettings(input.businessId, normalized);
+      invalidateStatsCache(`business:mine:${input.businessId}`);
 
       const [updated] = await db
         .update(businesses)
@@ -670,6 +436,7 @@ export const businessRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save website widget settings" });
       }
       await upsertBusinessWebsiteWidgetSettings(input.businessId, normalizedWidget);
+      invalidateStatsCache(`business:mine:${input.businessId}`);
 
       recordBusinessEvent({
         event: current.key ? "business.website_widget_accessed" : "business.website_widget_enabled",
@@ -729,6 +496,8 @@ export const businessRouter = router({
           gmailConnectedAt: businesses.gmailConnectedAt,
           gmailError: businesses.gmailError,
         });
+
+      invalidateStatsCache(`business:mine:${input.businessId}`);
 
       recordBusinessEvent({
         event: "business.gmail_disconnected",
@@ -792,6 +561,7 @@ export const businessRouter = router({
       });
       await upsertBusinessCustomizationSettings(ctx.businessId, normalized);
       await upsertBusinessTimezone(ctx.businessId, timezone);
+      invalidateStatsCache(`business:mine:${ctx.businessId}`);
 
       const settings = (biz.settings ?? {}) as Record<string, unknown>;
       const onboarding = {
@@ -814,117 +584,12 @@ export const businessRouter = router({
         .where(eq(businesses.id, ctx.businessId))
         .returning();
 
+      invalidateStatsCache(`business:mine:${ctx.businessId}`);
+
       return updated ?? null;
     }),
 
   getSubscription: businessProcedure.query(async ({ ctx }) => {
-    const [biz] = await db
-      .select({
-        suiteTenantId: businesses.suiteTenantId,
-        creditPool: businesses.creditPool,
-      })
-      .from(businesses)
-      .where(eq(businesses.id, ctx.businessId))
-      .limit(1);
-
-    if (!biz?.suiteTenantId) {
-      return {
-        hasSubscription: false,
-        status: "none",
-        planCode: null,
-        planName: null,
-        grantKind: null,
-        subscriptionStatus: null,
-        lastPaidAt: null,
-        nextDueAt: null,
-        monthlyCredits: 0,
-        creditsUsed: 0,
-        creditsBalance: 0,
-        priceAmount: 0,
-        currency: "MYR",
-        features: {},
-        limits: {},
-        isActive: false,
-        isSpecialGrant: false,
-      };
-    }
-
-    try {
-      const access = await getTenantModuleAccess(biz.suiteTenantId, "agent");
-      if (!access) {
-        return {
-          hasSubscription: false,
-          status: "none",
-          planCode: null,
-          planName: null,
-          grantKind: null,
-          subscriptionStatus: null,
-          lastPaidAt: null,
-          nextDueAt: null,
-          monthlyCredits: 0,
-          creditsUsed: 0,
-          creditsBalance: 0,
-          priceAmount: 0,
-          currency: "MYR",
-          features: {},
-          limits: {},
-          isActive: false,
-          isSpecialGrant: false,
-        };
-      }
-
-      const planCode = access.planCode;
-      const planName = access.planName;
-      const isActive = access.workspaceMode === "full";
-      const isSpecialGrant = access.grantKind === "partner" || access.grantKind === "demo";
-
-      const monthlyCredits = Number(access.limits["agent.messages.monthly"] || 0);
-      const creditsUsed = await getBusinessAiCreditsUsedThisMonth(ctx.businessId);
-
-      return {
-        hasSubscription: true,
-        status: access.subscriptionStatus || "none",
-        planCode,
-        planName,
-        grantKind: access.grantKind,
-        subscriptionStatus: access.subscriptionStatus,
-        lastPaidAt: access.lastPaidAt,
-        nextDueAt: access.nextDueAt,
-        monthlyCredits,
-        creditsUsed,
-        creditsBalance: Math.max(0, biz.creditPool ?? (monthlyCredits - creditsUsed)),
-        priceAmount: 0,
-        currency: "MYR",
-        features: filterSubscriptionRecord(access.features, "agent."),
-        limits: filterSubscriptionRecord(access.limits, "agent."),
-        isActive,
-        isSpecialGrant,
-      };
-    } catch (error) {
-      console.error("Error fetching subscription:", error);
-      return {
-        hasSubscription: false,
-        status: "error",
-        planCode: null,
-        planName: null,
-        grantKind: null,
-        subscriptionStatus: null,
-        lastPaidAt: null,
-        nextDueAt: null,
-        monthlyCredits: 0,
-        creditsUsed: 0,
-        creditsBalance: 0,
-        priceAmount: 0,
-        currency: "MYR",
-        features: {},
-        limits: {},
-        isActive: false,
-        isSpecialGrant: false,
-      };
-    }
+    return support.getSubscription(ctx);
   }),
 });
-
-function filterSubscriptionRecord<T>(record: Record<string, T>, prefix: string): Record<string, T> {
-  return Object.fromEntries(Object.entries(record).filter(([key]) => key.startsWith(prefix)));
-}
