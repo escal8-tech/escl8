@@ -86,7 +86,7 @@ function normalizeMappingInput(entries: z.infer<typeof columnMappingEntrySchema>
   return out;
 }
 
-async function getAgentStockMappingStatus(agentId: string | null | undefined): Promise<StockMappingStatus> {
+async function getAgentStockMappingStatus(businessId: string, agentId: string | null | undefined): Promise<StockMappingStatus> {
   if (!agentId) return {
     isMapped: false,
     isReady: false,
@@ -100,7 +100,7 @@ async function getAgentStockMappingStatus(agentId: string | null | undefined): P
   const [agent] = await db
     .select({ settings: agents.settings })
     .from(agents)
-    .where(eq(agents.id, agentId))
+    .where(and(eq(agents.id, agentId), eq(agents.businessId, businessId)))
     .limit(1);
   return getStockMappingStatus(normalizeStockSettings(agent?.settings));
 }
@@ -303,7 +303,7 @@ export const inventoryRouter = router({
 
       return {
         totalCount: countRow?.count ?? 0,
-        mappingStatus: await getAgentStockMappingStatus(input.agentId ?? ""),
+        mappingStatus: await getAgentStockMappingStatus(ctx.businessId, input.agentId ?? ""),
         items: rows.map((row) => serializeProduct(
           row,
           pricesByProduct.get(row.id) ?? [],
@@ -458,7 +458,6 @@ export const inventoryRouter = router({
     .input(z.object({
       productId: z.string().min(1),
       quantity: z.number().int().min(0),
-      agentId: z.string(),
     }))
     .mutation(async ({ ctx, input }) => {
       const lockKey = `${ctx.businessId}::inventory::${input.productId}`;
@@ -556,7 +555,7 @@ export const inventoryRouter = router({
 
       return {
         totalCount: countRow?.count ?? 0,
-        mappingStatus: await getAgentStockMappingStatus(input?.agentId),
+        mappingStatus: await getAgentStockMappingStatus(ctx.businessId, input?.agentId),
         items: rows.map((row) => serializeOffer(row, productNames.get(row.productId))),
       };
     }),
@@ -576,6 +575,17 @@ export const inventoryRouter = router({
       agentId: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      if (input.agentId) {
+        const [agent] = await db
+          .select({ id: agents.id })
+          .from(agents)
+          .where(and(eq(agents.id, input.agentId), eq(agents.businessId, ctx.businessId)))
+          .limit(1);
+        if (!agent) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Agent mismatch" });
+        }
+      }
+
       const [product] = await db
         .select({ id: inventoryProducts.id, name: inventoryProducts.name })
         .from(inventoryProducts)
