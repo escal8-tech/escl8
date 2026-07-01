@@ -285,7 +285,22 @@ export async function drainBusinessOutbox(input: {
   let sentCount = 0;
   let failedCount = 0;
   let firstError: string | null = null;
-  const identityAiDisabledCache = new Map<string, boolean>();
+
+  const identities = await db
+    .select({
+      phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+      aiEnabled: channelIdentities.aiEnabled,
+    })
+    .from(channelIdentities)
+    .innerJoin(
+      whatsappIdentityDetails,
+      eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId),
+    )
+    .where(eq(channelIdentities.businessId, input.businessId));
+
+  const identityAiDisabledCache = new Map<string, boolean>(
+    identities.map((i) => [i.phoneNumberId, !i.aiEnabled]),
+  );
 
   for (const row of rows) {
     const now = new Date();
@@ -398,26 +413,8 @@ export async function drainBusinessOutbox(input: {
             message,
           });
           const identityKey = String(claimed.channelIdentityId || "").trim();
-          let aiDisabled = false;
-          if (identityKey) {
-            if (identityAiDisabledCache.has(identityKey)) {
-              aiDisabled = Boolean(identityAiDisabledCache.get(identityKey));
-            } else {
-              const [identityRow] = await db
-                .select({ aiEnabled: channelIdentities.aiEnabled })
-                .from(channelIdentities)
-                .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
-                .where(
-                  and(
-                    eq(channelIdentities.businessId, claimed.businessId),
-                    eq(whatsappIdentityDetails.phoneNumberId, identityKey),
-                  ),
-                )
-                .limit(1);
-              aiDisabled = identityRow ? !identityRow.aiEnabled : false;
-              identityAiDisabledCache.set(identityKey, aiDisabled);
-            }
-          }
+          const aiDisabled = identityKey ? Boolean(identityAiDisabledCache.get(identityKey)) : false;
+
           if (observation && claimed.channelIdentityId && claimed.recipient && !aiDisabled) {
             await observeAssistantMessageViaBot({
               businessId: claimed.businessId,
