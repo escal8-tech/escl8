@@ -23,7 +23,7 @@ import {
   listOrdersPageForBusiness,
 } from "@/server/services/orderReadSupport";
 import * as orderMutationSupport from "@/server/services/orderMutationSupport";
-import { setCached } from "@/lib/redis";
+import { getCached, setCached } from "@/lib/redis";
 
 const reviewActionSchema = z.enum(["approve", "reject"]);
 const refundActionSchema = z.enum(["mark_pending", "mark_refunded", "cancel"]);
@@ -41,11 +41,11 @@ export const ordersRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const cacheKey = `orders:list:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = null;
+      const cached = await getCached<any>(cacheKey);
       if (cached) return cached;
 
       const result = await listOrdersForBusiness({ businessId: ctx.businessId, limit: input?.limit, status: input?.status });
-      await setCached(cacheKey, result, 15);
+      await setCached(cacheKey, result, 30);
       return result;
     }),
 
@@ -75,11 +75,11 @@ export const ordersRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const cacheKey = `orders:page:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = null;
+      const cached = await getCached<any>(cacheKey);
       if (cached) return cached;
 
       const result = await listOrdersPageForBusiness({ businessId: ctx.businessId, ...input });
-      await setCached(cacheKey, result, 15);
+      await setCached(cacheKey, result, 30);
       return result;
     }),
 
@@ -106,11 +106,11 @@ export const ordersRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const cacheKey = `orders:overview:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = null;
+      const cached = await getCached<any>(cacheKey);
       if (cached) return cached;
 
       const result = await getOrderWorkspaceOverviewForBusiness({ businessId: ctx.businessId, ...input });
-      await setCached(cacheKey, result, 15);
+      await setCached(cacheKey, result, 60);
       return result;
     }),
 
@@ -118,17 +118,17 @@ export const ordersRouter = router({
     .input(z.object({ orderId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const cacheKey = `orders:id:${ctx.businessId}:${input.orderId}`;
-      const cached = null;
+      const cached = await getCached<any>(cacheKey);
       if (cached) return cached;
 
       const result = await getOrderByIdForBusiness({ businessId: ctx.businessId, orderId: input.orderId });
-      await setCached(cacheKey, result, 15);
+      await setCached(cacheKey, result, 30);
       return result;
     }),
 
   getStats: businessProcedure.query(async ({ ctx }) => {
     const cacheKey = `orders:stats:${ctx.businessId}`;
-    const cached = null;
+    const cached = await getCached<any>(cacheKey);
     if (cached) return cached;
 
     const result = await getOrderStatsForBusiness(ctx.businessId);
@@ -140,11 +140,11 @@ export const ordersRouter = router({
     .input(z.object({ orderId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const cacheKey = `orders:payments:${ctx.businessId}:${input.orderId}`;
-      const cached = null;
+      const cached = await getCached<any>(cacheKey);
       if (cached) return cached;
 
       const result = await listOrderPaymentsForBusiness({ businessId: ctx.businessId, orderId: input.orderId });
-      await setCached(cacheKey, result, 15);
+      await setCached(cacheKey, result, 30);
       return result;
     }),
 
@@ -181,11 +181,11 @@ export const ordersRouter = router({
     .input(z.object({ orderId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const cacheKey = `orders:events:${ctx.businessId}:${input.orderId}`;
-      const cached = null;
+      const cached = await getCached<any>(cacheKey);
       if (cached) return cached;
 
       const result = await listOrderEventsForBusiness({ businessId: ctx.businessId, orderId: input.orderId });
-      await setCached(cacheKey, result, 15);
+      await setCached(cacheKey, result, 60);
       return result;
     }),
 

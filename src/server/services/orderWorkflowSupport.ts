@@ -313,11 +313,11 @@ export async function hydrateOrderRows(businessId: string, orderRows: Array<type
       ? db
           .select({
             threadId: threadMessages.threadId,
-            createdAt: threadMessages.createdAt,
+            createdAt: sql<Date>`max(${threadMessages.createdAt})`,
           })
           .from(threadMessages)
           .where(and(inArray(threadMessages.threadId, threadIds), eq(threadMessages.direction, "inbound")))
-          .orderBy(desc(threadMessages.createdAt))
+          .groupBy(threadMessages.threadId)
       : Promise.resolve([]),
     identityIds.length
       ? db
