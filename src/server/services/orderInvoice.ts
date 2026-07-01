@@ -4,6 +4,7 @@ import { PDFDocument, PDFName, PDFString, StandardFonts, rgb, type PDFFont, type
 import { buildPrivateBlobReadUrl, storePrivateFileAtPath } from "@/lib/storage";
 import { isDeliveryLineItemName } from "@/lib/order-line-items";
 import { getBusinessCustomizationSettingsRecord } from "@/server/services/businessSettingsStore";
+import { acquireLock, releaseLock, isRedisAvailable } from "@/lib/redis";
 import { businesses, orders } from "../../../drizzle/schema";
 import { db } from "../db/client";
 import {
@@ -727,110 +728,132 @@ export async function createOrderInvoiceForOrder(input: {
   const orderId = cleanText(input.orderId, 160);
   if (!businessId || !orderId) return null;
 
-  const [order] = await db
-    .select()
-    .from(orders)
-    .where(and(eq(orders.businessId, businessId), eq(orders.id, orderId)))
-    .limit(1);
-  if (!order) return null;
+  const useLock = isRedisAvailable();
+  const lockKey = `order:invoice:lock:${businessId}:${orderId}`;
+  let lockAcquired = false;
 
-  const [business] = await db
-    .select({ id: businesses.id, name: businesses.name, settings: businesses.settings })
-    .from(businesses)
-    .where(eq(businesses.id, businessId))
-    .limit(1);
-  const customizationSettings = business
-    ? await getBusinessCustomizationSettingsRecord(businessId, business.settings)
-    : null;
-
-  const containerName = orderInvoiceContainer();
-  if (!input.forceRegenerate) {
-    const existing = existingArtifact(order, containerName);
-    if (existing) {
-      if (String(order.invoiceStatus || "").trim().toLowerCase() !== "sent") {
-        await markInvoiceGenerated({
-          businessId,
-          orderId,
-          artifact: existing,
-          deliveryMethod: input.deliveryMethod ?? null,
-          currentStatus: order.invoiceStatus,
-        });
-      }
-      return existing;
+  if (useLock) {
+    for (let i = 0; i < 5; i++) {
+      lockAcquired = await acquireLock(lockKey, 45);
+      if (lockAcquired) break;
+      await new Promise(res => setTimeout(res, 2000));
+    }
+    if (!lockAcquired) {
+      console.warn(`Could not acquire invoice lock for ${businessId}/${orderId}`);
+      return null;
     }
   }
 
-  const now = new Date();
-  const [claimed] = await db
-    .update(orders)
-    .set({
-      invoiceStatus: "generating",
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(orders.businessId, businessId),
-        eq(orders.id, orderId),
-        order.invoiceStatus === null ? isNull(orders.invoiceStatus) : eq(orders.invoiceStatus, order.invoiceStatus),
-      ),
-    )
-    .returning();
-
-  if (!claimed) {
-    const [latest] = await db
+  try {
+    const [order] = await db
       .select()
       .from(orders)
       .where(and(eq(orders.businessId, businessId), eq(orders.id, orderId)))
       .limit(1);
-    const latestArtifact = latest ? existingArtifact(latest, containerName) : null;
-    if (latestArtifact) {
-      if (String(latest?.invoiceStatus || "").trim().toLowerCase() !== "sent") {
-        await markInvoiceGenerated({
-          businessId,
-          orderId,
-          artifact: latestArtifact,
-          deliveryMethod: input.deliveryMethod ?? null,
-          currentStatus: latest?.invoiceStatus ?? null,
-        });
-      }
-      return latestArtifact;
-    }
-    return null;
-  }
+    if (!order) return null;
 
-  try {
-    const artifact = await createOrderInvoiceArtifact({
-      businessId,
-      order,
-      business: business
-        ? {
-            id: business.id,
-            name: business.name,
-            settings: {
-              ...((business.settings ?? {}) as Record<string, unknown>),
-              customization: customizationSettings ?? {},
-            },
-          }
-        : null,
-      issuedAt: now,
-      trackingUrl: input.trackingUrl ?? null,
-    });
-    await markInvoiceGenerated({
-      businessId,
-      orderId,
-      artifact,
-      deliveryMethod: input.deliveryMethod ?? null,
-      currentStatus: order.invoiceStatus,
-    });
-    return artifact;
-  } catch (error) {
-    await markInvoiceFailed({
-      businessId,
-      orderId,
-      invoiceNumber: cleanText(order.invoiceNumber, 100) || makeInvoiceNumber(order.id, now),
-      error: error instanceof Error ? error.message : "Invoice generation failed.",
-    });
-    throw error;
+    const [business] = await db
+      .select({ id: businesses.id, name: businesses.name, settings: businesses.settings })
+      .from(businesses)
+      .where(eq(businesses.id, businessId))
+      .limit(1);
+    const customizationSettings = business
+      ? await getBusinessCustomizationSettingsRecord(businessId, business.settings)
+      : null;
+
+    const containerName = orderInvoiceContainer();
+    if (!input.forceRegenerate) {
+      const existing = existingArtifact(order, containerName);
+      if (existing) {
+        if (String(order.invoiceStatus || "").trim().toLowerCase() !== "sent") {
+          await markInvoiceGenerated({
+            businessId,
+            orderId,
+            artifact: existing,
+            deliveryMethod: input.deliveryMethod ?? null,
+            currentStatus: order.invoiceStatus,
+          });
+        }
+        return existing;
+      }
+    }
+
+    const now = new Date();
+    const [claimed] = await db
+      .update(orders)
+      .set({
+        invoiceStatus: "generating",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(orders.businessId, businessId),
+          eq(orders.id, orderId),
+          order.invoiceStatus === null ? isNull(orders.invoiceStatus) : eq(orders.invoiceStatus, order.invoiceStatus),
+        ),
+      )
+      .returning();
+
+    if (!claimed) {
+      const [latest] = await db
+        .select()
+        .from(orders)
+        .where(and(eq(orders.businessId, businessId), eq(orders.id, orderId)))
+        .limit(1);
+      const latestArtifact = latest ? existingArtifact(latest, containerName) : null;
+      if (latestArtifact) {
+        if (String(latest?.invoiceStatus || "").trim().toLowerCase() !== "sent") {
+          await markInvoiceGenerated({
+            businessId,
+            orderId,
+            artifact: latestArtifact,
+            deliveryMethod: input.deliveryMethod ?? null,
+            currentStatus: latest?.invoiceStatus ?? null,
+          });
+        }
+        return latestArtifact;
+      }
+      return null;
+    }
+
+    try {
+      const artifact = await createOrderInvoiceArtifact({
+        businessId,
+        order,
+        business: business
+          ? {
+              id: business.id,
+              name: business.name,
+              settings: {
+                ...((business.settings ?? {}) as Record<string, unknown>),
+                customization: customizationSettings ?? {},
+              },
+            }
+          : null,
+        issuedAt: now,
+        trackingUrl: input.trackingUrl ?? null,
+      });
+      await markInvoiceGenerated({
+        businessId,
+        orderId,
+        artifact,
+        deliveryMethod: input.deliveryMethod ?? null,
+        currentStatus: order.invoiceStatus,
+      });
+      return artifact;
+    } catch (error) {
+      await markInvoiceFailed({
+        businessId,
+        orderId,
+        invoiceNumber: cleanText(order.invoiceNumber, 100) || makeInvoiceNumber(order.id, now),
+        error: error instanceof Error ? error.message : "Invoice generation failed.",
+      });
+      throw error;
+    }
+  } finally {
+    if (useLock && lockAcquired) {
+      await releaseLock(lockKey);
+    }
   }
 }
 
