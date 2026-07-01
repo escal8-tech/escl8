@@ -80,6 +80,7 @@ function getAllowedOrigin(requestOrigin: string | null): string {
 export async function middleware(request: NextRequest) {
   // PREVENT HEADER SPOOFING: Strip all internal identity/context headers from the incoming request.
   // These will be re-populated by this middleware from the validated JWT claims.
+  const requestHeaders = new Headers(request.headers);
   const headersToStrip = [
     'x-firebase-uid',
     'x-user-email',
@@ -95,7 +96,10 @@ export async function middleware(request: NextRequest) {
     'x-subscription-limits',
     'x-api-key',
   ];
-  headersToStrip.forEach((header) => request.headers.delete(header));
+  headersToStrip.forEach((header) => {
+    request.headers.delete(header);
+    requestHeaders.delete(header);
+  });
 
   const pathname = request.nextUrl.pathname
 
@@ -117,7 +121,11 @@ export async function middleware(request: NextRequest) {
 
   // Skip public paths
   if (isPublicPath(pathname)) {
-    const response = NextResponse.next()
+    const response = NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    })
     response.headers.set('Access-Control-Allow-Origin', allowedOrigin)
     response.headers.set('Access-Control-Allow-Credentials', 'true')
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
@@ -133,7 +141,11 @@ export async function middleware(request: NextRequest) {
       // Allow TRPC to handle authentication for its own routes.
       // publicProcedures will succeed, protectedProcedures will throw 401.
       if (pathname.startsWith('/api/trpc/')) {
-        const response = NextResponse.next()
+        const response = NextResponse.next({
+          request: {
+            headers: requestHeaders,
+          },
+        })
         response.headers.set('Access-Control-Allow-Origin', allowedOrigin)
         response.headers.set('Access-Control-Allow-Credentials', 'true')
         response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
@@ -159,7 +171,11 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/api/')) {
       // Allow TRPC to handle authentication for its own routes (fallback to anonymous)
       if (pathname.startsWith('/api/trpc/')) {
-        const response = NextResponse.next()
+        const response = NextResponse.next({
+          request: {
+            headers: requestHeaders,
+          },
+        })
         response.cookies.set('escal8_access_token', '', { maxAge: 0, path: '/' })
         response.cookies.set('escal8_refresh_token', '', { maxAge: 0, path: '/' })
         response.headers.set('Access-Control-Allow-Origin', allowedOrigin)
@@ -238,7 +254,7 @@ export async function middleware(request: NextRequest) {
 
   // Build headers for downstream consumers (tRPC, API routes, Server Components)
   // CRITICAL: Must clone request headers and pass via NextResponse.next({ request: { headers } })
-  const requestHeaders = new Headers(request.headers)
+  // requestHeaders already cloned and stripped at the top
 
   // Core identity headers
   requestHeaders.set('x-firebase-uid', firebaseUid)
