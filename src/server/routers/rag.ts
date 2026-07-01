@@ -17,12 +17,9 @@ const chunkTypeSchema = z.enum(["pricing", "policy", "faq", "example_dialogue", 
 
 export const ragRouter = router({
   enqueueRetrain: businessProcedure
-    .input(z.object({ email: z.string().email(), docType: docTypeSchema }))
+    .input(z.object({ docType: docTypeSchema }))
     .mutation(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email !== ctx.userEmail) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-      }
-      console.log(`[rag] enqueueRetrain requested email=${input.email} docType=${input.docType}`);
+      console.log(`[rag] enqueueRetrain requested businessId=${ctx.businessId} docType=${input.docType}`);
 
       const doc = await db
         .select()
@@ -102,12 +99,7 @@ export const ragRouter = router({
 
   /** Manually regenerate bot instructions from the 3 key document types */
   regenerateInstructions: businessProcedure
-    .input(z.object({ email: z.string().email() }))
-    .mutation(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email !== ctx.userEmail) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-      }
-
+    .mutation(async ({ ctx }) => {
       const allIndexed = await areKeyDocsIndexed(ctx.businessId);
       if (!allIndexed) {
         throw new TRPCError({
@@ -143,12 +135,7 @@ export const ragRouter = router({
 
   /** Get current bot instructions status */
   getInstructionsStatus: businessProcedure
-    .input(z.object({ email: z.string().email() }))
-    .query(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email !== ctx.userEmail) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-      }
-
+    .query(async ({ ctx }) => {
       const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId));
       const allIndexed = await areKeyDocsIndexed(ctx.businessId);
 
@@ -161,7 +148,6 @@ export const ragRouter = router({
   /** Enterprise-grade RAG retrieval with query expansion, reranking, and citations */
   retrieve: businessProcedure
     .input(z.object({
-      email: z.string().email(),
       query: z.string().min(1).max(1000),
       options: z.object({
         topK: z.number().int().min(1).max(20).optional(),
@@ -172,10 +158,6 @@ export const ragRouter = router({
       }).optional(),
     }))
     .query(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email !== ctx.userEmail) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-      }
-
       const result = await retrieve(ctx.businessId, input.query, {
         topK: input.options?.topK ?? 5,
         docTypes: input.options?.docTypes,
@@ -203,15 +185,10 @@ export const ragRouter = router({
   /** Get grounded context block for bot prompts */
   getContext: businessProcedure
     .input(z.object({
-      email: z.string().email(),
       query: z.string().min(1).max(1000),
       topK: z.number().int().min(1).max(10).optional(),
     }))
     .query(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email !== ctx.userEmail) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-      }
-
       const context = await getGroundedContext(ctx.businessId, input.query, {
         topK: input.topK ?? 5,
         useReranking: true,
