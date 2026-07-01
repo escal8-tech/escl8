@@ -190,6 +190,29 @@ export async function setCached(key: string, value: unknown, ttlSeconds: number)
   }
 }
 
+export async function scanDelCached(prefix: string): Promise<number> {
+  const client = await getRedisClient();
+  if (!client) return 0;
+
+  try {
+    let cursor = 0;
+    let deletedCount = 0;
+    do {
+      const reply = await client.scan(cursor, { MATCH: `${prefix}*`, COUNT: 100 });
+      cursor = reply.cursor;
+      const keys = reply.keys;
+      if (keys.length > 0) {
+        await client.del(keys);
+        deletedCount += keys.length;
+      }
+    } while (cursor !== 0);
+    return deletedCount;
+  } catch (err) {
+    console.error('Redis SCANDEL error:', err);
+    return 0;
+  }
+}
+
 export async function delCached(key: string): Promise<boolean> {
   const client = await getRedisClient();
   if (!client) return false;
@@ -213,6 +236,24 @@ export async function existsCached(key: string): Promise<boolean> {
     console.error('Redis EXISTS error:', err);
     return false;
   }
+}
+
+/**
+ * A helper to wrap a fetcher function with Redis-based caching.
+ */
+export async function withCache<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>
+): Promise<T> {
+  const cached = await getCached<T>(key);
+  if (cached !== null) {
+    return cached;
+  }
+
+  const data = await fetcher();
+  await setCached(key, data, ttlSeconds);
+  return data;
 }
 
 // Distributed lock implementation
