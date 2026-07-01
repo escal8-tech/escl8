@@ -7,14 +7,6 @@ import {
   OrderWorkspaceMode,
 } from "@/server/services/orderWorkflowSupport";
 
-function getOrderRangeBounds(rangeDays: number) {
-  const rangeEnd = new Date();
-  rangeEnd.setHours(23, 59, 59, 999);
-  const rangeStart = new Date(rangeEnd);
-  rangeStart.setDate(rangeStart.getDate() - (rangeDays - 1));
-  rangeStart.setHours(0, 0, 0, 0);
-  return { rangeStart, rangeEnd };
-}
 
 function buildOrderSearchPattern(value: string | null | undefined): string | null {
   const normalized = String(value ?? "").trim();
@@ -23,6 +15,7 @@ function buildOrderSearchPattern(value: string | null | undefined): string | nul
 
 export function buildOrderBaseConditions(params: {
   businessId: string;
+  timezone?: string; // Add timezone parameter
   status?: string;
   methodFilter?: OrderAnalyticsMethodFilter;
   dateField?: OrderAnalyticsDateField;
@@ -40,10 +33,20 @@ export function buildOrderBaseConditions(params: {
   }
 
   if (params.dateField && params.rangeDays) {
-    const { rangeStart, rangeEnd } = getOrderRangeBounds(params.rangeDays);
     const column = params.dateField === "createdAt" ? orders.createdAt : orders.updatedAt;
-    conditions.push(gte(column, rangeStart));
-    conditions.push(lte(column, rangeEnd));
+    const tz = params.timezone && params.timezone.length > 0 ? params.timezone : "UTC";
+    const tzSql = sql.raw(`'${tz.replace(/'/g, "''")}'`);
+    const intervalSql = sql.raw(`'${params.rangeDays - 1} days'`);
+    
+    // Convert column to venue's timezone for comparison
+    const columnInTz = sql`${column} AT TIME ZONE ${tzSql}`;
+    // Get start of the anchor day in venue's timezone
+    const rangeStartInTz = sql`(CURRENT_TIMESTAMP AT TIME ZONE ${tzSql})::date - INTERVAL ${intervalSql}`;
+    // Get end of today (start of tomorrow) in venue's timezone
+    const rangeEndInTz = sql`(CURRENT_TIMESTAMP AT TIME ZONE ${tzSql})::date + INTERVAL '1 day'`;
+
+    conditions.push(gte(columnInTz, rangeStartInTz));
+    conditions.push(sql`${columnInTz} < ${rangeEndInTz}`);
   }
 
   const searchPattern = buildOrderSearchPattern(params.search);
@@ -76,6 +79,7 @@ function simpleFulfillmentBucketExpr() {
 
 export function buildWorkspaceConditions(params: {
   businessId: string;
+  timezone?: string;
   mode: OrderWorkspaceMode;
   queueFilter: OrderWorkspaceFilter;
   methodFilter?: OrderAnalyticsMethodFilter;
@@ -87,6 +91,7 @@ export function buildWorkspaceConditions(params: {
   const fulfillmentBucket = simpleFulfillmentBucketExpr();
   const conditions = buildOrderBaseConditions({
     businessId: params.businessId,
+    timezone: params.timezone,
     methodFilter: params.methodFilter,
     dateField: params.dateField,
     rangeDays: params.rangeDays,

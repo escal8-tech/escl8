@@ -50,10 +50,10 @@ export async function listOrdersPageForBusiness(args: {
   rangeDays: number;
   methodFilter: "all" | "manual" | "bank_qr" | "cod";
 }) {
-  const { conditions } = buildWorkspaceConditions(args);
+  const settings = await getBusinessOrderSettings(args.businessId);
+  const { conditions } = buildWorkspaceConditions({ ...args, timezone: settings.timezone });
 
-  const [settings, countRows, orderRows] = await Promise.all([
-    getBusinessOrderSettings(args.businessId),
+  const [countRows, orderRows] = await Promise.all([
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(orders)
@@ -87,7 +87,7 @@ export async function getOrderWorkspaceOverviewForBusiness(args: {
   const cacheKey = `order:overview:${args.businessId}:${args.mode}:${args.queueFilter}:${args.dateField}:${args.rangeDays}:${args.methodFilter}`;
   return withStatsCache(cacheKey, 60, async () => {
     const settings = await getBusinessOrderSettings(args.businessId);
-    const { conditions, statusExpr, fulfillmentBucket } = buildWorkspaceConditions(args);
+    const { conditions, statusExpr, fulfillmentBucket } = buildWorkspaceConditions({ ...args, timezone: settings.timezone });
     const amountExpr = sql<number>`coalesce(${orders.paidAmount}, ${orders.refundAmount}, ${orders.expectedAmount}, 0)::numeric`;
     const paidExpr = sql<number>`coalesce(${orders.paidAmount}, ${orders.expectedAmount}, 0)::numeric`;
     const refundExpr = sql<number>`coalesce(${orders.refundAmount}, ${orders.paidAmount}, ${orders.expectedAmount}, 0)::numeric`;

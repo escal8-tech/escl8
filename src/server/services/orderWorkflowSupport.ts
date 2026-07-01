@@ -175,11 +175,14 @@ export function resolveRefundAmount(
 
 export async function getBusinessOrderSettings(businessId: string) {
   const [biz] = await db
-    .select({ settings: businesses.settings })
+    .select({ settings: businesses.settings, timezone: businesses.timezone })
     .from(businesses)
     .where(eq(businesses.id, businessId))
     .limit(1);
-  return getBusinessOrderSettingsRecord(businessId, biz?.settings);
+  return {
+    timezone: biz?.timezone || "UTC",
+    ...getBusinessOrderSettingsRecord(businessId, biz?.settings)
+  };
 }
 
 export function canCaptureManualPayment(orderRow: {
