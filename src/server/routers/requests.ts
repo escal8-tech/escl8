@@ -183,7 +183,7 @@ export const requestsRouter = router({
     )
     .query(async ({ input, ctx }) => {
       const cacheKey = `requests:activity:${ctx.businessId}:${JSON.stringify(input || {})}`;
-      const cached = null;
+      const cached = await getCached(cacheKey);
       if (cached) return cached;
 
       const days = input?.days ?? 30;
