@@ -87,7 +87,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${montserrat.variable} ${catamaran.variable} ${inter.variable}`}>
+      <body suppressHydrationWarning className={`${montserrat.variable} ${catamaran.variable} ${inter.variable}`}>
         <TRPCProvider>
           <ToastProvider>
             <AuthSubscriptionProvider>

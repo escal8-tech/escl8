@@ -39,16 +39,10 @@ export function setAuthCookies(
   refreshToken: string
 ): NextResponse {
   // Set access token cookie
-  response.headers.set(
-    'Set-Cookie',
-    serialize(COOKIE_NAMES.accessToken, accessToken, COOKIE_OPTIONS.accessToken)
-  );
+  response.cookies.set(COOKIE_NAMES.accessToken, accessToken, COOKIE_OPTIONS.accessToken);
 
-  // Append refresh token cookie (using append for multiple Set-Cookie headers)
-  response.headers.append(
-    'Set-Cookie',
-    serialize(COOKIE_NAMES.refreshToken, refreshToken, COOKIE_OPTIONS.refreshToken)
-  );
+  // Set refresh token cookie
+  response.cookies.set(COOKIE_NAMES.refreshToken, refreshToken, COOKIE_OPTIONS.refreshToken);
 
   return response;
 }
@@ -57,21 +51,8 @@ export function setAuthCookies(
  * Clear auth cookies (logout)
  */
 export function clearAuthCookies(response: NextResponse): NextResponse {
-  response.headers.set(
-    'Set-Cookie',
-    serialize(COOKIE_NAMES.accessToken, '', {
-      ...COOKIE_OPTIONS.accessToken,
-      maxAge: 0, // Expire immediately
-    })
-  );
-
-  response.headers.append(
-    'Set-Cookie',
-    serialize(COOKIE_NAMES.refreshToken, '', {
-      ...COOKIE_OPTIONS.refreshToken,
-      maxAge: 0,
-    })
-  );
+  response.cookies.delete(COOKIE_NAMES.accessToken);
+  response.cookies.delete(COOKIE_NAMES.refreshToken);
 
   return response;
 }
