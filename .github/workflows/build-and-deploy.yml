@@ -169,5 +169,5 @@ jobs:
 
       - name: Restart AKS Deployments
         run: |
-          kubectl rollout restart deployment escal8-agent-dashboard
-          kubectl rollout restart deployment escal8-agent-worker
+          kubectl rollout restart deployment escal8-agent-dashboard -n escal8-agent
+          kubectl rollout restart deployment escal8-agent-worker -n escal8-agent
