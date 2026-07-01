@@ -113,9 +113,20 @@ jobs:
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-      
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Install kubelogin
+        uses: azure/use-kubelogin@v1
+        with:
+          kubelogin-version: 'v0.1.4'
+
       - name: Set AKS context
-        run: az aks get-credentials --resource-group Escal8 --name escal8-aks-b2
+        run: az aks get-credentials --resource-group Escal8 --name escal8-aks-b2 --overwrite-existing
+
+      - name: Convert kubeconfig for kubelogin
+        run: kubelogin convert-kubeconfig -l azurecli
 
       - name: Restart AKS Deployments
         run: |
