@@ -11,6 +11,7 @@ import { getBusinessOrderSettingsRecord } from "@/server/services/businessSettin
 import { drainBusinessOutbox } from "@/server/services/messageOutbox";
 import { db } from "@/server/db/client";
 import {
+  businessPreferences,
   businesses,
   channelIdentities,
   orderPayments,
@@ -175,13 +176,19 @@ export function resolveRefundAmount(
 
 export async function getBusinessOrderSettings(businessId: string) {
   const [biz] = await db
-    .select({ settings: businesses.settings, timezone: businesses.timezone })
+    .select({ settings: businesses.settings })
     .from(businesses)
     .where(eq(businesses.id, businessId))
     .limit(1);
+  const [prefs] = await db
+    .select({ timezone: businessPreferences.timezone })
+    .from(businessPreferences)
+    .where(eq(businessPreferences.businessId, businessId))
+    .limit(1);
+  const record = await getBusinessOrderSettingsRecord(businessId, biz?.settings);
   return {
-    timezone: biz?.timezone || "UTC",
-    ...getBusinessOrderSettingsRecord(businessId, biz?.settings)
+    ...record,
+    timezone: prefs?.timezone || "UTC",
   };
 }
 
