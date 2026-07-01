@@ -80,6 +80,7 @@ jobs:
             NEXT_PUBLIC_SENTRY_DSN=${{ secrets.PRODUCTION_NEXT_PUBLIC_SENTRY_DSN }}
             NEXT_PUBLIC_SENTRY_RELEASE=${{ github.sha }}
             NEXT_PUBLIC_SENTRY_ENVIRONMENT=production
+            NEXT_PUBLIC_APP_URL=${{ github.ref_name == 'staging' && 'https://staging-concierge.escal8.tech' || 'https://concierge.escal8.tech' }}
             SENTRY_ORG=${{ secrets.PRODUCTION_SENTRY_ORG }}
             SENTRY_PROJECT=${{ secrets.PRODUCTION_SENTRY_PROJECT }}
           secrets: |
@@ -110,7 +111,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 

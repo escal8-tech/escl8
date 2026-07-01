@@ -1,4 +1,4 @@
-import { serialize, parse } from 'cookie';
+import { parse } from 'cookie';
 import { NextResponse, NextRequest } from 'next/server';
 import { blacklistToken } from '@/lib/jwt-auth';
 
