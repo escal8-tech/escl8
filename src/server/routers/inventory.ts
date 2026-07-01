@@ -32,6 +32,7 @@ import {
 import { acquireInventoryBusinessLock } from "@/server/inventory/locks";
 import { setCommerceStockAbsolute } from "@/server/commerce/inventoryBridge";
 import { withRedisWorkflowLock } from "@/server/services/ticketWorkflowSupport";
+import { withCache, delCached, scanDelCached } from "@/lib/redis";
 
 const sortDirectionSchema = z.enum(["asc", "desc"]);
 const itemSortKeySchema = z.enum(["name", "updatedAt", "quantity"]);
@@ -87,16 +88,18 @@ function normalizeMappingInput(entries: z.infer<typeof columnMappingEntrySchema>
 }
 
 async function getAgentStockMappingStatus(agentId: string | null | undefined): Promise<StockMappingStatus> {
-  if (!agentId) return {
-    isMapped: false,
-    isReady: false,
-    hasName: false,
-    priceCount: 0,
-    hasQuantity: false,
-    hasImage: false,
-    hasDocument: false,
-    mappedAt: null,
-  };
+  if (!agentId) {
+    return {
+      isMapped: false,
+      isReady: false,
+      hasName: false,
+      priceCount: 0,
+      hasQuantity: false,
+      hasImage: false,
+      hasDocument: false,
+      mappedAt: null,
+    };
+  }
   const [agent] = await db
     .select({ settings: agents.settings })
     .from(agents)
@@ -228,196 +231,206 @@ export const inventoryRouter = router({
       sortDir: sortDirectionSchema.default("asc"),
      agentId: z.string().optional(),}))
     .query(async ({ ctx, input }) => {
-      const conditions: any[] = [
-        eq(inventoryProducts.businessId, ctx.businessId),
-        eq(inventoryProducts.status, "active"),
-        sql`commerce_products.metadata->>'bridge' = 'inventory'`,
-      ];
-      if (input.agentId) {
-        conditions.push(eq(inventoryProducts.agentId, input.agentId));
-      }
+      const cacheKey = `inv:listItems:${ctx.businessId}:${JSON.stringify(input)}`;
+      return withCache(cacheKey, 300, async () => {
+        const conditions: any[] = [
+          eq(inventoryProducts.businessId, ctx.businessId),
+          eq(inventoryProducts.status, "active"),
+          sql`commerce_products.metadata->>'bridge' = 'inventory'`,
+        ];
+        if (input.agentId) {
+          conditions.push(eq(inventoryProducts.agentId, input.agentId));
+        }
 
-      const search = cleanSearch(input.search);
-      if (search) {
-        const pattern = `%${search}%`;
-        conditions.push(
-          or(
-            ilike(inventoryProducts.name, pattern),
-            ilike(inventoryProducts.sku, pattern),
-            ilike(inventoryProducts.searchText, pattern),
-            ilike(inventoryProducts.category, pattern),
-            ilike(inventoryProducts.brand, pattern),
-            ilike(inventoryProducts.model, pattern),
-          )!,
-        );
-      }
+        const search = cleanSearch(input.search);
+        if (search) {
+          const pattern = `%${search}%`;
+          conditions.push(
+            or(
+              ilike(inventoryProducts.name, pattern),
+              ilike(inventoryProducts.sku, pattern),
+              ilike(inventoryProducts.searchText, pattern),
+              ilike(inventoryProducts.category, pattern),
+              ilike(inventoryProducts.brand, pattern),
+              ilike(inventoryProducts.model, pattern),
+            )!,
+          );
+        }
 
-      const [countRow] = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(inventoryProducts)
-        .where(and(...conditions));
+        const sortDirection = input.sortDir === "asc" ? asc : desc;
+        const nameSortExpr = sql<string>`lower(coalesce(${inventoryProducts.name}, ''))`;
+        const quantitySortExpr = sql<number>`coalesce(${commerceStockBalances.availableQty}, -1)`;
+        const orderBy =
+          input.sortKey === "quantity"
+            ? [sortDirection(quantitySortExpr), asc(nameSortExpr)]
+            : input.sortKey === "updatedAt"
+              ? [sortDirection(inventoryProducts.updatedAt), asc(nameSortExpr)]
+              : [sortDirection(nameSortExpr), desc(inventoryProducts.updatedAt)];
 
-      const sortDirection = input.sortDir === "asc" ? asc : desc;
-      const nameSortExpr = sql<string>`lower(coalesce(${inventoryProducts.name}, ''))`;
-      const quantitySortExpr = sql<number>`coalesce(${commerceStockBalances.availableQty}, -1)`;
-      const orderBy =
-        input.sortKey === "quantity"
-          ? [sortDirection(quantitySortExpr), asc(nameSortExpr)]
-          : input.sortKey === "updatedAt"
-            ? [sortDirection(inventoryProducts.updatedAt), asc(nameSortExpr)]
-            : [sortDirection(nameSortExpr), desc(inventoryProducts.updatedAt)];
+        const [countRow, dbRows] = await Promise.all([
+          db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(inventoryProducts)
+            .where(and(...conditions))
+            .then(r => r[0]),
+          db
+            .select({
+              product: inventoryProducts,
+              stock: commerceStockBalances,
+            })
+            .from(inventoryProducts)
+            .leftJoin(commerceStockBalances, eq(inventoryProducts.id, commerceStockBalances.productId))
+            .where(and(...conditions))
+            .orderBy(...orderBy)
+            .limit(input.limit)
+            .offset(input.offset)
+        ]);
 
-      const dbRows = await db
-        .select({
-          product: inventoryProducts,
-          stock: commerceStockBalances,
-        })
-        .from(inventoryProducts)
-        .leftJoin(commerceStockBalances, eq(inventoryProducts.id, commerceStockBalances.productId))
-        .where(and(...conditions))
-        .orderBy(...orderBy)
-        .limit(input.limit)
-        .offset(input.offset);
+        const rows = dbRows.map(({ product, stock }) => ({
+          ...product,
+          availableQuantity: stock?.availableQty ?? null,
+        }));
 
-      const rows = dbRows.map(({ product, stock }) => ({
-        ...product,
-        availableQuantity: stock?.availableQty ?? null,
-      }));
+        const ids = rows.map((row) => row.id);
+        const [priceRows, offersByProduct, reservationsByProduct] = await Promise.all([
+          ids.length
+            ? db
+                .select()
+                .from(inventoryProductPriceOptions)
+                .where(and(eq(inventoryProductPriceOptions.businessId, ctx.businessId), inArray(inventoryProductPriceOptions.productId, ids)))
+                .orderBy(asc(inventoryProductPriceOptions.sortOrder), asc(inventoryProductPriceOptions.label))
+            : Promise.resolve([] as Array<typeof inventoryProductPriceOptions.$inferSelect>),
+          activeOffersForProducts(ctx.businessId, ids),
+          activeReservationQuantitiesForProducts(ctx.businessId, ids),
+        ]);
+        const pricesByProduct = new Map<string, Array<typeof inventoryProductPriceOptions.$inferSelect>>();
+        for (const row of priceRows) {
+          const list = pricesByProduct.get(row.productId) ?? [];
+          list.push(row);
+          pricesByProduct.set(row.productId, list);
+        }
 
-      const ids = rows.map((row) => row.id);
-      const priceRows = ids.length
-        ? await db
-            .select()
-            .from(inventoryProductPriceOptions)
-            .where(and(eq(inventoryProductPriceOptions.businessId, ctx.businessId), inArray(inventoryProductPriceOptions.productId, ids)))
-            .orderBy(asc(inventoryProductPriceOptions.sortOrder), asc(inventoryProductPriceOptions.label))
-        : [];
-      const offersByProduct = await activeOffersForProducts(ctx.businessId, ids);
-      const reservationsByProduct = await activeReservationQuantitiesForProducts(ctx.businessId, ids);
-      const pricesByProduct = new Map<string, Array<typeof inventoryProductPriceOptions.$inferSelect>>();
-      for (const row of priceRows) {
-        const list = pricesByProduct.get(row.productId) ?? [];
-        list.push(row);
-        pricesByProduct.set(row.productId, list);
-      }
-
-      return {
-        totalCount: countRow?.count ?? 0,
-        mappingStatus: await getAgentStockMappingStatus(input.agentId ?? ""),
-        items: rows.map((row) => serializeProduct(
-          row,
-          pricesByProduct.get(row.id) ?? [],
-          offersByProduct.get(row.id),
-          reservationsByProduct.get(row.id) ?? 0,
-        )),
-      };
+        return {
+          totalCount: countRow?.count ?? 0,
+          mappingStatus: await getAgentStockMappingStatus(input.agentId ?? ""),
+          items: rows.map((row) => serializeProduct(
+            row,
+            pricesByProduct.get(row.id) ?? [],
+            offersByProduct.get(row.id),
+            reservationsByProduct.get(row.id) ?? 0,
+          )),
+        };
+      });
     }),
 
   getColumnMapping: businessProcedure
     .input(z.object({ agentId: z.string() }))
     .query(async ({ ctx, input }) => {
-    const [agent] = await db
-      .select({ settings: agents.settings })
-      .from(agents)
-      .where(and(eq(agents.id, input.agentId), eq(agents.businessId, ctx.businessId)))
-      .limit(1);
+      const cacheKey = `inv:getColumnMapping:${ctx.businessId}:${input.agentId}`;
+      return withCache(cacheKey, 600, async () => {
+        const [agent] = await db
+          .select({ settings: agents.settings })
+          .from(agents)
+          .where(and(eq(agents.id, input.agentId), eq(agents.businessId, ctx.businessId)))
+          .limit(1);
 
-    if (!agent) {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "Agent not found or does not belong to your business.",
-      });
-    }
-
-    const stockSettings = normalizeStockSettings(agent?.settings);
-    const mapped = new Map(stockSettings.columnMapping.map((entry) => [entry.key, entry]));
-
-    // Find the latest inventory training document for this business
-    const [latestInventoryDoc] = await db
-      .select({ id: trainingDocuments.id })
-      .from(trainingDocuments)
-      .where(
-        and(
-          eq(trainingDocuments.agentId, input.agentId),
-          eq(trainingDocuments.docType, "inventory")
-        )
-      )
-      .orderBy(desc(trainingDocuments.uploadedAt))
-      .limit(1);
-
-    // Only get products from the latest training document (or all active if no training doc yet)
-    const productWhere = latestInventoryDoc
-      ? and(
-          eq(inventoryProducts.businessId, ctx.businessId),
-          eq(inventoryProducts.status, "active"),
-        sql`commerce_products.metadata->>'bridge' = 'inventory'`,
-          eq(sql`commerce_products.metadata->>'trainingDocumentId'`, latestInventoryDoc.id)
-        )
-      : and(
-          eq(inventoryProducts.businessId, ctx.businessId),
-          eq(inventoryProducts.status, "active")
-        );
-
-    const rows = await db
-      .select({ rawFields: inventoryProducts.rawFields })
-      .from(inventoryProducts)
-      .where(productWhere)
-      .limit(1000);
-
-    const columnStats = new Map<string, { count: number; samples: string[] }>();
-    for (const row of rows) {
-      const rawFields = row.rawFields && typeof row.rawFields === "object" ? row.rawFields as Record<string, unknown> : {};
-      for (const [rawKey, rawValue] of Object.entries(rawFields)) {
-        const key = normalizeStockColumnKey(rawKey);
-        const value = String(rawValue ?? "").trim();
-        if (!key) continue;
-        const stat = columnStats.get(key) ?? { count: 0, samples: [] };
-        stat.count += 1;
-        if (value && stat.samples.length < 3 && !stat.samples.includes(value)) {
-          stat.samples.push(value.slice(0, 120));
+        if (!agent) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Agent not found or does not belong to your business.",
+          });
         }
-        columnStats.set(key, stat);
-      }
-    }
 
-    const detectedKeys = new Set(columnStats.keys());
-    let savedMappingCount = 0;
-    let newColumnCount = 0;
-    const missingColumnCount = stockSettings.columnMapping.filter((entry) => !detectedKeys.has(entry.key)).length;
-    const columns = Array.from(columnStats.entries())
-      .map(([key, stat]) => {
-        const current = mapped.get(key) as StockColumnMappingEntry | undefined;
-        const hasSavedMapping = Boolean(current);
-        const isDetected = detectedKeys.has(key);
-        if (hasSavedMapping) savedMappingCount += 1;
-        if (!hasSavedMapping && isDetected) newColumnCount += 1;
-        const role = current?.role ?? inferStockColumnRole(key);
+        const stockSettings = normalizeStockSettings(agent?.settings);
+        const mapped = new Map(stockSettings.columnMapping.map((entry) => [entry.key, entry]));
+
+        // Find the latest inventory training document for this business
+        const [latestInventoryDoc] = await db
+          .select({ id: trainingDocuments.id })
+          .from(trainingDocuments)
+          .where(
+            and(
+              eq(trainingDocuments.agentId, input.agentId),
+              eq(trainingDocuments.docType, "inventory")
+            )
+          )
+          .orderBy(desc(trainingDocuments.uploadedAt))
+          .limit(1);
+
+        // Only get products from the latest training document (or all active if no training doc yet)
+        const productWhere = latestInventoryDoc
+          ? and(
+              eq(inventoryProducts.businessId, ctx.businessId),
+              eq(inventoryProducts.status, "active"),
+            sql`commerce_products.metadata->>'bridge' = 'inventory'`,
+              eq(sql`commerce_products.metadata->>'trainingDocumentId'`, latestInventoryDoc.id)
+            )
+          : and(
+              eq(inventoryProducts.businessId, ctx.businessId),
+              eq(inventoryProducts.status, "active")
+            );
+
+        const rows = await db
+          .select({ rawFields: inventoryProducts.rawFields })
+          .from(inventoryProducts)
+          .where(productWhere)
+          .limit(1000);
+
+        const columnStats = new Map<string, { count: number; samples: string[] }>();
+        for (const row of rows) {
+          const rawFields = row.rawFields && typeof row.rawFields === "object" ? row.rawFields as Record<string, unknown> : {};
+          for (const [rawKey, rawValue] of Object.entries(rawFields)) {
+            const key = normalizeStockColumnKey(rawKey);
+            const value = String(rawValue ?? "").trim();
+            if (!key) continue;
+            const stat = columnStats.get(key) ?? { count: 0, samples: [] };
+            stat.count += 1;
+            if (value && stat.samples.length < 3 && !stat.samples.includes(value)) {
+              stat.samples.push(value.slice(0, 120));
+            }
+            columnStats.set(key, stat);
+          }
+        }
+
+        const detectedKeys = new Set(columnStats.keys());
+        let savedMappingCount = 0;
+        let newColumnCount = 0;
+        const missingColumnCount = stockSettings.columnMapping.filter((entry) => !detectedKeys.has(entry.key)).length;
+        const columns = Array.from(columnStats.entries())
+          .map(([key, stat]) => {
+            const current = mapped.get(key) as StockColumnMappingEntry | undefined;
+            const hasSavedMapping = Boolean(current);
+            const isDetected = detectedKeys.has(key);
+            if (hasSavedMapping) savedMappingCount += 1;
+            if (!hasSavedMapping && isDetected) newColumnCount += 1;
+            const role = current?.role ?? inferStockColumnRole(key);
+            return {
+              key,
+              label: current?.label || friendlyStockColumnLabel(key),
+              detectedLabel: friendlyStockColumnLabel(key),
+              role,
+              priceLabel: current?.priceLabel || (role === "price" ? friendlyStockColumnLabel(key) : ""),
+              count: stat.count,
+              samples: stat.samples,
+              hasSavedMapping,
+              isNew: !hasSavedMapping && isDetected,
+              isMissing: false,
+              mappingSource: hasSavedMapping ? "saved" : "suggested",
+            };
+          })
+          .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+
         return {
-          key,
-          label: current?.label || friendlyStockColumnLabel(key),
-          detectedLabel: friendlyStockColumnLabel(key),
-          role,
-          priceLabel: current?.priceLabel || (role === "price" ? friendlyStockColumnLabel(key) : ""),
-          count: stat.count,
-          samples: stat.samples,
-          hasSavedMapping,
-          isNew: !hasSavedMapping && isDetected,
-          isMissing: false,
-          mappingSource: hasSavedMapping ? "saved" : "suggested",
+          columns,
+          mappingStatus: getStockMappingStatus(stockSettings),
+          mappedAt: stockSettings.updatedAt ?? null,
+          productCount: rows.length,
+          savedMappingCount,
+          newColumnCount,
+          missingColumnCount,
         };
-      })
-      .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
-
-    return {
-      columns,
-      mappingStatus: getStockMappingStatus(stockSettings),
-      mappedAt: stockSettings.updatedAt ?? null,
-      productCount: rows.length,
-      savedMappingCount,
-      newColumnCount,
-      missingColumnCount,
-    };
-  }),
+      });
+    }),
 
   saveColumnMapping: businessProcedure
     .input(z.object({
@@ -451,6 +464,10 @@ export const inventoryRouter = router({
         agentId: input.agentId,
         settings: { schemaVersion: 1, columnMapping },
       });
+
+      await scanDelCached(`inv:listItems:${ctx.businessId}:*`);
+      await delCached(`inv:getColumnMapping:${ctx.businessId}:${input.agentId}`);
+
       return { ok: true, appliedCount };
     }),
 
@@ -465,27 +482,31 @@ export const inventoryRouter = router({
       const row = await withRedisWorkflowLock(lockKey, async () => {
         return await db.transaction(async (tx) => {
           await acquireInventoryBusinessLock(tx, ctx.businessId);
-        const [updated] = await tx
-          .update(inventoryProducts)
-          .set({ updatedAt: new Date() })
-          .where(and(eq(inventoryProducts.businessId, ctx.businessId), eq(inventoryProducts.id, input.productId)))
-          .returning();
-        if (updated) {
-          await setCommerceStockAbsolute(tx, {
-            businessId: ctx.businessId,
-            productId: input.productId,
-            quantity: input.quantity,
-            sourceRefType: "manual_inventory_adjustment",
-            sourceRefId: input.productId,
-            notes: "Manual stock count from agent inventory page.",
-          });
-        }
-        return updated;
+          const [updated] = await tx
+            .update(inventoryProducts)
+            .set({ updatedAt: new Date() })
+            .where(and(eq(inventoryProducts.businessId, ctx.businessId), eq(inventoryProducts.id, input.productId)))
+            .returning();
+          if (updated) {
+            await setCommerceStockAbsolute(tx, {
+              businessId: ctx.businessId,
+              productId: input.productId,
+              quantity: input.quantity,
+              sourceRefType: "manual_inventory_adjustment",
+              sourceRefId: input.productId,
+              notes: "Manual stock count from agent inventory page.",
+            });
+          }
+          return updated;
+        });
       });
-      });
+
       if (!row) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Item not found" });
       }
+
+      await scanDelCached(`inv:listItems:${ctx.businessId}:*`);
+
       return { ok: true, item: serializeProduct(row, [], undefined, 0) };
     }),
 
@@ -622,6 +643,9 @@ export const inventoryRouter = router({
       if (!offer) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Offer not found" });
       }
+
+      await scanDelCached(`inv:listItems:${ctx.businessId}:*`);
+
       return { ok: true, offer: serializeOffer(offer, product.name) };
     }),
 
@@ -631,6 +655,10 @@ export const inventoryRouter = router({
       await db
         .delete(inventoryProductOffers)
         .where(and(eq(inventoryProductOffers.businessId, ctx.businessId), eq(inventoryProductOffers.id, input.id)));
+
+      await scanDelCached(`inv:listItems:${ctx.businessId}:*`);
+
       return { ok: true };
     }),
 });
+// Re-reading to ensure I have the full context

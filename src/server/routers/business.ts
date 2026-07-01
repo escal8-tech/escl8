@@ -18,6 +18,7 @@ import { mergeWebsiteWidgetSettings, normalizeWebsiteWidgetSettings } from "@/li
 import { getBusinessAiCreditsUsedThisMonth } from "@/server/services/aiUsage";
 import { getTenantModuleAccess, tenantHasFeature } from "@/server/control/access";
 import { SUITE_FEATURES } from "@/server/control/subscription-features";
+import { withCache } from "@/lib/redis";
 import { createOrderInvoicePreviewArtifact } from "@/server/services/orderInvoice";
 import {
   getBusinessCustomizationSettingsRecord,
@@ -30,6 +31,7 @@ import {
   upsertBusinessWebsiteWidgetSettings,
 } from "@/server/services/businessSettingsStore";
 import * as support from "@/server/services/businessLifecycleSupport";
+import * as whatsappSupport from "@/server/services/whatsappLifecycleSupport";
 
 const businessMessageUsageTierSchema = z.enum(["minimum", "standard", "enterprise"]);
 
@@ -40,36 +42,7 @@ function numberLimit(value: unknown, fallback: number) {
 
 export const businessRouter = router({
   listPhoneNumbers: businessProcedure.query(async ({ ctx }) => {
-    const rows = await db
-      .select({
-        phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-        displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-        botType: agents.botType,
-        isActive: channelIdentities.isActive,
-        autoReplyPaused: channelIdentities.autoReplyPaused,
-        aiEnabled: channelIdentities.aiEnabled,
-        connectedAt: channelIdentities.connectedAt,
-      })
-      .from(channelIdentities)
-      .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
-      .innerJoin(agents, eq(channelIdentities.agentId, agents.id))
-      .where(
-        and(
-          eq(channelIdentities.businessId, ctx.businessId),
-          eq(channelIdentities.isActive, true),
-        ),
-      )
-      .orderBy(channelIdentities.connectedAt);
-
-    return rows.map(r => ({
-      phoneNumberId: r.phoneNumberId,
-      displayPhoneNumber: r.displayPhoneNumber,
-      botType: r.botType,
-      isActive: r.isActive,
-      autoReplyPaused: r.autoReplyPaused,
-      aiDisabled: !r.aiEnabled,
-      connectedAt: r.connectedAt,
-    }));
+    return whatsappSupport.listPhoneNumbersForBusiness(ctx.businessId);
   }),
 
   setWhatsappIdentityAutoReplyPaused: businessProcedure
@@ -78,64 +51,12 @@ export const businessRouter = router({
       autoReplyPaused: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const details = await db
-        .select({
-          channelIdentityId: whatsappIdentityDetails.channelIdentityId,
-          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-        })
-        .from(whatsappIdentityDetails)
-        .innerJoin(channelIdentities, eq(whatsappIdentityDetails.channelIdentityId, channelIdentities.id))
-        .where(and(
-          eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
-          eq(channelIdentities.businessId, ctx.businessId),
-        ))
-        .limit(1)
-        .then(r => r[0]);
-
-      if (!details) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-
-      const [row] = await db
-        .update(channelIdentities)
-        .set({
-          autoReplyPaused: input.autoReplyPaused,
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(channelIdentities.businessId, ctx.businessId),
-          eq(channelIdentities.id, details.channelIdentityId),
-        ))
-        .returning();
-
-      if (!row) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-
-      recordBusinessEvent({
-        event: input.autoReplyPaused ? "whatsapp_identity.auto_reply_paused" : "whatsapp_identity.auto_reply_resumed",
-        action: "setWhatsappIdentityAutoReplyPaused",
-        area: "whatsapp_identity",
+      return whatsappSupport.setWhatsappIdentityAutoReplyPaused({
         businessId: ctx.businessId,
-        entity: "whatsapp_identity",
-        entityId: details.phoneNumberId,
         userId: ctx.userId,
-        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-        actorType: "user",
-        outcome: "success",
-        attributes: {
-          display_phone_number: details.displayPhoneNumber ?? null,
-        },
+        firebaseUid: ctx.firebaseUid,
+        ...input,
       });
-
-      return {
-        phoneNumberId: details.phoneNumberId,
-        displayPhoneNumber: details.displayPhoneNumber,
-        autoReplyPaused: row.autoReplyPaused,
-        isActive: row.isActive,
-        connectedAt: row.connectedAt,
-      };
     }),
 
   setWhatsappIdentityAiDisabled: businessProcedure
@@ -144,65 +65,12 @@ export const businessRouter = router({
       aiDisabled: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const details = await db
-        .select({
-          channelIdentityId: whatsappIdentityDetails.channelIdentityId,
-          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-        })
-        .from(whatsappIdentityDetails)
-        .innerJoin(channelIdentities, eq(whatsappIdentityDetails.channelIdentityId, channelIdentities.id))
-        .where(and(
-          eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
-          eq(channelIdentities.businessId, ctx.businessId),
-        ))
-        .limit(1)
-        .then(r => r[0]);
-
-      if (!details) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-
-      const [row] = await db
-        .update(channelIdentities)
-        .set({
-          aiEnabled: !input.aiDisabled,
-          ...(input.aiDisabled ? { autoReplyPaused: false } : {}),
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(channelIdentities.businessId, ctx.businessId),
-          eq(channelIdentities.id, details.channelIdentityId),
-        ))
-        .returning();
-
-      if (!row) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-      recordBusinessEvent({
-        event: input.aiDisabled ? "whatsapp_identity.ai_disabled" : "whatsapp_identity.ai_enabled",
-        action: "setWhatsappIdentityAiDisabled",
-        area: "whatsapp_identity",
+      return whatsappSupport.setWhatsappIdentityAiDisabled({
         businessId: ctx.businessId,
-        entity: "whatsapp_identity",
-        entityId: details.phoneNumberId,
         userId: ctx.userId,
-        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-        actorType: "user",
-        outcome: "success",
-        attributes: {
-          display_phone_number: details.displayPhoneNumber ?? null,
-        },
+        firebaseUid: ctx.firebaseUid,
+        ...input,
       });
-      
-      return {
-        phoneNumberId: details.phoneNumberId,
-        displayPhoneNumber: details.displayPhoneNumber,
-        autoReplyPaused: row.autoReplyPaused,
-        aiDisabled: !row.aiEnabled,
-        isActive: row.isActive,
-        connectedAt: row.connectedAt,
-      };
     }),
 
   getMine: businessProcedure
@@ -215,10 +83,9 @@ export const businessRouter = router({
       const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId));
       if (!biz) return null;
 
-      const creditsUsed = await getBusinessAiCreditsUsedThisMonth(ctx.businessId);
-      const access = biz.suiteTenantId ? await getTenantModuleAccess(biz.suiteTenantId, "agent") : null;
-
-      const [orderSettings, customizationSettings, preferences, websiteWidgetSettings] = await Promise.all([
+      const [creditsUsed, access, orderSettings, customizationSettings, preferences, websiteWidgetSettings] = await Promise.all([
+        getBusinessAiCreditsUsedThisMonth(ctx.businessId),
+        biz.suiteTenantId ? getTenantModuleAccess(biz.suiteTenantId, "agent") : Promise.resolve(null),
         getBusinessOrderSettingsRecord(ctx.businessId, biz.settings),
         getBusinessCustomizationSettingsRecord(ctx.businessId, biz.settings),
         getBusinessPreferencesRecord(ctx.businessId, biz.settings),
@@ -928,3 +795,4 @@ export const businessRouter = router({
 function filterSubscriptionRecord<T>(record: Record<string, T>, prefix: string): Record<string, T> {
   return Object.fromEntries(Object.entries(record).filter(([key]) => key.startsWith(prefix)));
 }
+// Re-reading to ensure I have the full context

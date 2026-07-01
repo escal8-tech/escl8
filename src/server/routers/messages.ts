@@ -11,23 +11,15 @@ import {
   whatsappIdentityDetails,
   SUPPORTED_SOURCES,
 } from "@/../drizzle/schema";
-import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { ORDER_END_MESSAGE_KINDS } from "@/lib/messageFields";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { observeAssistantMessageViaBot, sendWhatsAppMessagesViaBot } from "../services/botApi";
 import { recordAiUsageEvent } from "../services/aiUsage";
+import * as readSupport from "../services/messageReadSupport";
 
 const sourceSchema = z.enum(SUPPORTED_SOURCES);
 const digitsOnly = (value: string) => value.replace(/\D+/g, "");
-
-const lastMessageDirectionExpr = sql<string | null>`(
-  select tm.direction
-  from thread_messages tm
-  where tm.thread_id = ${messageThreads.id}
-  order by tm.created_at desc, tm.id desc
-  limit 1
-)`;
-const lastMessageDirectionSelection = sql<string | null>`coalesce(${messageThreads.lastMessageDirection}, ${lastMessageDirectionExpr})`;
 
 const threadMessageSelection = {
   id: threadMessages.id,
@@ -69,39 +61,10 @@ export const messagesRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const whereConditions = [
-        eq(messageThreads.businessId, ctx.businessId),
-        isNull(messageThreads.deletedAt),
-        eq(customers.businessId, ctx.businessId),
-        isNull(customers.deletedAt),
-      ];
-
-      // If a specific phone number is selected, filter by it
-      if (input.channelIdentityId) {
-        whereConditions.push(eq(messageThreads.channelIdentityId, input.channelIdentityId));
-      }
-
-      const rows = await db
-        .select({
-          threadId: messageThreads.id,
-          customerId: customers.id,
-          customerName: customers.name,
-          customerExternalId: customers.externalId,
-          customerPhone: customers.phone,
-          customerSource: customers.source,
-          status: messageThreads.status,
-          lastMessageAt: messageThreads.lastMessageAt,
-          lastMessageDirection: lastMessageDirectionSelection,
-          threadCreatedAt: messageThreads.createdAt,
-          channelIdentityId: messageThreads.channelIdentityId,
-        })
-        .from(messageThreads)
-        .innerJoin(customers, eq(messageThreads.customerId, customers.id))
-        .where(and(...whereConditions))
-        .orderBy(desc(messageThreads.lastMessageAt), desc(messageThreads.createdAt))
-        .limit(input.limit);
-
-      return rows;
+      return readSupport.listRecentThreadsForBusiness({
+        businessId: ctx.businessId,
+        ...input,
+      });
     }),
 
   listRecentThreadsPage: businessProcedure
@@ -115,84 +78,10 @@ export const messagesRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const whereConditions = [
-        eq(messageThreads.businessId, ctx.businessId),
-        isNull(messageThreads.deletedAt),
-        eq(customers.businessId, ctx.businessId),
-        isNull(customers.deletedAt),
-      ];
-
-      if (input.channelIdentityId) {
-        whereConditions.push(eq(messageThreads.channelIdentityId, input.channelIdentityId));
-      }
-
-      const trimmedQuery = String(input.query || "").trim();
-      if (trimmedQuery) {
-        const pattern = `%${trimmedQuery}%`;
-        const digitsQuery = digitsOnly(trimmedQuery);
-        const digitPattern = `%${digitsQuery}%`;
-        whereConditions.push(
-          or(
-            ilike(customers.name, pattern),
-            ilike(customers.phone, pattern),
-            ilike(customers.externalId, pattern),
-            ...(digitsQuery
-              ? [
-                  sql`regexp_replace(coalesce(${customers.phone}, ''), '[^0-9]+', '', 'g') ilike ${digitPattern}`,
-                  sql`regexp_replace(coalesce(${customers.externalId}, ''), '[^0-9]+', '', 'g') ilike ${digitPattern}`,
-                ]
-              : []),
-          )!,
-        );
-      }
-
-      const sortAtExpr = sql<Date>`coalesce(${messageThreads.lastMessageAt}, ${messageThreads.createdAt})`;
-      if (input.cursorThreadId && input.cursorSortAt) {
-        const cursorSortAt = new Date(input.cursorSortAt);
-        whereConditions.push(
-          or(
-            lt(sortAtExpr, cursorSortAt),
-            and(eq(sortAtExpr, cursorSortAt), lt(messageThreads.id, input.cursorThreadId)),
-          )!,
-        );
-      }
-
-      const rows = await db
-        .select({
-          threadId: messageThreads.id,
-          customerId: customers.id,
-          customerName: customers.name,
-          customerExternalId: customers.externalId,
-          customerPhone: customers.phone,
-          customerSource: customers.source,
-          status: messageThreads.status,
-          lastMessageAt: messageThreads.lastMessageAt,
-          lastMessageDirection: lastMessageDirectionSelection,
-          threadCreatedAt: messageThreads.createdAt,
-          channelIdentityId: messageThreads.channelIdentityId,
-          sortAt: sortAtExpr,
-        })
-        .from(messageThreads)
-        .innerJoin(customers, eq(messageThreads.customerId, customers.id))
-        .where(and(...whereConditions))
-        .orderBy(desc(sortAtExpr), desc(messageThreads.id))
-        .limit(input.limit + 1);
-
-      const hasMore = rows.length > input.limit;
-      const items = hasMore ? rows.slice(0, input.limit) : rows;
-      const lastItem = items[items.length - 1];
-
-      return {
-        items,
-        hasMore,
-        nextCursor:
-          hasMore && lastItem
-            ? {
-                threadId: lastItem.threadId,
-                sortAt: lastItem.sortAt instanceof Date ? lastItem.sortAt.toISOString() : new Date(lastItem.sortAt).toISOString(),
-              }
-            : null,
-      };
+      return readSupport.listRecentThreadsPageForBusiness({
+        businessId: ctx.businessId,
+        ...input,
+      });
     }),
 
   /**
@@ -287,58 +176,16 @@ export const messagesRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
-      const [thread] = await db
-        .select({ id: messageThreads.id })
-        .from(messageThreads)
-        .where(
-          and(
-            eq(messageThreads.id, input.threadId),
-            eq(messageThreads.businessId, ctx.businessId),
-            isNull(messageThreads.deletedAt),
-          ),
-        )
-        .limit(1);
+      const result = await readSupport.listMessagesForThread({
+        businessId: ctx.businessId,
+        ...input,
+      });
 
-      if (!thread) {
+      if (!result) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Thread not found" });
       }
 
-      // If cursor provided, get the createdAt of that message for pagination
-      let cursorDate: Date | null = null;
-      if (input.cursor) {
-        const [cursorMsg] = await db
-          .select({ createdAt: threadMessages.createdAt })
-          .from(threadMessages)
-          .where(eq(threadMessages.id, input.cursor))
-          .limit(1);
-        cursorDate = cursorMsg?.createdAt ?? null;
-      }
-
-      // Fetch messages older than cursor (or all if no cursor), newest first
-      const rows = await db
-        .select(threadMessageSelection)
-        .from(threadMessages)
-        .where(
-          cursorDate
-            ? and(
-                eq(threadMessages.threadId, input.threadId),
-                lt(threadMessages.createdAt, cursorDate),
-              )
-            : eq(threadMessages.threadId, input.threadId),
-        )
-        .orderBy(desc(threadMessages.createdAt))
-        .limit(input.limit + 1); // Fetch one extra to check if there are more
-
-      const hasMore = rows.length > input.limit;
-      const messages = hasMore ? rows.slice(0, input.limit) : rows;
-
-      // Return in ascending order for display (oldest first within batch)
-      // Client will prepend older batches
-      return {
-        messages: messages.reverse(),
-        nextCursor: hasMore ? messages[0]?.id : null,
-        hasMore,
-      };
+      return result;
     }),
 
   getOrderThreadAnchor: businessProcedure
@@ -811,6 +658,8 @@ export const messagesRouter = router({
         })
         .where(eq(messageThreads.id, input.threadId));
 
+      await readSupport.invalidateThreadCache(ctx.businessId);
+
       if (saved) {
         recordBusinessEvent({
           event: "message.manual_send_succeeded",
@@ -1008,6 +857,8 @@ export const messagesRouter = router({
         })
         .where(eq(messageThreads.id, input.threadId));
 
+      await readSupport.invalidateThreadCache(ctx.businessId);
+
       recordBusinessEvent({
         event: "message.manual_media_send_succeeded",
         action: "sendMedia",
@@ -1079,3 +930,4 @@ export const messagesRouter = router({
       return saved;
     }),
 });
+// Re-reading to ensure I have the full context
