@@ -33,39 +33,36 @@ jobs:
       - run: npm run lint
       - run: npm audit --omit=dev --audit-level=critical
 
-  build-and-push:
+  build-and-push-web:
     needs: quality
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 45
     concurrency:
-      group: agent-images-${{ github.ref }}
+      group: agent-web-${{ github.ref }}
       cancel-in-progress: true
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Blacksmith Builder
         uses: useblacksmith/setup-docker-builder@v1
-
       - name: Validate image secrets
         run: |
           test -n "${{ secrets.ACR_LOGIN_SERVER }}"
           test -n "${{ secrets.ACR_USERNAME }}"
           test -n "${{ secrets.ACR_PASSWORD }}"
-
       - name: Login to ACR
         uses: docker/login-action@v3
         with:
           registry: ${{ secrets.ACR_LOGIN_SERVER }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
-
       - name: Build and push web image (dashboard)
         uses: useblacksmith/build-push-action@v2
         with:
           context: .
           push: true
+          cache-from: type=gha,scope=escl8-web
+          cache-to: type=gha,mode=max,scope=escl8-web
           tags: |
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.WEB_IMAGE_NAME }}:${{ github.sha }}
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.WEB_IMAGE_NAME }}:${{ github.ref_name == 'staging' && 'staging' || 'latest' }}
@@ -86,27 +83,68 @@ jobs:
           secrets: |
             sentry_auth_token=${{ secrets.PRODUCTION_SENTRY_AUTH_TOKEN }}
 
-      - name: Build and push worker image (RAG worker)
+  build-and-push-worker:
+    needs: quality
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 45
+    concurrency:
+      group: agent-worker-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+      - name: Build and push worker image
         uses: useblacksmith/build-push-action@v2
         with:
           context: .
           file: Dockerfile.worker
           push: true
+          cache-from: type=gha,scope=escl8-worker
+          cache-to: type=gha,mode=max,scope=escl8-worker
           tags: |
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.WORKER_IMAGE_NAME }}:${{ github.sha }}
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.WORKER_IMAGE_NAME }}:${{ github.ref_name == 'staging' && 'staging' || 'latest' }}
-      - name: Build and push job image (requests rollover cron)
+
+  build-and-push-job:
+    needs: quality
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 45
+    concurrency:
+      group: agent-job-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+      - name: Build and push job image
         uses: useblacksmith/build-push-action@v2
         with:
           context: .
           file: Dockerfile.job
           push: true
+          cache-from: type=gha,scope=escl8-job
+          cache-to: type=gha,mode=max,scope=escl8-job
           tags: |
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:${{ github.sha }}
             ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.JOB_IMAGE_NAME }}:${{ github.ref_name == 'staging' && 'staging' || 'latest' }}
 
   deploy-aks:
-    needs: build-and-push
+    needs: [build-and-push-web, build-and-push-worker, build-and-push-job]
     if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     steps:
