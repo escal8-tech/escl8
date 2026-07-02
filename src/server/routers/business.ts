@@ -206,12 +206,7 @@ export const businessRouter = router({
     }),
 
   getMine: businessProcedure
-    .input(z.object({ email: z.string().email().optional() }).optional().default({}))
-    .query(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email && input.email !== ctx.userEmail) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-      }
-
+    .query(async ({ ctx }) => {
       const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId));
       if (!biz) return null;
 
@@ -303,18 +298,10 @@ export const businessRouter = router({
   updateMessageUsageTier: businessProcedure
     .input(
       z.object({
-        email: z.string().email(),
-        businessId: z.string().min(1),
         messageUsageTier: businessMessageUsageTierSchema,
       }),
     )
-    .mutation(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email !== ctx.userEmail) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-      }
-      if (input.businessId !== ctx.businessId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
-      }
+    .mutation(async () => {
       throw new TRPCError({
         code: "FORBIDDEN",
         message: "Usage tiers are managed administratively.",
@@ -323,8 +310,6 @@ export const businessRouter = router({
 
   updateBookingConfig: businessProcedure
     .input(z.object({
-      email: z.string().email(),
-      businessId: z.string().min(1),
       bookingsEnabled: z.boolean(),
       unitCapacity: z.number().int().min(1),
       timeslotMinutes: z.number().int().min(5).max(600),
@@ -332,18 +317,11 @@ export const businessRouter = router({
       closeTime: z.string().regex(/^\d{2}:\d{2}$/),
     }))
     .mutation(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email !== ctx.userEmail) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-      }
-      if (input.businessId !== ctx.businessId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
-      }
-
       const user = await db.select().from(users).where(eq(users.firebaseUid, ctx.firebaseUid)).then(r => r[0]);
       if (!user) {
         throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
       }
-      if (user.businessId !== input.businessId) {
+      if (user.businessId !== ctx.businessId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "User not in this business" });
       }
 
@@ -357,7 +335,7 @@ export const businessRouter = router({
           bookingCloseTime: input.closeTime,
           updatedAt: new Date(),
         })
-        .where(eq(businesses.id, input.businessId))
+        .where(eq(businesses.id, ctx.businessId))
         .returning();
       if (updated) {
         recordBusinessEvent({
@@ -385,19 +363,10 @@ export const businessRouter = router({
   updateTimezone: businessProcedure
     .input(
       z.object({
-        email: z.string().email(),
-        businessId: z.string().min(1),
         timezone: z.string().min(1),
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email !== ctx.userEmail) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-      }
-      if (input.businessId !== ctx.businessId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
-      }
-
       const tz = input.timezone.trim();
       try {
         new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
@@ -405,7 +374,7 @@ export const businessRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid IANA timezone" });
       }
 
-      const [biz] = await db.select().from(businesses).where(eq(businesses.id, input.businessId));
+      const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId));
       if (!biz) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
       }
@@ -419,9 +388,9 @@ export const businessRouter = router({
           settings: nextSettings,
           updatedAt: new Date(),
         })
-        .where(eq(businesses.id, input.businessId))
+        .where(eq(businesses.id, ctx.businessId))
         .returning();
-      await upsertBusinessTimezone(input.businessId, tz);
+      await upsertBusinessTimezone(ctx.businessId, tz);
       if (updated) {
         recordBusinessEvent({
           event: "business.timezone_updated",
@@ -445,8 +414,6 @@ export const businessRouter = router({
   updateOrderSettings: businessProcedure
     .input(
       z.object({
-        email: z.string().email(),
-        businessId: z.string().min(1),
         ticketToOrderEnabled: z.boolean().optional(),
         paymentMethod: z.enum(["manual", "cod", "bank_qr"]),
         paymentProofAiEnabled: z.boolean().optional(),
@@ -470,14 +437,7 @@ export const businessRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email !== ctx.userEmail) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-      }
-      if (input.businessId !== ctx.businessId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
-      }
-
-      const [biz] = await db.select().from(businesses).where(eq(businesses.id, input.businessId)).limit(1);
+      const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId)).limit(1);
       if (!biz) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
       }
@@ -498,7 +458,7 @@ export const businessRouter = router({
         },
       });
 
-      await upsertBusinessOrderSettings(input.businessId, normalized);
+      await upsertBusinessOrderSettings(ctx.businessId, normalized);
 
       const [updated] = await db
         .update(businesses)
@@ -506,7 +466,7 @@ export const businessRouter = router({
           settings: mergeOrderFlowSettings((biz.settings ?? {}) as Record<string, unknown>, normalized),
           updatedAt: new Date(),
         })
-        .where(eq(businesses.id, input.businessId))
+        .where(eq(businesses.id, ctx.businessId))
         .returning();
 
       if (updated) {
@@ -540,8 +500,6 @@ export const businessRouter = router({
   updateCustomizationSettings: businessProcedure
     .input(
       z.object({
-        email: z.string().email(),
-        businessId: z.string().min(1),
         businessName: z.string().max(160).optional(),
         logoBlobPath: z.string().max(1024).optional(),
         logoContainer: z.string().max(80).optional(),
@@ -556,14 +514,7 @@ export const businessRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email !== ctx.userEmail) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-      }
-      if (input.businessId !== ctx.businessId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
-      }
-
-      const [biz] = await db.select().from(businesses).where(eq(businesses.id, input.businessId)).limit(1);
+      const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId)).limit(1);
       if (!biz) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
       }
@@ -588,7 +539,7 @@ export const businessRouter = router({
         },
       });
 
-      await upsertBusinessCustomizationSettings(input.businessId, normalized);
+      await upsertBusinessCustomizationSettings(ctx.businessId, normalized);
 
       const [updated] = await db
         .update(businesses)
@@ -596,7 +547,7 @@ export const businessRouter = router({
           settings: mergeCustomizationSettings((biz.settings ?? {}) as Record<string, unknown>, normalized),
           updatedAt: new Date(),
         })
-        .where(eq(businesses.id, input.businessId))
+        .where(eq(businesses.id, ctx.businessId))
         .returning();
 
       if (updated) {
@@ -628,26 +579,13 @@ export const businessRouter = router({
     }),
 
   ensureWebsiteWidget: businessProcedure
-    .input(
-      z.object({
-        email: z.string().email(),
-        businessId: z.string().min(1),
-      }),
-    )
-    .mutation(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email !== ctx.userEmail) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-      }
-      if (input.businessId !== ctx.businessId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
-      }
-
-      const [biz] = await db.select().from(businesses).where(eq(businesses.id, input.businessId)).limit(1);
+    .mutation(async ({ ctx }) => {
+      const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId)).limit(1);
       if (!biz) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
       }
 
-      const current = await getBusinessWebsiteWidgetSettingsRecord(input.businessId, biz.settings);
+      const current = await getBusinessWebsiteWidgetSettingsRecord(ctx.businessId, biz.settings);
       const key = current.key || `ww_${randomBytes(18).toString("base64url")}`;
       const nextSettings = mergeWebsiteWidgetSettings(biz.settings, {
         enabled: true,
@@ -663,13 +601,13 @@ export const businessRouter = router({
           settings: nextSettings,
           updatedAt: new Date(),
         })
-        .where(eq(businesses.id, input.businessId))
+        .where(eq(businesses.id, ctx.businessId))
         .returning();
 
       if (!updated) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save website widget settings" });
       }
-      await upsertBusinessWebsiteWidgetSettings(input.businessId, normalizedWidget);
+      await upsertBusinessWebsiteWidgetSettings(ctx.businessId, normalizedWidget);
 
       recordBusinessEvent({
         event: current.key ? "business.website_widget_accessed" : "business.website_widget_enabled",
@@ -694,20 +632,7 @@ export const businessRouter = router({
     }),
 
   disconnectGmailConnection: businessProcedure
-    .input(
-      z.object({
-        email: z.string().email(),
-        businessId: z.string().min(1),
-      }),
-    )
-    .mutation(async ({ input, ctx }) => {
-      if (ctx.userEmail && input.email !== ctx.userEmail) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-      }
-      if (input.businessId !== ctx.businessId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
-      }
-
+    .mutation(async ({ ctx }) => {
       const now = new Date();
       const [updated] = await db
         .update(businesses)
@@ -722,7 +647,7 @@ export const businessRouter = router({
           gmailError: null,
           updatedAt: now,
         })
-        .where(eq(businesses.id, input.businessId))
+        .where(eq(businesses.id, ctx.businessId))
         .returning({
           gmailConnected: businesses.gmailConnected,
           gmailEmail: businesses.gmailEmail,
@@ -736,7 +661,7 @@ export const businessRouter = router({
         area: "business",
         businessId: ctx.businessId,
         entity: "business",
-        entityId: input.businessId,
+        entityId: ctx.businessId,
         userId: ctx.userId,
         actorId: ctx.firebaseUid ?? ctx.userId ?? null,
         actorType: "user",

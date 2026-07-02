@@ -6,6 +6,7 @@ import { eq, and, desc, sql, isNull, lt, or, inArray, asc, ilike } from "drizzle
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
 import { getCached, setCached } from "@/lib/redis";
+import { parseMoneyValue } from "@/server/services/orderFlow";
 
 async function withCache<T>(key: string, ttl: number, fetcher: () => Promise<T>): Promise<T> {
   const cached = await getCached<T>(key);
@@ -451,8 +452,8 @@ export const customersRouter = router({
         const newSuccessful = isSuccessful
           ? (existing.successfulRequests ?? 0) + 1
           : existing.successfulRequests ?? 0;
-        const addedRevenue = input.paid && input.price ? parseFloat(input.price) : 0;
-        const newRevenue = parseFloat(existing.totalRevenue ?? "0") + addedRevenue;
+        const addedRevenue = input.paid && input.price ? parseFloat(parseMoneyValue(input.price) ?? "0") : 0;
+        const newRevenue = parseFloat(parseMoneyValue(existing.totalRevenue) ?? "0") + addedRevenue;
 
         const leadScore = calculateLeadScore({
           totalRequests: newTotalRequests,
@@ -495,7 +496,7 @@ export const customersRouter = router({
 
         return { customerId: existing.id, created: false };
       } else {
-        const addedRevenue = input.paid && input.price ? parseFloat(input.price) : 0;
+        const addedRevenue = input.paid && input.price ? parseFloat(parseMoneyValue(input.price) ?? "0") : 0;
         const leadScore = calculateLeadScore({
           totalRequests: 1,
           successfulRequests: isSuccessful ? 1 : 0,
