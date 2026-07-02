@@ -14,6 +14,11 @@ const ALLOWED_MIME = new Set([
 
 export async function POST(request: Request) {
   try {
+    const businessId = request.headers.get("x-business-id");
+    if (!businessId) {
+      return NextResponse.json({ error: "Unauthorized: Missing business context" }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const files = formData.getAll("files");
 
@@ -21,13 +26,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No files provided" }, { status: 400 });
     }
 
-    const uploadDir = path.join(process.cwd(), "uploads");
+    const uploadDir = path.join(process.cwd(), "uploads", businessId.replace(/[^a-zA-Z0-9_-]/g, ""));
     await mkdir(uploadDir, { recursive: true });
 
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
     const saved: { name: string; size: number }[] = [];
 
     for (const f of files) {
       if (!(f instanceof File)) continue;
+
+      if (f.size > MAX_FILE_SIZE) {
+        return NextResponse.json(
+          { error: `File too large: ${f.name} exceeds 10MB limit` },
+          { status: 413 }
+        );
+      }
+
       const mime = f.type || "";
       if (mime && !ALLOWED_MIME.has(mime)) {
         return NextResponse.json(
