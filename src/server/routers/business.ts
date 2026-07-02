@@ -1,75 +1,17 @@
 import { z } from "zod";
-import { randomBytes } from "node:crypto";
 import { router, businessProcedure } from "../trpc";
-import { db } from "../db/client";
-import { businesses, users, channelIdentities, whatsappIdentityDetails, agents } from "../../../drizzle/schema";
-import { and, eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { recordBusinessEvent } from "@/lib/business-monitoring";
-import {
-  getBusinessMessageUsageLimit,
-  normalizeBusinessMessageUsageTier,
-} from "@/lib/business-usage";
-import { mergeCustomizationSettings, normalizeCustomizationSettings } from "@/lib/customization-settings";
-import { mergeOrderFlowSettings, normalizeOrderFlowSettings } from "@/lib/order-settings";
-import { publishEvent } from "@/lib/eventgrid";
-import { buildPrivateBlobReadUrl } from "@/lib/storage";
-import { mergeWebsiteWidgetSettings, normalizeWebsiteWidgetSettings } from "@/lib/website-widget";
-import { getBusinessAiCreditsUsedThisMonth } from "@/server/services/aiUsage";
-import { getTenantModuleAccess, tenantHasFeature } from "@/server/control/access";
-import { SUITE_FEATURES } from "@/server/control/subscription-features";
-import { createOrderInvoicePreviewArtifact } from "@/server/services/orderInvoice";
-import {
-  getBusinessCustomizationSettingsRecord,
-  getBusinessOrderSettingsRecord,
-  getBusinessPreferencesRecord,
-  getBusinessWebsiteWidgetSettingsRecord,
-  upsertBusinessCustomizationSettings,
-  upsertBusinessOrderSettings,
-  upsertBusinessTimezone,
-  upsertBusinessWebsiteWidgetSettings,
-} from "@/server/services/businessSettingsStore";
-import * as support from "@/server/services/businessLifecycleSupport";
+import * as readSupport from "../services/businessReadSupport";
+import * as lifecycleSupport from "../services/businessLifecycleSupport";
+import { withStatsCache } from "../lib/statsCache";
 
 const businessMessageUsageTierSchema = z.enum(["minimum", "standard", "enterprise"]);
 
-function numberLimit(value: unknown, fallback: number) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
 export const businessRouter = router({
   listPhoneNumbers: businessProcedure.query(async ({ ctx }) => {
-    const rows = await db
-      .select({
-        phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-        displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-        botType: agents.botType,
-        isActive: channelIdentities.isActive,
-        autoReplyPaused: channelIdentities.autoReplyPaused,
-        aiEnabled: channelIdentities.aiEnabled,
-        connectedAt: channelIdentities.connectedAt,
-      })
-      .from(channelIdentities)
-      .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
-      .innerJoin(agents, eq(channelIdentities.agentId, agents.id))
-      .where(
-        and(
-          eq(channelIdentities.businessId, ctx.businessId),
-          eq(channelIdentities.isActive, true),
-        ),
-      )
-      .orderBy(channelIdentities.connectedAt);
-
-    return rows.map(r => ({
-      phoneNumberId: r.phoneNumberId,
-      displayPhoneNumber: r.displayPhoneNumber,
-      botType: r.botType,
-      isActive: r.isActive,
-      autoReplyPaused: r.autoReplyPaused,
-      aiDisabled: !r.aiEnabled,
-      connectedAt: r.connectedAt,
-    }));
+    return withStatsCache(`listPhoneNumbers_${ctx.businessId}`, 60, () =>
+      readSupport.listPhoneNumbers(ctx.businessId),
+    );
   }),
 
   setWhatsappIdentityAutoReplyPaused: businessProcedure
@@ -78,64 +20,13 @@ export const businessRouter = router({
       autoReplyPaused: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const details = await db
-        .select({
-          channelIdentityId: whatsappIdentityDetails.channelIdentityId,
-          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-        })
-        .from(whatsappIdentityDetails)
-        .innerJoin(channelIdentities, eq(whatsappIdentityDetails.channelIdentityId, channelIdentities.id))
-        .where(and(
-          eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
-          eq(channelIdentities.businessId, ctx.businessId),
-        ))
-        .limit(1)
-        .then(r => r[0]);
-
-      if (!details) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-
-      const [row] = await db
-        .update(channelIdentities)
-        .set({
-          autoReplyPaused: input.autoReplyPaused,
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(channelIdentities.businessId, ctx.businessId),
-          eq(channelIdentities.id, details.channelIdentityId),
-        ))
-        .returning();
-
-      if (!row) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-
-      recordBusinessEvent({
-        event: input.autoReplyPaused ? "whatsapp_identity.auto_reply_paused" : "whatsapp_identity.auto_reply_resumed",
-        action: "setWhatsappIdentityAutoReplyPaused",
-        area: "whatsapp_identity",
+      return lifecycleSupport.setWhatsappIdentityAutoReplyPaused({
         businessId: ctx.businessId,
-        entity: "whatsapp_identity",
-        entityId: details.phoneNumberId,
         userId: ctx.userId,
-        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-        actorType: "user",
-        outcome: "success",
-        attributes: {
-          display_phone_number: details.displayPhoneNumber ?? null,
-        },
+        firebaseUid: ctx.firebaseUid,
+        phoneNumberId: input.phoneNumberId,
+        autoReplyPaused: input.autoReplyPaused,
       });
-
-      return {
-        phoneNumberId: details.phoneNumberId,
-        displayPhoneNumber: details.displayPhoneNumber,
-        autoReplyPaused: row.autoReplyPaused,
-        isActive: row.isActive,
-        connectedAt: row.connectedAt,
-      };
     }),
 
   setWhatsappIdentityAiDisabled: businessProcedure
@@ -144,65 +35,13 @@ export const businessRouter = router({
       aiDisabled: z.boolean(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const details = await db
-        .select({
-          channelIdentityId: whatsappIdentityDetails.channelIdentityId,
-          displayPhoneNumber: whatsappIdentityDetails.displayPhoneNumber,
-          phoneNumberId: whatsappIdentityDetails.phoneNumberId,
-        })
-        .from(whatsappIdentityDetails)
-        .innerJoin(channelIdentities, eq(whatsappIdentityDetails.channelIdentityId, channelIdentities.id))
-        .where(and(
-          eq(whatsappIdentityDetails.phoneNumberId, input.phoneNumberId),
-          eq(channelIdentities.businessId, ctx.businessId),
-        ))
-        .limit(1)
-        .then(r => r[0]);
-
-      if (!details) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-
-      const [row] = await db
-        .update(channelIdentities)
-        .set({
-          aiEnabled: !input.aiDisabled,
-          ...(input.aiDisabled ? { autoReplyPaused: false } : {}),
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(channelIdentities.businessId, ctx.businessId),
-          eq(channelIdentities.id, details.channelIdentityId),
-        ))
-        .returning();
-
-      if (!row) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "WhatsApp identity not found for this business." });
-      }
-      recordBusinessEvent({
-        event: input.aiDisabled ? "whatsapp_identity.ai_disabled" : "whatsapp_identity.ai_enabled",
-        action: "setWhatsappIdentityAiDisabled",
-        area: "whatsapp_identity",
+      return lifecycleSupport.setWhatsappIdentityAiDisabled({
         businessId: ctx.businessId,
-        entity: "whatsapp_identity",
-        entityId: details.phoneNumberId,
         userId: ctx.userId,
-        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-        actorType: "user",
-        outcome: "success",
-        attributes: {
-          display_phone_number: details.displayPhoneNumber ?? null,
-        },
+        firebaseUid: ctx.firebaseUid,
+        phoneNumberId: input.phoneNumberId,
+        aiDisabled: input.aiDisabled,
       });
-      
-      return {
-        phoneNumberId: details.phoneNumberId,
-        displayPhoneNumber: details.displayPhoneNumber,
-        autoReplyPaused: row.autoReplyPaused,
-        aiDisabled: !row.aiEnabled,
-        isActive: row.isActive,
-        connectedAt: row.connectedAt,
-      };
     }),
 
   getMine: businessProcedure
@@ -211,93 +50,13 @@ export const businessRouter = router({
       if (ctx.userEmail && input.email && input.email !== ctx.userEmail) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
       }
-
-      const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId));
-      if (!biz) return null;
-
-      const creditsUsed = await getBusinessAiCreditsUsedThisMonth(ctx.businessId);
-      const access = biz.suiteTenantId ? await getTenantModuleAccess(biz.suiteTenantId, "agent") : null;
-
-      const [orderSettings, customizationSettings, preferences, websiteWidgetSettings] = await Promise.all([
-        getBusinessOrderSettingsRecord(ctx.businessId, biz.settings),
-        getBusinessCustomizationSettingsRecord(ctx.businessId, biz.settings),
-        getBusinessPreferencesRecord(ctx.businessId, biz.settings),
-        getBusinessWebsiteWidgetSettingsRecord(ctx.businessId, biz.settings),
-      ]);
-      const qrPreviewUrl = orderSettings.bankQr.qrBlobPath
-        ? buildPrivateBlobReadUrl(orderSettings.bankQr.qrBlobPath, 24 * 30)
-        : null;
-      const logoPreviewUrl = customizationSettings.logoBlobPath
-        ? buildPrivateBlobReadUrl(
-            customizationSettings.logoBlobPath,
-            24 * 30,
-            customizationSettings.logoContainer || undefined,
-          )
-        : null;
-
-      return {
-        ...biz,
-        timezone: preferences.timezone,
-        websiteWidgetSettings,
-        orderSettings: {
-          ...orderSettings,
-          ticketToOrderEnabled: true,
-          bankQr: {
-            ...orderSettings.bankQr,
-            qrImageUrl: qrPreviewUrl || orderSettings.bankQr.qrImageUrl,
-          },
-        },
-        customizationSettings: {
-          ...customizationSettings,
-          logoUrl: logoPreviewUrl || customizationSettings.logoUrl,
-        },
-        gmailConnected: Boolean(biz.gmailConnected),
-        gmailEmail: biz.gmailEmail ?? null,
-        gmailConnectedAt: biz.gmailConnectedAt ?? null,
-        gmailError: biz.gmailError ?? null,
-        subscriptionAccess: access,
-        responseUsage: {
-          used: creditsUsed,
-          max: numberLimit(access?.limits?.["agent.messages.monthly"], getBusinessMessageUsageLimit(biz.messageUsageTier)),
-          tier: normalizeBusinessMessageUsageTier(biz.messageUsageTier),
-        },
-      };
+      return withStatsCache(`getMine_${ctx.businessId}`, 60, () =>
+        readSupport.getMine(ctx.businessId),
+      );
     }),
 
   getCustomizationPreview: businessProcedure.query(async ({ ctx }) => {
-    const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId)).limit(1);
-    if (!biz) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
-    }
-
-    const [customizationSettings, orderSettings] = await Promise.all([
-      getBusinessCustomizationSettingsRecord(ctx.businessId, biz.settings),
-      getBusinessOrderSettingsRecord(ctx.businessId, biz.settings),
-    ]);
-
-    const previewBase = String(process.env.CONCIERGE_PUBLIC_URL || "https://concierge.escal8.tech").replace(/\/+$/, "");
-    const trackingPreviewUrl = `${previewBase}/track/orders/preview/${encodeURIComponent(ctx.businessId)}`;
-
-    const invoicePreview = await createOrderInvoicePreviewArtifact({
-      businessId: ctx.businessId,
-      business: {
-        id: biz.id,
-        name: biz.name,
-        settings: {
-          ...((biz.settings ?? {}) as Record<string, unknown>),
-          customization: customizationSettings ?? {},
-        },
-      },
-      currency: orderSettings.currency,
-      trackingUrl: trackingPreviewUrl,
-    });
-
-    return {
-      invoicePreviewUrl: invoicePreview.url,
-      invoicePreviewFileName: invoicePreview.fileName,
-      trackingPreviewUrl,
-      generatedAt: invoicePreview.generatedAt,
-    };
+    return lifecycleSupport.getCustomizationPreview(ctx.businessId);
   }),
 
   updateMessageUsageTier: businessProcedure
@@ -339,47 +98,16 @@ export const businessRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
       }
 
-      const user = await db.select().from(users).where(eq(users.firebaseUid, ctx.firebaseUid)).then(r => r[0]);
-      if (!user) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
-      }
-      if (user.businessId !== input.businessId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "User not in this business" });
-      }
-
-      const [updated] = await db
-        .update(businesses)
-        .set({
-          bookingsEnabled: input.bookingsEnabled,
-          bookingUnitCapacity: input.unitCapacity,
-          bookingTimeslotMinutes: input.timeslotMinutes,
-          bookingOpenTime: input.openTime,
-          bookingCloseTime: input.closeTime,
-          updatedAt: new Date(),
-        })
-        .where(eq(businesses.id, input.businessId))
-        .returning();
-      if (updated) {
-        recordBusinessEvent({
-          event: "business.booking_config_updated",
-          action: "updateBookingConfig",
-          area: "business",
-          businessId: ctx.businessId,
-          entity: "business",
-          entityId: updated.id,
-          userId: ctx.userId,
-          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-          actorType: "user",
-          outcome: "success",
-          attributes: {
-            booking_close_time: input.closeTime,
-            booking_open_time: input.openTime,
-            timeslot_minutes: input.timeslotMinutes,
-            unit_capacity: input.unitCapacity,
-          },
-        });
-      }
-      return updated;
+      return lifecycleSupport.updateBookingConfig({
+        businessId: ctx.businessId,
+        userId: ctx.userId,
+        firebaseUid: ctx.firebaseUid,
+        bookingsEnabled: input.bookingsEnabled,
+        unitCapacity: input.unitCapacity,
+        timeslotMinutes: input.timeslotMinutes,
+        openTime: input.openTime,
+        closeTime: input.closeTime,
+      });
     }),
 
   updateTimezone: businessProcedure
@@ -398,48 +126,12 @@ export const businessRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
       }
 
-      const tz = input.timezone.trim();
-      try {
-        new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
-      } catch {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid IANA timezone" });
-      }
-
-      const [biz] = await db.select().from(businesses).where(eq(businesses.id, input.businessId));
-      if (!biz) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
-      }
-
-      const existingSettings = (biz.settings ?? {}) as Record<string, unknown>;
-      const nextSettings = { ...existingSettings, timezone: tz };
-
-      const [updated] = await db
-        .update(businesses)
-        .set({
-          settings: nextSettings,
-          updatedAt: new Date(),
-        })
-        .where(eq(businesses.id, input.businessId))
-        .returning();
-      await upsertBusinessTimezone(input.businessId, tz);
-      if (updated) {
-        recordBusinessEvent({
-          event: "business.timezone_updated",
-          action: "updateTimezone",
-          area: "business",
-          businessId: ctx.businessId,
-          entity: "business",
-          entityId: updated.id,
-          userId: ctx.userId,
-          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-          actorType: "user",
-          outcome: "success",
-          attributes: {
-            timezone: tz,
-          },
-        });
-      }
-      return updated;
+      return lifecycleSupport.updateTimezone({
+        businessId: ctx.businessId,
+        userId: ctx.userId,
+        firebaseUid: ctx.firebaseUid,
+        timezone: input.timezone,
+      });
     }),
 
   updateOrderSettings: businessProcedure
@@ -477,64 +169,18 @@ export const businessRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
       }
 
-      const [biz] = await db.select().from(businesses).where(eq(businesses.id, input.businessId)).limit(1);
-      if (!biz) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
-      }
-      const access = biz.suiteTenantId ? await getTenantModuleAccess(biz.suiteTenantId, "agent") : null;
-      if (!tenantHasFeature(access, SUITE_FEATURES.AGENT_WIDGET_MANAGE)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Website widget is locked for this subscription." });
-      }
-
-      const normalized = normalizeOrderFlowSettings({
-        orderFlow: {
-          ticketToOrderEnabled: true,
-          paymentMethod: input.paymentMethod,
-          paymentProofAiEnabled: input.paymentProofAiEnabled ?? true,
-          paymentSlipRequired: input.paymentSlipRequired ?? true,
-          currency: input.currency,
-          deliveryCharge: input.deliveryCharge,
-          bankQr: input.bankQr,
-        },
+      return lifecycleSupport.updateOrderSettings({
+        businessId: ctx.businessId,
+        userId: ctx.userId,
+        firebaseUid: ctx.firebaseUid,
+        ticketToOrderEnabled: input.ticketToOrderEnabled,
+        paymentMethod: input.paymentMethod,
+        paymentProofAiEnabled: input.paymentProofAiEnabled,
+        paymentSlipRequired: input.paymentSlipRequired,
+        currency: input.currency,
+        deliveryCharge: input.deliveryCharge,
+        bankQr: input.bankQr,
       });
-
-      await upsertBusinessOrderSettings(input.businessId, normalized);
-
-      const [updated] = await db
-        .update(businesses)
-        .set({
-          settings: mergeOrderFlowSettings((biz.settings ?? {}) as Record<string, unknown>, normalized),
-          updatedAt: new Date(),
-        })
-        .where(eq(businesses.id, input.businessId))
-        .returning();
-
-      if (updated) {
-        recordBusinessEvent({
-          event: "business.order_settings_updated",
-          action: "updateOrderSettings",
-          area: "business",
-          businessId: ctx.businessId,
-          entity: "business",
-          entityId: updated.id,
-          userId: ctx.userId,
-          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-          actorType: "user",
-          outcome: "success",
-          attributes: {
-            currency: normalized.currency,
-            payment_method: normalized.paymentMethod,
-            ticket_to_order_enabled: normalized.ticketToOrderEnabled,
-          },
-        });
-        await publishEvent("settings.updated", `business_${ctx.businessId}`, {
-          businessId: ctx.businessId,
-          type: "order_settings",
-          settings: normalized,
-        });
-      }
-
-      return updated ?? null;
     }),
 
   updateCustomizationSettings: businessProcedure
@@ -563,68 +209,22 @@ export const businessRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
       }
 
-      const [biz] = await db.select().from(businesses).where(eq(businesses.id, input.businessId)).limit(1);
-      if (!biz) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
-      }
-      const access = biz.suiteTenantId ? await getTenantModuleAccess(biz.suiteTenantId, "agent") : null;
-      if (!tenantHasFeature(access, SUITE_FEATURES.AGENT_SETTINGS_BASIC)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Settings are locked for this subscription." });
-      }
-
-      const normalized = normalizeCustomizationSettings({
-        customization: {
-          businessName: input.businessName ?? "",
-          logoBlobPath: input.logoBlobPath ?? "",
-          logoContainer: input.logoContainer ?? "",
-          logoUrl: input.logoUrl ?? "",
-          primaryColor: input.primaryColor,
-          secondaryColor: input.secondaryColor,
-          address: input.address ?? "",
-          phone: input.phone ?? "",
-          email: input.emailAddress ?? "",
-          website: input.website ?? "",
-          invoiceFooterNote: input.invoiceFooterNote ?? "",
-        },
+      return lifecycleSupport.updateCustomizationSettings({
+        businessId: ctx.businessId,
+        userId: ctx.userId,
+        firebaseUid: ctx.firebaseUid,
+        businessName: input.businessName,
+        logoBlobPath: input.logoBlobPath,
+        logoContainer: input.logoContainer,
+        logoUrl: input.logoUrl,
+        primaryColor: input.primaryColor,
+        secondaryColor: input.secondaryColor,
+        address: input.address,
+        phone: input.phone,
+        emailAddress: input.emailAddress,
+        website: input.website,
+        invoiceFooterNote: input.invoiceFooterNote,
       });
-
-      await upsertBusinessCustomizationSettings(input.businessId, normalized);
-
-      const [updated] = await db
-        .update(businesses)
-        .set({
-          settings: mergeCustomizationSettings((biz.settings ?? {}) as Record<string, unknown>, normalized),
-          updatedAt: new Date(),
-        })
-        .where(eq(businesses.id, input.businessId))
-        .returning();
-
-      if (updated) {
-        recordBusinessEvent({
-          event: "business.customization_settings_updated",
-          action: "updateCustomizationSettings",
-          area: "business",
-          businessId: ctx.businessId,
-          entity: "business",
-          entityId: updated.id,
-          userId: ctx.userId,
-          actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-          actorType: "user",
-          outcome: "success",
-          attributes: {
-            has_logo: Boolean(normalized.logoBlobPath || normalized.logoUrl),
-            primary_color: normalized.primaryColor,
-            secondary_color: normalized.secondaryColor,
-          },
-        });
-        await publishEvent("settings.updated", `business_${ctx.businessId}`, {
-          businessId: ctx.businessId,
-          type: "customization_settings",
-          settings: normalized,
-        });
-      }
-
-      return updated ?? null;
     }),
 
   ensureWebsiteWidget: businessProcedure
@@ -642,55 +242,11 @@ export const businessRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
       }
 
-      const [biz] = await db.select().from(businesses).where(eq(businesses.id, input.businessId)).limit(1);
-      if (!biz) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
-      }
-
-      const current = await getBusinessWebsiteWidgetSettingsRecord(input.businessId, biz.settings);
-      const key = current.key || `ww_${randomBytes(18).toString("base64url")}`;
-      const nextSettings = mergeWebsiteWidgetSettings(biz.settings, {
-        enabled: true,
-        key,
-        title: current.title,
-        accentColor: current.accentColor,
-      });
-      const normalizedWidget = normalizeWebsiteWidgetSettings(nextSettings);
-
-      const [updated] = await db
-        .update(businesses)
-        .set({
-          settings: nextSettings,
-          updatedAt: new Date(),
-        })
-        .where(eq(businesses.id, input.businessId))
-        .returning();
-
-      if (!updated) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save website widget settings" });
-      }
-      await upsertBusinessWebsiteWidgetSettings(input.businessId, normalizedWidget);
-
-      recordBusinessEvent({
-        event: current.key ? "business.website_widget_accessed" : "business.website_widget_enabled",
-        action: "ensureWebsiteWidget",
-        area: "business",
+      return lifecycleSupport.ensureWebsiteWidget({
         businessId: ctx.businessId,
-        entity: "business",
-        entityId: updated.id,
         userId: ctx.userId,
-        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-        actorType: "user",
-        outcome: "success",
-        status: normalizedWidget.enabled ? "enabled" : "disabled",
+        firebaseUid: ctx.firebaseUid,
       });
-
-      return {
-        enabled: normalizedWidget.enabled,
-        key: normalizedWidget.key,
-        title: normalizedWidget.title,
-        accentColor: normalizedWidget.accentColor,
-      };
     }),
 
   disconnectGmailConnection: businessProcedure
@@ -708,52 +264,15 @@ export const businessRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
       }
 
-      const now = new Date();
-      const [updated] = await db
-        .update(businesses)
-        .set({
-          gmailConnected: false,
-          gmailEmail: null,
-          gmailRefreshToken: null,
-          gmailAccessToken: null,
-          gmailAccessTokenExpiresAt: null,
-          gmailScope: null,
-          gmailConnectedAt: null,
-          gmailError: null,
-          updatedAt: now,
-        })
-        .where(eq(businesses.id, input.businessId))
-        .returning({
-          gmailConnected: businesses.gmailConnected,
-          gmailEmail: businesses.gmailEmail,
-          gmailConnectedAt: businesses.gmailConnectedAt,
-          gmailError: businesses.gmailError,
-        });
-
-      recordBusinessEvent({
-        event: "business.gmail_disconnected",
-        action: "disconnectGmailConnection",
-        area: "business",
+      return lifecycleSupport.disconnectGmailConnection({
         businessId: ctx.businessId,
-        entity: "business",
-        entityId: input.businessId,
         userId: ctx.userId,
-        actorId: ctx.firebaseUid ?? ctx.userId ?? null,
-        actorType: "user",
-        outcome: "success",
-        status: "disconnected",
+        firebaseUid: ctx.firebaseUid,
       });
-
-      return {
-        gmailConnected: Boolean(updated?.gmailConnected),
-        gmailEmail: updated?.gmailEmail ?? null,
-        gmailConnectedAt: updated?.gmailConnectedAt ?? null,
-        gmailError: updated?.gmailError ?? null,
-      };
     }),
 
   getSetupStatus: businessProcedure.query(async ({ ctx }) => {
-    return support.assembleBusinessSetupStatus(ctx.businessId);
+    return lifecycleSupport.assembleBusinessSetupStatus(ctx.businessId);
   }),
 
   completeOnboardingSetup: businessProcedure
@@ -769,162 +288,24 @@ export const businessRouter = router({
       resourceTypes: z.array(z.string().max(80)).max(12).default([]),
     }))
     .mutation(async ({ input, ctx }) => {
-      const [biz] = await db.select().from(businesses).where(eq(businesses.id, ctx.businessId)).limit(1);
-      if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Business not found" });
-
-      const timezone = input.timezone.trim();
-      try {
-        new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date());
-      } catch {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid IANA timezone" });
-      }
-
-      const customization = await getBusinessCustomizationSettingsRecord(ctx.businessId, biz.settings);
-      const normalized = normalizeCustomizationSettings({
-        customization: {
-          ...customization,
-          businessName: input.businessName.trim(),
-          address: input.address?.trim() || customization.address || "",
-          phone: input.phone?.trim() || customization.phone || "",
-          email: ctx.userEmail || customization.email || "",
-          website: input.website?.trim() || customization.website || "",
-        },
-      });
-      await upsertBusinessCustomizationSettings(ctx.businessId, normalized);
-      await upsertBusinessTimezone(ctx.businessId, timezone);
-
-      const settings = (biz.settings ?? {}) as Record<string, unknown>;
-      const onboarding = {
-        ...(settings.onboarding && typeof settings.onboarding === "object" ? settings.onboarding as Record<string, unknown> : {}),
-        completedAt: new Date().toISOString(),
-        primaryCategory: input.primaryCategory || null,
+      return lifecycleSupport.completeOnboardingSetup({
+        businessId: ctx.businessId,
+        userId: ctx.userId,
+        firebaseUid: ctx.firebaseUid,
+        userEmail: ctx.userEmail,
+        businessName: input.businessName,
+        website: input.website,
+        phone: input.phone,
+        address: input.address,
+        timezone: input.timezone,
+        primaryCategory: input.primaryCategory,
         categories: input.categories,
         serviceTypes: input.serviceTypes,
         resourceTypes: input.resourceTypes,
-        location: { address: input.address?.trim() || "", timezone },
-      };
-
-      const [updated] = await db
-        .update(businesses)
-        .set({
-          name: input.businessName.trim(),
-          settings: mergeCustomizationSettings({ ...settings, timezone, onboarding }, normalized),
-          updatedAt: new Date(),
-        })
-        .where(eq(businesses.id, ctx.businessId))
-        .returning();
-
-      return updated ?? null;
+      });
     }),
 
   getSubscription: businessProcedure.query(async ({ ctx }) => {
-    const [biz] = await db
-      .select({
-        suiteTenantId: businesses.suiteTenantId,
-        creditPool: businesses.creditPool,
-      })
-      .from(businesses)
-      .where(eq(businesses.id, ctx.businessId))
-      .limit(1);
-
-    if (!biz?.suiteTenantId) {
-      return {
-        hasSubscription: false,
-        status: "none",
-        planCode: null,
-        planName: null,
-        grantKind: null,
-        subscriptionStatus: null,
-        lastPaidAt: null,
-        nextDueAt: null,
-        monthlyCredits: 0,
-        creditsUsed: 0,
-        creditsBalance: 0,
-        priceAmount: 0,
-        currency: "MYR",
-        features: {},
-        limits: {},
-        isActive: false,
-        isSpecialGrant: false,
-      };
-    }
-
-    try {
-      const access = await getTenantModuleAccess(biz.suiteTenantId, "agent");
-      if (!access) {
-        return {
-          hasSubscription: false,
-          status: "none",
-          planCode: null,
-          planName: null,
-          grantKind: null,
-          subscriptionStatus: null,
-          lastPaidAt: null,
-          nextDueAt: null,
-          monthlyCredits: 0,
-          creditsUsed: 0,
-          creditsBalance: 0,
-          priceAmount: 0,
-          currency: "MYR",
-          features: {},
-          limits: {},
-          isActive: false,
-          isSpecialGrant: false,
-        };
-      }
-
-      const planCode = access.planCode;
-      const planName = access.planName;
-      const isActive = access.workspaceMode === "full";
-      const isSpecialGrant = access.grantKind === "partner" || access.grantKind === "demo";
-
-      const monthlyCredits = Number(access.limits["agent.messages.monthly"] || 0);
-      const creditsUsed = await getBusinessAiCreditsUsedThisMonth(ctx.businessId);
-
-      return {
-        hasSubscription: true,
-        status: access.subscriptionStatus || "none",
-        planCode,
-        planName,
-        grantKind: access.grantKind,
-        subscriptionStatus: access.subscriptionStatus,
-        lastPaidAt: access.lastPaidAt,
-        nextDueAt: access.nextDueAt,
-        monthlyCredits,
-        creditsUsed,
-        creditsBalance: Math.max(0, biz.creditPool ?? (monthlyCredits - creditsUsed)),
-        priceAmount: 0,
-        currency: "MYR",
-        features: filterSubscriptionRecord(access.features, "agent."),
-        limits: filterSubscriptionRecord(access.limits, "agent."),
-        isActive,
-        isSpecialGrant,
-      };
-    } catch (error) {
-      console.error("Error fetching subscription:", error);
-      return {
-        hasSubscription: false,
-        status: "error",
-        planCode: null,
-        planName: null,
-        grantKind: null,
-        subscriptionStatus: null,
-        lastPaidAt: null,
-        nextDueAt: null,
-        monthlyCredits: 0,
-        creditsUsed: 0,
-        creditsBalance: 0,
-        priceAmount: 0,
-        currency: "MYR",
-        features: {},
-        limits: {},
-        isActive: false,
-        isSpecialGrant: false,
-      };
-    }
+    return readSupport.getSubscription(ctx.businessId);
   }),
 });
-
-function filterSubscriptionRecord<T>(record: Record<string, T>, prefix: string): Record<string, T> {
-  return Object.fromEntries(Object.entries(record).filter(([key]) => key.startsWith(prefix)));
-}
