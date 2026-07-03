@@ -15,7 +15,7 @@ test("order tracking tokens round-trip without exposing raw ids in the path", ()
   try {
     const token = createOrderTrackingToken({ businessId: "business-1", orderId: "order-1" });
 
-    assert.deepEqual(parseOrderTrackingToken(token), { businessId: "", orderId: "order-1" });
+    assert.deepEqual(parseOrderTrackingToken(token), { businessId: "business-1", orderId: "order-1" });
     assert.equal(token.includes("business-1"), false);
 
     assert.equal(parseOrderTrackingToken("!!!"), null);
