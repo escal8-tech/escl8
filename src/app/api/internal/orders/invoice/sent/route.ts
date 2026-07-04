@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-
+import { and, eq } from "drizzle-orm";
+import { db } from "@/server/db/client";
+import { orders } from "@/../drizzle/schema";
 import { isInternalApiAuthorized } from "@/server/internalSecurity";
 import { markOrderInvoiceDelivered } from "@/server/services/orderInvoice";
 
@@ -42,6 +44,17 @@ export async function POST(request: Request) {
       { success: false, error: "deliveryMethod must be whatsapp or email." },
       { status: 400 },
     );
+  }
+
+  // SECURITY: Verify order belongs to business to prevent IDOR
+  const [orderOwnership] = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(and(eq(orders.businessId, businessId), eq(orders.id, orderId)))
+    .limit(1);
+
+  if (!orderOwnership) {
+    return NextResponse.json({ success: false, error: "Order not found." }, { status: 404 });
   }
 
   const updated = await markOrderInvoiceDelivered({

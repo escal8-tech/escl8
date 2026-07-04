@@ -86,7 +86,7 @@ function normalizeMappingInput(entries: z.infer<typeof columnMappingEntrySchema>
   return out;
 }
 
-async function getAgentStockMappingStatus(agentId: string | null | undefined): Promise<StockMappingStatus> {
+async function getAgentStockMappingStatus(businessId: string, agentId: string | null | undefined): Promise<StockMappingStatus> {
   if (!agentId) return {
     isMapped: false,
     isReady: false,
@@ -100,7 +100,7 @@ async function getAgentStockMappingStatus(agentId: string | null | undefined): P
   const [agent] = await db
     .select({ settings: agents.settings })
     .from(agents)
-    .where(eq(agents.id, agentId))
+    .where(and(eq(agents.id, agentId), eq(agents.businessId, businessId)))
     .limit(1);
   return getStockMappingStatus(normalizeStockSettings(agent?.settings));
 }
@@ -303,7 +303,7 @@ export const inventoryRouter = router({
 
       return {
         totalCount: countRow?.count ?? 0,
-        mappingStatus: await getAgentStockMappingStatus(input.agentId ?? ""),
+        mappingStatus: await getAgentStockMappingStatus(ctx.businessId, input.agentId ?? ""),
         items: rows.map((row) => serializeProduct(
           row,
           pricesByProduct.get(row.id) ?? [],
@@ -556,7 +556,7 @@ export const inventoryRouter = router({
 
       return {
         totalCount: countRow?.count ?? 0,
-        mappingStatus: await getAgentStockMappingStatus(input?.agentId),
+        mappingStatus: await getAgentStockMappingStatus(ctx.businessId, input?.agentId),
         items: rows.map((row) => serializeOffer(row, productNames.get(row.productId))),
       };
     }),

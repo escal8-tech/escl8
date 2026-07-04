@@ -255,6 +255,48 @@ async function loadInvoiceLogo(pdf: PDFDocument, customization: InvoiceCustomiza
   const url = cleanText(logoUrl, 2000);
   if (!url) return null;
 
+  // SSRF Mitigation: Only allow http/https and block internal/private IP ranges
+  try {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      console.warn(`Blocked non-http logo URL: ${url}`);
+      return null;
+    }
+
+    const hostname = parsedUrl.hostname.toLowerCase();
+    // Block localhost and common private IP ranges
+    if (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "0.0.0.0" ||
+      hostname.startsWith("10.") ||
+      hostname.startsWith("192.168.") ||
+      hostname.startsWith("172.16.") ||
+      hostname.startsWith("172.17.") ||
+      hostname.startsWith("172.18.") ||
+      hostname.startsWith("172.19.") ||
+      hostname.startsWith("172.20.") ||
+      hostname.startsWith("172.21.") ||
+      hostname.startsWith("172.22.") ||
+      hostname.startsWith("172.23.") ||
+      hostname.startsWith("172.24.") ||
+      hostname.startsWith("172.25.") ||
+      hostname.startsWith("172.26.") ||
+      hostname.startsWith("172.27.") ||
+      hostname.startsWith("172.28.") ||
+      hostname.startsWith("172.29.") ||
+      hostname.startsWith("172.30.") ||
+      hostname.startsWith("172.31.") ||
+      hostname === "169.254.169.254" ||
+      hostname === "::1"
+    ) {
+      console.warn(`Blocked internal logo hostname: ${hostname}`);
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
   try {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) return null;
@@ -727,6 +769,18 @@ export async function createOrderInvoiceForOrder(input: {
   const businessId = cleanText(input.businessId, 160);
   const orderId = cleanText(input.orderId, 160);
   if (!businessId || !orderId) return null;
+
+  // SECURITY: Verify order belongs to business to prevent IDOR
+  const [orderOwnership] = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(and(eq(orders.businessId, businessId), eq(orders.id, orderId)))
+    .limit(1);
+
+  if (!orderOwnership) {
+    console.error(`IDOR attempt or missing order: business ${businessId} trying to access order ${orderId}`);
+    return null;
+  }
 
   const useLock = isRedisAvailable();
   const lockKey = `order:invoice:lock:${businessId}:${orderId}`;
