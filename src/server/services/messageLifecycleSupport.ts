@@ -1,0 +1,370 @@
+import { and, eq, isNull } from "drizzle-orm";
+import { db } from "../db/client";
+import {
+  customers,
+  messageThreads,
+  threadMessages,
+  channelIdentities,
+  whatsappIdentityDetails,
+} from "@/../drizzle/schema";
+import { recordBusinessEvent } from "@/lib/business-monitoring";
+import { observeAssistantMessageViaBot, sendWhatsAppMessagesViaBot } from "../services/botApi";
+import { recordAiUsageEvent } from "../services/aiUsage";
+import { threadMessageSelection } from "./messageReadSupport";
+
+export async function sendText(ctx: { businessId: string; userId: string; firebaseUid?: string | null }, input: {
+  threadId: string;
+  text: string;
+}) {
+  const [thread] = await db
+    .select({
+      id: messageThreads.id,
+      channelIdentityId: messageThreads.channelIdentityId,
+      customerExternalId: customers.externalId,
+      customerPhone: customers.phone,
+      customerSource: customers.source,
+    })
+    .from(messageThreads)
+    .innerJoin(customers, eq(messageThreads.customerId, customers.id))
+    .where(
+      and(
+        eq(messageThreads.id, input.threadId),
+        eq(messageThreads.businessId, ctx.businessId),
+        isNull(messageThreads.deletedAt),
+        isNull(customers.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!thread) return null;
+
+  if (thread.customerSource !== "whatsapp") {
+    throw new Error("Manual send is supported only for WhatsApp threads.");
+  }
+  if (!thread.channelIdentityId) {
+    throw new Error("Thread has no WhatsApp identity configured.");
+  }
+
+  const [identity] = await db
+    .select({
+      phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+      aiEnabled: channelIdentities.aiEnabled,
+    })
+    .from(channelIdentities)
+    .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
+    .where(
+      and(
+        eq(channelIdentities.id, thread.channelIdentityId),
+        eq(channelIdentities.businessId, ctx.businessId),
+      ),
+    )
+    .limit(1);
+
+  if (!identity) return null;
+
+  const toRaw = String(thread.customerExternalId || thread.customerPhone || "").trim();
+  const to = toRaw.replace(/[^\d]/g, "");
+  if (!to) {
+    throw new Error("Customer WhatsApp ID is missing.");
+  }
+
+  const [botResult] = await sendWhatsAppMessagesViaBot({
+    businessId: ctx.businessId,
+    phoneNumberId: identity.phoneNumberId,
+    to,
+    messages: [{ type: "text", text: input.text }],
+  });
+
+  const now = new Date();
+  const [saved] = await db
+    .insert(threadMessages)
+    .values({
+      threadId: input.threadId,
+      externalMessageId: botResult?.messageId || null,
+      direction: "outbound",
+      messageType: "text",
+      textBody: input.text,
+      meta: {
+        source: "portal_manual_send",
+        channelIdentityId: thread.channelIdentityId,
+        providerResponse: botResult?.providerResponse ?? null,
+      },
+      createdAt: now,
+    })
+    .returning(threadMessageSelection);
+
+  await db
+    .update(messageThreads)
+    .set({
+      lastMessageAt: now,
+      lastMessageDirection: "outbound",
+      updatedAt: now,
+    })
+    .where(eq(messageThreads.id, input.threadId));
+
+  if (saved) {
+    recordBusinessEvent({
+      event: "message.manual_send_succeeded",
+      action: "sendText",
+      area: "message",
+      businessId: ctx.businessId,
+      entity: "thread_message",
+      entityId: saved.id,
+      userId: ctx.userId,
+      actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+      actorType: "user",
+      outcome: "success",
+      attributes: {
+        message_type: saved.messageType,
+        text_length: input.text.length,
+        thread_id: input.threadId,
+        channel_identity_id: thread.channelIdentityId,
+      },
+    });
+  }
+
+  try {
+    if (identity.aiEnabled) {
+      await observeAssistantMessageViaBot({
+        businessId: ctx.businessId,
+        phoneNumberId: thread.channelIdentityId,
+        to,
+        text: input.text,
+        intent: "general",
+      });
+      await recordAiUsageEvent({
+        businessId: ctx.businessId,
+        channelIdentityId: thread.channelIdentityId,
+        threadId: input.threadId,
+        eventType: "manual_outbound_message",
+        source: "portal_manual_send",
+        credits: 1,
+        metadata: {
+          customerExternalId: thread.customerExternalId ?? null,
+        },
+      });
+    }
+  } catch {
+    recordBusinessEvent({
+      event: "message.manual_send_observe_failed",
+      action: "sendText",
+      area: "message",
+      businessId: ctx.businessId,
+      entity: "thread",
+      entityId: input.threadId,
+      userId: ctx.userId,
+      actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+      actorType: "user",
+      outcome: "degraded",
+      status: "assistant_observe_failed",
+      attributes: {
+        channel_identity_id: thread.channelIdentityId,
+      },
+    });
+  }
+
+  return saved;
+}
+
+export type MediaPart =
+  | { type: "text"; text: string }
+  | { type: "image"; imageUrl: string; caption?: string }
+  | { type: "document"; documentUrl: string; filename?: string; caption?: string };
+
+export async function sendMedia(ctx: { businessId: string; userId: string; firebaseUid?: string | null }, input: {
+  threadId: string;
+  messages: MediaPart[];
+}) {
+  const [thread] = await db
+    .select({
+      id: messageThreads.id,
+      channelIdentityId: messageThreads.channelIdentityId,
+      customerExternalId: customers.externalId,
+      customerPhone: customers.phone,
+      customerSource: customers.source,
+    })
+    .from(messageThreads)
+    .innerJoin(customers, eq(messageThreads.customerId, customers.id))
+    .where(
+      and(
+        eq(messageThreads.id, input.threadId),
+        eq(messageThreads.businessId, ctx.businessId),
+        isNull(messageThreads.deletedAt),
+        isNull(customers.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!thread) return null;
+
+  if (thread.customerSource !== "whatsapp") {
+    throw new Error("Manual send is supported only for WhatsApp threads.");
+  }
+  if (!thread.channelIdentityId) {
+    throw new Error("Thread has no WhatsApp identity configured.");
+  }
+
+  const [identity] = await db
+    .select({
+      phoneNumberId: whatsappIdentityDetails.phoneNumberId,
+      aiEnabled: channelIdentities.aiEnabled,
+    })
+    .from(channelIdentities)
+    .innerJoin(whatsappIdentityDetails, eq(channelIdentities.id, whatsappIdentityDetails.channelIdentityId))
+    .where(
+      and(
+        eq(channelIdentities.id, thread.channelIdentityId),
+        eq(channelIdentities.businessId, ctx.businessId),
+      ),
+    )
+    .limit(1);
+
+  if (!identity) return null;
+
+  const toRaw = String(thread.customerExternalId || thread.customerPhone || "").trim();
+  const to = toRaw.replace(/[^\d]/g, "");
+  if (!to) {
+    throw new Error("Customer WhatsApp ID is missing.");
+  }
+
+  const botResults = await sendWhatsAppMessagesViaBot({
+    businessId: ctx.businessId,
+    phoneNumberId: identity.phoneNumberId,
+    to,
+    messages: input.messages,
+  });
+
+  const now = new Date();
+  const rowsToInsert = input.messages.map((message, index) => {
+    const botResult = botResults[index];
+    const sharedMeta = {
+      source: "portal_manual_send",
+      channelIdentityId: thread.channelIdentityId,
+      providerResponse: botResult?.providerResponse ?? null,
+    } as Record<string, unknown>;
+    if (message.type === "text") {
+      return {
+        threadId: input.threadId,
+        externalMessageId: botResult?.messageId || null,
+        direction: "outbound" as const,
+        messageType: "text",
+        textBody: message.text,
+        meta: sharedMeta,
+        createdAt: now,
+      };
+    }
+    if (message.type === "image") {
+      return {
+        threadId: input.threadId,
+        externalMessageId: botResult?.messageId || null,
+        direction: "outbound" as const,
+        messageType: "image",
+        textBody: message.caption || "[image]",
+        meta: {
+          ...sharedMeta,
+          imageUrl: message.imageUrl,
+          ...(message.caption ? { caption: message.caption } : {}),
+        },
+        createdAt: now,
+      };
+    }
+    return {
+      threadId: input.threadId,
+      externalMessageId: botResult?.messageId || null,
+      direction: "outbound" as const,
+      messageType: "document",
+      textBody: message.caption || message.filename || "[document]",
+      meta: {
+        ...sharedMeta,
+        documentUrl: message.documentUrl,
+        ...(message.filename ? { filename: message.filename } : {}),
+        ...(message.caption ? { caption: message.caption } : {}),
+      },
+      createdAt: now,
+    };
+  });
+
+  const saved = await db
+    .insert(threadMessages)
+    .values(rowsToInsert)
+    .returning(threadMessageSelection);
+
+  await db
+    .update(messageThreads)
+    .set({
+      lastMessageAt: now,
+      lastMessageDirection: "outbound",
+      updatedAt: now,
+    })
+    .where(eq(messageThreads.id, input.threadId));
+
+  recordBusinessEvent({
+    event: "message.manual_media_send_succeeded",
+    action: "sendMedia",
+    area: "message",
+    businessId: ctx.businessId,
+    entity: "thread",
+    entityId: input.threadId,
+    userId: ctx.userId,
+    actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+    actorType: "user",
+    outcome: "success",
+    attributes: {
+      message_count: input.messages.length,
+      channel_identity_id: thread.channelIdentityId,
+    },
+  });
+
+  try {
+    if (identity.aiEnabled) {
+      const observationText = input.messages
+        .map((message) => {
+          if (message.type === "text") return message.text;
+          if (message.type === "image") return message.caption || "[image sent by staff]";
+          return message.caption || message.filename || "[document sent by staff]";
+        })
+        .filter(Boolean)
+        .join("\n");
+      if (observationText) {
+        await observeAssistantMessageViaBot({
+          businessId: ctx.businessId,
+          phoneNumberId: thread.channelIdentityId,
+          to,
+          text: observationText,
+          intent: "general",
+        });
+      }
+      await recordAiUsageEvent({
+        businessId: ctx.businessId,
+        channelIdentityId: thread.channelIdentityId,
+        threadId: input.threadId,
+        eventType: "manual_outbound_message",
+        source: "portal_manual_send",
+        credits: input.messages.length,
+        metadata: {
+          customerExternalId: thread.customerExternalId ?? null,
+          messageCount: input.messages.length,
+        },
+      });
+    }
+  } catch {
+    recordBusinessEvent({
+      event: "message.manual_send_observe_failed",
+      action: "sendMedia",
+      area: "message",
+      businessId: ctx.businessId,
+      entity: "thread",
+      entityId: input.threadId,
+      userId: ctx.userId,
+      actorId: ctx.firebaseUid ?? ctx.userId ?? null,
+      actorType: "user",
+      outcome: "degraded",
+      status: "assistant_observe_failed",
+      attributes: {
+        channel_identity_id: thread.channelIdentityId,
+      },
+    });
+  }
+
+  return saved;
+}

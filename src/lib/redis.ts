@@ -257,4 +257,11 @@ export async function withLock<T>(lockKey: string, ttlSeconds: number, fn: () =>
   }
 }
 
+export async function withCache<T>(key: string, ttl: number, fetcher: () => Promise<T>): Promise<T> {
+  const cached = await getCached<T>(key);
+  if (cached) return cached;
+  const result = await fetcher();
+  await setCached(key, result, ttl);
+  return result;
+}
 

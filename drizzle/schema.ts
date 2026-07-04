@@ -1724,6 +1724,7 @@ export const commerceProducts = pgTable(
     commerceProductsBusinessIdx: index("commerce_products_business_id_idx").on(t.businessId),
     commerceProductsSuiteTenantStatusIdx: index("commerce_products_suite_tenant_status_idx").on(t.suiteTenantId, t.status),
     commerceProductsBusinessStatusIdx: index("commerce_products_business_status_idx").on(t.businessId, t.status),
+    commerceProductsBusinessStatusAgentIdx: index("commerce_products_business_status_agent_idx").on(t.businessId, t.status, t.agentId),
     commerceProductsBusinessSkuIdx: index("commerce_products_business_sku_idx").on(t.businessId, t.sku),
     commerceProductsBusinessNameIdx: index("commerce_products_business_name_idx").on(t.businessId, t.name),
     commerceProductsBusinessSourceRowUx: uniqueIndex("commerce_products_business_source_row_ux").on(t.businessId, t.sourceRowKey),
