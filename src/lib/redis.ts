@@ -193,14 +193,57 @@ export async function setCached(key: string, value: unknown, ttlSeconds: number)
 export async function delCached(key: string): Promise<boolean> {
   const client = await getRedisClient();
   if (!client) return false;
-  
+
   try {
     await client.del(key);
     return true;
   } catch (err) {
-    console.error('Redis DEL error:', err);
+    console.error("Redis DEL error:", err);
     return false;
   }
+}
+
+/**
+ * Removes all keys matching a prefix.
+ * Uses SCAN to avoid blocking the server.
+ */
+export async function scanDelCached(prefix: string): Promise<number> {
+  const client = await getRedisClient();
+  if (!client) return 0;
+
+  try {
+    let cursor = 0;
+    let deletedCount = 0;
+    do {
+      const result = await client.scan(cursor, { MATCH: `${prefix}*`, COUNT: 100 });
+      cursor = result.cursor;
+      const keys = result.keys;
+      if (keys.length > 0) {
+        await client.del(keys);
+        deletedCount += keys.length;
+      }
+    } while (cursor !== 0);
+    return deletedCount;
+  } catch (err) {
+    console.error("Redis SCANDEL error:", err);
+    return 0;
+  }
+}
+
+/**
+ * A centralized Redis-based caching helper to provide a consistent pattern for service-level caching.
+ */
+export async function withCache<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>,
+): Promise<T> {
+  const cached = await getCached<T>(key);
+  if (cached !== null) return cached;
+
+  const data = await fetcher();
+  await setCached(key, data, ttlSeconds);
+  return data;
 }
 
 export async function existsCached(key: string): Promise<boolean> {
