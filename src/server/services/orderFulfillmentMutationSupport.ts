@@ -174,7 +174,7 @@ export async function updateFulfillment(
         returnedAt: nextTimestamps.returnedAt,
         updatedAt: now,
       })
-      .where(eq(orders.id, orderRow.id))
+      .where(and(eq(orders.id, orderRow.id), eq(orders.businessId, ctx.businessId)))
       .returning();
 
     if (!updatedOrder) {
