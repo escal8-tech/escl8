@@ -203,6 +203,37 @@ export async function delCached(key: string): Promise<boolean> {
   }
 }
 
+export async function scanDelCached(pattern: string): Promise<number> {
+  const client = await getRedisClient();
+  if (!client) return 0;
+
+  try {
+    let deletedCount = 0;
+    // For redis v4+ client.scanIterator is preferred
+    for await (const key of client.scanIterator({ MATCH: pattern, COUNT: 100 })) {
+      await client.del(key);
+      deletedCount++;
+    }
+    return deletedCount;
+  } catch (err) {
+    console.error('Redis SCAN/DEL error:', err);
+    return 0;
+  }
+}
+
+export async function withCache<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>
+): Promise<T> {
+  const cached = await getCached<T>(key);
+  if (cached !== null) return cached;
+
+  const data = await fetcher();
+  await setCached(key, data, ttlSeconds);
+  return data;
+}
+
 export async function existsCached(key: string): Promise<boolean> {
   const client = await getRedisClient();
   if (!client) return false;
