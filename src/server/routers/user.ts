@@ -16,18 +16,9 @@ import * as support from "../services/userLifecycleSupport";
 
 export const userRouter = router({
   ensure: protectedProcedure
-    .input(
-      z.object({
-        email: z.string().email(),
-      }),
-    )
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ ctx }) => {
       try {
-        const email = support.normalizeEmail(input.email);
-        if (ctx.userEmail && email !== support.normalizeEmail(ctx.userEmail)) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
-        }
-
+        const email = support.normalizeEmail(ctx.userEmail!);
         const firebaseUid = ctx.firebaseUid;
         if (!firebaseUid) {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Missing Firebase UID" });
@@ -71,15 +62,11 @@ export const userRouter = router({
     }),
 
   getMe: protectedProcedure
-    .input(z.object({ email: z.string().email() }))
-    .query(async ({ input, ctx }) => {
+    .query(async ({ ctx }) => {
       try {
-        const email = support.normalizeEmail(input.email);
-        if (!ctx.userEmail || !ctx.firebaseUid) {
+        const email = support.normalizeEmail(ctx.userEmail!);
+        if (!ctx.firebaseUid) {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
-        }
-        if (email !== support.normalizeEmail(ctx.userEmail)) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
         }
 
         let user = await db.select().from(users).where(eq(users.firebaseUid, ctx.firebaseUid)).then((r) => r[0] ?? null);
@@ -114,14 +101,10 @@ export const userRouter = router({
     }),
 
   getAccessStatus: protectedProcedure
-    .input(z.object({ email: z.string().email() }))
-    .query(async ({ input, ctx }) => {
-      const email = support.normalizeEmail(input.email);
-      if (!ctx.userEmail || !ctx.firebaseUid) {
+    .query(async ({ ctx }) => {
+      const email = support.normalizeEmail(ctx.userEmail!);
+      if (!ctx.firebaseUid) {
         throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
-      }
-      if (email !== support.normalizeEmail(ctx.userEmail)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
       }
 
       const user =
@@ -165,7 +148,6 @@ export const userRouter = router({
   upsert: protectedProcedure
     .input(
       z.object({
-        email: z.string().email(),
         whatsappConnected: z.boolean().optional(),
         businessId: z.string().min(1).optional(),
         businessName: z.string().min(1).max(160).optional(),
@@ -178,12 +160,9 @@ export const userRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       try {
-        const email = support.normalizeEmail(input.email);
-        if (!ctx.userEmail || !ctx.firebaseUid) {
+        const email = support.normalizeEmail(ctx.userEmail!);
+        if (!ctx.firebaseUid) {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
-        }
-        if (email !== support.normalizeEmail(ctx.userEmail)) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Email mismatch" });
         }
 
         const now = new Date();
