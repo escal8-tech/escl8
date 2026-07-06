@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { publishEvent } from "@/lib/eventgrid";
+import { getAuthedUserFromRequest } from "@/server/apiAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,10 +11,20 @@ const ALLOWED_MIME = new Set([
   "text/plain",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
 ]);
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export async function POST(request: Request) {
   try {
+    const auth = await getAuthedUserFromRequest(request);
+    if (!auth || !auth.businessId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const files = formData.getAll("files");
 
@@ -21,13 +32,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No files provided" }, { status: 400 });
     }
 
-    const uploadDir = path.join(process.cwd(), "uploads");
+    const uploadDir = path.join(process.cwd(), "uploads", auth.businessId);
     await mkdir(uploadDir, { recursive: true });
 
     const saved: { name: string; size: number }[] = [];
 
     for (const f of files) {
       if (!(f instanceof File)) continue;
+
+      if (f.size > MAX_FILE_SIZE) {
+        return NextResponse.json(
+          { error: `File too large: ${f.name}. Max size is 10MB.` },
+          { status: 413 }
+        );
+      }
+
       const mime = f.type || "";
       if (mime && !ALLOWED_MIME.has(mime)) {
         return NextResponse.json(
@@ -39,6 +58,13 @@ export async function POST(request: Request) {
       const buffer = Buffer.from(bytes);
       const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const filePath = path.join(uploadDir, `${Date.now()}_${safeName}`);
+
+      // Ensure the resolved path is still within the upload directory to prevent path traversal
+      const resolvedPath = path.resolve(filePath);
+      if (!resolvedPath.startsWith(path.resolve(uploadDir))) {
+        return NextResponse.json({ error: "Invalid file name" }, { status: 400 });
+      }
+
       await writeFile(filePath, buffer);
       saved.push({ name: path.basename(filePath), size: buffer.byteLength });
     }

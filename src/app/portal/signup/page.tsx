@@ -71,7 +71,6 @@ function SignupPageContent() {
         tokenFailureEvent: "auth.signup_failed",
       });
       await upsertUser.mutateAsync({
-        email,
         whatsappConnected: false,
         businessName: inviteMode ? undefined : businessName,
         inviteToken: inviteMode ? inviteToken : undefined,

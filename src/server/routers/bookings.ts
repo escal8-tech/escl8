@@ -10,18 +10,12 @@ import { recordBusinessEvent } from "@/lib/business-monitoring";
 
 export const bookingsRouter = router({
   list: businessProcedure
-    .input(z.object({ businessId: z.string() }).optional())
-    .query(async ({ input, ctx }) => {
-      if (input?.businessId && input.businessId !== ctx.businessId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Business mismatch" });
-      }
+    .query(async ({ ctx }) => {
       return await db.select().from(bookings).where(eq(bookings.businessId, ctx.businessId));
     }),
 
   create: businessProcedure
     .input(z.object({
-      userId: z.string(),
-      businessId: z.string(),
       startTime: z.string(), // ISO
       durationMinutes: z.number().int().min(5).max(600).default(60),
       unitsBooked: z.number().int().min(1),
@@ -31,7 +25,7 @@ export const bookingsRouter = router({
     .mutation(async ({ input, ctx }) => {
       const [row] = await db.insert(bookings).values({
         businessId: ctx.businessId,
-        userId: input.userId,
+        userId: ctx.userId!,
         startTime: new Date(input.startTime),
         durationMinutes: input.durationMinutes,
         unitsBooked: input.unitsBooked,

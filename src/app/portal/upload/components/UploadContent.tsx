@@ -240,7 +240,7 @@ export function UploadContent({ agentId, onMapColumns }: { agentId?: string; onM
 
     try {
       if (!userEmail) throw new Error("Missing user email");
-      const result = await retrainMutation.mutateAsync({ email: userEmail, docType });
+      const result = await retrainMutation.mutateAsync({ docType });
       pendingTrainingDocsRef.current.add(docType);
       if (businessId && result?.jobId) {
         rememberPendingDocumentTraining({

@@ -266,9 +266,9 @@ export default function SettingsPage() {
     return () => unsub();
   }, [auth]);
 
-  const businessQuery = trpc.business.getMine.useQuery({ email: email ?? "" }, { enabled: !!email });
+  const businessQuery = trpc.business.getMine.useQuery(undefined, { enabled: !!email });
   const phoneNumbersQuery = trpc.business.listPhoneNumbers.useQuery(undefined, { enabled: !!email });
-  const accessStatusQuery = trpc.user.getAccessStatus.useQuery({ email: email ?? "" }, { enabled: !!email });
+  const accessStatusQuery = trpc.user.getAccessStatus.useQuery(undefined, { enabled: !!email });
   const ensureWebsiteWidget = trpc.business.ensureWebsiteWidget.useMutation();
   const updateBooking = trpc.business.updateBookingConfig.useMutation();
   const updateTimezone = trpc.business.updateTimezone.useMutation();
@@ -473,8 +473,6 @@ export default function SettingsPage() {
     }
     try {
       await updateBooking.mutateAsync({
-        email,
-        businessId: businessQuery.data.id,
         bookingsEnabled,
         unitCapacity,
         timeslotMinutes,
@@ -499,8 +497,6 @@ export default function SettingsPage() {
     if (!email || !businessQuery.data?.id) return;
     try {
       await updateCustomizationSettings.mutateAsync({
-        email,
-        businessId: businessQuery.data.id,
         businessName: customBusinessName.trim(),
         logoBlobPath: customLogoBlobPath.trim(),
         logoContainer: customLogoContainer.trim(),
@@ -514,8 +510,6 @@ export default function SettingsPage() {
         invoiceFooterNote: customInvoiceFooterNote.trim(),
       });
       await updateTimezone.mutateAsync({
-        email,
-        businessId: businessQuery.data.id,
         timezone,
       });
       await businessQuery.refetch();
@@ -554,8 +548,6 @@ export default function SettingsPage() {
 
     try {
       await updateOrderSettings.mutateAsync({
-        email,
-        businessId: businessQuery.data.id,
         ticketToOrderEnabled: true,
         paymentMethod: resolvedPaymentMethod,
         paymentProofAiEnabled,
@@ -603,8 +595,6 @@ export default function SettingsPage() {
 
     try {
       await updateBooking.mutateAsync({
-        email,
-        businessId: businessQuery.data.id,
         bookingsEnabled,
         unitCapacity,
         timeslotMinutes,
@@ -612,8 +602,6 @@ export default function SettingsPage() {
         closeTime: closeTime || "17:00",
       });
       await updateTimezone.mutateAsync({
-        email,
-        businessId: businessQuery.data.id,
         timezone,
       });
       const orderSettingsSaved = await handleSaveOrderSettings({ silent: true });
@@ -635,8 +623,6 @@ export default function SettingsPage() {
     if (!email || !businessQuery.data?.id) return;
     try {
       await updateCustomizationSettings.mutateAsync({
-        email,
-        businessId: businessQuery.data.id,
         businessName: customBusinessName.trim(),
         logoBlobPath: customLogoBlobPath.trim(),
         logoContainer: customLogoContainer.trim(),
@@ -748,7 +734,7 @@ export default function SettingsPage() {
   const handleDisconnectGmail = async () => {
     if (!email || !businessQuery.data?.id) return;
     try {
-      await disconnectGmail.mutateAsync({ email, businessId: businessQuery.data.id });
+      await disconnectGmail.mutateAsync();
       await businessQuery.refetch();
       showSuccessToast(toast, {
         title: "Gmail disconnected",
@@ -771,7 +757,7 @@ export default function SettingsPage() {
       return;
     }
     try {
-      const result = await ensureWebsiteWidget.mutateAsync({ email, businessId: businessQuery.data.id });
+      const result = await ensureWebsiteWidget.mutateAsync();
       if (!result.key) throw new Error("Widget key was not generated.");
       setWidgetSnippet(buildWebsiteWidgetSnippet(window.location.origin, result.key));
       setWidgetModalOpen(true);
