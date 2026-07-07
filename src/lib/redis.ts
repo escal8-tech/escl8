@@ -160,7 +160,14 @@ export const REDIS_KEYS = {
   
   // Session data (for distributed systems)
   SESSION: 'session:',                   // Session data
-  SESSION_TTL: 1800                      // 30 minutes
+  SESSION_TTL: 1800,                     // 30 minutes
+
+  // Business and Message Caching
+  BUSINESS_MINE: 'biz:mine:',            // getMine cached by businessId
+  BUSINESS_SUB: 'biz:sub:',              // getSubscription cached by businessId
+  BUSINESS_PHONES: 'biz:phones:',        // listPhoneNumbers cached by businessId
+  MESSAGE_THREADS: 'msg:threads:',       // listRecentThreads cached by businessId:params
+  GENERIC_TTL: 60                        // 1 minute default for high-traffic read operations
 };
 
 // Generic cache operations
@@ -201,6 +208,42 @@ export async function delCached(key: string): Promise<boolean> {
     console.error('Redis DEL error:', err);
     return false;
   }
+}
+
+export async function scanDelCached(pattern: string): Promise<number> {
+  const client = await getRedisClient();
+  if (!client) return 0;
+
+  try {
+    let deletedCount = 0;
+    // @ts-expect-error - scanIterator is present on both client and cluster but types might differ slightly
+    for await (const key of client.scanIterator({ MATCH: pattern })) {
+      await client.del(key);
+      deletedCount++;
+    }
+    return deletedCount;
+  } catch (err) {
+    console.error('Redis SCANDEL error:', err);
+    return 0;
+  }
+}
+
+export async function withCache<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>
+): Promise<T> {
+  const cached = await getCached<T>(key);
+  if (cached !== null) {
+    return cached;
+  }
+
+  const data = await fetcher();
+  if (data !== null && data !== undefined) {
+    await setCached(key, data, ttlSeconds);
+  }
+
+  return data;
 }
 
 export async function existsCached(key: string): Promise<boolean> {
