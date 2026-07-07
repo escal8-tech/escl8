@@ -101,7 +101,7 @@ export async function updateDraftOrder(
         notes: nextNotes,
         updatedAt: now,
       })
-      .where(eq(orders.id, orderRow.id))
+      .where(and(eq(orders.id, orderRow.id), eq(orders.businessId, ctx.businessId)))
       .returning();
 
     if (!updatedOrder) {
@@ -255,7 +255,7 @@ export async function updatePaymentSetup(
       notes: nextNotes,
       updatedAt: now,
     })
-    .where(eq(orders.id, orderRow.id))
+    .where(and(eq(orders.id, orderRow.id), eq(orders.businessId, ctx.businessId)))
     .returning();
 
   if (!updatedOrder) {

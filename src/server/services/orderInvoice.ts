@@ -248,12 +248,39 @@ function addUrlAnnotation(page: PDFPage, input: { url: string; x: number; y: num
   page.node.addAnnot(annotation);
 }
 
+function isSafeUrlForInvoiceLogo(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+
+    const host = parsed.hostname.toLowerCase();
+
+    // Block localhost and standard private ranges
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "0.0.0.0" ||
+      host === "::1" ||
+      host.startsWith("10.") ||
+      host.startsWith("192.168.") ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) || // 172.16.0.0 – 172.31.255.255
+      host === "169.254.169.254" // Cloud metadata
+    ) {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function loadInvoiceLogo(pdf: PDFDocument, customization: InvoiceCustomization): Promise<{ image: PDFImage; width: number; height: number } | null> {
   const logoUrl = customization.logoBlobPath
     ? buildPrivateBlobReadUrl(customization.logoBlobPath, LONG_READ_TTL_HOURS, customization.logoContainer || undefined)
     : customization.logoUrl;
   const url = cleanText(logoUrl, 2000);
-  if (!url) return null;
+  if (!url || !isSafeUrlForInvoiceLogo(url)) return null;
 
   try {
     const response = await fetch(url, { cache: "no-store" });
