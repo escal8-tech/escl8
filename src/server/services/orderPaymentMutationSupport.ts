@@ -113,7 +113,7 @@ export async function reviewPayment(
         aiCheckNotes: input.notes?.trim() || paymentRow.aiCheckNotes,
         updatedAt: now,
       })
-      .where(eq(orderPayments.id, paymentRow.id))
+      .where(and(eq(orderPayments.id, paymentRow.id), eq(orderPayments.businessId, ctx.businessId)))
       .returning();
 
     const fulfillmentPrefill = resolveFulfillmentPrefill(orderRow);
@@ -135,7 +135,7 @@ export async function reviewPayment(
         deliveryArea: fulfillmentPrefill.deliveryArea,
         updatedAt: now,
       })
-      .where(eq(orders.id, orderRow.id))
+      .where(and(eq(orders.id, orderRow.id), eq(orders.businessId, ctx.businessId)))
       .returning();
 
     if (!updatedPayment || !updatedOrder) {
