@@ -128,7 +128,8 @@ function trackingBaseUrl(fallbackOrigin?: string | null): string {
 }
 
 export function createOrderTrackingToken(input: { businessId: string; orderId: string }): string {
-  const payloadBase = Buffer.from(input.orderId).toString("base64url");
+  const combined = `${input.businessId}:${input.orderId}`;
+  const payloadBase = Buffer.from(combined).toString("base64url");
   const payload = `o2_${payloadBase}`;
   const sig = shortSignature(payload, trackingSecret());
   return `${payload}_${sig}`;
@@ -141,8 +142,13 @@ export function parseOrderTrackingToken(token: string): ParsedTrackingToken | nu
     const payload = `o2_${compactMatch[1]}`;
     const expected = shortSignature(payload, trackingSecret());
     if (!safeTimingEqual(compactMatch[2], expected)) return null;
-    const orderId = cleanText(Buffer.from(compactMatch[1], "base64url").toString("utf8"), 160);
-    return orderId ? { businessId: "", orderId } : null;
+    const combined = cleanText(Buffer.from(compactMatch[1], "base64url").toString("utf8"), 320);
+    if (!combined || !combined.includes(":")) return null;
+    const parts = combined.split(":");
+    if (parts.length !== 2) return null;
+    const [businessId, orderId] = parts;
+    if (!businessId || !orderId || businessId.includes(":") || orderId.includes(":")) return null;
+    return { businessId, orderId };
   }
   return null;
 }
@@ -243,14 +249,12 @@ function buildTimeline(
 export async function getPublicOrderTrackingData(token: string): Promise<PublicOrderTrackingData | null> {
   const parsed = parseOrderTrackingToken(token);
 
-  if (!parsed || !parsed.orderId) return null;
-
-  const orderPredicate = eq(orders.id, parsed.orderId);
+  if (!parsed || !parsed.orderId || !parsed.businessId) return null;
 
   const [order] = await db
     .select()
     .from(orders)
-    .where(orderPredicate)
+    .where(and(eq(orders.id, parsed.orderId), eq(orders.businessId, parsed.businessId)))
     .limit(1);
   if (!order) return null;
   const businessId = cleanText(order.businessId, 160);
