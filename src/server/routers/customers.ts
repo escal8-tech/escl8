@@ -2,6 +2,7 @@ import { z } from "zod";
 import { router, businessProcedure } from "../trpc";
 import { db } from "../db/client";
 import { customers, requests, SUPPORTED_SOURCES } from "@/../drizzle/schema";
+import { parseMoneyValue } from "../services/orderFlow";
 import { eq, and, desc, sql, isNull, lt, or, inArray, asc, ilike } from "drizzle-orm";
 import { publishPortalEvent } from "@/server/realtime/portalEvents";
 import { recordBusinessEvent } from "@/lib/business-monitoring";
@@ -451,8 +452,8 @@ export const customersRouter = router({
         const newSuccessful = isSuccessful
           ? (existing.successfulRequests ?? 0) + 1
           : existing.successfulRequests ?? 0;
-        const addedRevenue = input.paid && input.price ? parseFloat(input.price) : 0;
-        const newRevenue = parseFloat(existing.totalRevenue ?? "0") + addedRevenue;
+        const addedRevenue = input.paid && input.price ? Number(parseMoneyValue(input.price) || 0) : 0;
+        const newRevenue = Number(parseMoneyValue(existing.totalRevenue) || 0) + addedRevenue;
 
         const leadScore = calculateLeadScore({
           totalRequests: newTotalRequests,
@@ -495,7 +496,7 @@ export const customersRouter = router({
 
         return { customerId: existing.id, created: false };
       } else {
-        const addedRevenue = input.paid && input.price ? parseFloat(input.price) : 0;
+        const addedRevenue = input.paid && input.price ? Number(parseMoneyValue(input.price) || 0) : 0;
         const leadScore = calculateLeadScore({
           totalRequests: 1,
           successfulRequests: isSuccessful ? 1 : 0,
